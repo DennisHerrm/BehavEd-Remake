@@ -1,0 +1,90 @@
+// behaved.rc - Symbol, Versionsangaben und Manifest
+//
+// Wozu die Versionsangaben: eine .exe ohne sie sieht fuer Windows aus wie
+// etwas, das jemand schnell zusammengeklickt hat. Rechtsklick -> Details
+// zeigt dann leere Felder, und mancher Virenscanner wertet das als kleines
+// Minus. Es ist KEIN Ersatz fuer eine Signatur (siehe unten), aber es kostet
+// nichts und macht das Programm nachvollziehbar.
+
+#include <windows.h>
+
+// --- Symbol ----------------------------------------------------------
+// Die erste ICON-Anweisung im Skript bestimmt, was der Explorer an der
+// Datei zeigt. Deshalb steht sie ganz oben.
+1 ICON "behaved.ico"
+
+// --- Manifest ---------------------------------------------------------
+// Zwei Dinge stehen darin, und beide sind wichtiger, als sie aussehen:
+//
+//   requestedExecutionLevel asInvoker
+//     Das Programm fragt NICHT nach Administratorrechten. Wer das anfordert,
+//     loest bei jedem Start die UAC-Nachfrage aus - und ein Werkzeug, das
+//     ohne Grund Administratorrechte will, ist genau das Muster, an dem man
+//     Schadsoftware erkennt. Ein Skripteditor braucht sie nicht.
+//
+//   compatibility supportedOS
+//     Ohne diese Liste behandelt Windows das Programm als "fuer Vista
+//     geschrieben" und schaltet Verhaltensweisen um, die es laengst nicht
+//     mehr braucht.
+// Die Zahl 24 statt des Namens RT_MANIFEST: in winuser.h steht dahinter ein
+// MAKEINTRESOURCE(...), und das ist keine Angabe, die ein Ressourcenskript
+// an dieser Stelle sicher versteht. Die Zahl verstehen beide Werkzeuge,
+// rc.exe von Microsoft wie windres von MinGW.
+#define BHED_RT_MANIFEST 24
+1 BHED_RT_MANIFEST "behaved.manifest"
+
+// --- Versionsangaben --------------------------------------------------
+#define BHED_VER_MAJOR 1
+#define BHED_VER_MINOR 0
+#define BHED_VER_PATCH 0
+#define BHED_VER_BUILD 0
+
+VS_VERSION_INFO VERSIONINFO
+  FILEVERSION    BHED_VER_MAJOR, BHED_VER_MINOR, BHED_VER_PATCH, BHED_VER_BUILD
+  PRODUCTVERSION BHED_VER_MAJOR, BHED_VER_MINOR, BHED_VER_PATCH, BHED_VER_BUILD
+  FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+  FILEFLAGS      VS_FF_DEBUG
+#else
+  FILEFLAGS      0x0L
+#endif
+  FILEOS         VOS_NT_WINDOWS32
+  FILETYPE       VFT_APP
+  FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // 040704b0 = Deutsch (Deutschland), Unicode
+        BLOCK "040704b0"
+        BEGIN
+            VALUE "FileDescription", "behaved - Editor fuer ICARUS-Skripte"
+            VALUE "FileVersion",     "1.0.0.0"
+            VALUE "InternalName",    "behaved"
+            VALUE "OriginalFilename","behaved.exe"
+            VALUE "ProductName",     "behaved"
+            VALUE "ProductVersion",  "1.0.0.0"
+            VALUE "Comments",
+                  "Nachbau von BehavEd 2.0 (Raven Software, 1999). "
+                  "Freie Software, keine Gewaehr."
+        END
+        // 040904b0 = Englisch (USA), Unicode
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "behaved - ICARUS script editor"
+            VALUE "FileVersion",     "1.0.0.0"
+            VALUE "InternalName",    "behaved"
+            VALUE "OriginalFilename","behaved.exe"
+            VALUE "ProductName",     "behaved"
+            VALUE "ProductVersion",  "1.0.0.0"
+            VALUE "Comments",
+                  "Reconstruction of BehavEd 2.0 (Raven Software, 1999). "
+                  "Free software, no warranty."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        // Beide Sprachbloecke anmelden. Fehlt einer hier, findet Windows ihn
+        // nicht, auch wenn er oben steht.
+        VALUE "Translation", 0x407, 1200, 0x409, 1200
+    END
+END

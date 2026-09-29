@@ -1,0 +1,80 @@
+# Pruefliste fuer behaved.
+#
+# Ausgewaehlt nach dem Grundsatz, den Arne Mertz in "Core Guidelines are not
+# Rules" formuliert: die Richtlinien sind Empfehlungen, keine Gesetze. Was
+# echte FEHLER findet, ist an; was Geschmack ist, aus - sonst ertrinkt das
+# Verhaeltnis von Signal zu Rauschen.
+#
+# An:
+#   bugprone-*        echte Fehlerquellen
+#   performance-*     unnoetige Kopien, teure Schleifen
+#   modernize-*       veraltete Konstrukte
+#   readability-*     Lesbarkeit, ohne die strittigen Punkte
+#   cppcoreguidelines-* die Teilmenge, die Fehler findet
+#
+# Aus, mit Begruendung:
+#   *magic-numbers            eine Engine ist voller Konstanten aus dem
+#                             Format; sie stehen im Kommentar belegt
+#   *-avoid-c-arrays          float[3] ist hier die Sprache der Engine
+#   *pro-bounds-*             Zeigerarithmetik beim Dateilesen ist der Zweck
+#   modernize-use-trailing-return-type  reine Schreibweise
+#   readability-identifier-length       "i", "k", "at" sind hier klar
+#   *-avoid-do-while, *-else-after-return  Geschmack
+#
+# EINGESCHALTET seit rc121:
+#   readability-braces-around-statements
+#   readability-uppercase-literal-suffix
+#     Beide standen hier frueher AUS - nicht weil sie falsch waeren, sondern
+#     weil zu viele Altfaelle darin standen. Das ist die schlechteste Art,
+#     eine Regel zu behandeln: man schaltet sie ab, WEIL man sie verletzt.
+#     Ein Lauf ueber den Kern meldete 232 Verstoesse, davon 156 in den aus
+#     efxed uebernommenen Dateien. Alle behoben, danach alle Proben gruen
+#     und der Roundtrip bytegleich - eine automatische Umformung ist nur
+#     dann eine Verbesserung, wenn sie nachweislich nichts veraendert.
+#     Jetzt sind es null, und die Regeln koennen an bleiben.
+#
+# NICHT MEHR aus, seit rc119:
+#   readability-braces-around-statements
+#   readability-uppercase-literal-suffix
+#
+# Die beiden standen hier, weil der Quelltext sie 232 mal verletzte - und
+# genau das ist der Grund, aus dem man eine Regel NICHT abschalten sollte.
+# Eine Regel abzuschalten, weil man sie bricht, macht den Massstab zur
+# Beschreibung des Ist-Zustands; dann prueft er nichts mehr.
+#
+# Die 232 Faelle sind behoben (clang-tidy --fix, danach alle dreizehn
+# Probenprogramme gruen und der Roundtrip bytegleich - eine automatische
+# Umformung ist nur dann eine Verbesserung, wenn sie nachweislich nichts
+# aendert). Deshalb sind sie jetzt AN.
+#
+# Warum gerade diese zwei es wert sind:
+#   braces-around-statements  ein "if (x) return;" ohne Klammern ist die
+#                             Form, in der sich Apples "goto fail" 2014
+#                             versteckt hat - eine zweite Zeile dazu, und
+#                             sie steht ausserhalb der Bedingung.
+#   uppercase-literal-suffix  "1.0f" und "1.0F" nebeneinander im selben
+#                             Programm heisst: eines von beiden ist ein
+#                             Versehen, und man weiss nie welches.
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  cppcoreguidelines-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-avoid-do-while,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-else-after-return,
+  -readability-function-cognitive-complexity

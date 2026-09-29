@@ -1,0 +1,8 @@
+# Bauordner
+/build/
+/build-*/
+# Fertige Programme und Laufdaten
+/output/
+*.log
+*.log.vorher
+imgui.ini

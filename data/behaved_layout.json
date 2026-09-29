@@ -1,0 +1,1390 @@
+{
+ "source": "BehavEd.exe",
+ "dialogs": {
+  "100": {
+   "ex": false,
+   "title": "About BehavEd",
+   "x": 0,
+   "y": 0,
+   "cx": 145,
+   "cy": 129,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2160591040,
+   "ctrls": [
+    {
+     "cls": "BUTTON",
+     "text": "OK",
+     "id": 1,
+     "x": 7,
+     "y": 108,
+     "w": 131,
+     "h": 14,
+     "style": 1342373889,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Version 2.0",
+     "id": 65535,
+     "x": 53,
+     "y": 47,
+     "w": 36,
+     "h": 8,
+     "style": 1342308480,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Copyright (C) 1999, Raven Software",
+     "id": 65535,
+     "x": 15,
+     "y": 60,
+     "w": 114,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Special Thanks:",
+     "id": 65535,
+     "x": 23,
+     "y": 87,
+     "w": 52,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Mihai Filimon",
+     "id": 65535,
+     "x": 78,
+     "y": 87,
+     "w": 41,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "COMBOBOX",
+     "id": 65535,
+     "x": 27,
+     "y": 7,
+     "w": 91,
+     "h": 36,
+     "style": 1350569998,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Written by Josh Weier, Ste Cork",
+     "id": 65535,
+     "x": 20,
+     "y": 74,
+     "w": 104,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    }
+   ]
+  },
+  "102": {
+   "ex": true,
+   "title": "BehavEd",
+   "x": 0,
+   "y": 0,
+   "cx": 663,
+   "cy": 449,
+   "font": [
+    "MS Sans Serif",
+    8,
+    0,
+    0
+   ],
+   "style": 2429159616,
+   "ctrls": [
+    {
+     "cls": "BUTTON",
+     "text": "&Delete",
+     "id": 1002,
+     "x": 596,
+     "y": 12,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&New",
+     "id": 1004,
+     "x": 596,
+     "y": 103,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Open",
+     "id": 1005,
+     "x": 596,
+     "y": 116,
+     "w": 26,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Save",
+     "id": 1006,
+     "x": 596,
+     "y": 142,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Sa&ve As",
+     "id": 1007,
+     "x": 596,
+     "y": 155,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Prefs",
+     "id": 1020,
+     "x": 596,
+     "y": 222,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "A&bout",
+     "id": 100,
+     "x": 622,
+     "y": 222,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "E&xit",
+     "id": 2,
+     "x": 596,
+     "y": 235,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Script Flow",
+     "id": 4294967295,
+     "x": 206,
+     "y": 2,
+     "w": 372,
+     "h": 364,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Actions",
+     "id": 4294967295,
+     "x": 585,
+     "y": 2,
+     "w": 71,
+     "h": 91,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "File",
+     "id": 4294967295,
+     "x": 585,
+     "y": 93,
+     "w": 71,
+     "h": 119,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Events",
+     "id": 4294967295,
+     "x": 7,
+     "y": 2,
+     "w": 191,
+     "h": 364,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "SysListView32",
+     "text": "List1",
+     "id": 1031,
+     "x": 15,
+     "y": 392,
+     "w": 535,
+     "h": 45,
+     "style": 1350649989,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Status",
+     "id": 4294967295,
+     "x": 7,
+     "y": 381,
+     "w": 552,
+     "h": 62,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "SysListView32",
+     "text": "List1",
+     "id": 1011,
+     "x": 15,
+     "y": 11,
+     "w": 175,
+     "h": 348,
+     "style": 1350631439,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Treeview Options",
+     "id": 4294967295,
+     "x": 585,
+     "y": 253,
+     "w": 71,
+     "h": 55,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Show Types",
+     "id": 1039,
+     "x": 596,
+     "y": 264,
+     "w": 50,
+     "h": 12,
+     "style": 1342246915,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "%g floats",
+     "id": 1040,
+     "x": 596,
+     "y": 277,
+     "w": 50,
+     "h": 12,
+     "style": 1342246915,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "",
+     "id": 4294967295,
+     "x": 585,
+     "y": 307,
+     "w": 71,
+     "h": 65,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Compile !",
+     "id": 1008,
+     "x": 596,
+     "y": 338,
+     "w": 50,
+     "h": 31,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Clone",
+     "id": 1010,
+     "x": 596,
+     "y": 26,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "(Command help appears here)",
+     "id": 1043,
+     "x": 13,
+     "y": 371,
+     "w": 510,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Append",
+     "id": 1044,
+     "x": 596,
+     "y": 129,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Copy",
+     "id": 1045,
+     "x": 596,
+     "y": 39,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Paste",
+     "id": 1046,
+     "x": 596,
+     "y": 52,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Application",
+     "id": 4294967295,
+     "x": 585,
+     "y": 212,
+     "w": 71,
+     "h": 40,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "REM",
+     "id": 32771,
+     "x": 596,
+     "y": 64,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "+",
+     "id": 32772,
+     "x": 596,
+     "y": 290,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "-",
+     "id": 32773,
+     "x": 622,
+     "y": 290,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "SysTreeView32",
+     "text": "Tree1",
+     "id": 1027,
+     "x": 213,
+     "y": 11,
+     "w": 357,
+     "h": 334,
+     "style": 1350637607,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cut",
+     "id": 1047,
+     "x": 622,
+     "y": 39,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Backup",
+     "id": 1009,
+     "x": 596,
+     "y": 180,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Restore",
+     "id": 1012,
+     "x": 596,
+     "y": 193,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "English",
+     "id": 1013,
+     "x": 559,
+     "y": 381,
+     "w": 31,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "msctls_progress32",
+     "text": "Progress1",
+     "id": 1048,
+     "x": 559,
+     "y": 373,
+     "w": 97,
+     "h": 8,
+     "style": 1082130432,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Status",
+     "id": 1051,
+     "x": 295,
+     "y": 349,
+     "w": 35,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Check In",
+     "id": 1052,
+     "x": 361,
+     "y": 349,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Check Out",
+     "id": 1053,
+     "x": 411,
+     "y": 349,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Undo Check Out",
+     "id": 1054,
+     "x": 461,
+     "y": 349,
+     "w": 60,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "History",
+     "id": 1055,
+     "x": 521,
+     "y": 349,
+     "w": 43,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "SourceSafe Functions:",
+     "id": 4294967295,
+     "x": 219,
+     "y": 350,
+     "w": 73,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Add",
+     "id": 1056,
+     "x": 331,
+     "y": 349,
+     "w": 29,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Export",
+     "id": 1014,
+     "x": 596,
+     "y": 168,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": ".PRE Cross-Language check",
+     "id": 32775,
+     "x": 559,
+     "y": 432,
+     "w": 97,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Extract Speech 4 translation",
+     "id": 32777,
+     "x": 559,
+     "y": 419,
+     "w": 97,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Find uncached scripted audio",
+     "id": 1015,
+     "x": 559,
+     "y": 393,
+     "w": 97,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Find uncached voice files",
+     "id": 1016,
+     "x": 559,
+     "y": 406,
+     "w": 97,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&MRU",
+     "id": 1017,
+     "x": 622,
+     "y": 116,
+     "w": 24,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Mike G",
+     "id": 1061,
+     "x": 524,
+     "y": 369,
+     "w": 33,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "&Find",
+     "id": 32780,
+     "x": 596,
+     "y": 77,
+     "w": 50,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Deutsch",
+     "id": 1018,
+     "x": 591,
+     "y": 381,
+     "w": 32,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Francais",
+     "id": 1019,
+     "x": 624,
+     "y": 381,
+     "w": 32,
+     "h": 12,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Pythonise !",
+     "id": 1021,
+     "x": 596,
+     "y": 315,
+     "w": 50,
+     "h": 21,
+     "style": 1342242816,
+     "exstyle": 0
+    }
+   ]
+  },
+  "131": {
+   "ex": false,
+   "title": "Preferences",
+   "x": 0,
+   "y": 0,
+   "cx": 267,
+   "cy": 346,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2160591040,
+   "ctrls": [
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1017,
+     "x": 22,
+     "y": 32,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1020,
+     "x": 186,
+     "y": 31,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1018,
+     "x": 21,
+     "y": 114,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1021,
+     "x": 186,
+     "y": 113,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1019,
+     "x": 21,
+     "y": 143,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1022,
+     "x": 186,
+     "y": 142,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "OK",
+     "id": 1,
+     "x": 64,
+     "y": 325,
+     "w": 50,
+     "h": 14,
+     "style": 1342242817,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cancel",
+     "id": 2,
+     "x": 143,
+     "y": 325,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Directories",
+     "id": 65535,
+     "x": 7,
+     "y": 7,
+     "w": 253,
+     "h": 188,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Script Path:",
+     "id": 65535,
+     "x": 22,
+     "y": 21,
+     "w": 38,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Location of IBIZE.EXE",
+     "id": 65535,
+     "x": 22,
+     "y": 102,
+     "w": 72,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Command Description File:",
+     "id": 65535,
+     "x": 22,
+     "y": 132,
+     "w": 84,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Re-open last file at startup",
+     "id": 1029,
+     "x": 7,
+     "y": 205,
+     "w": 98,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Alpha-sort edit pulldowns",
+     "id": 1047,
+     "x": 7,
+     "y": 217,
+     "w": 110,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1023,
+     "x": 22,
+     "y": 59,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1024,
+     "x": 186,
+     "y": 58,
+     "w": 50,
+     "h": 14,
+     "style": 1476460544,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "SourceSafe script path:",
+     "id": 65535,
+     "x": 22,
+     "y": 48,
+     "w": 89,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Use SourceSafe?",
+     "id": 1049,
+     "x": 7,
+     "y": 229,
+     "w": 113,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Set All Options to TREK default",
+     "id": 1050,
+     "x": 137,
+     "y": 206,
+     "w": 116,
+     "h": 20,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1025,
+     "x": 22,
+     "y": 86,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "SourceSafe INI file location:",
+     "id": 65535,
+     "x": 21,
+     "y": 75,
+     "w": 94,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1026,
+     "x": 186,
+     "y": 85,
+     "w": 50,
+     "h": 14,
+     "style": 1476460544,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Use Alternative Coloured Icons",
+     "id": 1052,
+     "x": 7,
+     "y": 241,
+     "w": 112,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1027,
+     "x": 21,
+     "y": 171,
+     "w": 158,
+     "h": 12,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Browse...",
+     "id": 1028,
+     "x": 185,
+     "y": 171,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "Source Files Path:",
+     "id": 65535,
+     "x": 21,
+     "y": 161,
+     "w": 58,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Yes/No query on Open/New/Exit",
+     "id": 1058,
+     "x": 7,
+     "y": 253,
+     "w": 122,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "File-Open dialog defaults to last dir",
+     "id": 1065,
+     "x": 7,
+     "y": 264,
+     "w": 123,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Set All Options to SOF2 default",
+     "id": 1051,
+     "x": 137,
+     "y": 228,
+     "w": 116,
+     "h": 20,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Set All Options to JK2 default",
+     "id": 1053,
+     "x": 137,
+     "y": 251,
+     "w": 116,
+     "h": 20,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Set All Options to XMen default",
+     "id": 1054,
+     "x": 137,
+     "y": 297,
+     "w": 116,
+     "h": 20,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Set All Options to JKA default",
+     "id": 1055,
+     "x": 137,
+     "y": 274,
+     "w": 116,
+     "h": 20,
+     "style": 1342242816,
+     "exstyle": 0
+    }
+   ]
+  },
+  "134": {
+   "ex": false,
+   "title": "Event Editor",
+   "x": 0,
+   "y": 0,
+   "cx": 252,
+   "cy": 117,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2428508868,
+   "ctrls": [
+    {
+     "cls": "BUTTON",
+     "text": "OK",
+     "id": 1,
+     "x": 68,
+     "y": 96,
+     "w": 50,
+     "h": 14,
+     "style": 1342242817,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cancel",
+     "id": 2,
+     "x": 134,
+     "y": 96,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "SysListView32",
+     "text": "List1",
+     "id": 1011,
+     "x": 7,
+     "y": 7,
+     "w": 238,
+     "h": 83,
+     "style": 1350632069,
+     "exstyle": 0
+    }
+   ]
+  },
+  "137": {
+   "ex": true,
+   "title": "Event editor",
+   "x": 0,
+   "y": 0,
+   "cx": 539,
+   "cy": 58,
+   "font": [
+    "MS Sans Serif",
+    8,
+    0,
+    0
+   ],
+   "style": 2428508868,
+   "ctrls": [
+    {
+     "cls": "STATIC",
+     "text": "TEST_FTYPESTRING",
+     "id": 1037,
+     "x": 13,
+     "y": 9,
+     "w": 78,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 4096
+    }
+   ]
+  },
+  "139": {
+   "ex": false,
+   "title": "Most Recent Used files... (MRU)",
+   "x": 0,
+   "y": 0,
+   "cx": 262,
+   "cy": 255,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2160591040,
+   "ctrls": [
+    {
+     "cls": "BUTTON",
+     "text": "OK",
+     "id": 1,
+     "x": 59,
+     "y": 234,
+     "w": 50,
+     "h": 14,
+     "style": 1342242817,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cancel",
+     "id": 2,
+     "x": 147,
+     "y": 234,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "LISTBOX",
+     "text": "",
+     "id": 1060,
+     "x": 7,
+     "y": 7,
+     "w": 248,
+     "h": 202,
+     "style": 1352728833,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "( Either double-click a filename, or select one then click OK )",
+     "id": 65535,
+     "x": 37,
+     "y": 217,
+     "w": 194,
+     "h": 11,
+     "style": 1342308352,
+     "exstyle": 0
+    }
+   ]
+  },
+  "140": {
+   "ex": false,
+   "title": "Find...           (repeat-find = F3)",
+   "x": 0,
+   "y": 0,
+   "cx": 283,
+   "cy": 126,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2160591040,
+   "ctrls": [
+    {
+     "cls": "BUTTON",
+     "text": "FIND",
+     "id": 1,
+     "x": 60,
+     "y": 93,
+     "w": 50,
+     "h": 14,
+     "style": 1342242817,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cancel",
+     "id": 2,
+     "x": 159,
+     "y": 93,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1062,
+     "x": 81,
+     "y": 22,
+     "w": 180,
+     "h": 14,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "... a script item called:",
+     "id": 65535,
+     "x": 9,
+     "y": 24,
+     "w": 69,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "... any item containing:",
+     "id": 65535,
+     "x": 8,
+     "y": 53,
+     "w": 72,
+     "h": 8,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1063,
+     "x": 81,
+     "y": 51,
+     "w": 180,
+     "h": 14,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "",
+     "id": 65535,
+     "x": 81,
+     "y": 60,
+     "w": 180,
+     "h": 17,
+     "style": 1342177287,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Whole-string match only",
+     "id": 1064,
+     "x": 84,
+     "y": 66,
+     "w": 91,
+     "h": 10,
+     "style": 1342242819,
+     "exstyle": 0
+    }
+   ]
+  },
+  "141": {
+   "ex": false,
+   "title": "Input String",
+   "x": 0,
+   "y": 0,
+   "cx": 350,
+   "cy": 87,
+   "font": [
+    "MS Sans Serif",
+    8,
+    null,
+    null
+   ],
+   "style": 2160591040,
+   "ctrls": [
+    {
+     "cls": "EDIT",
+     "text": "",
+     "id": 1067,
+     "x": 15,
+     "y": 44,
+     "w": 318,
+     "h": 13,
+     "style": 1350631552,
+     "exstyle": 0
+    },
+    {
+     "cls": "STATIC",
+     "text": "( extra text area for optional prompting )",
+     "id": 1068,
+     "x": 19,
+     "y": 15,
+     "w": 313,
+     "h": 18,
+     "style": 1342308352,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "OK",
+     "id": 1,
+     "x": 32,
+     "y": 66,
+     "w": 50,
+     "h": 14,
+     "style": 1342242817,
+     "exstyle": 0
+    },
+    {
+     "cls": "BUTTON",
+     "text": "Cancel",
+     "id": 2,
+     "x": 104,
+     "y": 66,
+     "w": 50,
+     "h": 14,
+     "style": 1342242816,
+     "exstyle": 0
+    }
+   ]
+  }
+ },
+ "bitmaps": {
+  "132": {
+   "w": 640,
+   "h": 16,
+   "bpp": 8
+  },
+  "133": {
+   "w": 133,
+   "h": 54,
+   "bpp": 24
+  },
+  "136": {
+   "w": 64,
+   "h": 16,
+   "bpp": 4
+  }
+ }
+}
