@@ -1,5 +1,24 @@
 # Änderungen seit rc94
 
+## rc570 — Updates aus einem öffentlichen Release-Repository
+
+Gefragt: „Wieso kann es nicht privat sein und er sieht die Updates trotzdem?“
+
+* Der Quelltext bleibt im **privaten** Repository `DennisHerrm/BehavEd-Remake`.
+  Die fertigen Programme (das .zip mit `behaved.exe` und `data/`) kommen in ein
+  eigenes **öffentliches** Repository nur für Releases:
+  `DennisHerrm/BehavEd-Remake-Releases` – ohne Quelltext.
+* Der Updater fragt jetzt dieses Repository, **ohne Anmeldung**. Wer das
+  Programm hat, bekommt die Updates ohne GitHub-Konto. Nur wenn GitHub
+  ablehnt (403/429: mehr als 60 Anfragen je Stunde ohne Anmeldung), hilft ein
+  Schlüssel von außen (`GH_TOKEN` oder `gh auth token`), wie bisher nie
+  gespeichert.
+* Geladen wird über den normalen Download-Link; nur wenn der abgelehnt wird,
+  über die API mit Schlüssel.
+* Wer rc569 hat, bekommt rc570 noch aus dem alten (privaten) Repository – das
+  geht nur mit Zugriff darauf. rc570 muss man deshalb ohne Zugriff einmal von
+  Hand installieren; danach kommen alle Updates automatisch.
+
 ## rc569 — Undo-Liste wie in 3ds Max, einzeilige Original-Vorschau, Auto-Updater
 
 ### Undo: was genau zurückgenommen wird

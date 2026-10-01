@@ -3,12 +3,14 @@
 // Siehe update.h. Alles Netz laeuft in einem Hintergrundfaden; die
 // Oberflaeche liest nur eine Kopie des Zustands.
 //
-// ZUGRIFF: Das Repository ist privat (Wunsch des Benutzers, weil data/
-// Dateien von Raven enthaelt). Ohne Anmeldung antwortet GitHub dann mit 404.
-// Der Schluessel kommt deshalb - wie bei git selbst - von aussen und wird
-// NIE in den Einstellungen gespeichert: GH_TOKEN bzw. GITHUB_TOKEN, sonst
-// "gh auth token" (GitHub CLI, falls angemeldet). Wird das Repository
-// oeffentlich, geht alles auch ganz ohne.
+// ZUGRIFF: Der Quelltext liegt in einem PRIVATEN Repository, die fertigen
+// Programme in einem eigenen OEFFENTLICHEN nur fuer Releases (kRepo) - so
+// bekommt jeder die Updates ohne GitHub-Konto, und der Quelltext bleibt privat
+// (shank, 01.10.2026: "wieso kann es nicht privat sein und er sieht die
+// Updates trotzdem?"). Gefragt wird deshalb OHNE Anmeldung. Nur wenn GitHub
+// das ablehnt (403: zu viele Anfragen ohne Anmeldung, 60 je Stunde), hilft ein
+// Schluessel von aussen, der NIE gespeichert wird: GH_TOKEN bzw.
+// GITHUB_TOKEN, sonst "gh auth token" (GitHub CLI, falls angemeldet).
 //
 // INSTALLATION: Die laufende .exe laesst sich unter Windows nicht
 // ueberschreiben, wohl aber umbenennen. Sie wird zu "behaved.exe.alt", die
@@ -272,21 +274,30 @@ std::vector<std::wstring> apiKopf(const std::string& token, const wchar_t* accep
 
 // --- Die beiden Hintergrundauftraege --------------------------------------
 void pruefAuftrag() {
-    const std::string token = schluessel();
     const std::wstring url = L"https://api.github.com/repos/" + breit(bhed::update::kRepo) + L"/releases/latest";
-    const Antwort a = holen(url, apiKopf(token, L"application/vnd.github+json"), true);
-    diag::detail("Update: GitHub antwortet " + std::to_string(a.status) + (token.empty() ? " (ohne Anmeldung)" : " (angemeldet)") +
-                 (a.fehler.empty() ? "" : " - " + a.fehler));
+    // Erst ohne Anmeldung - das Release-Repository ist oeffentlich.
+    Antwort a = holen(url, apiKopf({}, L"application/vnd.github+json"), true);
+    bool angemeldet = false;
+    if (a.fehler.empty() && (a.status == 403 || a.status == 429)) {
+        // Zu viele Anfragen ohne Anmeldung: mit Schluessel, falls es einen gibt.
+        const std::string token = schluessel();
+        if (!token.empty()) {
+            a = holen(url, apiKopf(token, L"application/vnd.github+json"), true);
+            angemeldet = true;
+        }
+    }
+    diag::detail("Update: GitHub (" + std::string(bhed::update::kRepo) + ") antwortet " + std::to_string(a.status) +
+                 (angemeldet ? " (angemeldet)" : " (ohne Anmeldung)") + (a.fehler.empty() ? "" : " - " + a.fehler));
     if (!a.fehler.empty()) {
         setze([&](Zustand& z) { z.stand = Stand::Fehler; z.meldung = a.fehler; });
         return;
     }
-    if (a.status == 404 || a.status == 401 || a.status == 403) {
-        // Privates Repository ohne (gueltige) Anmeldung - oder noch kein Release.
-        setze([&](Zustand& z) {
-            z.stand = Stand::Fehler;
-            z.meldung = token.empty() ? tr(Str::UpdNoAccess) : tr(Str::UpdNoRelease);
-        });
+    if (a.status == 404) {
+        setze([&](Zustand& z) { z.stand = Stand::Fehler; z.meldung = tr(Str::UpdNoRelease); });
+        return;
+    }
+    if (a.status == 401 || a.status == 403 || a.status == 429) {
+        setze([&](Zustand& z) { z.stand = Stand::Fehler; z.meldung = tr(Str::UpdNoAccess); });
         return;
     }
     bhed::update::Release r;
@@ -316,23 +327,27 @@ void installAuftrag(bhed::update::Release r) {
         setze([&](Zustand& z) { z.stand = Stand::Fehler; z.meldung = tr(Str::UpdNoZip); });
         return;
     }
-    const std::string token = schluessel();
     const auto fortschritt = [&](std::uint64_t n, std::uint64_t gesamt) {
         const double teil = gesamt > 0 ? static_cast<double>(n) / static_cast<double>(gesamt)
                                        : (asset->size > 0 ? static_cast<double>(n) / static_cast<double>(asset->size) : 0.0);
         setze([&](Zustand& z) { z.fortschritt = std::min(1.0, teil); });
     };
-    // Mit Anmeldung ueber die API (der einzige Weg bei einem privaten
-    // Repository): sie leitet auf einen signierten Speicherort um, und DORT
-    // darf der Schluessel nicht mitgehen - deshalb von Hand folgen.
+    // Oeffentlich: der normale Download-Link, ohne Anmeldung.
     Antwort a;
-    if (!token.empty() && !asset->apiUrl.empty()) {
-        a = holen(breit(asset->apiUrl), apiKopf(token, L"application/octet-stream"), false);
-        if (a.fehler.empty() && (a.status == 301 || a.status == 302 || a.status == 307) && !a.weiter.empty()) {
-            a = holen(a.weiter, {}, true, fortschritt);
-        }
-    } else {
+    if (!asset->downloadUrl.empty()) {
         a = holen(breit(asset->downloadUrl), {}, true, fortschritt);
+    }
+    // Sonst (oder wenn das abgelehnt wird) ueber die API mit Schluessel: sie
+    // leitet auf einen signierten Speicherort um, und DORT darf der
+    // Schluessel nicht mitgehen - deshalb von Hand folgen.
+    if ((asset->downloadUrl.empty() || a.status == 401 || a.status == 403 || a.status == 404) && !asset->apiUrl.empty()) {
+        const std::string token = schluessel();
+        if (!token.empty()) {
+            a = holen(breit(asset->apiUrl), apiKopf(token, L"application/octet-stream"), false);
+            if (a.fehler.empty() && (a.status == 301 || a.status == 302 || a.status == 307) && !a.weiter.empty()) {
+                a = holen(a.weiter, {}, true, fortschritt);
+            }
+        }
     }
     if (!a.fehler.empty() || a.status != 200 || a.body.size() < 22) {
         setze([&](Zustand& z) {
