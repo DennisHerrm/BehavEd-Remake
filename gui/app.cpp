@@ -19,6 +19,7 @@
 #include <ctime>
 #include <fstream>
 #include "bhed/fassung.h"
+#include "update.h"
 #include "app_internal.h"
 #include "gpumap.h"
 
@@ -4476,19 +4477,313 @@ const char* stepName(const char* key) {
     return tr(Str::StepEdit);
 }
 
-void doUndo() {
-    if (g_app->doc.undo()) {
-        // Die Auswahl kann auf einen Knoten zeigen, den es nicht mehr gibt.
-        g_app->selectedPath.clear();
-        rebuildTree();
+// Weiter unten (Aenderungsmarken): der Inhalt eines Befehls als Text.
+std::string eigenerText(const Node& n);
+// Was hat sich von a nach b geaendert? Eine Zeile wie
+// "wait ( 4000 ) -> wait ( 3000 )", "+ print ( p )", "- wait ( 1 )", bei
+// mehreren "(+N)". `ziel` bekommt den Weg des Befehls in b (leer, wenn er nur
+// entfernt wurde).
+std::string aenderungsText(const Script& a, const Script& b, Path* ziel);
+
+namespace {
+
+// Jeder Befehl eines Skripts mit Kennung, eigenem Text, Weg und Reihenfolge.
+struct Flach {
+    const Node* knoten = nullptr;
+    std::string text;
+    Path weg;
+    std::size_t ord = 0;
+};
+
+void flachen(const std::vector<Node>& ns, Path& weg, std::map<Kennung, Flach>& out, std::size_t& ord) {
+    for (std::size_t i = 0; i < ns.size(); ++i) {
+        weg.push_back(i);
+        const Node& n = ns[i];
+        if (n.kind != Node::Kind::Blank && n.kennung != 0) {
+            out[n.kennung] = Flach{&n, eigenerText(n), weg, ord++};
+        }
+        flachen(n.children, weg, out, ord);
+        weg.pop_back();
     }
 }
 
-void doRedo() {
-    if (g_app->doc.redo()) {
-        g_app->selectedPath.clear();
-        rebuildTree();
+std::string kurzZeile(const Node& n) {
+    std::string z = rowText(n, g_app->treeOpt);
+    constexpr std::size_t kMax = 60;
+    if (z.size() > kMax) {
+        z = z.substr(0, kMax) + "...";
     }
+    return z;
+}
+
+// Nach einem Undo/Redo: den geaenderten Befehl waehlen, aufklappen und
+// ins Bild holen - sonst sieht man nicht, WAS sich geaendert hat.
+void zeigeGeaendert(const Path& ziel) {
+    g_app->selectedPath.clear();
+    g_app->selection.clear();
+    if (!ziel.empty() && nodeAt(g_app->doc.script(), ziel) != nullptr) {
+        for (std::size_t t = 1; t < ziel.size(); ++t) {
+            g_app->expanded.setOpen(kennungFuer(Path(ziel.begin(), ziel.begin() + static_cast<std::ptrdiff_t>(t))),
+                                    true);
+        }
+        g_app->auswahlDurchEinfuegen = ziel;
+        g_app->selectedPath = ziel;
+        g_app->selection.assign(1, ziel);
+        g_app->scrollToSelected = true;
+    }
+    rebuildTree();
+}
+
+void schritteAusfuehren(int anzahl, bool redo) {
+    if (anzahl <= 0) {
+        return;
+    }
+    g_app->doc.vergibKennungen();
+    const Script vorher = g_app->doc.script();
+    const char* was = redo ? g_app->doc.redoLabel() : g_app->doc.undoLabel();
+    int getan = 0;
+    for (int k = 0; k < anzahl; ++k) {
+        if (!(redo ? g_app->doc.redo() : g_app->doc.undo())) {
+            break;
+        }
+        ++getan;
+    }
+    if (getan == 0) {
+        return;
+    }
+    // Beschrieben wird die AKTION, die zurueckgenommen (bzw. wiederholt)
+    // wird - so wie man sie getan hat: beim Undo vom jetzigen Stand zum
+    // vorigen, beim Redo vom vorigen zum jetzigen. Gewaehlt wird der Befehl
+    // im jetzigen Stand.
+    Path ziel;
+    std::string text;
+    if (redo) {
+        text = aenderungsText(vorher, g_app->doc.script(), nullptr);
+        (void)aenderungsText(g_app->doc.script(), vorher, &ziel);
+    } else {
+        text = aenderungsText(g_app->doc.script(), vorher, &ziel);
+    }
+    char kopf[400];
+    if (getan == 1) {
+        std::snprintf(kopf, sizeof(kopf), tr(redo ? Str::RedoOf : Str::UndoOf),
+                      text.empty() ? stepName(was) : text.c_str());
+        g_app->undoMeldung = kopf;
+    } else {
+        std::snprintf(kopf, sizeof(kopf), tr(redo ? Str::RedoSteps : Str::UndoSteps), getan);
+        g_app->undoMeldung = text.empty() ? std::string(kopf) : std::string(kopf) + " - " + text;
+    }
+    g_app->undoMeldungRedo = redo;
+    g_app->undoMeldungTiefe = g_app->doc.undoDepth();
+    diag::detail(std::string("Undo-Meldung: ") + g_app->undoMeldung);
+    zeigeGeaendert(ziel);
+}
+
+}  // namespace
+
+std::string aenderungsText(const Script& a, const Script& b, Path* ziel) {
+    // Beschreibt die AKTION a -> b so, wie man sie getan hat (shank: "er
+    // sollte anzeigen was genau geundod wird ... nicht nur irgendwelche
+    // sinnlosen Sachen"): "geaendert wait: 2000 -> 3000", "geloescht print
+    // ( p )", "eingefuegt ...", "verschoben ...". `ziel` ist der Weg des
+    // ersten betroffenen Befehls in a (bei einem eingefuegten: in b).
+    if (ziel != nullptr) { ziel->clear(); }
+    std::map<Kennung, Flach> fa;
+    std::map<Kennung, Flach> fb;
+    Path w;
+    std::size_t ord = 0;
+    flachen(a.nodes, w, fa, ord);
+    ord = 0;
+    flachen(b.nodes, w, fb, ord);
+    // Zahl ohne ueberfluessige Nullen: "2000.000" -> "2000", "0.500" -> "0.5".
+    const auto wert = [](std::string s) {
+        const auto punkt = s.find('.');
+        bool zahl = !s.empty() && punkt != std::string::npos;
+        for (std::size_t i = 0; zahl && i < s.size(); ++i) {
+            const char c = s[i];
+            zahl = (std::isdigit(static_cast<unsigned char>(c)) != 0) || c == '.' || (c == '-' && i == 0);
+        }
+        if (zahl) {
+            while (!s.empty() && s.back() == '0') { s.pop_back(); }
+            if (!s.empty() && s.back() == '.') { s.pop_back(); }
+        }
+        return s;
+    };
+    struct Fund {
+        std::size_t ord;
+        std::string text;
+        Path weg;
+    };
+    std::vector<Fund> funde;
+    for (const auto& [k, eb] : fb) {
+        const auto ea = fa.find(k);
+        if (ea == fa.end()) {
+            funde.push_back({eb.ord, std::string(tr(Str::ChangeAdded)) + " " + kurzZeile(*eb.knoten), eb.weg});
+            continue;
+        }
+        if (ea->second.text == eb.text) {
+            continue;
+        }
+        const Node& na = *ea->second.knoten;
+        const Node& nb = *eb.knoten;
+        std::string z = std::string(tr(Str::ChangeEdited)) + " ";
+        if (na.name == nb.name && na.args.size() == nb.args.size() && !na.args.empty()) {
+            // Nur das geaenderte Argument. Ist es nicht das erste, steht das
+            // erste als Name dabei (set ( SET_X, ... ), camera ( MOVE, ... )).
+            std::size_t erstes = na.args.size();
+            int anders = 0;
+            for (std::size_t i = 0; i < na.args.size(); ++i) {
+                if (na.args[i].text != nb.args[i].text) {
+                    if (erstes == na.args.size()) { erstes = i; }
+                    ++anders;
+                }
+            }
+            if (erstes < na.args.size()) {
+                z += nb.name;
+                if (erstes > 0) { z += " " + nb.args[0].text; }
+                z += ": " + wert(na.args[erstes].text) + " -> " + wert(nb.args[erstes].text);
+                if (anders > 1) { z += " ..."; }
+            } else {
+                z += kurzZeile(na) + " -> " + kurzZeile(nb);
+            }
+        } else {
+            z += kurzZeile(na) + " -> " + kurzZeile(nb);
+        }
+        funde.push_back({ea->second.ord, z, ea->second.weg});
+    }
+    for (const auto& [k, ea] : fa) {
+        if (fb.count(k) == 0) {
+            funde.push_back({ea.ord, std::string(tr(Str::ChangeRemoved)) + " " + kurzZeile(*ea.knoten), ea.weg});
+        }
+    }
+    if (funde.empty()) {
+        // Nur verschoben: der erste Befehl, dessen Platz sich geaendert hat.
+        for (const auto& [k, eb] : fb) {
+            const auto ea = fa.find(k);
+            if (ea != fa.end() && ea->second.ord != eb.ord &&
+                (funde.empty() || ea->second.ord < funde.front().ord)) {
+                funde.assign(1, Fund{ea->second.ord, std::string(tr(Str::ChangeMoved)) + " " + kurzZeile(*eb.knoten),
+                                     ea->second.weg});
+            }
+        }
+    }
+    if (funde.empty()) {
+        return {};
+    }
+    std::sort(funde.begin(), funde.end(), [](const Fund& x, const Fund& y) { return x.ord < y.ord; });
+    // Bis zu drei ausgeschrieben, damit man sieht, WAS alles betroffen ist.
+    std::string out;
+    const std::size_t zeigen = std::min<std::size_t>(funde.size(), 3);
+    for (std::size_t i = 0; i < zeigen; ++i) {
+        if (i > 0) { out += ";  "; }
+        out += funde[i].text;
+    }
+    if (funde.size() > zeigen) {
+        char z[64];
+        std::snprintf(z, sizeof(z), tr(Str::RevertPreviewMore), static_cast<int>(funde.size() - zeigen));
+        out += "  " + std::string(z);
+    }
+    if (ziel != nullptr) {
+        *ziel = funde.front().weg;
+    }
+    return out;
+}
+
+void undoSchritte(int anzahl) { schritteAusfuehren(anzahl, false); }
+void redoSchritte(int anzahl) { schritteAusfuehren(anzahl, true); }
+
+void doUndo() { undoSchritte(1); }
+
+void doRedo() { redoSchritte(1); }
+
+// --- Die Undo-Liste, wie in 3ds Max -------------------------------------
+//
+// Ein Klappfenster mit allen Schritten, der neueste oben. Ein Klick auf einen
+// Eintrag markiert ihn und alle darueber; "Undo" nimmt sie zurueck, "Cancel"
+// schliesst. Doppelklick tut beides auf einmal.
+void drawUndoListe() {
+    if (g_app->undoListeAnfrage != 0) {
+        g_app->undoListeRedo = (g_app->undoListeAnfrage == 2);
+        g_app->undoListeAnfrage = 0;
+        g_app->undoListeMarke = 0;
+        g_app->undoListeEintraege.clear();
+        Document& d = g_app->doc;
+        d.vergibKennungen();
+        if (!g_app->undoListeRedo) {
+            // Schritt i fuehrte von undoStand(i) zum naechsten Stand.
+            const std::size_t n = d.undoDepth();
+            for (std::size_t j = 0; j < n; ++j) {
+                const std::size_t i = n - 1 - j;
+                const Script& nachher = (i + 1 < n) ? d.undoStand(i + 1) : d.script();
+                const std::string t = aenderungsText(d.undoStand(i), nachher, nullptr);
+                g_app->undoListeEintraege.push_back(t.empty() ? std::string(stepName(d.undoWas(i))) : t);
+            }
+        } else {
+            const std::size_t n = d.redoDepth();
+            for (std::size_t j = 0; j < n; ++j) {
+                const Script& vorher = (j == 0) ? d.script() : d.redoStand(j - 1);
+                const std::string t = aenderungsText(vorher, d.redoStand(j), nullptr);
+                g_app->undoListeEintraege.push_back(t.empty() ? std::string(stepName(d.redoWas(j))) : t);
+            }
+        }
+        ImGui::OpenPopup("##undoliste");
+    }
+    ImGui::SetNextWindowSizeConstraints(ImVec2{ImGui::GetFontSize() * 22.0F, 0.0F},
+                                        ImVec2{ImGui::GetFontSize() * 64.0F, FLT_MAX});
+    if (!ImGui::BeginPopup("##undoliste")) {
+        return;
+    }
+    ImGui::TextDisabled("%s", tr(g_app->undoListeRedo ? Str::RedoListTitle : Str::UndoListTitle));
+    const auto& e = g_app->undoListeEintraege;
+    // Hoeher als zuerst (shank: "die Liste ist bisschen eng, kann man die
+    // hoeher machen?"): mindestens 8, hoechstens 22 Zeilen, und so breit wie
+    // der laengste Eintrag (in Grenzen).
+    const ImGuiStyle& stil = ImGui::GetStyle();
+    const float zeile = ImGui::GetTextLineHeight() + stil.ItemSpacing.y;
+    const float hoehe = zeile * static_cast<float>(std::clamp<std::size_t>(e.size(), 8, 22)) +
+                        stil.WindowPadding.y * 2.0F;
+    float breite = ImGui::GetFontSize() * 30.0F;
+    for (const std::string& x : e) {
+        breite = std::max(breite, ImGui::CalcTextSize(x.c_str()).x + stil.WindowPadding.x * 2.0F + stil.ScrollbarSize);
+    }
+    breite = std::min(breite, ImGui::GetFontSize() * 60.0F);
+    bool ausfuehren = false;
+    if (ImGui::BeginChild("##undoeintraege", ImVec2{breite, hoehe}, ImGuiChildFlags_Borders)) {
+        if (e.empty()) {
+            ImGui::TextDisabled("%s", tr(Str::UndoListEmpty));
+        }
+        for (std::size_t k = 0; k < e.size(); ++k) {
+            ImGui::PushID(static_cast<int>(k));
+            const bool markiert = static_cast<int>(k) <= g_app->undoListeMarke;
+            if (ImGui::Selectable(e[k].c_str(), markiert, ImGuiSelectableFlags_AllowDoubleClick)) {
+                g_app->undoListeMarke = static_cast<int>(k);
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    ausfuehren = true;
+                }
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+    const float knopf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
+    ImGui::BeginDisabled(e.empty());
+    if (ImGui::Button(tr(g_app->undoListeRedo ? Str::EditRedo : Str::EditUndo), ImVec2{knopf, 0.0F})) {
+        ausfuehren = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(tr(Str::EditorCancel), ImVec2{-FLT_MIN, 0.0F})) {
+        ImGui::CloseCurrentPopup();
+    }
+    if (ausfuehren && !e.empty()) {
+        const int anzahl = g_app->undoListeMarke + 1;
+        if (g_app->undoListeRedo) {
+            redoSchritte(anzahl);
+        } else {
+            undoSchritte(anzahl);
+        }
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 // --- Klaenge -----------------------------------------------------------
@@ -7667,7 +7962,15 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                 // bleibt, wie er ist.
                 {
                     const std::vector<std::pair<Path, Node>> zurueck = zuruecksetzbar(selectionOrCurrent());
-                    if (ImGui::MenuItem(tr(Str::ActRevertOriginal), nullptr, false, !zurueck.empty())) {
+                    // Die Vorschau grau rechts daneben, in EINER Zeile - im
+                    // Feld, in dem sonst das Tastenkuerzel steht (shank:
+                    // "have grey text next to revert to original").
+                    const std::string kurz = originalKurz(zurueck);
+                    if (!kurz.empty()) {
+                        ++g_app->vorschauGezeichnet;
+                    }
+                    if (ImGui::MenuItem(tr(Str::ActRevertOriginal), kurz.empty() ? nullptr : kurz.c_str(), false,
+                                        !zurueck.empty())) {
                         if (g_app->doc.replaceMany(zurueck)) {
                             rebuilt = true;
                             char z[160];
@@ -7677,13 +7980,6 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                     }
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                         ImGui::SetTooltip("%s", tr(Str::ActRevertOriginalHint));
-                    }
-                    // Die Vorschau gleich darunter, grau: was kommt zurueck?
-                    // shank: "how about a preview so I can see what the
-                    // original value was? ... when you right click it could
-                    // show next to Revert to original".
-                    if (!zurueck.empty()) {
-                        originalVorschau(zurueck);
                     }
                 }
                 if (ImGui::MenuItem(tr(Str::ActBookmarkToggle),
@@ -8204,11 +8500,14 @@ void drawButtonColumns(const Layout& l) {
     // Das Original hat sie nicht - weder als Knopf noch in der Tastentabelle
     // (ACCELERATOR 135 kennt kein Strg+Z). Ein Editor ohne sichtbares
     // Rueckgaengig ist heute aber keiner mehr, deshalb hier ergaenzt.
+    // Rechtsklick auf einen der beiden: die Liste aller Schritte (3ds Max).
     ImGui::BeginDisabled(g_app->doc.undoDepth() == 0);
     if (halfButton(Str::EditUndo, false, Str::HintUndo, keys::Action::Undo)) { doUndo(); }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) { g_app->undoListeAnfrage = 1; }
     ImGui::EndDisabled();
     ImGui::BeginDisabled(g_app->doc.redoDepth() == 0);
     if (halfButton(Str::EditRedo, true, Str::HintRedo, keys::Action::Redo)) { doRedo(); }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) { g_app->undoListeAnfrage = 2; }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered() && g_app->doc.redoDepth() != 0) {
         ImGui::SetTooltip(tr(Str::RedoOf), stepName(g_app->doc.redoLabel()));
@@ -8360,6 +8659,59 @@ void drawStatus(const Layout& l) {
         ImGui::TextDisabled("%s", g_app->statusLines.back().c_str());
         ImGui::SameLine();
     }
+
+    // Was das letzte Undo/Redo getan hat - anklickbar: oeffnet die
+    // Undo-Liste. Hat sich das Dokument seitdem geaendert (neue Bearbeitung,
+    // anderer Reiter), ist die Meldung veraltet und verschwindet.
+    if (!g_app->undoMeldung.empty() && g_app->doc.undoDepth() != g_app->undoMeldungTiefe) {
+        g_app->undoMeldung.clear();
+    }
+    // Sonst - sobald es etwas zurueckzunehmen gibt - IMMER ein Eintrag fuer die
+    // Undo-Liste, mit dem Schritt, den das naechste Undo zuruecknaehme (shank:
+    // "ich dachte, die Undo History wird immer unten angezeigt, so dass man
+    // sie schnell oeffnen kann, am besten bevor man das erste Undo gemacht
+    // hat"). Der Text wird nur neu gerechnet, wenn sich der Stapel aendert.
+    std::string eintrag = g_app->undoMeldung;
+    bool redoListe = g_app->undoMeldungRedo;
+    if (eintrag.empty() && g_app->doc.undoDepth() > 0) {
+        static std::string letzterText;
+        static const void* letzterStand = nullptr;
+        static std::size_t letzteTiefe = 0;
+        static int letzterReiter = -1;
+        const std::size_t n = g_app->doc.undoDepth();
+        const void* stand = &g_app->doc.undoStand(n - 1);
+        if (stand != letzterStand || n != letzteTiefe || g_app->activeTab != letzterReiter) {
+            letzterStand = stand;
+            letzteTiefe = n;
+            letzterReiter = g_app->activeTab;
+            g_app->doc.vergibKennungen();
+            std::string t = aenderungsText(g_app->doc.undoStand(n - 1), g_app->doc.script(), nullptr);
+            if (t.empty()) { t = stepName(g_app->doc.undoWas(n - 1)); }
+            char z[400];
+            std::snprintf(z, sizeof(z), tr(Str::UndoHistoryStatus), static_cast<int>(n), t.c_str());
+            letzterText = z;
+        }
+        eintrag = letzterText;
+        redoListe = false;
+    }
+    if (!eintrag.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0, 0, 0, 0});
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{0.55F, 0.75F, 1.0F, 1.0F});
+        if (ImGui::SmallButton(eintrag.c_str())) {
+            g_app->undoListeAnfrage = redoListe ? 2 : 1;
+        }
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tr(Str::UndoListHint));
+        }
+        g_app->undoStatusText = eintrag;
+        ImGui::SameLine();
+    } else {
+        g_app->undoStatusText.clear();
+    }
+
+    // Ein gefundenes Update (gruen, anklickbar) - siehe gui/update_win32.cpp.
+    updater::zeichneStatus();
 
     // Rechts die Bildrate, wie in efxed - davor, wann die .ibi dieses
     // Skripts zuletzt geschrieben wurde ("how about when you compile, at the
@@ -8651,6 +9003,14 @@ void drawMenu() {
             ImGui::EndTooltip();
         }
         ImGui::Separator();
+        // Auto-Updater: von Hand nachsehen, und ob es beim Start geschehen soll.
+        if (ImGui::MenuItem(tr(Str::UpdMenu))) {
+            updater::pruefen(false);
+        }
+        if (ImGui::MenuItem(tr(Str::UpdAutoCheck), nullptr, g_app->settings.updateCheck)) {
+            g_app->settings.updateCheck = !g_app->settings.updateCheck;
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::AppExit)) && confirmQuit()) {
             g_app->quitConfirmed = true;
             g_app->wantQuit = true;
@@ -8715,6 +9075,9 @@ void drawMenu() {
         if (ImGui::MenuItem(label, chordName(keys::Action::Redo), false,
                             g_app->doc.redoDepth() != 0)) {
             doRedo();
+        }
+        if (ImGui::MenuItem(tr(Str::UndoListMenu), nullptr, false, g_app->doc.undoDepth() != 0)) {
+            g_app->undoListeAnfrage = 1;
         }
         ImGui::EndMenu();
     }
@@ -12621,6 +12984,12 @@ bool wantsQuit() {
 
 void draw() {
     if (g_app == nullptr) { return; }
+    // Einmal: Reste eines Updates wegraeumen, und im Hintergrund nachsehen.
+    static bool updateGestartet = false;
+    if (!updateGestartet) {
+        updateGestartet = true;
+        updater::beimStart();
+    }
 
     // --- Den Klangstrom nachfuellen ------------------------------------
     //
@@ -13947,6 +14316,8 @@ void draw() {
     }
 
     drawStatus(l);
+    drawUndoListe();
+    updater::zeichneFenster();
     drawMessages();
     drawGamePaths();
     drawInterplay();
@@ -14234,29 +14605,30 @@ std::string originalZeile(const Path& weg, bool* neu) {
     return z.empty() ? std::string() : rowText(z.front().second, g_app->treeOpt);
 }
 
+std::string originalKurz(const std::vector<std::pair<Path, Node>>& zurueck) {
+    if (zurueck.empty()) {
+        return {};
+    }
+    std::string zeile = rowText(zurueck.front().second, g_app->treeOpt);
+    // Sehr lange Zeilen (ein langer print-Text) kuerzen - das Menue soll
+    // nicht ueber den Bildschirm wachsen.
+    constexpr std::size_t kMax = 70;
+    if (zeile.size() > kMax) {
+        zeile = zeile.substr(0, kMax) + "...";
+    }
+    if (zurueck.size() > 1) {
+        zeile += "  (+" + std::to_string(zurueck.size() - 1) + ")";
+    }
+    return zeile;
+}
+
+// shank: "I think it would look better if it were on one line" - grau
+// "Original:", gleich daneben der Befehl.
 void originalVorschau(const std::vector<std::pair<Path, Node>>& zurueck) {
     ++g_app->vorschauGezeichnet;
     ImGui::TextDisabled("%s", tr(Str::RevertPreviewLabel));
-    const std::size_t zeigen = std::min<std::size_t>(zurueck.size(), 3);
-    for (std::size_t k = 0; k < zeigen; ++k) {
-        std::string zeile = rowText(zurueck[k].second, g_app->treeOpt);
-        // Sehr lange Zeilen (ein langer print-Text) kuerzen - das Menue soll
-        // nicht ueber den Bildschirm wachsen.
-        constexpr std::size_t kMax = 90;
-        if (zeile.size() > kMax) {
-            zeile = zeile.substr(0, kMax) + "...";
-        }
-        ImGui::Indent();
-        ImGui::TextUnformatted(zeile.c_str());
-        ImGui::Unindent();
-    }
-    if (zurueck.size() > zeigen) {
-        char z[96];
-        std::snprintf(z, sizeof(z), tr(Str::RevertPreviewMore), static_cast<int>(zurueck.size() - zeigen));
-        ImGui::Indent();
-        ImGui::TextDisabled("%s", z);
-        ImGui::Unindent();
-    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(originalKurz(zurueck).c_str());
 }
 
 void aenderungenGespeichert() {

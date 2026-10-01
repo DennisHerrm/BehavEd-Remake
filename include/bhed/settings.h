@@ -113,6 +113,10 @@ struct Settings {
     std::map<std::string, std::string> lesezeichen;
     // Den Aenderungsrand (orange/gruen/blassblau) zeigen.
     bool changeHistory = true;
+    // Beim Start im Hintergrund auf GitHub nach einer neueren Fassung sehen
+    // (gui/update_win32.cpp). Gefunden wird nur angezeigt - installiert wird
+    // erst auf Klick.
+    bool updateCheck = true;
     // Befehle, die GENAU so aussehen wie der ausgewaehlte, schwach
     // hervorheben (View-Menue). Vorgabe aus - shank: "I probably won't want
     // it on all the time".

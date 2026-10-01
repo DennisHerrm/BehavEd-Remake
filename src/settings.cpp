@@ -76,6 +76,7 @@ std::string writeSettings(const Settings& s) {
         put(o, ("lesezeichen." + kv.first).c_str(), kv.second);
     }
     put(o, "changeHistory", s.changeHistory);
+    put(o, "updateCheck", s.updateCheck);
     put(o, "highlightSame", s.highlightSame);
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(s.uiScale));
@@ -150,6 +151,7 @@ bool readSettings(const std::string& text, Settings& out) {
             out.lesezeichen[key.substr(12)] = value;
         }
         else if (key == "changeHistory") { out.changeHistory = toBool(value); }
+        else if (key == "updateCheck") { out.updateCheck = toBool(value); }
         else if (key == "highlightSame") { out.highlightSame = toBool(value); }
         else if (key == "scriptPath") { out.scriptPath = value; }
         else if (key == "ibizePath") { out.ibizePath = value; }

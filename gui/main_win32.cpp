@@ -11,6 +11,7 @@
 // beruehmte Zeiger auf den Glyphbereich, der zu frueh starb (imgui#2052),
 // sind damit gegenstandslos.
 
+#include "update.h"
 #include "backend.h"
 #include "gpumap.h"
 
@@ -611,6 +612,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         if (argv != nullptr) {
             if (argc > 1) {
                 kommandozeile = toUtf8(argv[1]);
+                // Neustart nach einem Update: auf die alte Instanz warten -
+                // das ist keine Datei zum Oeffnen.
+                if (bhed::gui::updater::warteAufVorgaenger(kommandozeile)) {
+                    kommandozeile.clear();
+                }
             }
             LocalFree(argv);
         }

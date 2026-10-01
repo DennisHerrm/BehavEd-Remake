@@ -1,5 +1,78 @@
 # Änderungen seit rc94
 
+## rc569 — Undo-Liste wie in 3ds Max, einzeilige Original-Vorschau, Auto-Updater
+
+### Undo: was genau zurückgenommen wird
+
+Gewünscht: „When I undo, it isn't clear what was changed. Maybe it could
+scroll to what was changed or have some sort of message popup at the bottom
+like ‚undo: wait 1000‘?“ – dazu: unten, wo Platz ist, die Meldung einbetten,
+anklickbar, und eine Undo-Tabelle wie in 3ds Max. Und: „er sollte anzeigen,
+was genau geundot wird … nicht nur irgendwelche sinnlosen Sachen“.
+
+* **Beschrieben wird die Aktion, so wie man sie getan hat**: „changed wait:
+  1000 -> 1500“ (nur das geänderte Argument; bei set/camera mit dem Namen
+  davor, etwa „changed set SET_ANIM_BOTH: BOTH_STAND1 -> BOTH_WALK1“),
+  „deleted print ( p )“, „inserted …“, „moved …“. Bis zu drei Änderungen
+  eines Schritts ausgeschrieben, dann „… und N weitere“.
+* **Statuszeile:** Nach Undo/Redo steht unten, was zurückgenommen bzw.
+  wiederholt wurde („Undo: changed wait: 1000 -> 1500“), blau und anklickbar.
+  Nach einer neuen Bearbeitung oder einem Reiterwechsel verschwindet sie.
+* **Sprung zum Befehl:** Der betroffene Befehl wird gewählt, seine Blöcke
+  aufgeklappt und er ins Bild gerollt.
+* **Immer unten:** Sobald es etwas zurückzunehmen gibt, steht in der
+  Statuszeile dauerhaft „Undo history (N): <nächster Schritt>“ – schon vor
+  dem ersten Undo, anklickbar (shank: „ich dachte, die Undo History wird
+  immer unten angezeigt, so dass man sie schnell öffnen kann“). Direkt nach
+  einem Undo steht dort, was zurückgenommen wurde.
+* **Undo-Liste wie in 3ds Max:** Klick auf die Meldung, Rechtsklick auf
+  „Undo“/„Redo“ oder Edit → „Undo history…“. Neuester Schritt oben; ein Klick
+  markiert ihn und alle darüber, „Undo“ nimmt sie zurück, „Cancel“ schließt,
+  Doppelklick tut beides. Ebenso für Redo. Die Liste ist mindestens 8 und
+  höchstens 22 Zeilen hoch und so breit wie der längste Eintrag („die Liste
+  ist bisschen eng“).
+* In allen vier Sprachen (Englisch, Deutsch, Chinesisch, Japanisch) – auf
+  Deutsch etwa „Rückgängig: geändert wait: 1000 -> 1500“; auch die
+  Fehlermeldungen des Updaters sind übersetzt.
+
+### Original-Vorschau in einer Zeile
+
+„I think it would look better if it were on one line“: Im Rechtsklickmenü
+steht das Original grau rechts neben „Revert to original“ (im Feld des
+Tastenkürzels), beim Hovern über dem Änderungsstreifen „Original: wait ( 3000 )“
+in einer Zeile.
+
+### Auto-Updater über GitHub
+
+Gewünscht: „dass man in Zukunft Änderungen einfach direkt über GitHub
+runterladen kann“.
+
+* Beim Start fragt behaved im Hintergrund `DennisHerrm/BehavEd-Remake` nach
+  dem neuesten Release (abschaltbar: File → „Check for updates at startup“;
+  von Hand: File → „Check for updates…“). Ist es neuer als die eigene Fassung
+  (Nummer hinter „rc“), erscheint unten grün „Update rc… verfügbar – klicken“.
+* Das Fenster zeigt installierte und neue Fassung und die Notizen des Releases;
+  „Herunterladen und installieren“ lädt das .zip, entpackt es neben die .exe
+  (jede Datei erst als „.neu“, dann ersetzt; die laufende .exe wird zu
+  „behaved.exe.alt“ umbenannt und beim nächsten Start gelöscht), danach
+  „Jetzt neu starten“ (fragt vorher nach ungespeicherten Änderungen; die neue
+  Instanz wartet, bis die alte ihre Einstellungen geschrieben hat).
+* **Privates Repository:** GitHub verlangt eine Anmeldung. Der Schlüssel kommt
+  von außen und wird nie gespeichert – `GH_TOKEN`/`GITHUB_TOKEN` oder die
+  angemeldete GitHub CLI (`gh auth token`). Wird das Repository öffentlich,
+  geht es ohne.
+* Ein Archiv darf nichts außerhalb des Programmordners anfassen (keine
+  absoluten Pfade, kein „..“).
+* Proben: `updatetest` (JSON von GitHub, Fassungen, Zielpfade); Selbsttest
+  `BHED_EDITORTEST=update` gegen das echte GitHub in einer Ordnerkopie –
+  Release gefunden, geladen, 14 Dateien ersetzt, alte .exe beiseitegelegt;
+  beim nächsten Start ist die `.alt` weg, `--nach-update=` wird nicht als
+  Datei geöffnet.
+* **Für Releases:** `kFassung` in `include/bhed/fassung.h` hochzählen, das
+  .zip mit dem Ordner `BehavEd-Remake/` (behaved.exe + data/) an das Release
+  hängen, Tag `v1.0.0-rcNNN`. Das Release rc568 hat den Updater noch nicht –
+  das erste Update muss man einmal von Hand installieren.
+
 ## rc568 — das Ereignisfenster rechnet seine Breite aus, statt sie zu messen
 
 ### rc567 ließ sich nicht übersetzen

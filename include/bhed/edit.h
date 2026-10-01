@@ -402,6 +402,14 @@ public:
     [[nodiscard]] const char* undoLabel() const;
     [[nodiscard]] const char* redoLabel() const;
 
+    // Fuer die Undo-Liste (wie in 3ds Max). undoStand(i) ist der Stand VOR
+    // Schritt i (0 = der aelteste), undoWas(i) seine Bezeichnung. Beim Redo
+    // ist redoStand(0) der Stand NACH dem naechsten Wiederholen.
+    [[nodiscard]] const Script& undoStand(std::size_t i) const { return undo_[i].script; }
+    [[nodiscard]] const char* undoWas(std::size_t i) const { return undo_[i].what; }
+    [[nodiscard]] const Script& redoStand(std::size_t i) const { return redo_[redo_.size() - 1 - i].script; }
+    [[nodiscard]] const char* redoWas(std::size_t i) const { return redo_[redo_.size() - 1 - i].what; }
+
     // Obergrenze, damit ein langer Arbeitstag den Speicher nicht auffrisst.
     static constexpr std::size_t kMaxUndo = 200;
 

@@ -11,6 +11,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_library(bhed_core STATIC
   src/script.cpp
+  src/update.cpp
   src/bhc.cpp
   src/validate.cpp
   src/tree.cpp
@@ -185,6 +186,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/audio_win32.cpp
     gui/icons_gen.cpp
     gui/selbsttest.cpp
+    gui/update_win32.cpp
     gui/vektoricons.cpp
     # Symbol, Versionsangaben und Manifest. Ohne das zeigt der Explorer das
     # Standardsymbol, und Rechtsklick -> Details bleibt leer.
@@ -208,7 +210,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     target_link_options(behaved PRIVATE /MANIFEST:NO)
   endif()
 
-  target_link_libraries(behaved PRIVATE bhed_core imgui opengl32 gdi32 imm32 dwmapi comdlg32 ole32 shell32 uuid version winmm)
+  target_link_libraries(behaved PRIVATE bhed_core imgui opengl32 gdi32 imm32 dwmapi comdlg32 ole32 shell32 uuid version winmm winhttp)
 
   if(BEHAVED_D3D11)
     target_compile_definitions(behaved PRIVATE BHED_WITH_D3D11)
@@ -293,6 +295,10 @@ if(BEHAVED_TESTS)
   add_executable(waffentest tests/waffentest.cpp)
   target_link_libraries(waffentest PRIVATE bhed_core)
   add_test(NAME waffen COMMAND waffentest)
+  # Auto-Updater ohne Netz: JSON von GitHub, Fassungen, Zielpfade im .zip.
+  add_executable(updatetest tests/updatetest.cpp)
+  target_link_libraries(updatetest PRIVATE bhed_core)
+  add_test(NAME update COMMAND updatetest)
   add_executable(ablauftest tests/ablauftest.cpp)
   target_link_libraries(ablauftest PRIVATE bhed_core)
   add_test(NAME ablauf COMMAND ablauftest)

@@ -1325,6 +1325,19 @@ struct App {
     // gezogenen Spalte (in den Einheiten von spaltenZiel). Gezogen wird
     // ABSOLUT von dort aus - siehe die Griffe nach EndTable.
     float spaltenLuecke = 0.0F;   // frei rechts neben der letzten Hauptspalte
+    // --- Was Undo/Redo zuletzt getan hat (Statuszeile) und die Undo-Liste
+    //
+    // shank: "When I undo, it isn't clear what was changed. Maybe it could
+    // scroll to what was changed or have some sort of message popup at the
+    // bottom like 'undo: wait 1000'?" - und eine Undo-Tabelle wie in 3ds Max.
+    std::string undoMeldung;             // leer = keine
+    bool undoMeldungRedo = false;        // stammt sie von einem Redo?
+    std::size_t undoMeldungTiefe = 0;    // undoDepth danach - aendert sich das, ist sie veraltet
+    int undoListeAnfrage = 0;            // 0 nichts, 1 Undo-Liste oeffnen, 2 Redo-Liste
+    bool undoListeRedo = false;          // zeigt die offene Liste Redo-Schritte?
+    std::vector<std::string> undoListeEintraege;   // neuester zuerst
+    int undoListeMarke = 0;              // bis zu welchem Eintrag (einschliesslich)
+    std::string undoStatusText;          // was unten gerade steht (fuer den Selbsttest)
     // Fuer den Selbsttest: zu welcher Zeile zuletzt der Randhinweis stand.
     int randVorschauZeile = -1;
     // Mitte des Randes je Zeile im letzten Bild (Bildschirm), und wie oft
@@ -1859,8 +1872,10 @@ std::vector<std::pair<Path, Node>> zuruecksetzbar(const std::vector<Path>& wege)
 // nichts zurueckzusetzen gibt. `neu` wird gesetzt, wenn der Befehl erst
 // nach dem Oeffnen entstanden ist (dann gibt es kein Original).
 std::string originalZeile(const Path& weg, bool* neu = nullptr);
-// Zeichnet die Vorschau in einen offenen Hinweis oder ein Menue: "Original:"
-// und darunter die Zeile(n), hoechstens drei, lange Zeilen gekuerzt.
+// Die Vorschau als EINE Zeile: "wait ( 3000 )", bei mehreren "... (+2)",
+// lange Zeilen gekuerzt. Leer, wenn nichts zurueckzusetzen ist.
+std::string originalKurz(const std::vector<std::pair<Path, Node>>& zurueck);
+// Zeichnet sie in einen offenen Hinweis: grau "Original:", daneben der Befehl.
 void originalVorschau(const std::vector<std::pair<Path, Node>>& zurueck);
 void aenderungenGespeichert();     // aktiver Reiter: gespeicherter Stand = jetzt
 std::vector<std::uint8_t> zeilenMarken(int tab, const Script& s, const std::vector<Row>& rows);
