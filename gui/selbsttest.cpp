@@ -3544,7 +3544,8 @@ std::vector<Schritt> kartenBreitSchritte() {
     const std::vector<Schalter> schalter = {
         {Str::MapEntities, &g_app->showEntities}, {Str::MapEffects, &g_app->showEffects},
         {Str::MapGlow, &g_app->showGlow},         {Str::MapActors, &g_app->showActors},
-        {Str::MapSky, &g_app->showSky},           {Str::MapNames, &g_app->zeigeNamen}};
+        {Str::MapSky, &g_app->showSky},           {Str::MapNames, &g_app->zeigeNamen},
+        {Str::MapShadows, &g_app->showShadows},   {Str::MapDynLights, &g_app->showDynLights}};
     for (const Schalter& sw : schalter) {
         const std::string name = tr(sw.text);
         bool* wert = sw.wert;

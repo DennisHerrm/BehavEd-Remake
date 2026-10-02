@@ -180,6 +180,178 @@ float4 main(VSOut ein) : SV_TARGET {
 )";
 }
 
+// --- Dynamisches Licht und Blobschatten ------------------------------------
+//
+// Beides legt die Engine NACH den Stufen einer Flaeche obendrauf, und beides
+// nur dort, wo die Flaeche schon im Tiefenpuffer steht (GLS_DEPTHFUNC_EQUAL
+// in ProjectDlightTexture2, polygonOffset beim markShadow). Deshalb ein
+// eigener Durchgang ueber die deckenden Kartenstapel statt einer weiteren
+// Merkmalsvariante: die Kartenshader bleiben, wie sie sind.
+//
+// Bis zu 32 Lichter (MAX_DLIGHTS, tr_local.h) und 32 Schatten je Aufruf -
+// der Packer gibt jedem Stapel nur die, deren Kugel bzw. Kasten seinen
+// Huellkasten beruehrt.
+namespace {
+const char* kLichtKonstanten = R"(
+cbuffer JeLicht : register(b4) {
+    float4 gLichtInfo;            // x Lichter, y Schatten, z Alphaschwelle, w 1 = mit Bild
+    float4 gLichtOrt[32];         // xyz Ort, w Radius
+    float4 gLichtFarbe[32];       // rgb
+    float4 gSchattenOrt[32];      // xyz Auftreffpunkt, w Radius
+    float4 gSchattenNormale[32];  // xyz Normale der getroffenen Ebene, w Alpha
+};
+struct VSLicht {
+    float4 pos  : SV_POSITION;
+    float3 welt : TEXCOORD0;
+    float3 nrm  : TEXCOORD1;
+    float2 uv   : TEXCOORD2;
+};
+)";
+}  // namespace
+
+std::string lichtVertexShaderHlsl() {
+    std::string s = kKonstanten;
+    s += kLichtKonstanten;
+    s += R"(
+struct VSIn {
+    float3 pos    : POSITION;
+    float3 normal : NORMAL;
+    float2 uv     : TEXCOORD0;
+    float2 uvLm   : TEXCOORD1;
+    float4 farbe  : COLOR0;
+};
+VSLicht main(VSIn ein) {
+    VSLicht aus;
+    // Dieselbe Rechnung wie im Kartenshader, damit die Tiefe auf die
+    // gezeichnete Flaeche faellt (LESS_EQUAL).
+    aus.pos = mul(gViewProj, float4(ein.pos, 1.0));
+    aus.welt = ein.pos;
+    aus.nrm = ein.normal;
+    aus.uv = ein.uv;
+    return aus;
+}
+)";
+    return s;
+}
+
+// ProjectDlightTexture2 (rd-vanilla/tr_shade.cpp:660, r_dlightStyle 1), je
+// Dreieck:
+//
+//     fac      = Abstand des Lichts von der Ebene des Dreiecks
+//                (Rueckseite oder fac >= radius: kein Licht)
+//     modulate = 1 - fac^2 / radius^2
+//     Textur   = tr.dlightImage, in der Ebene zentriert unter dem Licht,
+//                Massstab 0.5 / sqrt(radius^2 - fac^2)
+//     Farbe    = dl->color * modulate
+//
+// und das MAL dem ersten deckenden Nicht-Lightmap-Bild der Flaeche,
+// GL_ONE GL_ONE. Hat die Flaeche kein solches Bild (tcMod, tcGen
+// environment), wird statt dessen GL_DST_COLOR GL_ONE gemischt - dann
+// kommt die Farbe ohne Bild heraus (gLichtInfo.w = 0).
+//
+// gfx/2d/dlight ist kreisrund; der Abgriff laeuft deshalb ueber den
+// Abstand zur Mitte, nicht ueber die Kantenrichtung des Dreiecks, die die
+// Engine als Achse nimmt.
+std::string lichtPixelShaderHlsl() {
+    std::string s = kLichtKonstanten;
+    s += R"(
+Texture2D    gBild    : register(t0);
+Texture2D    gDlicht  : register(t1);
+SamplerState gSampler : register(s0);
+SamplerState gRand    : register(s1);
+float4 main(VSLicht ein) : SV_TARGET {
+    float4 t = gBild.Sample(gSampler, ein.uv);
+    if (gLichtInfo.z > 0.0) {
+        clip(t.a - gLichtInfo.z);
+    }
+    float nl = length(ein.nrm);
+    if (nl < 1e-6) {
+        discard;
+    }
+    float3 n = ein.nrm / nl;
+    float3 summe = float3(0, 0, 0);
+    int anzahl = (int)gLichtInfo.x;
+    for (int i = 0; i < anzahl; ++i) {
+        float r = gLichtOrt[i].w;
+        float3 zumLicht = gLichtOrt[i].xyz - ein.welt;
+        float fac = dot(n, zumLicht);
+        if (fac <= 0.0 || fac >= r) {
+            continue;
+        }
+        float modulate = 1.0 - (fac * fac) / (r * r);
+        float rr = sqrt(r * r - fac * fac);
+        float3 inEbene = zumLicht - fac * n;
+        float u = length(inEbene) * 0.5 / rr;
+        if (u >= 0.5) {
+            continue;
+        }
+        float b = gDlicht.Sample(gRand, float2(0.5 + u, 0.5)).r;
+        summe += gLichtFarbe[i].rgb * (modulate * b);
+    }
+    if (gLichtInfo.w > 0.5) {
+        return float4(t.rgb * summe, 1);
+    }
+    return float4(summe, 1);
+}
+)";
+    return s;
+}
+
+// Der Blobschatten (CG_PlayerShadow -> CG_ImpactMark, cg_players.cpp und
+// cg_marks.cpp). R_MarkFragments nimmt Flaechen, die
+//
+//   * zur getroffenen Ebene zeigen (dot >= 0.5),
+//   * hoechstens 32 Einheiten darueber und 20 darunter liegen
+//     (die beiden Schnittebenen, tr_marks.cpp:306 ff.),
+//   * im Quadrat aus +-radius liegen,
+//
+// und legt darauf `markShadow`: clampmap gfx/damage/shadow, blendFunc
+// GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA, rgbGen identity (das Bild ist
+// schwarz), alphaGen vertex = 1 - trace.fraction. Am Ziel bleibt also
+// ziel * (1 - a); mehrere Schatten multiplizieren sich.
+std::string schattenPixelShaderHlsl() {
+    std::string s = kLichtKonstanten;
+    s += R"(
+Texture2D    gBild     : register(t0);
+Texture2D    gSchatten : register(t1);
+SamplerState gSampler  : register(s0);
+SamplerState gRand     : register(s1);
+float4 main(VSLicht ein) : SV_TARGET {
+    if (gLichtInfo.z > 0.0) {
+        clip(gBild.Sample(gSampler, ein.uv).a - gLichtInfo.z);
+    }
+    float nl = length(ein.nrm);
+    if (nl < 1e-6) {
+        discard;
+    }
+    float3 n = ein.nrm / nl;
+    float bleibt = 1.0;
+    int anzahl = (int)gLichtInfo.y;
+    for (int i = 0; i < anzahl; ++i) {
+        float3 hn = gSchattenNormale[i].xyz;
+        if (dot(n, hn) < 0.5) {
+            continue;
+        }
+        float3 d = ein.welt - gSchattenOrt[i].xyz;
+        float h = dot(d, hn);
+        if (h > 32.0 || h < -20.0) {
+            continue;
+        }
+        float r = gSchattenOrt[i].w;
+        float u = length(d - h * hn) * 0.5 / r;
+        if (u >= 0.5) {
+            continue;
+        }
+        float a = gSchatten.Sample(gRand, float2(0.5 + u, 0.5)).a *
+                  gSchattenNormale[i].w;
+        bleibt *= (1.0 - a);
+    }
+    return float4(bleibt, bleibt, bleibt, 1);
+}
+)";
+    return s;
+}
+
 // Der Hintergrund des Modellfensters: ein senkrechter Verlauf, wie ihn
 // renderModel zeichnete - oben 56, unten 34 (von 255), gleich in allen
 // drei Kanaelen.

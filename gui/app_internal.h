@@ -273,6 +273,19 @@ struct App {
     // Abschaltbar, weil es einen zweiten Zeichendurchgang kostet und weil
     // man beim Suchen eines Fehlers das rohe Bild sehen will.
     bool showGlow = true;
+    // Blobschatten unter den Figuren (cg_shadows 1) und dynamisches Licht
+    // auf Waenden und Boden (r_dynamiclight) - siehe
+    // gpu::zeichneLichtUndSchatten. Beides ist im Spiel ab Werk an.
+    bool showShadows = true;
+    bool showDynLights = true;
+    // Die Schwertlichter des letzten Bildes. Die Figuren bekommen ihr Licht
+    // VOR dem Zeichnen, die Klingen stehen erst danach fest - ein Bild
+    // Verzug, den niemand sieht. Die Engine rechnet alle Lichter der Szene
+    // auf jede Figur (R_SetupEntityLighting), also auch das eigene Schwert.
+    std::vector<EffectLight> schwertLichter;
+    // Fuer die Seitenleiste: wie viele Lichter und Schatten im letzten Bild.
+    int lichtAufrufe = 0;
+    int schattenAnzahl = 0;
 
 
     // Welche Liste hat die Auswahl zuletzt bekommen?

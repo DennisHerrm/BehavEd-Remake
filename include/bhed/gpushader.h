@@ -63,6 +63,13 @@ namespace bhed::gpu {
 // Die Klingen der Lichtschwerter: fertige Weltecken, Textur oder Farbe.
 [[nodiscard]] std::string klingeVertexShaderHlsl();
 [[nodiscard]] std::string klingePixelShaderHlsl();
+// Dynamisches Licht und Blobschatten auf der Karte: ein zweiter Durchgang
+// ueber die deckenden Kartenstapel (ProjectDlightTexture2 und die
+// markShadow-Abziehbilder aus CG_PlayerShadow). Konstanten in JeLicht (b4),
+// Aufbau in kLichtKonstanten - der Packer steht in gpumap_win32.cpp.
+[[nodiscard]] std::string lichtVertexShaderHlsl();
+[[nodiscard]] std::string lichtPixelShaderHlsl();
+[[nodiscard]] std::string schattenPixelShaderHlsl();
 // Der Verlauf hinter dem Modellfenster (zu vollbildVertexShaderHlsl).
 [[nodiscard]] std::string modellHintergrundPixelShaderHlsl();
 [[nodiscard]] std::string glowShrinkPixelShaderHlsl();

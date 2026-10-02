@@ -1,5 +1,42 @@
 # Änderungen seit rc94
 
+## rc575 — Schatten und dynamisches Licht wie im Spiel
+
+Gefragt: „Haben wir eigentlich Schatten und Lightning wie im Spiel? Dynamic
+Glow usw. … wenn nein … einbauen.“
+
+Schon da waren Lightmaps, das Lichtgitter für Figuren und Dynamic Glow. Es
+fehlten die beiden Dinge, die die Mod mit ihren Vorgaben (`cg_shadows 1`,
+`r_dynamiclight 1`, `r_overBrightBits 0` in der jaconfig.cfg) zusätzlich zeigt:
+
+* **Blobschatten** unter jeder Figur (CG_PlayerShadow → CG_ImpactMark mit
+  `markShadow`): Spur vom Ursprung 128 Einheiten nach unten, Radius 16
+  (Rancor und AT-ST 64, Sandwurm keiner), Alpha 1 − Anteil der Strecke, nur
+  bis 1000 Einheiten von der Kamera (r_shadowRange). Er liegt auf Flächen, die
+  zur getroffenen Ebene zeigen und bis 32 darüber bzw. 20 darunter liegen
+  (R_MarkFragments), nicht auf `nomarks`/`noimpact`.
+* **Dynamisches Licht auf Wänden und Boden** (ProjectDlightTexture2,
+  r_dlightStyle 1): Lichtschwerter (CG_DoSaberLight – je Schwert ein Licht,
+  Radius doppelte Klingenlänge + Flackern, Farbe aus CG_RGBForSaberColor) und
+  die Lichter der Effekte. Abstand zur Ebene, `modulate = 1 − fac²/r²`,
+  `gfx/2d/dlight` als Kreis, mal dem Bild der Fläche, additiv. Nicht auf
+  `nodlight`, Himmel und durchscheinenden Flächen.
+* Beides als eigener Durchgang über die deckenden Kartenflächen nach den
+  Figuren (`gpu::zeichneLichtUndSchatten`): eine Figur davor verdeckt Licht
+  und Schatten, Durchscheinendes kommt danach. Nur Stapel, deren Hüllkasten
+  ein Licht oder ein Schatten berührt, werden ein zweites Mal gezeichnet –
+  gemessen 0,3 ms je Bild in md_ga_jedi mit 63 Figuren.
+* Das dynamische Licht läuft **nicht** durch den Helligkeitsregler: der steht
+  für das Verschieben der Lightmaps beim Laden, und mit r_overBrightBits 0 hebt
+  nichts den Bildspeicher nachträglich. Mit dem Faktor 2 war der Lichtkreis
+  eines Schwertes eine grelle Scheibe.
+* Schwerter beleuchten jetzt auch die Figuren (R_SetupEntityLighting rechnet
+  jedes Licht der Szene auf jede Figur, auch das eigene Schwert). Die
+  dynamischen Lichter für Figuren kommen dabei ebenfalls ohne den
+  Helligkeitsfaktor – das galt vorher falsch auch für die Effektlichter.
+* Zwei neue Schalter in der Seitenleiste der Karte: **Schatten** und
+  **Dynamisches Licht**, beide ab Werk an.
+
 ## rc574 — Geonosier in der Arena ohne schwarzes Viereck
 
 Gemeldet: „In der geonosianischen Arena … die müssten eigentlich durchsichtig

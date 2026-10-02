@@ -176,6 +176,40 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                    float zeitSekunden, int breite, int hoehe, bool weich,
                    std::string* fehler);
 
+// --- Dynamisches Licht und Blobschatten auf der Karte ----------------------
+//
+// Was die Engine nach den Stufen einer deckenden Flaeche obendrauf legt:
+//
+//   * r_dynamiclight - jedes Licht der Szene (Schwerter, Effektlichter)
+//     hellt die Waende und den Boden auf (ProjectDlightTexture2).
+//   * cg_shadows 1   - unter jeder Figur ein runder Schatten, das
+//     Abziehbild `markShadow` (CG_PlayerShadow).
+//
+// Muss NACH den deckenden Flaechen und den Figuren kommen und VOR den
+// durchscheinenden: es zeichnet nur auf schon gezeichnete Kartenflaechen
+// (Tiefe LESS_EQUAL, ohne zu schreiben), und eine Figur davor verdeckt es.
+struct WeltLicht {
+    float ort[3]{};
+    float radius = 0.0F;
+    float farbe[3] = {1.0F, 1.0F, 1.0F};   // 0..1, wie dl->color
+};
+struct BlobSchatten {
+    float ort[3]{};                         // trace.endpos
+    float normale[3] = {0.0F, 0.0F, 1.0F};  // trace.plane.normal
+    float radius = 16.0F;
+    float alpha = 1.0F;                     // 1 - trace.fraction
+};
+// `dlichtBild` = gfx/2d/dlight, `schattenBild` = gfx/damage/shadow. Fehlt
+// eines, entfaellt der zugehoerige Teil. Rueckgabe: Zeichenaufrufe.
+int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
+                            const BspGeometry* geo, const float* viewProj,
+                            float zeitSekunden,
+                            const std::vector<WeltLicht>& lichter,
+                            const std::vector<BlobSchatten>& schatten,
+                            const TextureSet::Tex* dlichtBild,
+                            const TextureSet::Tex* schattenBild,
+                            std::string* fehler);
+
 // Das Renderziel auf die gewuenschte Groesse bringen. Legt beim ersten Mal
 // und bei jeder Groessenaenderung neu an.
 //

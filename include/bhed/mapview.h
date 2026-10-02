@@ -423,6 +423,10 @@ struct KlingeDraw {
     // also werden sie benutzt - so wie die Engine es tut.
     const TextureSet::Tex* glowTex = nullptr;
     const TextureSet::Tex* coreTex = nullptr;
+    // Die Farbe des dynamischen Lichts, 0..1 - CG_RGBForSaberColor
+    // (cg_players.cpp), NICHT die Klingenfarbe oben: blau leuchtet dort
+    // 0.2/0.4/1.0, weiss und schwarz beide 1/1/1.
+    float licht[3] = {0.2F, 0.4F, 1.0F};
 };
 
 // Ein Modell an einem Bolzen der Figur: Waffe, Schwertgriff oder
@@ -538,6 +542,10 @@ struct ActorDraw {
     // bspgeo.h). Ohne `ok` bleibt es bei der alten Schattierung aus den
     // Normalen; eine Karte ohne Gitter soll nicht schwarz werden.
     GridLight light;
+
+    // Der Blobschatten (CG_PlayerShadow): 16, Rancor und AT-ST 64, der
+    // Sandwurm keinen (0).
+    float schattenRadius = 16.0F;
 
     // --- Was die Figur in den Haenden haelt ------------------------------
     //

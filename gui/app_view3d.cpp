@@ -2621,6 +2621,159 @@ void bladeColorFor(const std::string& name, std::uint8_t out[3]) {
     out[2] = 255;
 }
 
+// Die Farbe des Schwertlichts - CG_RGBForSaberColor (cg_players.cpp der
+// Mod), Wort fuer Wort. Eine RGB-Farbe ("xff3f00") leuchtet in genau dieser
+// Farbe; `custom` nimmt saberDLightColor aus der .sab, das hier nicht
+// gelesen wird - weiss ist die Vorgabe der Engine dafuer.
+void saberLichtFarbe(const std::string& name, float out[3]) {
+    struct Eintrag {
+        const char* name;
+        float rgb[3];
+    };
+    static constexpr Eintrag kFarben[] = {
+        {"unstable_red", {1.0F, 0.2F, 0.2F}}, {"red", {1.0F, 0.2F, 0.2F}},
+        {"orange", {1.0F, 0.5F, 0.1F}},       {"yellow", {1.0F, 1.0F, 0.2F}},
+        {"green", {0.2F, 1.0F, 0.2F}},        {"blue", {0.2F, 0.4F, 1.0F}},
+        {"purple", {0.9F, 0.2F, 1.0F}},       {"black", {1.0F, 1.0F, 1.0F}},
+        {"white", {1.0F, 1.0F, 1.0F}},
+    };
+    if (saberFarbeRgb(name, out)) {
+        return;
+    }
+    std::string k = name;
+    for (char& c : k) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    for (const Eintrag& e : kFarben) {
+        if (k.find(e.name) != std::string::npos) {
+            out[0] = e.rgb[0];
+            out[1] = e.rgb[1];
+            out[2] = e.rgb[2];
+            return;
+        }
+    }
+    out[0] = out[1] = out[2] = 1.0F;
+}
+
+// Ein Bild aus gfx/, das kein Shader der Karte nennt - der Kreis fuer das
+// dynamische Licht (gfx/2d/dlight, R_CreateDlightImage) und der fuer den
+// Blobschatten (gfx/damage/shadow, Shader markShadow). Zwischengespeichert
+// wie die Klingenbilder, auch der Fehlschlag.
+const TextureSet::Tex* gfxBild(const std::string& pfad) {
+    const auto have = g_app->texCache.find(pfad);
+    if (have != g_app->texCache.end()) {
+        return have->second.empty() ? nullptr : &have->second;
+    }
+    TextureSet::Tex t;
+    for (const std::string& versuch : textureCandidates(pfad)) {
+        std::string data;
+        if (!readFromArchives(versuch, data)) {
+            continue;
+        }
+        const image::Image im = image::decode(
+            reinterpret_cast<const unsigned char*>(data.data()), data.size());
+        if (!im.ok || im.width <= 0 || im.height <= 0) {
+            continue;
+        }
+        t = shrink(im, 256);
+        break;
+    }
+    if (t.empty()) {
+        diag::detail("Bild " + pfad + " nicht gefunden");
+    }
+    const auto put = g_app->texCache.emplace(pfad, std::move(t));
+    return put.first->second.empty() ? nullptr : &put.first->second;
+}
+
+// --- Der Blobschatten einer Figur -------------------------------------------
+//
+// _PlayerShadow (cg_players.cpp der Mod):
+//
+//     trace: Kasten -7 -7 0 .. 7 7 2 vom Ursprung 128 Einheiten nach unten,
+//            MASK_PLAYERSOLID
+//     kein Treffer (fraction 1) oder ganz im Festen: kein Schatten
+//     CG_ImpactMark(markShadow, endpos, plane.normal, yaw,
+//                   1, 1, 1, 1 - fraction, qfalse, radius, qtrue)
+//
+// behaved spurt gegen die Dreiecke der Karte, nicht gegen Brushes: der
+// Kasten wird zu fuenf Strahlen (Mitte und vier Ecken), der hoechste
+// Treffer gilt wie beim Kasten. Nicht feste Flaechen (Wasser, Gras) laesst
+// MASK_PLAYERSOLID durchfallen - hier ebenso.
+bool blobSchattenFuer(const float ursprung[3], float radius, gpu::BlobSchatten& aus) {
+    constexpr float kSchattenWeg = 128.0F;            // SHADOW_DISTANCE
+    constexpr std::uint32_t kContentsSolid = 0x1U;    // CONTENTS_SOLID
+    const BspGeometry& geo = g_app->geo;
+    const float versatz[5][2] = {{0, 0}, {-7, -7}, {7, -7}, {-7, 7}, {7, 7}};
+    float besteFraktion = 1.0F;
+    float normale[3] = {0.0F, 0.0F, 1.0F};
+    for (const auto& v : versatz) {
+        float start[3] = {ursprung[0] + v[0], ursprung[1] + v[1], ursprung[2]};
+        const float ende[3] = {start[0], start[1], ursprung[2] - kSchattenWeg};
+        // Durch nicht Festes hindurch weiterspuren - hoechstens ein paar Mal.
+        for (int versuch = 0; versuch < 4; ++versuch) {
+            if (start[2] <= ende[2]) {
+                break;
+            }
+            const TraceTreffer t = traceRay(geo, start, ende);
+            if (!t.hit) {
+                break;
+            }
+            bool fest = true;
+            if (t.surface >= 0 && static_cast<std::size_t>(t.surface) < geo.surfaces.size()) {
+                const int si = geo.surfaces[static_cast<std::size_t>(t.surface)].shader;
+                if (si >= 0 && static_cast<std::size_t>(si) < geo.shaders.size()) {
+                    fest = (geo.shaders[static_cast<std::size_t>(si)].contentFlags &
+                            kContentsSolid) != 0U;
+                }
+            }
+            if (fest) {
+                const float f = (ursprung[2] - t.point[2]) / kSchattenWeg;
+                if (f < besteFraktion) {
+                    besteFraktion = f;
+                    for (int k = 0; k < 3; ++k) { normale[k] = t.normal[k]; }
+                }
+                break;
+            }
+            start[2] = t.point[2] - 0.5F;
+        }
+    }
+    if (besteFraktion >= 1.0F) {
+        return false;
+    }
+    besteFraktion = std::max(besteFraktion, 0.0F);
+    aus.ort[0] = ursprung[0];
+    aus.ort[1] = ursprung[1];
+    aus.ort[2] = ursprung[2] - besteFraktion * kSchattenWeg;
+    for (int k = 0; k < 3; ++k) { aus.normale[k] = normale[k]; }
+    aus.radius = radius;
+    aus.alpha = 1.0F - besteFraktion;
+    return true;
+}
+
+// Der Radius des Blobschattens nach der Klasse aus der .npc
+// (CG_PlayerShadow): Rancor 64, AT-ST 64 (dazu zwei kleine unter den
+// Fuessen, die hier fehlen), Sandwurm keiner.
+float schattenRadiusFuer(const std::string& npcType) {
+    auto it = g_app->npcMap.find(npcType);
+    if (it == g_app->npcMap.end()) {
+        std::string k = npcType;
+        for (char& c : k) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        it = g_app->npcMap.find(k);
+    }
+    if (it == g_app->npcMap.end()) {
+        return 16.0F;
+    }
+    std::string kl = it->second.klasse;
+    for (char& c : kl) { c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
+    if (kl == "CLASS_SAND_CREATURE") {
+        return 0.0F;
+    }
+    if (kl == "CLASS_RANCOR" || kl == "CLASS_ATST") {
+        return 64.0F;
+    }
+    return 16.0F;
+}
+
 std::string saberSoundFor(const Actor& a, bool an, double ms) {
     // Aus dem ZUSTAND zur Zeit des Befehls, nicht mehr aus der .npc: ein
     // SET_SABER1 vorher hat das Schwert - und damit seine Klaenge - schon
@@ -3252,6 +3405,7 @@ void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d)
                 kd.laenge = laenge;
                 kd.radius = (kz.radius > 0.0F) ? kz.radius : 3.0F;
                 bladeColorFor(kz.farbe, kd.farbe);
+                saberLichtFarbe(kz.farbe, kd.licht);
                 kd.glowTex = bladeTexture(kz.farbe, true);
                 kd.coreTex = bladeTexture(kz.farbe, false);
             }
@@ -9841,6 +9995,24 @@ void drawMapView() {
                                                      : alleEffekte,
                                  g_app->playMs)
                 : std::vector<EffectLight>{};
+        // Dieselben Lichter fuer die FIGUREN - dazu die Schwerter des
+        // letzten Bildes, und alles OHNE den Helligkeitsfaktor. Der steht
+        // fuer R_ColorShiftLightingBytes und hebt nur das Lichtgitter; die
+        // dynamischen Lichter rechnet R_SetupEntityLighting erst danach
+        // obendrauf (tr_light.cpp:435 ff.). Weil behaved das Gitterlicht
+        // erst beim Zeichnen mit mapBrightness malnimmt, werden sie hier
+        // vorab durch denselben Faktor geteilt.
+        std::vector<EffectLight> figurLichter = fxLichter;
+        if (g_app->showDynLights) {
+            figurLichter.insert(figurLichter.end(), g_app->schwertLichter.begin(),
+                                g_app->schwertLichter.end());
+        }
+        {
+            const float durch = 1.0F / std::max(g_app->mapBrightness, 0.01F);
+            for (EffectLight& l : figurLichter) {
+                for (float& c : l.color) { c *= durch; }
+            }
+        }
         if (g_app->showActors && !g_app->scene.actors.empty()) {
             if (g_app->actorAssets.size() != g_app->scene.actors.size()) {
                 loadActorModels();
@@ -10040,7 +10212,8 @@ void drawMapView() {
                 // Dazu die Lichter, die Effekte gerade werfen. Die Engine
                 // rechnet sie an derselben Stelle drauf
                 // (R_SetupEntityLighting, tr_light.cpp:435 ff.).
-                addDynamicLights(d.light, d.pos, fxLichter);
+                addDynamicLights(d.light, d.pos, figurLichter);
+                d.schattenRadius = schattenRadiusFuer(a.npcType);
 
                 // --- Waffe, Lichtschwerter, Kinomodelle -------------
                 //
@@ -10256,6 +10429,9 @@ void drawMapView() {
                 // zeichnet sie durchweg deckend (holeBlend(Blend::Opaque)),
                 // es gibt bei ihnen nichts zu teilen.
                 std::vector<gpu::KlingenQuad> klingen;
+                // Die Schwertlichter dieses Bildes - CG_DoSaberLight je
+                // Schwert, gesammelt beim Zeichnen der Klingen.
+                std::vector<gpu::WeltLicht> schwertLichter;
                 for (int durchgang = 0; durchgang < 2; ++durchgang) {
                     const gpu::Lage lage = (durchgang == 0)
                                                ? gpu::Lage::Deckend
@@ -10458,6 +10634,18 @@ void drawMapView() {
                                                gw2[r * 4 + 2] * in[2] + gw2[r * 4 + 3];
                                     }
                                 };
+                                // CG_DoSaberLight: je Schwert EIN Licht.
+                                // Bei einer Klinge in ihrer Mitte, Radius
+                                // doppelte Laenge; bei mehreren im Mittel
+                                // der Spitzen, nach Laenge gewichtete Farbe,
+                                // Radius der groesste Spitzenabstand.
+                                float lMitte[3] = {0.0F, 0.0F, 0.0F};
+                                float lFarbe[3] = {0.0F, 0.0F, 0.0F};
+                                float lErsteFarbe[3] = {0.0F, 0.0F, 0.0F};
+                                float lSpitzenSumme[3] = {0.0F, 0.0F, 0.0F};
+                                std::vector<std::array<float, 3>> lSpitzen;
+                                float lGesamt = 0.0F;
+                                float lDurchmesser = 0.0F;
                                 for (int kn = 0; kn < an.klingen; ++kn) {
                                     const KlingeDraw& kd =
                                         an.klinge[static_cast<std::size_t>(kn)];
@@ -10471,6 +10659,19 @@ void drawMapView() {
                                     float wB[3];
                                     nachWelt(wl, wA);
                                     nachWelt(tl, wB);
+                                    if (lSpitzen.empty()) {
+                                        for (int k = 0; k < 3; ++k) {
+                                            lMitte[k] = 0.5F * (wA[k] + wB[k]);
+                                            lErsteFarbe[k] = kd.licht[k];
+                                        }
+                                    }
+                                    lSpitzen.push_back({wB[0], wB[1], wB[2]});
+                                    for (int k = 0; k < 3; ++k) {
+                                        lFarbe[k] += kd.laenge * kd.licht[k];
+                                        lSpitzenSumme[k] += wB[k];
+                                    }
+                                    lGesamt += kd.laenge;
+                                    lDurchmesser = std::max(lDurchmesser, kd.laenge * 2.0F);
                                     // Erst der breite Glanz in der Klingen-
                                     // farbe, dann der schmale, fast weisse
                                     // Kern (Radius / 3) - CG_DoSaber.
@@ -10489,10 +10690,110 @@ void drawMapView() {
                                         klingen.push_back(q);
                                     }
                                 }
+                                if (lGesamt > 0.0F && !lSpitzen.empty()) {
+                                    gpu::WeltLicht wl;
+                                    if (lSpitzen.size() == 1U) {
+                                        for (int k = 0; k < 3; ++k) {
+                                            wl.ort[k] = lMitte[k];
+                                            wl.farbe[k] = lErsteFarbe[k];
+                                        }
+                                    } else {
+                                        const float anzahl = static_cast<float>(lSpitzen.size());
+                                        for (int k = 0; k < 3; ++k) {
+                                            wl.ort[k] = lSpitzenSumme[k] / anzahl;
+                                            wl.farbe[k] = lFarbe[k] / lGesamt;
+                                        }
+                                        for (const auto& p1 : lSpitzen) {
+                                            for (const auto& p2 : lSpitzen) {
+                                                const float dx = p1[0] - p2[0];
+                                                const float dy = p1[1] - p2[1];
+                                                const float dz = p1[2] - p2[2];
+                                                lDurchmesser = std::max(
+                                                    lDurchmesser,
+                                                    std::sqrt(dx * dx + dy * dy + dz * dz));
+                                            }
+                                        }
+                                    }
+                                    // + Q_flrand(0,1) * 8: das Flackern. Aus
+                                    // Takt, Figur und Griff gewuerfelt, damit
+                                    // ein angehaltenes Bild stillsteht.
+                                    std::uint32_t wurf = static_cast<std::uint32_t>(
+                                        static_cast<std::int64_t>(g_app->playMs / 50.0));
+                                    wurf = wurf * 2654435761U ^
+                                           static_cast<std::uint32_t>(schwertLichter.size() * 40503U + 17U);
+                                    wurf ^= wurf >> 15;
+                                    wurf *= 2246822519U;
+                                    wurf ^= wurf >> 13;
+                                    const float zufall = static_cast<float>(wurf & 0xFFFFU) / 65536.0F;
+                                    wl.radius = lDurchmesser + zufall * 8.0F;
+                                    schwertLichter.push_back(wl);
+                                }
                             }
                         }
                     }
                     gpu::beendeMessung(gpu::Abschnitt::Figuren);
+
+                    // --- Dynamisches Licht und Blobschatten ------------
+                    //
+                    // Nach allem Deckenden und den Figuren, vor allem
+                    // Durchscheinenden - siehe gpu::zeichneLichtUndSchatten.
+                    std::vector<gpu::WeltLicht> weltLichter;
+                    if (g_app->showDynLights) {
+                        for (const EffectLight& el : fxLichter) {
+                            gpu::WeltLicht wl;
+                            for (int k = 0; k < 3; ++k) {
+                                wl.ort[k] = el.origin[k];
+                                wl.farbe[k] = el.color[k];
+                            }
+                            wl.radius = el.radius;
+                            weltLichter.push_back(wl);
+                        }
+                        weltLichter.insert(weltLichter.end(), schwertLichter.begin(),
+                                           schwertLichter.end());
+                    }
+                    std::vector<gpu::BlobSchatten> blobs;
+                    if (g_app->showShadows) {
+                        for (const ActorDraw& a : gpuFiguren) {
+                            if (a.model == nullptr || a.schattenRadius <= 0.0F) {
+                                continue;
+                            }
+                            // cg_shadowCullDistance = r_shadowRange, 1000.
+                            const float dx = a.pos[0] - useCam.pos[0];
+                            const float dy = a.pos[1] - useCam.pos[1];
+                            const float dz = a.pos[2] - useCam.pos[2];
+                            if (dx * dx + dy * dy + dz * dz > 1000.0F * 1000.0F) {
+                                continue;
+                            }
+                            gpu::BlobSchatten b;
+                            if (blobSchattenFuer(a.pos, a.schattenRadius, b)) {
+                                blobs.push_back(b);
+                            }
+                        }
+                    }
+                    if (!weltLichter.empty() || !blobs.empty()) {
+                        gpu::setzeSchritt("Licht und Schatten");
+                        std::string fl;
+                        const int nl = gpu::zeichneLichtUndSchatten(
+                            g_app->mesh, &g_app->textures, &g_app->geo, vp, zeit,
+                            weltLichter, blobs,
+                            gfxBild("gfx/2d/dlight"), gfxBild("gfx/damage/shadow"), &fl);
+                        g_app->gpuAufrufe += nl;
+                        g_app->gpuKarte += nl;
+                        if (f.empty()) { f = fl; }
+                    }
+                    g_app->lichtAufrufe = static_cast<int>(weltLichter.size());
+                    g_app->schattenAnzahl = static_cast<int>(blobs.size());
+                    // Fuer die Figuren des naechsten Bildes.
+                    g_app->schwertLichter.clear();
+                    for (const gpu::WeltLicht& wl : schwertLichter) {
+                        EffectLight el;
+                        for (int k = 0; k < 3; ++k) {
+                            el.origin[k] = wl.ort[k];
+                            el.color[k] = wl.farbe[k];
+                        }
+                        el.radius = wl.radius;
+                        g_app->schwertLichter.push_back(el);
+                    }
                 }
                 // --- Die Klingen nach allem anderen --------------------
                 //
@@ -11551,6 +11852,26 @@ void drawMapSidebar() {
         // Die Zahl der Zeichenaufrufe des Gluehdurchgangs - die Zahl der
         // Bildpunkte kennt die Grafikkarte nicht ohne Rueckuebertragung.
         ImGui::TextDisabled("(%d Aufrufe)", g_app->gpuGluehen);
+    }
+    if (ImGui::Checkbox(tr(Str::MapShadows), &g_app->showShadows)) {
+        g_app->mapDirty = true;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tr(Str::MapShadowsHint));
+    }
+    if (g_app->showShadows) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%d)", g_app->schattenAnzahl);
+    }
+    if (ImGui::Checkbox(tr(Str::MapDynLights), &g_app->showDynLights)) {
+        g_app->mapDirty = true;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tr(Str::MapDynLightsHint));
+    }
+    if (g_app->showDynLights) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%d)", g_app->lichtAufrufe);
     }
     if (ImGui::Checkbox(tr(Str::MapActors), &g_app->showActors)) {
         g_app->mapDirty = true;

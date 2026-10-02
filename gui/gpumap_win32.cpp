@@ -2195,6 +2195,365 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     return n;
 }
 
+// --- Dynamisches Licht und Blobschatten ------------------------------------
+namespace {
+
+ID3DBlob* uebersetze(const std::string& src, const char* profil, const char* name,
+                     std::string* fehler);
+
+ID3D11VertexShader* g_lichtVs = nullptr;
+ID3D11PixelShader* g_lichtPs = nullptr;
+ID3D11PixelShader* g_schattenPs = nullptr;
+ID3D11InputLayout* g_lichtLayout = nullptr;
+ID3D11Buffer* g_cbLicht = nullptr;
+bool g_lichtVersucht = false;
+
+// Aufbau von JeLicht (gpushader.cpp, kLichtKonstanten): nur float4-Felder,
+// also keine Packluecken.
+constexpr int kMaxLichter = 32;   // MAX_DLIGHTS (tr_local.h)
+constexpr int kMaxSchatten = 32;
+constexpr std::size_t kLichtOrtAt = 4U;
+constexpr std::size_t kLichtFarbeAt = kLichtOrtAt + 4U * kMaxLichter;
+constexpr std::size_t kSchattenOrtAt = kLichtFarbeAt + 4U * kMaxLichter;
+constexpr std::size_t kSchattenNormaleAt = kSchattenOrtAt + 4U * kMaxSchatten;
+constexpr std::size_t kLichtFloats = kSchattenNormaleAt + 4U * kMaxSchatten;
+
+// Aus code/game/surfaceflags.h - wie in bspgeo.cpp abgeschrieben.
+constexpr std::uint32_t kSurfSkyFlag = 0x00002000U;
+constexpr std::uint32_t kSurfNoImpact = 0x00080000U;
+constexpr std::uint32_t kSurfNoMarks = 0x00100000U;
+constexpr std::uint32_t kSurfNoDlight = 0x00800000U;
+
+// Der Huellkasten je Stapel - einmal je Netz. Ohne ihn bekaeme jeder
+// deckende Stapel der Karte einen zweiten Aufruf, auch wenn kein Licht in
+// seiner Naehe ist.
+struct StapelKasten {
+    float mins[3]{};
+    float maxs[3]{};
+};
+std::vector<StapelKasten> g_stapelKaesten;
+const void* g_kastenVerts = nullptr;
+const void* g_kastenIdx = nullptr;
+std::size_t g_kastenBatches = 0;
+
+const std::vector<StapelKasten>& stapelKaesten(const BspMesh& mesh) {
+    if (g_kastenVerts == mesh.verts.data() && g_kastenIdx == mesh.indexes.data() &&
+        g_kastenBatches == mesh.batches.size()) {
+        return g_stapelKaesten;
+    }
+    g_stapelKaesten.assign(mesh.batches.size(), StapelKasten{});
+    for (std::size_t b = 0; b < mesh.batches.size(); ++b) {
+        const BspMesh::Batch& bt = mesh.batches[b];
+        StapelKasten& k = g_stapelKaesten[b];
+        for (int a = 0; a < 3; ++a) {
+            k.mins[a] = 1.0e30F;
+            k.maxs[a] = -1.0e30F;
+        }
+        const std::size_t ende = std::min<std::size_t>(
+            static_cast<std::size_t>(bt.firstIndex) + bt.numIndexes, mesh.indexes.size());
+        for (std::size_t i = bt.firstIndex; i < ende; ++i) {
+            const std::uint32_t v = mesh.indexes[i];
+            if (v >= mesh.verts.size()) {
+                continue;
+            }
+            for (int a = 0; a < 3; ++a) {
+                k.mins[a] = std::min(k.mins[a], mesh.verts[v].xyz[a]);
+                k.maxs[a] = std::max(k.maxs[a], mesh.verts[v].xyz[a]);
+            }
+        }
+    }
+    g_kastenVerts = mesh.verts.data();
+    g_kastenIdx = mesh.indexes.data();
+    g_kastenBatches = mesh.batches.size();
+    return g_stapelKaesten;
+}
+
+// Beruehrt der Wuerfel um `ort` mit halber Kantenlaenge `r` den Kasten?
+bool kastenNahe(const StapelKasten& k, const float ort[3], float r) {
+    for (int a = 0; a < 3; ++a) {
+        if (ort[a] + r < k.mins[a] || ort[a] - r > k.maxs[a]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool holeLichtShader(std::string* fehler) {
+    if (g_lichtVs != nullptr && g_lichtPs != nullptr && g_schattenPs != nullptr &&
+        g_lichtLayout != nullptr) {
+        return true;
+    }
+    if (g_lichtVersucht) {
+        if (fehler != nullptr) { *fehler = "Licht-Shader nicht uebersetzbar"; }
+        return false;
+    }
+    g_lichtVersucht = true;
+    ID3D11Device* d = dev();
+    if (d == nullptr) {
+        return false;
+    }
+    ID3DBlob* vs = uebersetze(lichtVertexShaderHlsl(), "vs_4_0", "licht", fehler);
+    if (vs == nullptr) {
+        return false;
+    }
+    ID3DBlob* ps = uebersetze(lichtPixelShaderHlsl(), "ps_4_0", "licht", fehler);
+    ID3DBlob* ps2 = uebersetze(schattenPixelShaderHlsl(), "ps_4_0", "schatten", fehler);
+    if (ps == nullptr || ps2 == nullptr) {
+        vs->Release();
+        if (ps != nullptr) { ps->Release(); }
+        if (ps2 != nullptr) { ps2->Release(); }
+        return false;
+    }
+    d->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &g_lichtVs);
+    d->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &g_lichtPs);
+    d->CreatePixelShader(ps2->GetBufferPointer(), ps2->GetBufferSize(), nullptr,
+                         &g_schattenPs);
+    // Dieselbe Ecke wie in holeShader (zeichneKarte, `Ecke`, 44 Byte).
+    const D3D11_INPUT_ELEMENT_DESC ein[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    d->CreateInputLayout(ein, static_cast<UINT>(std::size(ein)), vs->GetBufferPointer(),
+                         vs->GetBufferSize(), &g_lichtLayout);
+    vs->Release();
+    ps->Release();
+    ps2->Release();
+    if (g_lichtVs == nullptr || g_lichtPs == nullptr || g_schattenPs == nullptr ||
+        g_lichtLayout == nullptr) {
+        if (fehler != nullptr) { *fehler = "Licht-Shader unvollstaendig"; }
+        return false;
+    }
+    return true;
+}
+
+void gibLichtFrei() {
+    if (g_lichtVs != nullptr) { g_lichtVs->Release(); g_lichtVs = nullptr; }
+    if (g_lichtPs != nullptr) { g_lichtPs->Release(); g_lichtPs = nullptr; }
+    if (g_schattenPs != nullptr) { g_schattenPs->Release(); g_schattenPs = nullptr; }
+    if (g_lichtLayout != nullptr) { g_lichtLayout->Release(); g_lichtLayout = nullptr; }
+    if (g_cbLicht != nullptr) { g_cbLicht->Release(); g_cbLicht = nullptr; }
+    g_lichtVersucht = false;
+}
+
+}  // namespace
+
+int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
+                            const BspGeometry* geo, const float* viewProj,
+                            float zeitSekunden,
+                            const std::vector<WeltLicht>& lichter,
+                            const std::vector<BlobSchatten>& schatten,
+                            const TextureSet::Tex* dlichtBild,
+                            const TextureSet::Tex* schattenBild,
+                            std::string* fehler) {
+    ID3D11Device* d = dev();
+    ID3D11DeviceContext* c = ctx();
+    if (d == nullptr || c == nullptr || g_zielRtv == nullptr || g_tiefeDsv == nullptr ||
+        viewProj == nullptr || mesh.batches.empty()) {
+        return 0;
+    }
+    ID3D11ShaderResourceView* dlSrv =
+        lichter.empty() ? nullptr : holeTexBild(dlichtBild);
+    ID3D11ShaderResourceView* scSrv =
+        schatten.empty() ? nullptr : holeTexBild(schattenBild);
+    if (dlSrv == nullptr && scSrv == nullptr) {
+        return 0;
+    }
+    setzeSchritt("Licht: Shader");
+    if (!holeLichtShader(fehler)) {
+        return 0;
+    }
+    if (g_cbLicht == nullptr) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = static_cast<UINT>(kLichtFloats * sizeof(float));
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(d->CreateBuffer(&bd, nullptr, &g_cbLicht))) {
+            if (fehler != nullptr) { *fehler = "Lichtpuffer nicht anlegbar"; }
+            return 0;
+        }
+    }
+    Netzpuffer& np = g_netz[0];
+    if (np.vb == nullptr || np.ib == nullptr || np.schrittweite == 0) {
+        return 0;
+    }
+    // Wie beim Gluehen: nach den Movern und Figuren steht in gViewProj
+    // nicht mehr die reine Kamera.
+    if (g_bildDatenDa && g_cbBild != nullptr) {
+        std::memcpy(g_bildDaten, viewProj, 16U * sizeof(float));
+        D3D11_MAPPED_SUBRESOURCE mb{};
+        if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
+            std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+            c->Unmap(g_cbBild, 0);
+        }
+    }
+    setzeSchritt("Licht: binden");
+    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+    D3D11_VIEWPORT vp{};
+    vp.Width = static_cast<float>(g_zielW);
+    vp.Height = static_cast<float>(g_zielH);
+    vp.MaxDepth = 1.0F;
+    c->RSSetViewports(1, &vp);
+    const UINT schritt = np.schrittweite;
+    const UINT versatz = 0;
+    c->IASetVertexBuffers(0, 1, &np.vb, &schritt, &versatz);
+    c->IASetIndexBuffer(np.ib, DXGI_FORMAT_R32_UINT, 0);
+    c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    c->IASetInputLayout(g_lichtLayout);
+    c->VSSetShader(g_lichtVs, nullptr, 0);
+    c->VSSetConstantBuffers(0, 1, &g_cbBild);
+    c->PSSetConstantBuffers(4, 1, &g_cbLicht);
+    ID3D11SamplerState* sampler[2] = {g_sampler, g_samplerRand};
+    c->PSSetSamplers(0, 2, sampler);
+    // Auf der gezeichneten Flaeche, ohne zu schreiben - GLS_DEPTHFUNC_EQUAL
+    // in der Engine, LESS_EQUAL hier aus demselben Grund wie bei
+    // `depthFunc equal` (holeTiefe).
+    PipelineState tiefe;
+    tiefe.blend = Blend::Add;
+    tiefe.depthWrite = false;
+    tiefe.depthTestEqual = true;
+    ID3D11DepthStencilState* ds = holeTiefe(tiefe);
+    if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
+    ID3D11BlendState* mitBild = holeBlend(Blend::Add);
+    ID3D11BlendState* ohneBild =
+        holeBlend(Blend::Unbekannt, BlendFactor::DstColor, BlendFactor::One);
+    ID3D11BlendState* abdunkeln =
+        holeBlend(Blend::Unbekannt, BlendFactor::Zero, BlendFactor::SrcColor);
+    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+
+    setzeSchritt("Licht: Zeichenliste");
+    const std::vector<DrawCall> calls = buildDrawCalls(mesh, textures, zeitSekunden);
+    const std::vector<StapelKasten>& kaesten = stapelKaesten(mesh);
+    std::vector<int> lichtNr;
+    std::vector<int> schattenNr;
+    int abgesetzt = 0;
+    setzeSchritt("Licht: zeichnen");
+    for (const DrawCall& call : calls) {
+        // Nur die Grundstufe deckender Flaechen: sort <= SS_OPAQUE in der
+        // Engine. Bewegte Ecken (deformVertexes, autosprite) lagen im
+        // ersten Durchgang woanders, als dieser Shader sie hinlegen wuerde.
+        if (call.zusatzstufe || call.state.blend != Blend::Opaque ||
+            (call.state.features & (kSky | kDeform | kAutosprite)) != 0U ||
+            call.batch >= mesh.batches.size() || call.batch >= kaesten.size()) {
+            continue;
+        }
+        const BspMesh::Batch& bt = mesh.batches[call.batch];
+        std::uint32_t flaggen = 0;
+        if (geo != nullptr && bt.shader >= 0 &&
+            static_cast<std::size_t>(bt.shader) < geo->shaders.size()) {
+            flaggen = geo->shaders[static_cast<std::size_t>(bt.shader)].surfaceFlags;
+        }
+        if ((flaggen & kSurfSkyFlag) != 0U) {
+            continue;
+        }
+        const StapelKasten& k = kaesten[call.batch];
+        lichtNr.clear();
+        schattenNr.clear();
+        if (dlSrv != nullptr && (flaggen & kSurfNoDlight) == 0U) {
+            for (std::size_t i = 0; i < lichter.size() &&
+                                    lichtNr.size() < static_cast<std::size_t>(kMaxLichter);
+                 ++i) {
+                if (lichter[i].radius > 0.0F &&
+                    kastenNahe(k, lichter[i].ort, lichter[i].radius)) {
+                    lichtNr.push_back(static_cast<int>(i));
+                }
+            }
+        }
+        if (scSrv != nullptr && (flaggen & (kSurfNoImpact | kSurfNoMarks)) == 0U) {
+            for (std::size_t i = 0; i < schatten.size() &&
+                                    schattenNr.size() < static_cast<std::size_t>(kMaxSchatten);
+                 ++i) {
+                // Quadrat +-radius in der Ebene, 32 darueber und 20 darunter.
+                if (kastenNahe(k, schatten[i].ort, schatten[i].radius + 32.0F)) {
+                    schattenNr.push_back(static_cast<int>(i));
+                }
+            }
+        }
+        if (lichtNr.empty() && schattenNr.empty()) {
+            continue;
+        }
+        const float stapelZeit = zeitSekunden - bt.shaderTime;
+        const BatchState bs2 = batchStateFor(textures, call.bild, stapelZeit);
+        ID3D11ShaderResourceView* bild =
+            holeBild(textures, animBildFuer(textures, call.bild, stapelZeit));
+        if (bild == nullptr) {
+            continue;
+        }
+        // Das Bild der Grundstufe nimmt die Engine nur ohne tcMod und ohne
+        // tcGen environment (dStage, ProjectDlightTexture2) - sonst mischt
+        // sie das Licht ohne Bild auf den Bildspeicher.
+        const bool mitTextur = bs2.numTexMods == 0 && bs2.texGen != TexGen::Environment;
+        const float schwelle = ((call.state.features & kAlphaTest) != 0U)
+                                   ? std::max(call.state.alphaSchwelle, 1.0e-4F)
+                                   : 0.0F;
+        c->RSSetState(holeRaster(call.state.features));
+        auto packe = [&](bool licht) {
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (FAILED(c->Map(g_cbLicht, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+                return false;
+            }
+            auto* f = static_cast<float*>(m.pData);
+            std::memset(f, 0, kLichtFloats * sizeof(float));
+            f[0] = licht ? static_cast<float>(lichtNr.size()) : 0.0F;
+            f[1] = licht ? 0.0F : static_cast<float>(schattenNr.size());
+            f[2] = schwelle;
+            f[3] = (licht && mitTextur) ? 1.0F : 0.0F;
+            if (licht) {
+                // OHNE den Helligkeitsregler. Der steht fuer
+                // r_mapOverBrightBits - das Verschieben der Lightmaps beim
+                // Laden (R_ColorShiftLightingBytes). Das dynamische Licht
+                // kommt daran nicht vorbei: es ist dl->color * modulate,
+                // und mit r_overBrightBits 0 (Vorgabe, auch in der
+                // jaconfig.cfg der Mod) hebt keine Gammarampe den
+                // Bildspeicher nachtraeglich an. Mit dem Faktor 2 war der
+                // Lichtkreis eines Schwertes eine grelle Scheibe.
+                for (std::size_t j = 0; j < lichtNr.size(); ++j) {
+                    const WeltLicht& l = lichter[static_cast<std::size_t>(lichtNr[j])];
+                    float* o = f + kLichtOrtAt + 4U * j;
+                    float* fa = f + kLichtFarbeAt + 4U * j;
+                    o[0] = l.ort[0]; o[1] = l.ort[1]; o[2] = l.ort[2]; o[3] = l.radius;
+                    fa[0] = l.farbe[0]; fa[1] = l.farbe[1]; fa[2] = l.farbe[2];
+                }
+            } else {
+                for (std::size_t j = 0; j < schattenNr.size(); ++j) {
+                    const BlobSchatten& s = schatten[static_cast<std::size_t>(schattenNr[j])];
+                    float* o = f + kSchattenOrtAt + 4U * j;
+                    float* n = f + kSchattenNormaleAt + 4U * j;
+                    o[0] = s.ort[0]; o[1] = s.ort[1]; o[2] = s.ort[2]; o[3] = s.radius;
+                    n[0] = s.normale[0]; n[1] = s.normale[1]; n[2] = s.normale[2];
+                    n[3] = s.alpha;
+                }
+            }
+            c->Unmap(g_cbLicht, 0);
+            return true;
+        };
+        // Erst das Licht (Teil des Shaders der Flaeche), dann der Schatten
+        // (ein Abziehbild der Sortierstufe decal - kommt spaeter).
+        if (!lichtNr.empty() && packe(true)) {
+            c->OMSetBlendState(mitTextur ? mitBild : ohneBild, faktor, 0xFFFFFFFFU);
+            c->PSSetShader(g_lichtPs, nullptr, 0);
+            ID3D11ShaderResourceView* srvs[2] = {bild, dlSrv};
+            c->PSSetShaderResources(0, 2, srvs);
+            c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
+            ++abgesetzt;
+        }
+        if (!schattenNr.empty() && packe(false)) {
+            c->OMSetBlendState(abdunkeln, faktor, 0xFFFFFFFFU);
+            c->PSSetShader(g_schattenPs, nullptr, 0);
+            ID3D11ShaderResourceView* srvs[2] = {bild, scSrv};
+            c->PSSetShaderResources(0, 2, srvs);
+            c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
+            ++abgesetzt;
+        }
+    }
+    ID3D11ShaderResourceView* nichts[2] = {nullptr, nullptr};
+    c->PSSetShaderResources(0, 2, nichts);
+    return abgesetzt;
+}
+
 int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                    const std::vector<BoneMatrix>& knochen, const float* welt,
                    const float* viewProj, std::string* fehler,
@@ -2809,6 +3168,7 @@ void vergissKarte() {
 void shutdown() {
     gibKlingenFrei();
     gibModellFrei();
+    gibLichtFrei();
     // Dieselben Freigaben noch einmal ausgeschrieben, damit lint_d3dbesitz
     // sie sieht (gibKlingenFrei/gibModellFrei haben sie schon genullt).
     if (g_klingeVb != nullptr) { g_klingeVb->Release(); g_klingeVb = nullptr; }
@@ -3744,6 +4104,15 @@ int zeichneMover(const BspMesh&, const TextureSet*, const BspGeometry*,
 int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
                    const float*, float, int, int, bool,
                    std::string* fehler) {
+    if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
+    return 0;
+}
+int zeichneLichtUndSchatten(const BspMesh&, const TextureSet*, const BspGeometry*,
+                            const float*, float,
+                            const std::vector<WeltLicht>&,
+                            const std::vector<BlobSchatten>&,
+                            const TextureSet::Tex*, const TextureSet::Tex*,
+                            std::string* fehler) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }
