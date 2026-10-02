@@ -4959,28 +4959,27 @@ void drawUndoListe() {
         breite = std::max(breite, ImGui::CalcTextSize(x.c_str()).x + stil.WindowPadding.x * 2.0F + stil.ScrollbarSize);
     }
     breite = std::min(breite, ImGui::GetFontSize() * 60.0F);
+    static bool bisHierZeigen = false;
     bool ausfuehren = false;
     if (ImGui::BeginChild("##undoeintraege", ImVec2{breite, hoehe}, ImGuiChildFlags_Borders)) {
         if (e.empty()) {
             ImGui::TextDisabled("%s", tr(Str::UndoListEmpty));
         }
+        // Ein Klick markiert NUR diesen Eintrag (shank: "wenn ich auf einen
+        // drauf klicke, markiert es immer alle direkt statt nur den einen").
+        // Welche "Undo up to here" mitnaehme, zeigt sich blass, solange die
+        // Maus ueber diesem Knopf steht (gemerkt aus dem vorigen Bild).
         for (std::size_t k = 0; k < e.size(); ++k) {
             ImGui::PushID(static_cast<int>(k));
-            const bool markiert = static_cast<int>(k) <= g_app->undoListeMarke;
-            // Der angeklickte Eintrag kraeftig, die mitgenommenen darueber
-            // blass: "Undo" nimmt alle markierten, "Undo only this step" nur
-            // den kraeftigen.
-            const bool blass = markiert && static_cast<int>(k) != g_app->undoListeMarke;
+            const bool gewaehlt = static_cast<int>(k) == g_app->undoListeMarke;
+            const bool blass = bisHierZeigen && static_cast<int>(k) < g_app->undoListeMarke;
             if (blass) {
                 ImVec4 c = ImGui::GetStyleColorVec4(ImGuiCol_Header);
                 c.w *= 0.40F;
                 ImGui::PushStyleColor(ImGuiCol_Header, c);
             }
-            if (ImGui::Selectable(e[k].c_str(), markiert, ImGuiSelectableFlags_AllowDoubleClick)) {
+            if (ImGui::Selectable(e[k].c_str(), gewaehlt || blass)) {
                 g_app->undoListeMarke = static_cast<int>(k);
-                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                    ausfuehren = true;
-                }
             }
             if (blass) {
                 ImGui::PopStyleColor();
@@ -4991,10 +4990,14 @@ void drawUndoListe() {
     ImGui::EndChild();
     const float knopf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
     ImGui::BeginDisabled(e.empty());
-    if (ImGui::Button(tr(g_app->undoListeRedo ? Str::EditRedo : Str::EditUndo), ImVec2{knopf, 0.0F})) {
+    if (ImGui::Button(tr(g_app->undoListeRedo ? Str::RedoUpToHere : Str::UndoUpToHere), ImVec2{knopf, 0.0F})) {
         ausfuehren = true;
     }
     ImGui::EndDisabled();
+    bisHierZeigen = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+    if (bisHierZeigen) {
+        ImGui::SetTooltip("%s", tr(g_app->undoListeRedo ? Str::RedoUpToHereHint : Str::UndoUpToHereHint));
+    }
     ImGui::SameLine();
     if (ImGui::Button(tr(Str::EditorCancel), ImVec2{-FLT_MIN, 0.0F})) {
         ImGui::CloseCurrentPopup();

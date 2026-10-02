@@ -5305,7 +5305,7 @@ std::vector<Schritt> undoListeSchritte() {
     }));
     add(tu("Undo-Liste: beide markieren", [] { g_app->undoListeMarke = 1; }));
     add(pause(0.2));
-    add(klick(tr(Str::EditUndo), "##Popup"));
+    add(klick(tr(Str::UndoUpToHere), "##Popup"));
     add(pause(0.3));
     add(pruefe("Undo-Liste: Undo nimmt beide markierten Schritte zurueck (alles wie beim Laden)", [] {
         const Node* a = nodeAt(g_app->doc.script(), Path{1});

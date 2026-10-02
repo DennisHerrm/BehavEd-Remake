@@ -1,5 +1,17 @@
 # Änderungen seit rc94
 
+## rc572 — Undo-Liste: ein Klick markiert nur einen Eintrag
+
+Gefragt: „Wenn ich auf einen drauf klicke, markiert es immer alle direkt statt
+nur den einen, den ich wähle – soll das so sein?“ – Nein.
+
+* Ein Klick markiert jetzt **nur** diesen Eintrag.
+* **„Undo up to here“** (vorher „Undo“) nimmt ihn und alle neueren darüber
+  zurück; solange die Maus über dem Knopf steht, sind die mitgenommenen
+  Einträge blass markiert – man sieht vorher, was passiert.
+* **„Undo only this step“** nimmt nur den markierten zurück.
+* Kein Doppelklick-Undo mehr – ein Klick soll nie mehr tun, als man sieht.
+
 ## rc571 — Datenverlust beim Schließen von Reitern behoben, Sicherungen, Undo aus der Mitte
 
 ### Arbeit ging verloren, wenn man einen ANDEREN Reiter schloss
