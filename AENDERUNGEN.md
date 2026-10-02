@@ -1,5 +1,29 @@
 # Änderungen seit rc94
 
+## rc577 — Licht und Nebel auf Movern, AT-ST-Fußschatten, Einstellungen bleiben
+
+Gewünscht: „Mach mit allem weiter“ – die offenen Punkte aus rc576.
+
+* **Mover** (Türen, Plattformen, Schiffe, die Hochhäuser in t1_rail):
+  * Dynamisches Licht wie auf der Welt. Die Lichter werden in den Raum des
+    Movers umgerechnet (R_TransformDlights, `dl->transformed`) – Kehrmatrix
+    der Moverstellung, Radius durch den Maßstab. Nur Brush-Modelle; Kartenmodelle
+    aus .md3 bekommen in der Engine kein projiziertes Licht. Flecken
+    (markShadow) legt die Engine nur auf die Welt – so auch hier.
+  * Nebel: Brush-Modelle mit dem Nebel ihrer Flächen (dsurface_t.fogNum),
+    Kartenmodelle mit dem Nebel ihres Ursprungs. Blickrichtung, Kamera und
+    Nebelebene werden dafür in den Modellraum gerechnet, `eye_t` bleibt in der
+    Welt. Ob ein Netz aus Kartenflächen besteht, prüft `istKartenNetz`.
+  * Die Hüllkästen für die Auswahl der Stapel gibt es jetzt je Netz, nicht nur
+    für die Karte.
+* **AT-ST**: die zwei kleinen Flecken unter den Füßen (Bolzen `*l_foot` /
+  `*r_foot`, 30 Einheiten nach oben, Radius 28) neben dem großen (64) –
+  CG_PlayerShadow.
+* **Einstellungen bleiben**: Schattenart, Nebel und dynamisches Licht stehen in
+  behaved.cfg (`schattenArt`, `nebel`, `dynLicht`).
+* **Selbsttest** (Modus `karte`): alle vier Schattenarten zeichnen ohne Fehler
+  und ohne Meldung der Debugschicht; Nebel und dynamisches Licht schalten um.
+
 ## rc576 — Alle Schattenarten und der Nebel aus der Karte
 
 Gemeldet: „Es gibt mehrere Schattenarten – und ja, mach mit Nebel weiter.“

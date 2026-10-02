@@ -208,7 +208,9 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
                             const std::vector<BlobSchatten>& schatten,
                             const TextureSet::Tex* dlichtBild,
                             const TextureSet::Tex* schattenBild,
-                            std::string* fehler);
+                            std::string* fehler, const float* welt = nullptr);
+// `welt`: ein Mover (Stellung wie bei zeichneMover). Dann nur das Licht, in
+// seinen Raum umgerechnet, und nur fuer Brush-Modelle.
 
 // --- Die Schattenarten 2 und 3 an den Figuren -----------------------------
 //
@@ -251,7 +253,10 @@ struct NebelGpu {
 int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeometry* geo,
                  const float* viewProj, float zeitSekunden, const float* kamera,
                  const std::vector<NebelGpu>& nebel,
-                 const std::vector<FigurSchatten>& figuren, std::string* fehler);
+                 const std::vector<FigurSchatten>& figuren, std::string* fehler,
+                 const float* welt = nullptr, int objektNebel = -1);
+// `welt`: ein Mover. Brush-Modelle nehmen den Nebel ihrer Flaechen,
+// Kartenmodelle `objektNebel` (der Nebel an ihrem Ursprung).
 
 // Das Renderziel auf die gewuenschte Groesse bringen. Legt beim ersten Mal
 // und bei jeder Groessenaenderung neu an.

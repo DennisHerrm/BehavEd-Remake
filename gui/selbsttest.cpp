@@ -3559,6 +3559,21 @@ std::vector<Schritt> kartenBreitSchritte() {
         add(gezeichnet(name + " zurueck"));
         add(pruefe("Seitenleiste: " + name + " zurueck", [=] { return *wert == *vorher; }));
     }
+    // Die vier Schattenarten (cg_shadows 0..3): jede zeichnet ohne Fehler und
+    // ohne Beanstandung der Debugschicht - Art 2 benutzt Geometrie-Shader und
+    // Stencil, Art 3 einen eigenen Vertex-Shader.
+    auto d3dVorher = std::make_shared<std::size_t>(0);
+    add(tu("Schattenart: Stand merken", [=] { *d3dVorher = g_app->d3dMeldungen.size(); }));
+    for (int art = 0; art <= 3; ++art) {
+        const std::string n = std::to_string(art);
+        add(tu("Schattenart " + n, [=] { g_app->schattenArt = art; g_app->mapDirty = true; }));
+        add(gezeichnet("Schattenart " + n));
+        add(pruefe("Seitenleiste: Schattenart " + n + " zeichnet ohne Fehler", [=] {
+            return g_app->gpuFehler.empty() && g_app->d3dMeldungen.size() == *d3dVorher;
+        }));
+    }
+    add(tu("Schattenart zurueck auf rund", [] { g_app->schattenArt = 1; g_app->mapDirty = true; }));
+    add(gezeichnet("Schattenart rund"));
     // Wirkung einzeln
     add(tu("Entities aus", [] { g_app->showEntities = false; g_app->mapDirty = true; }));
     add(gezeichnet("ohne Entities"));

@@ -148,6 +148,11 @@ struct Settings {
     bool timelineFrames = false;
     // Die Einstellungen rechts neben der Ansicht: auf oder zu?
     bool mapSidebar = true;
+    // Kartenansicht: Schattenart wie cg_shadows (0..3), Nebel (r_drawfog),
+    // dynamisches Licht (r_dynamiclight). Vorgaben wie im Spiel.
+    int schattenArt = 1;
+    bool nebel = true;
+    bool dynLicht = true;
     // Die Trennlinien im Raster der geteilten Ansicht.
     float splitFracX = 0.5F;
     float splitFracY = 0.5F;

@@ -12710,6 +12710,9 @@ void loadSettings(App* a) {
     a->timelineFrac = a->settings.timelineFrac;
     a->timelineFrames = a->settings.timelineFrames;
     a->mapSidebar = a->settings.mapSidebar;
+    a->schattenArt = a->settings.schattenArt;
+    a->showFog = a->settings.nebel;
+    a->showDynLights = a->settings.dynLicht;
     a->splitFracX = a->settings.splitFracX;
     a->splitFracY = a->settings.splitFracY;
     // --- Protokoll: was aus der Datei kam --------------------------------
@@ -12782,6 +12785,9 @@ void saveSettings(App* a) {
     a->settings.timelineFrac = a->timelineFrac;
     a->settings.timelineFrames = a->timelineFrames;
     a->settings.mapSidebar = a->mapSidebar;
+    a->settings.schattenArt = a->schattenArt;
+    a->settings.nebel = a->showFog;
+    a->settings.dynLicht = a->showDynLights;
     a->settings.splitFracX = a->splitFracX;
     a->settings.splitFracY = a->splitFracY;
     // Das Gegenstueck zum Ladeprotokoll.

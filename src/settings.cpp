@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <fstream>
 #include <sstream>
+#include <cstdlib>
 #include <string>
 
 namespace bhed {
@@ -99,6 +100,9 @@ std::string writeSettings(const Settings& s) {
     put(o, "splitFracY", std::string(buf));
     put(o, "timelineFrames", s.timelineFrames);
     put(o, "mapSidebar", s.mapSidebar);
+    put(o, "schattenArt", std::to_string(s.schattenArt));
+    put(o, "nebel", s.nebel);
+    put(o, "dynLicht", s.dynLicht);
     put(o, "showTypes", s.showTypes);
     put(o, "gFloats", s.gFloats);
     put(o, "foldMacros", s.foldMacros);
@@ -257,6 +261,12 @@ bool readSettings(const std::string& text, Settings& out) {
         else if (key == "timelineFrames") {
             out.timelineFrames = (value == "true" || value == "1");
         }
+        else if (key == "schattenArt") {
+            const int n = std::atoi(value.c_str());
+            out.schattenArt = (n >= 0 && n <= 3) ? n : 1;
+        }
+        else if (key == "nebel") { out.nebel = toBool(value); }
+        else if (key == "dynLicht") { out.dynLicht = toBool(value); }
         else if (key == "mapSidebar") {
             out.mapSidebar = (value == "true" || value == "1");
         }

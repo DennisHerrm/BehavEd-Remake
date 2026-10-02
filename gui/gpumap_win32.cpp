@@ -2237,20 +2237,27 @@ struct StapelKasten {
     float mins[3]{};
     float maxs[3]{};
 };
-std::vector<StapelKasten> g_stapelKaesten;
-const void* g_kastenVerts = nullptr;
-const void* g_kastenIdx = nullptr;
-std::size_t g_kastenBatches = 0;
+// Je Netz (Karte und jeder Mover) eigene Kaesten - sonst baute jeder
+// Mover den Speicher der Karte neu.
+struct KastenSatz {
+    std::vector<StapelKasten> kaesten;
+    const void* verts = nullptr;
+    const void* idx = nullptr;
+    std::size_t batches = 0;
+};
+std::map<const BspMesh*, KastenSatz> g_kastenSaetze;
 
 const std::vector<StapelKasten>& stapelKaesten(const BspMesh& mesh) {
-    if (g_kastenVerts == mesh.verts.data() && g_kastenIdx == mesh.indexes.data() &&
-        g_kastenBatches == mesh.batches.size()) {
-        return g_stapelKaesten;
+    KastenSatz& satz = g_kastenSaetze[&mesh];
+    if (satz.verts == mesh.verts.data() && satz.idx == mesh.indexes.data() &&
+        satz.batches == mesh.batches.size()) {
+        return satz.kaesten;
     }
-    g_stapelKaesten.assign(mesh.batches.size(), StapelKasten{});
+    std::vector<StapelKasten>& kaesten = satz.kaesten;
+    kaesten.assign(mesh.batches.size(), StapelKasten{});
     for (std::size_t b = 0; b < mesh.batches.size(); ++b) {
         const BspMesh::Batch& bt = mesh.batches[b];
-        StapelKasten& k = g_stapelKaesten[b];
+        StapelKasten& k = kaesten[b];
         for (int a = 0; a < 3; ++a) {
             k.mins[a] = 1.0e30F;
             k.maxs[a] = -1.0e30F;
@@ -2268,10 +2275,72 @@ const std::vector<StapelKasten>& stapelKaesten(const BspMesh& mesh) {
             }
         }
     }
-    g_kastenVerts = mesh.verts.data();
-    g_kastenIdx = mesh.indexes.data();
-    g_kastenBatches = mesh.batches.size();
-    return g_stapelKaesten;
+    satz.verts = mesh.verts.data();
+    satz.idx = mesh.indexes.data();
+    satz.batches = mesh.batches.size();
+    return kaesten;
+}
+
+// Die Umkehrung einer 4x4-Matrix (Zeilen zuerst), Gauss-Jordan. Fuer die
+// Stellung eines Movers: die Engine rechnet die Lichter in den Raum des
+// Modells um (R_TransformDlights, `dl->transformed`), statt die Ecken in
+// die Welt zu bringen.
+bool invertiere4x4(const float* m, float* aus) {
+    double a[4][8];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            a[r][c] = m[r * 4 + c];
+            a[r][c + 4] = (r == c) ? 1.0 : 0.0;
+        }
+    }
+    for (int c = 0; c < 4; ++c) {
+        int best = c;
+        for (int r = c + 1; r < 4; ++r) {
+            if (std::fabs(a[r][c]) > std::fabs(a[best][c])) { best = r; }
+        }
+        if (std::fabs(a[best][c]) < 1.0e-12) {
+            return false;
+        }
+        if (best != c) {
+            for (int k = 0; k < 8; ++k) { std::swap(a[c][k], a[best][k]); }
+        }
+        const double p = a[c][c];
+        for (int k = 0; k < 8; ++k) { a[c][k] /= p; }
+        for (int r = 0; r < 4; ++r) {
+            if (r == c) { continue; }
+            const double f = a[r][c];
+            for (int k = 0; k < 8; ++k) { a[r][k] -= f * a[c][k]; }
+        }
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) { aus[r * 4 + c] = static_cast<float>(a[r][c + 4]); }
+    }
+    return true;
+}
+
+void punktMal(const float* m, const float p[3], float aus[3]) {
+    for (int r = 0; r < 3; ++r) {
+        aus[r] = m[r * 4 + 0] * p[0] + m[r * 4 + 1] * p[1] + m[r * 4 + 2] * p[2] + m[r * 4 + 3];
+    }
+}
+
+// Zeigen die Stapel eines Netzes auf Flaechen der Karte? Nur dann kennen
+// ihre Abschnitte (`runs`) einen Nebel aus dsurface_t, und nur Brush-Modelle
+// bekommen in der Engine das projizierte Licht. Kartenmodelle (md3) haengen
+// ihre Bilder hinten an den Texturensatz an - ihre Stapelnummern liegen
+// jenseits der Shader der Karte.
+bool istKartenNetz(const BspMesh& mesh, const BspGeometry* geo) {
+    if (geo == nullptr || mesh.batches.empty() || mesh.runs.empty()) {
+        return false;
+    }
+    for (const BspMesh::Batch& bt : mesh.batches) {
+        if (bt.numRuns == 0U || bt.firstRun >= mesh.runs.size()) {
+            continue;
+        }
+        const std::uint32_t sf = mesh.runs[bt.firstRun].surface;
+        return sf < geo->surfaces.size() && geo->surfaces[sf].shader == bt.shader;
+    }
+    return false;
 }
 
 // Beruehrt der Wuerfel um `ort` mit halber Kantenlaenge `r` den Kasten?
@@ -2353,17 +2422,50 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
                             const std::vector<BlobSchatten>& schatten,
                             const TextureSet::Tex* dlichtBild,
                             const TextureSet::Tex* schattenBild,
-                            std::string* fehler) {
+                            std::string* fehler, const float* welt) {
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (d == nullptr || c == nullptr || g_zielRtv == nullptr || g_tiefeDsv == nullptr ||
         viewProj == nullptr || mesh.batches.empty()) {
         return 0;
     }
+    // --- Ein Mover: Lichter in seinen Raum, keine Abziehbilder ------------
+    //
+    // CG_ImpactMark legt Flecken nur auf die Welt (R_MarkFragments laeuft
+    // ueber tr.world->nodes). Das projizierte Licht bekommen Brush-Modelle
+    // dagegen wie die Welt - mit den Lichtern im Raum des Modells.
+    std::vector<WeltLicht> lokal;
+    const std::vector<WeltLicht>* lichtListe = &lichter;
+    static const std::vector<BlobSchatten> kKeineSchatten;
+    const std::vector<BlobSchatten>* schattenListe = &schatten;
+    float mvp[16];
+    const float* matrix = viewProj;
+    if (welt != nullptr) {
+        if (!istKartenNetz(mesh, geo)) {
+            return 0;
+        }
+        float inv[16];
+        if (!invertiere4x4(welt, inv)) {
+            return 0;
+        }
+        // Der Massstab des Movers (Kartenmodelle mit modelscale) - der
+        // Radius schrumpft im Modellraum mit.
+        const float s = std::sqrt(welt[0] * welt[0] + welt[4] * welt[4] + welt[8] * welt[8]);
+        for (const WeltLicht& l : lichter) {
+            WeltLicht w = l;
+            punktMal(inv, l.ort, w.ort);
+            w.radius = (s > 1.0e-6F) ? l.radius / s : l.radius;
+            lokal.push_back(w);
+        }
+        lichtListe = &lokal;
+        schattenListe = &kKeineSchatten;
+        multipliziere(viewProj, welt, mvp);
+        matrix = mvp;
+    }
     ID3D11ShaderResourceView* dlSrv =
-        lichter.empty() ? nullptr : holeTexBild(dlichtBild);
+        lichtListe->empty() ? nullptr : holeTexBild(dlichtBild);
     ID3D11ShaderResourceView* scSrv =
-        schatten.empty() ? nullptr : holeTexBild(schattenBild);
+        schattenListe->empty() ? nullptr : holeTexBild(schattenBild);
     if (dlSrv == nullptr && scSrv == nullptr) {
         return 0;
     }
@@ -2382,17 +2484,29 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
             return 0;
         }
     }
-    Netzpuffer& np = g_netz[0];
+    Netzpuffer* npp = &g_netz[0];
+    if (welt != nullptr) {
+        const auto it = g_moverNetze.find(&mesh);
+        if (it == g_moverNetze.end()) {
+            return 0;
+        }
+        npp = &it->second;
+    }
+    Netzpuffer& np = *npp;
     if (np.vb == nullptr || np.ib == nullptr || np.schrittweite == 0) {
         return 0;
     }
     // Wie beim Gluehen: nach den Movern und Figuren steht in gViewProj
-    // nicht mehr die reine Kamera.
+    // nicht mehr die reine Kamera. Fuer einen Mover die Kamera mal seine
+    // Stellung - g_bildDaten selbst behaelt die reine Kamera.
     if (g_bildDatenDa && g_cbBild != nullptr) {
         std::memcpy(g_bildDaten, viewProj, 16U * sizeof(float));
+        float daten[40];
+        std::memcpy(daten, g_bildDaten, sizeof(daten));
+        std::memcpy(daten, matrix, 16U * sizeof(float));
         D3D11_MAPPED_SUBRESOURCE mb{};
         if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
-            std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+            std::memcpy(mb.pData, daten, sizeof(daten));
             c->Unmap(g_cbBild, 0);
         }
     }
@@ -2459,21 +2573,21 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
         lichtNr.clear();
         schattenNr.clear();
         if (dlSrv != nullptr && (flaggen & kSurfNoDlight) == 0U) {
-            for (std::size_t i = 0; i < lichter.size() &&
+            for (std::size_t i = 0; i < lichtListe->size() &&
                                     lichtNr.size() < static_cast<std::size_t>(kMaxLichter);
                  ++i) {
-                if (lichter[i].radius > 0.0F &&
-                    kastenNahe(k, lichter[i].ort, lichter[i].radius)) {
+                if ((*lichtListe)[i].radius > 0.0F &&
+                    kastenNahe(k, (*lichtListe)[i].ort, (*lichtListe)[i].radius)) {
                     lichtNr.push_back(static_cast<int>(i));
                 }
             }
         }
         if (scSrv != nullptr && (flaggen & (kSurfNoImpact | kSurfNoMarks)) == 0U) {
-            for (std::size_t i = 0; i < schatten.size() &&
+            for (std::size_t i = 0; i < schattenListe->size() &&
                                     schattenNr.size() < static_cast<std::size_t>(kMaxSchatten);
                  ++i) {
                 // Quadrat +-radius in der Ebene, 32 darueber und 20 darunter.
-                if (kastenNahe(k, schatten[i].ort, schatten[i].radius + 32.0F)) {
+                if (kastenNahe(k, (*schattenListe)[i].ort, (*schattenListe)[i].radius + 32.0F)) {
                     schattenNr.push_back(static_cast<int>(i));
                 }
             }
@@ -2517,7 +2631,7 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
                 // Bildspeicher nachtraeglich an. Mit dem Faktor 2 war der
                 // Lichtkreis eines Schwertes eine grelle Scheibe.
                 for (std::size_t j = 0; j < lichtNr.size(); ++j) {
-                    const WeltLicht& l = lichter[static_cast<std::size_t>(lichtNr[j])];
+                    const WeltLicht& l = (*lichtListe)[static_cast<std::size_t>(lichtNr[j])];
                     float* o = f + kLichtOrtAt + 4U * j;
                     float* fa = f + kLichtFarbeAt + 4U * j;
                     o[0] = l.ort[0]; o[1] = l.ort[1]; o[2] = l.ort[2]; o[3] = l.radius;
@@ -2525,7 +2639,7 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
                 }
             } else {
                 for (std::size_t j = 0; j < schattenNr.size(); ++j) {
-                    const BlobSchatten& s = schatten[static_cast<std::size_t>(schattenNr[j])];
+                    const BlobSchatten& s = (*schattenListe)[static_cast<std::size_t>(schattenNr[j])];
                     float* o = f + kSchattenOrtAt + 4U * j;
                     float* n = f + kSchattenNormaleAt + 4U * j;
                     o[0] = s.ort[0]; o[1] = s.ort[1]; o[2] = s.ort[2]; o[3] = s.radius;
@@ -3142,8 +3256,7 @@ void gibNebelFrei() {
 }
 
 // JeNebel fuer einen Nebel und eine Alphaschwelle.
-bool packeNebel(ID3D11DeviceContext* c, const NebelGpu& n, const float* kamera,
-                float schwelle) {
+bool packeNebel(ID3D11DeviceContext* c, const NebelGpu& n, float augeT, float schwelle) {
     D3D11_MAPPED_SUBRESOURCE m{};
     if (FAILED(c->Map(g_cbNebel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
         return false;
@@ -3155,10 +3268,7 @@ bool packeNebel(ID3D11DeviceContext* c, const NebelGpu& n, const float* kamera,
     f[3] = n.tcScale;
     for (int k = 0; k < 4; ++k) { f[4 + k] = n.ebene[k]; }
     f[8] = n.hatFlaeche ? 1.0F : 0.0F;
-    // eye_t: die Tiefe des AUGES unter der Nebeloberflaeche.
-    f[9] = n.hatFlaeche ? (kamera[0] * n.ebene[0] + kamera[1] * n.ebene[1] +
-                           kamera[2] * n.ebene[2] + n.ebene[3])
-                        : 1.0F;
+    f[9] = augeT;
     f[10] = schwelle;
     f[11] = 0.0F;
     c->Unmap(g_cbNebel, 0);
@@ -3170,7 +3280,8 @@ bool packeNebel(ID3D11DeviceContext* c, const NebelGpu& n, const float* kamera,
 int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeometry* geo,
                  const float* viewProj, float zeitSekunden, const float* kamera,
                  const std::vector<NebelGpu>& nebel,
-                 const std::vector<FigurSchatten>& figuren, std::string* fehler) {
+                 const std::vector<FigurSchatten>& figuren, std::string* fehler,
+                 const float* welt, int objektNebel) {
     ID3D11DeviceContext* c = ctx();
     if (c == nullptr || nebel.empty() || viewProj == nullptr || kamera == nullptr ||
         g_zielRtv == nullptr || g_tiefeDsv == nullptr || geo == nullptr) {
@@ -3180,11 +3291,71 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
     if (!holeNebelZeug(fehler)) {
         return 0;
     }
-    if (g_bildDatenDa && g_cbBild != nullptr) {
+    // eye_t: die Tiefe des AUGES unter der Nebeloberflaeche - immer in der
+    // Welt gerechnet, auch fuer einen Mover.
+    std::vector<float> augeT(nebel.size(), 1.0F);
+    for (std::size_t i = 0; i < nebel.size(); ++i) {
+        const NebelGpu& n = nebel[i];
+        if (n.hatFlaeche) {
+            augeT[i] = kamera[0] * n.ebene[0] + kamera[1] * n.ebene[1] +
+                       kamera[2] * n.ebene[2] + n.ebene[3];
+        }
+    }
+    // --- Ein Mover: alles in seinen Raum -----------------------------------
+    //
+    // Mit A = Drehung/Massstab und T = Verschiebung des Movers gilt fuer
+    // einen Punkt v im Modellraum:
+    //     Abstand  = dot(A v + T - kamera, vorn) = dot(v, A^T vorn) - dot(kamera - T, vorn)
+    //     Tiefe    = dot(A v + T, n) + w         = dot(v, A^T n) + (dot(T, n) + w)
+    // Der Shader rechnet dot(v, gVorn) - dot(gKamera, gVorn); also wird
+    // gVorn = A^T vorn und gKamera so gewaehlt, dass das Produkt stimmt.
+    std::vector<NebelGpu> lokal;
+    const std::vector<NebelGpu>* nebelListe = &nebel;
+    float daten[40];
+    std::memcpy(daten, g_bildDaten, sizeof(daten));
+    std::memcpy(daten, viewProj, 16U * sizeof(float));
+    Netzpuffer* npp = &g_netz[0];
+    bool kartenNetz = true;
+    if (welt != nullptr) {
+        const auto it = g_moverNetze.find(&mesh);
+        if (it == g_moverNetze.end()) {
+            return 0;
+        }
+        npp = &it->second;
+        kartenNetz = istKartenNetz(mesh, geo);
+        multipliziere(viewProj, welt, daten);
+        const float* vorn = g_bildDaten + 28;
+        float vl[3];
+        for (int k = 0; k < 3; ++k) {
+            vl[k] = welt[0 * 4 + k] * vorn[0] + welt[1 * 4 + k] * vorn[1] + welt[2 * 4 + k] * vorn[2];
+        }
+        const float kt = (kamera[0] - welt[3]) * vorn[0] + (kamera[1] - welt[7]) * vorn[1] +
+                         (kamera[2] - welt[11]) * vorn[2];
+        const float vv = vl[0] * vl[0] + vl[1] * vl[1] + vl[2] * vl[2];
+        for (int k = 0; k < 3; ++k) {
+            daten[28 + k] = vl[k];
+            daten[16 + k] = (vv > 1.0e-12F) ? vl[k] * kt / vv : 0.0F;
+        }
+        for (const NebelGpu& n : nebel) {
+            NebelGpu m = n;
+            if (n.hatFlaeche) {
+                for (int k = 0; k < 3; ++k) {
+                    m.ebene[k] = welt[0 * 4 + k] * n.ebene[0] + welt[1 * 4 + k] * n.ebene[1] +
+                                 welt[2 * 4 + k] * n.ebene[2];
+                }
+                m.ebene[3] = welt[3] * n.ebene[0] + welt[7] * n.ebene[1] + welt[11] * n.ebene[2] +
+                             n.ebene[3];
+            }
+            lokal.push_back(m);
+        }
+        nebelListe = &lokal;
+    } else {
         std::memcpy(g_bildDaten, viewProj, 16U * sizeof(float));
+    }
+    if (g_bildDatenDa && g_cbBild != nullptr) {
         D3D11_MAPPED_SUBRESOURCE mb{};
         if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
-            std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+            std::memcpy(mb.pData, daten, sizeof(daten));
             c->Unmap(g_cbBild, 0);
         }
     }
@@ -3214,7 +3385,7 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
 
     int abgesetzt = 0;
     // --- Die Karte: je Flaeche ihr eigener Nebel (dsurface_t.fogNum) ------
-    Netzpuffer& np = g_netz[0];
+    Netzpuffer& np = *npp;
     if (np.vb != nullptr && np.ib != nullptr && np.schrittweite != 0) {
         const UINT schritt = np.schrittweite;
         const UINT versatz = 0;
@@ -3259,17 +3430,32 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
                     c->PSSetShaderResources(0, 1, srvs);
                     gebunden = true;
                 }
-                if (packeNebel(c, nebel[static_cast<std::size_t>(offenNebel)], kamera, schwelle)) {
+                if (packeNebel(c, (*nebelListe)[static_cast<std::size_t>(offenNebel)],
+                               augeT[static_cast<std::size_t>(offenNebel)], schwelle)) {
                     c->DrawIndexed(offenZahl, offenAnfang, 0);
                     ++abgesetzt;
                 }
             };
+            // Ohne Abschnitte (Kartenmodelle aus .md3): der ganze Stapel im
+            // Nebel des Ursprungs.
+            if (bt.numRuns == 0U) {
+                if (objektNebel >= 0 && static_cast<std::size_t>(objektNebel) < nebel.size() &&
+                    nebel[static_cast<std::size_t>(objektNebel)].gueltig) {
+                    offenNebel = objektNebel;
+                    offenAnfang = call.firstIndex;
+                    offenZahl = call.numIndexes;
+                    absetzen();
+                }
+                continue;
+            }
             const std::uint32_t ende = std::min<std::uint32_t>(
                 bt.firstRun + bt.numRuns, static_cast<std::uint32_t>(mesh.runs.size()));
             for (std::uint32_t r = bt.firstRun; r < ende; ++r) {
                 const BspMesh::Run& run = mesh.runs[r];
-                int fog = -1;
-                if (run.surface < geo->surfaces.size()) {
+                // Brush-Flaechen tragen ihren Nebel selbst; ein Kartenmodell
+                // bekommt den seines Ursprungs (R_ComputeFogNum).
+                int fog = objektNebel;
+                if (kartenNetz && run.surface < geo->surfaces.size()) {
                     fog = geo->surfaces[run.surface].fog;
                 }
                 if (fog < 0 || static_cast<std::size_t>(fog) >= nebel.size() ||
@@ -3321,7 +3507,8 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
         float* l = fk + static_cast<std::size_t>(kMaxKnochen) * 12U + 16U;
         for (int k = 0; k < 12; ++k) { l[k] = 0.0F; }
         c->Unmap(g_cbFigur, 0);
-        if (!packeNebel(c, nebel[static_cast<std::size_t>(f.nebel)], kamera, 0.0F)) {
+        if (!packeNebel(c, nebel[static_cast<std::size_t>(f.nebel)],
+                        augeT[static_cast<std::size_t>(f.nebel)], 0.0F)) {
             continue;
         }
         const UINT schritt = sizeof(SkinVertex);
@@ -4719,7 +4906,7 @@ int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
 }
 int zeichneNebel(const BspMesh&, const TextureSet*, const BspGeometry*, const float*, float,
                  const float*, const std::vector<NebelGpu>&,
-                 const std::vector<FigurSchatten>&, std::string* fehler) {
+                 const std::vector<FigurSchatten>&, std::string* fehler, const float*, int) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }
@@ -4733,7 +4920,7 @@ int zeichneLichtUndSchatten(const BspMesh&, const TextureSet*, const BspGeometry
                             const std::vector<WeltLicht>&,
                             const std::vector<BlobSchatten>&,
                             const TextureSet::Tex*, const TextureSet::Tex*,
-                            std::string* fehler) {
+                            std::string* fehler, const float*) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }

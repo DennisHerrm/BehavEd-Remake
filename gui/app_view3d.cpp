@@ -2792,8 +2792,9 @@ std::vector<gpu::NebelGpu> nebelListe() {
 
 // Der Radius des Blobschattens nach der Klasse aus der .npc
 // (CG_PlayerShadow): Rancor 64, AT-ST 64 (dazu zwei kleine unter den
-// Fuessen, die hier fehlen), Sandwurm keiner.
-float schattenRadiusFuer(const std::string& npcType) {
+// Fuessen, `fuesse`), Sandwurm keiner.
+float schattenRadiusFuer(const std::string& npcType, bool* fuesse = nullptr) {
+    if (fuesse != nullptr) { *fuesse = false; }
     auto it = g_app->npcMap.find(npcType);
     if (it == g_app->npcMap.end()) {
         std::string k = npcType;
@@ -2807,6 +2808,9 @@ float schattenRadiusFuer(const std::string& npcType) {
     for (char& c : kl) { c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
     if (kl == "CLASS_SAND_CREATURE") {
         return 0.0F;
+    }
+    if (kl == "CLASS_ATST" && fuesse != nullptr) {
+        *fuesse = true;
     }
     if (kl == "CLASS_RANCOR" || kl == "CLASS_ATST") {
         return 64.0F;
@@ -10253,7 +10257,7 @@ void drawMapView() {
                 // rechnet sie an derselben Stelle drauf
                 // (R_SetupEntityLighting, tr_light.cpp:435 ff.).
                 addDynamicLights(d.light, d.pos, figurLichter);
-                d.schattenRadius = schattenRadiusFuer(a.npcType);
+                d.schattenRadius = schattenRadiusFuer(a.npcType, &d.schattenFuesse);
 
                 // --- Waffe, Lichtschwerter, Kinomodelle -------------
                 //
@@ -10475,6 +10479,8 @@ void drawMapView() {
                 // Die Figuren fuer die Schattenarten 2 und 3 - erst nach
                 // allem Deckenden zu zeichnen, deshalb gesammelt.
                 std::vector<gpu::FigurSchatten> figurSchatten;
+                // Die Fuesse des AT-ST fuer die beiden kleinen Flecken.
+                std::vector<std::array<float, 3>> fussSchatten;
                 for (int durchgang = 0; durchgang < 2; ++durchgang) {
                     const gpu::Lage lage = (durchgang == 0)
                                                ? gpu::Lage::Deckend
@@ -10637,6 +10643,30 @@ void drawMapView() {
                         g_app->gpuAufrufe += n;
                         g_app->gpuFiguren2 += n;
                         if (n == 0 && f.empty()) { f = ff; }
+
+                        // --- Die Fuesse des AT-ST (CG_PlayerShadow) ----------
+                        //
+                        // sideOrigin = Bolzen "*l_foot"/"*r_foot", 30 nach oben
+                        // ("fudge up a bit for coplaner"), Radius 28. Nur die
+                        // Flecken - fuer Art 2/3 zaehlt allein die Ebene.
+                        if (g_app->schattenArt == 1 && a.schattenFuesse && a.anim != nullptr &&
+                            !welt.empty()) {
+                            for (const char* bolzen : {"*l_foot", "*r_foot"}) {
+                                const int sf = surfaceIndex(*a.model, bolzen);
+                                BoneMatrix bm{};
+                                if (sf < 0 || !boltMatrix(*a.model, sf, welt, *a.anim, bm)) {
+                                    continue;
+                                }
+                                std::array<float, 3> p{};
+                                for (int r = 0; r < 3; ++r) {
+                                    p[static_cast<std::size_t>(r)] =
+                                        fw[r * 4 + 0] * bm.m[0][3] + fw[r * 4 + 1] * bm.m[1][3] +
+                                        fw[r * 4 + 2] * bm.m[2][3] + fw[r * 4 + 3];
+                                }
+                                p[2] += 30.0F;
+                                fussSchatten.push_back(p);
+                            }
+                        }
 
                         // --- Schattenart 2 und 3: die Ebene darunter ------
                         //
@@ -10871,6 +10901,12 @@ void drawMapView() {
                                 blobs.push_back(b);
                             }
                         }
+                        for (const std::array<float, 3>& p : fussSchatten) {
+                            gpu::BlobSchatten b;
+                            if (blobSchattenFuer(p.data(), 28.0F, b)) {
+                                blobs.push_back(b);
+                            }
+                        }
                     }
                     if (!weltLichter.empty() || !blobs.empty()) {
                         gpu::setzeSchritt("Licht und Schatten");
@@ -10882,6 +10918,32 @@ void drawMapView() {
                         g_app->gpuAufrufe += nl;
                         g_app->gpuKarte += nl;
                         if (f.empty()) { f = fl; }
+                    }
+                    // Tueren, Plattformen, Schiffe: das Licht wie auf der
+                    // Welt, im Raum des Movers (R_TransformDlights).
+                    // Abziehbilder legt die Engine nur auf die Welt.
+                    const auto moverWelt = [](const MoverDraw& mv, float* mw) {
+                        const bool taumelt = (mv.pitch != 0.0F || mv.roll != 0.0F);
+                        gpu::baueMoverWelt(mv.pivot, mv.offset, mv.yaw, mv.pitch,
+                                           mv.roll, taumelt, mw, mv.scale);
+                    };
+                    if (!weltLichter.empty()) {
+                        static const std::vector<gpu::BlobSchatten> kKeine;
+                        for (const MoverDraw& mv : movers) {
+                            if (mv.mesh == nullptr || mv.mesh->indexes.empty() ||
+                                mv.mesh == &g_app->effectMesh) {
+                                continue;
+                            }
+                            float mw[16];
+                            moverWelt(mv, mw);
+                            std::string fl;
+                            const int nl = gpu::zeichneLichtUndSchatten(
+                                *mv.mesh, &g_app->textures, &g_app->geo, vp, zeit,
+                                weltLichter, kKeine, gfxBild("gfx/2d/dlight"), nullptr,
+                                &fl, mw);
+                            g_app->gpuAufrufe += nl;
+                            g_app->gpuMover += nl;
+                        }
                     }
                     // Der Nebel gehoert zu jeder Flaeche (RB_FogPass nach
                     // ihren Stufen und dem dynamischen Licht); die
@@ -10898,6 +10960,26 @@ void drawMapView() {
                         g_app->gpuAufrufe += nn;
                         g_app->gpuKarte += nn;
                         if (f.empty()) { f = fn; }
+                        // Die Mover: Brush-Modelle mit dem Nebel ihrer
+                        // Flaechen, Kartenmodelle mit dem ihres Ursprungs.
+                        const std::vector<gpu::NebelGpu> nebel = nebelListe();
+                        static const std::vector<gpu::FigurSchatten> kKeineFiguren;
+                        for (const MoverDraw& mv : movers) {
+                            if (mv.mesh == nullptr || mv.mesh->indexes.empty() ||
+                                mv.mesh == &g_app->effectMesh) {
+                                continue;
+                            }
+                            float mw[16];
+                            moverWelt(mv, mw);
+                            std::string fm;
+                            const int nm = gpu::zeichneNebel(
+                                *mv.mesh, &g_app->textures, &g_app->geo, vp, zeit,
+                                useCam.pos, nebel, kKeineFiguren, &fm, mw,
+                                nebelFuer(mv.offset));
+                            g_app->nebelAufrufe += nm;
+                            g_app->gpuAufrufe += nm;
+                            g_app->gpuMover += nm;
+                        }
                     }
                     if (!figurSchatten.empty()) {
                         gpu::setzeSchritt("Figurenschatten");

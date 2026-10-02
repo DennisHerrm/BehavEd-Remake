@@ -546,6 +546,9 @@ struct ActorDraw {
     // Der Blobschatten (CG_PlayerShadow): 16, Rancor und AT-ST 64, der
     // Sandwurm keinen (0).
     float schattenRadius = 16.0F;
+    // Der AT-ST bekommt zusaetzlich unter jeden Fuss einen kleinen
+    // (Radius 28, an "*l_foot"/"*r_foot" + 30 nach oben).
+    bool schattenFuesse = false;
 
     // --- Was die Figur in den Haenden haelt ------------------------------
     //
