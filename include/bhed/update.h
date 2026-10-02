@@ -22,10 +22,11 @@
 
 namespace bhed::update {
 
-// Das Repository, aus dem die Updates kommen: ein OEFFENTLICHES nur fuer die
-// fertigen Programme. Der Quelltext liegt privat in DennisHerrm/BehavEd-Remake;
-// so bekommt jeder die Updates ohne GitHub-Konto.
-inline constexpr const char* kRepo = "DennisHerrm/BehavEd-Remake-Releases";
+// Das Repository, aus dem die Updates kommen - seit rc573 das (jetzt
+// oeffentliche) Hauptrepository selbst. Bis rc572 war es ein eigenes
+// Download-Repository (DennisHerrm/BehavEd-Remake-Releases, archiviert), weil
+// der Quelltext privat war.
+inline constexpr const char* kRepo = "DennisHerrm/BehavEd-Remake";
 
 struct Asset {
     std::string name;          // "BehavEd-Remake-rc568.zip"

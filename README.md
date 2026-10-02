@@ -34,7 +34,11 @@ Tests in [TESTING.md](TESTING.md), die Änderungen in
   `Q3_Interface.h` und `anims.h`). Die Rechte daran liegen bei Raven Software
   bzw. Activision.
 
-Noch keine Lizenz festgelegt – das Repository ist privat. Die fertigen
-Programme liegen öffentlich in
-[BehavEd-Remake-Releases](https://github.com/DennisHerrm/BehavEd-Remake-Releases);
-von dort holt sich das Programm auch seine Updates (File → *Check for updates…*).
+## Herunterladen
+
+Fertige Programme unter
+[Releases](https://github.com/DennisHerrm/BehavEd-Remake/releases/latest):
+ZIP entpacken, `BehavEd-Remake/behaved.exe` starten. Das Programm holt sich
+seine Updates selbst von hier (File → *Check for updates…*).
+
+Noch keine Lizenz festgelegt.

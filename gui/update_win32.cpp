@@ -3,11 +3,8 @@
 // Siehe update.h. Alles Netz laeuft in einem Hintergrundfaden; die
 // Oberflaeche liest nur eine Kopie des Zustands.
 //
-// ZUGRIFF: Der Quelltext liegt in einem PRIVATEN Repository, die fertigen
-// Programme in einem eigenen OEFFENTLICHEN nur fuer Releases (kRepo) - so
-// bekommt jeder die Updates ohne GitHub-Konto, und der Quelltext bleibt privat
-// (shank, 01.10.2026: "wieso kann es nicht privat sein und er sieht die
-// Updates trotzdem?"). Gefragt wird deshalb OHNE Anmeldung. Nur wenn GitHub
+// ZUGRIFF: Das Repository (kRepo) ist oeffentlich - gefragt wird OHNE
+// Anmeldung, jeder bekommt die Updates ohne GitHub-Konto. Nur wenn GitHub
 // das ablehnt (403: zu viele Anfragen ohne Anmeldung, 60 je Stunde), hilft ein
 // Schluessel von aussen, der NIE gespeichert wird: GH_TOKEN bzw.
 // GITHUB_TOKEN, sonst "gh auth token" (GitHub CLI, falls angemeldet).

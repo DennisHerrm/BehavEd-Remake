@@ -1,5 +1,18 @@
 # Änderungen seit rc94
 
+## rc573 — Das Repository ist öffentlich; Updates von dort
+
+Gewünscht: „Kannst du das Repository public machen … und darauf dann in
+Zukunft die exe laufen lassen.“
+
+* `DennisHerrm/BehavEd-Remake` ist öffentlich. Vorher wurde die Autor-Adresse
+  in allen Commits durch die anonyme GitHub-Adresse ersetzt (auch im
+  Download-Repository).
+* Der Updater fragt jetzt dieses Repository (`kRepo`); Releases liegen hier.
+* Das Download-Repository `BehavEd-Remake-Releases` ist archiviert. Es bekam
+  rc573 noch mit, damit Installationen von rc570–rc572, die dort nachsehen,
+  auf rc573 kommen – ab dann holen sie sich alles aus dem Hauptrepository.
+
 ## rc572 — Undo-Liste: ein Klick markiert nur einen Eintrag
 
 Gefragt: „Wenn ich auf einen drauf klicke, markiert es immer alle direkt statt
