@@ -652,6 +652,21 @@ using ShaderMap = std::map<std::string, ShaderInfo>;
 // Eine .shader-Datei zerlegen und die Zuordnungen anhaengen.
 void parseShaderScript(const std::string& text, ShaderMap& out);
 
+// --- fogparms ( r g b ) <depthForOpaque> --------------------------------
+//
+// Steht in den Nebelshadern, die selbst keine Bildstufe haben
+// (textures/system/fog_black, textures/fogs/...). ParseShader
+// (tr_shader.cpp) liest Farbe und Weite; daraus rechnet R_LoadFogs
+// tcScale = 1 / (max(1, depthForOpaque) * 8). Eigene Tabelle, damit
+// parseShaderScript unveraendert bleibt - ein Nebelshader ohne Bild soll dort
+// weiterhin NICHT als Textur auftauchen.
+struct NebelParms {
+    float farbe[3] = {1.0F, 0.0F, 0.0F};
+    float tiefe = 250.0F;   // depthForOpaque
+};
+using NebelMap = std::map<std::string, NebelParms>;
+void parseFogParms(const std::string& text, NebelMap& out);
+
 // Kandidaten fuer eine Bilddatei zu einem Namen, in der Reihenfolge, in der
 // gesucht werden sollte. JKA meldet in tr_image_load.cpp jpg, png und tga an.
 [[nodiscard]] std::vector<std::string> textureCandidates(const std::string& name);

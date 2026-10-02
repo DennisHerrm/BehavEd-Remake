@@ -1642,6 +1642,7 @@ ModelTextures texturesFor(const GlmModel& model) {
                 std::string text;
                 if (readFromArchives(f.name, text)) {
                     parseShaderScript(text, shaderMap);
+                    parseFogParms(text, g_app->nebelMap);
                 }
             }
         }
@@ -2748,6 +2749,45 @@ bool blobSchattenFuer(const float ursprung[3], float radius, gpu::BlobSchatten& 
     aus.radius = radius;
     aus.alpha = 1.0F - besteFraktion;
     return true;
+}
+
+// In welchem Nebel steht dieser Punkt? R_GComputeFogNum (tr_ghoul2.cpp):
+// der erste, dessen Kasten die Figur ganz enthaelt - der globale Nebel hat
+// einen Kasten ueber die ganze Welt. Ohne Radius (refEntity_t.radius setzt
+// cgame fuer Figuren nicht) bleibt davon der Ursprung.
+int nebelFuer(const float ort[3]) {
+    const std::vector<BspGeometry::Nebel>& n = g_app->geo.nebel;
+    for (std::size_t i = 0; i < n.size(); ++i) {
+        if (ort[0] >= n[i].mins[0] && ort[0] <= n[i].maxs[0] && ort[1] >= n[i].mins[1] &&
+            ort[1] <= n[i].maxs[1] && ort[2] >= n[i].mins[2] && ort[2] <= n[i].maxs[2]) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+// Die Nebel der Karte mit Farbe und Dichte aus `fogparms` (R_LoadFogs).
+// Fehlt der Shader, nimmt die Engine Rot und 250 ("bad shader!!") - so auch
+// hier, damit ein fehlender Shader auffaellt statt still zu fehlen.
+std::vector<gpu::NebelGpu> nebelListe() {
+    std::vector<gpu::NebelGpu> aus;
+    for (const BspGeometry::Nebel& n : g_app->geo.nebel) {
+        gpu::NebelGpu g;
+        g.gueltig = true;
+        std::string k = n.shader;
+        for (char& c : k) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        float tiefe = 250.0F;
+        const auto it = g_app->nebelMap.find(k);
+        if (it != g_app->nebelMap.end()) {
+            for (int c = 0; c < 3; ++c) { g.farbe[c] = it->second.farbe[c]; }
+            tiefe = it->second.tiefe;
+        }
+        g.tcScale = 1.0F / (std::max(tiefe, 1.0F) * 8.0F);
+        g.hatFlaeche = n.hatFlaeche;
+        for (int c = 0; c < 4; ++c) { g.ebene[c] = n.ebene[c]; }
+        aus.push_back(g);
+    }
+    return aus;
 }
 
 // Der Radius des Blobschattens nach der Klasse aus der .npc
@@ -10432,6 +10472,9 @@ void drawMapView() {
                 // Die Schwertlichter dieses Bildes - CG_DoSaberLight je
                 // Schwert, gesammelt beim Zeichnen der Klingen.
                 std::vector<gpu::WeltLicht> schwertLichter;
+                // Die Figuren fuer die Schattenarten 2 und 3 - erst nach
+                // allem Deckenden zu zeichnen, deshalb gesammelt.
+                std::vector<gpu::FigurSchatten> figurSchatten;
                 for (int durchgang = 0; durchgang < 2; ++durchgang) {
                     const gpu::Lage lage = (durchgang == 0)
                                                ? gpu::Lage::Deckend
@@ -10595,6 +10638,51 @@ void drawMapView() {
                         g_app->gpuFiguren2 += n;
                         if (n == 0 && f.empty()) { f = ff; }
 
+                        // --- Schattenart 2 und 3: die Ebene darunter ------
+                        //
+                        // Dieselbe Spur wie fuer den Fleck (CG_PlayerShadow).
+                        // Art 3 braucht einen Treffer, Art 2 zeichnet auch
+                        // ohne - dann mit shadowPlane 0, wie die Engine.
+                        // Nur vor der Kamera bis r_shadowRange (bInShadowRange,
+                        // tr_ghoul2.cpp: Abstand entlang der Blickrichtung).
+                        bool mitSchatten = false;
+                        float schattenEbene = 0.0F;
+                        if ((g_app->schattenArt == 2 || g_app->schattenArt == 3) &&
+                            a.schattenRadius > 0.0F) {
+                            const float vorAus = (a.pos[0] - useCam.pos[0]) * gvorn[0] +
+                                                 (a.pos[1] - useCam.pos[1]) * gvorn[1] +
+                                                 (a.pos[2] - useCam.pos[2]) * gvorn[2];
+                            if (vorAus < 1000.0F) {
+                                gpu::BlobSchatten spur;
+                                const bool getroffen =
+                                    blobSchattenFuer(a.pos, a.schattenRadius, spur);
+                                if (getroffen) {
+                                    schattenEbene = spur.ort[2] + 1.0F;
+                                }
+                                mitSchatten = getroffen || g_app->schattenArt == 2;
+                            }
+                        }
+                        float schattenLicht[3] = {0.0F, 0.0F, 1.0F};
+                        if (licht.gitter) {
+                            for (int k = 0; k < 3; ++k) { schattenLicht[k] = licht.richtung[k]; }
+                        }
+                        // Steht die Figur im Nebel, bekommt sie ihn auch.
+                        const int figurNebel =
+                            g_app->showFog ? nebelFuer(a.pos) : -1;
+                        if (mitSchatten || figurNebel >= 0) {
+                            gpu::FigurSchatten fs;
+                            fs.model = a.model;
+                            fs.textures = a.textures;
+                            fs.knochen = skin;
+                            std::memcpy(fs.welt, fw, sizeof(fs.welt));
+                            for (int k = 0; k < 3; ++k) { fs.richtung[k] = schattenLicht[k]; }
+                            fs.ebene = schattenEbene;
+                            fs.kappen = g_app->showCaps;
+                            fs.schatten = mitSchatten;
+                            fs.nebel = figurNebel;
+                            figurSchatten.push_back(std::move(fs));
+                        }
+
                         // --- Was die Figur in den Haenden haelt ----------
                         //
                         // Waffe, Schwertgriff(e) und Kinomodelle haengen
@@ -10627,6 +10715,20 @@ void drawMapView() {
                                     &licht, g_app->showCaps);
                                 g_app->gpuAufrufe += nh;
                                 g_app->gpuFiguren2 += nh;
+                                // Waffe und Griff gehoeren zur selben Entity und
+                                // werfen denselben Schatten mit.
+                                if (mitSchatten || figurNebel >= 0) {
+                                    gpu::FigurSchatten fs;
+                                    fs.model = an.model;
+                                    fs.textures = an.textures;
+                                    std::memcpy(fs.welt, gw2, sizeof(fs.welt));
+                                    for (int k = 0; k < 3; ++k) { fs.richtung[k] = schattenLicht[k]; }
+                                    fs.ebene = schattenEbene;
+                                    fs.kappen = g_app->showCaps;
+                                    fs.schatten = mitSchatten;
+                                    fs.nebel = figurNebel;
+                                    figurSchatten.push_back(std::move(fs));
+                                }
                                 // In die Welt: dieselbe 4x4 wie der Griff.
                                 const auto nachWelt = [&gw2](const float in[3], float o[3]) {
                                     for (int r = 0; r < 3; ++r) {
@@ -10752,7 +10854,7 @@ void drawMapView() {
                                            schwertLichter.end());
                     }
                     std::vector<gpu::BlobSchatten> blobs;
-                    if (g_app->showShadows) {
+                    if (g_app->schattenArt == 1) {
                         for (const ActorDraw& a : gpuFiguren) {
                             if (a.model == nullptr || a.schattenRadius <= 0.0F) {
                                 continue;
@@ -10781,8 +10883,34 @@ void drawMapView() {
                         g_app->gpuKarte += nl;
                         if (f.empty()) { f = fl; }
                     }
+                    // Der Nebel gehoert zu jeder Flaeche (RB_FogPass nach
+                    // ihren Stufen und dem dynamischen Licht); die
+                    // Figurenschatten kommen erst danach (SS_STENCIL_SHADOW,
+                    // RB_ShadowFinish).
+                    g_app->nebelAufrufe = 0;
+                    if (g_app->showFog && !g_app->geo.nebel.empty()) {
+                        gpu::setzeSchritt("Nebel");
+                        std::string fn;
+                        const int nn = gpu::zeichneNebel(
+                            g_app->mesh, &g_app->textures, &g_app->geo, vp, zeit,
+                            useCam.pos, nebelListe(), figurSchatten, &fn);
+                        g_app->nebelAufrufe = nn;
+                        g_app->gpuAufrufe += nn;
+                        g_app->gpuKarte += nn;
+                        if (f.empty()) { f = fn; }
+                    }
+                    if (!figurSchatten.empty()) {
+                        gpu::setzeSchritt("Figurenschatten");
+                        std::string fs2;
+                        const int ns = gpu::zeichneFigurSchatten(figurSchatten,
+                                                                 g_app->schattenArt, vp, &fs2);
+                        g_app->gpuAufrufe += ns;
+                        g_app->gpuFiguren2 += ns;
+                        if (f.empty()) { f = fs2; }
+                    }
                     g_app->lichtAufrufe = static_cast<int>(weltLichter.size());
-                    g_app->schattenAnzahl = static_cast<int>(blobs.size());
+                    g_app->schattenAnzahl = static_cast<int>(
+                        g_app->schattenArt == 1 ? blobs.size() : figurSchatten.size());
                     // Fuer die Figuren des naechsten Bildes.
                     g_app->schwertLichter.clear();
                     for (const gpu::WeltLicht& wl : schwertLichter) {
@@ -11853,15 +11981,38 @@ void drawMapSidebar() {
         // Bildpunkte kennt die Grafikkarte nicht ohne Rueckuebertragung.
         ImGui::TextDisabled("(%d Aufrufe)", g_app->gpuGluehen);
     }
-    if (ImGui::Checkbox(tr(Str::MapShadows), &g_app->showShadows)) {
+    {
+        // Die vier Stellungen von cg_shadows.
+        const char* arten[4] = {tr(Str::MapShadowOff), tr(Str::MapShadowBlob),
+                                tr(Str::MapShadowStencil), tr(Str::MapShadowPlanar)};
+        const int art = std::clamp(g_app->schattenArt, 0, 3);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0F);
+        if (ImGui::BeginCombo(tr(Str::MapShadows), arten[art])) {
+            for (int i = 0; i < 4; ++i) {
+                if (ImGui::Selectable(arten[i], i == art)) {
+                    g_app->schattenArt = i;
+                    g_app->mapDirty = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tr(Str::MapShadowsHint));
+        }
+        if (art != 0) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%d)", g_app->schattenAnzahl);
+        }
+    }
+    if (ImGui::Checkbox(tr(Str::MapFog), &g_app->showFog)) {
         g_app->mapDirty = true;
     }
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapShadowsHint));
+        ImGui::SetTooltip("%s", tr(Str::MapFogHint));
     }
-    if (g_app->showShadows) {
+    if (g_app->showFog) {
         ImGui::SameLine();
-        ImGui::TextDisabled("(%d)", g_app->schattenAnzahl);
+        ImGui::TextDisabled("(%zu)", g_app->geo.nebel.size());
     }
     if (ImGui::Checkbox(tr(Str::MapDynLights), &g_app->showDynLights)) {
         g_app->mapDirty = true;

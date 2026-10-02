@@ -3545,7 +3545,7 @@ std::vector<Schritt> kartenBreitSchritte() {
         {Str::MapEntities, &g_app->showEntities}, {Str::MapEffects, &g_app->showEffects},
         {Str::MapGlow, &g_app->showGlow},         {Str::MapActors, &g_app->showActors},
         {Str::MapSky, &g_app->showSky},           {Str::MapNames, &g_app->zeigeNamen},
-        {Str::MapShadows, &g_app->showShadows},   {Str::MapDynLights, &g_app->showDynLights}};
+        {Str::MapDynLights, &g_app->showDynLights}, {Str::MapFog, &g_app->showFog}};
     for (const Schalter& sw : schalter) {
         const std::string name = tr(sw.text);
         bool* wert = sw.wert;
@@ -7358,7 +7358,13 @@ std::vector<Schritt> ortSchritte() {
 std::vector<Schritt> szenenSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
-    add(tu("Szenen: Kartenansicht links", [] { g_app->leftMode = 1; }));
+    add(tu("Szenen: Kartenansicht links", [] {
+        g_app->leftMode = 1;
+        // BHED_SCHATTEN=0..3: die Schattenart (cg_shadows) fuer den Lauf.
+        if (const char* art = std::getenv("BHED_SCHATTEN")) {
+            g_app->schattenArt = std::clamp(std::atoi(art), 0, 3);
+        }
+    }));
     add(pause(0.3));
     add({"Szenen: Liste lesen", [=](int) {
              std::vector<std::pair<std::string, std::string>> liste;

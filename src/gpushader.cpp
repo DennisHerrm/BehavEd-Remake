@@ -352,6 +352,297 @@ float4 main(VSLicht ein) : SV_TARGET {
     return s;
 }
 
+// --- Die Schattenarten 2 und 3 (cg_shadows) ----------------------------------
+//
+// Beide arbeiten an der FIGUR selbst, nicht an der Karte: dieselben Ecken und
+// Knochen wie figurVertexShaderHlsl, die Haut wird hier noch einmal gerechnet.
+// Die Engine nimmt dafuer jede Flaeche der Sortierstufe SS_OPAQUE
+// (tr_ghoul2.cpp, RenderSurfaces).
+//
+// JeSchatten (b5):
+//     gSchattenLicht.xyz  Richtung (Art 2: schon (x*0.3, y*0.3, 1), Art 3:
+//                         die Lichtrichtung der Figur)
+//     gSchattenLicht.w    shadowPlane - Hoehe des Bodens unter der Figur + 1
+namespace {
+const char* kSchattenHaut = R"(
+cbuffer JeSchatten : register(b5) {
+    float4 gSchattenLicht;
+};
+struct VSIn {
+    float3 pos     : POSITION;
+    float3 normal  : NORMAL;
+    float2 uv      : TEXCOORD0;
+    float4 bones   : BLENDINDICES;
+    float4 weights : BLENDWEIGHT;
+};
+float3 hautInWelt(VSIn ein) {
+    float3 welt = float3(0, 0, 0);
+    [unroll] for (int i = 0; i < 4; ++i) {
+        float w = ein.weights[i];
+        if (w <= 0.0) { continue; }
+        int b = (int)(ein.bones[i] + 0.5) * 3;
+        float4 r0 = gKnochen[b + 0];
+        float4 r1 = gKnochen[b + 1];
+        float4 r2 = gKnochen[b + 2];
+        welt += float3(dot(r0.xyz, ein.pos) + r0.w,
+                       dot(r1.xyz, ein.pos) + r1.w,
+                       dot(r2.xyz, ein.pos) + r2.w) * w;
+    }
+    return mul(gFigurWelt, float4(welt, 1.0)).xyz;
+}
+)";
+}  // namespace
+
+// Art 2: die Ecke nur in die Welt bringen - das Volumen baut der
+// Geometrie-Shader.
+std::string schattenVolumenVsHlsl() {
+    std::string s = kKonstanten;
+    s += kKnochen;
+    s += kSchattenHaut;
+    s += R"(
+struct VSOut {
+    float4 pos  : SV_POSITION;
+    float3 welt : TEXCOORD0;
+};
+VSOut main(VSIn ein) {
+    VSOut aus;
+    aus.welt = hautInWelt(ein);
+    aus.pos = mul(gViewProj, float4(aus.welt, 1.0));
+    return aus;
+}
+)";
+    return s;
+}
+
+// RB_DoShadowTessEnd und R_RenderShadowEdges (tr_shadows.cpp der Mod),
+// Dreieck fuer Dreieck:
+//
+//     normal = (v2 - v1) x (v3 - v1);  facing = dot(normal, lightDir) > 0
+//     shadowXyz = xyz - lightDir * (z - shadowPlane + 100)
+//
+// Fuer jedes zugewandte Dreieck ALLE drei Kanten als Band zwischen Ecke und
+// verschobener Ecke ("we are going to render all edges even though it is a
+// tiny bit slower") und beide Deckel - die Engine zeichnet mit
+// _STENCIL_REVERSE (z-fail), und das braucht ein geschlossenes Volumen.
+// Innere Kanten kommen zweimal mit umgekehrtem Umlauf und heben sich auf.
+std::string schattenVolumenGsHlsl() {
+    std::string s = kKonstanten;
+    s += R"(
+cbuffer JeSchatten : register(b5) {
+    float4 gSchattenLicht;
+};
+struct GSIn {
+    float4 pos  : SV_POSITION;
+    float3 welt : TEXCOORD0;
+};
+struct GSOut {
+    float4 pos : SV_POSITION;
+};
+float3 weg(float3 p) {
+    return p - gSchattenLicht.xyz * (p.z - gSchattenLicht.w + 100.0);
+}
+void ecke(float3 p, inout TriangleStream<GSOut> aus) {
+    GSOut o;
+    o.pos = mul(gViewProj, float4(p, 1.0));
+    aus.Append(o);
+}
+[maxvertexcount(18)]
+void main(triangle GSIn ein[3], inout TriangleStream<GSOut> aus) {
+    float3 v0 = ein[0].welt;
+    float3 v1 = ein[1].welt;
+    float3 v2 = ein[2].welt;
+    float3 n = cross(v1 - v0, v2 - v0);
+    if (dot(n, gSchattenLicht.xyz) <= 0.0) {
+        return;
+    }
+    float3 v[3] = {v0, v1, v2};
+    float3 w[3] = {weg(v0), weg(v1), weg(v2)};
+    [unroll] for (int i = 0; i < 3; ++i) {
+        int j = (i + 1) % 3;
+        ecke(v[i], aus);
+        ecke(w[i], aus);
+        ecke(v[j], aus);
+        ecke(w[j], aus);
+        aus.RestartStrip();
+    }
+    ecke(v0, aus); ecke(v1, aus); ecke(v2, aus);
+    aus.RestartStrip();
+    ecke(w[2], aus); ecke(w[1], aus); ecke(w[0], aus);
+    aus.RestartStrip();
+}
+)";
+    return s;
+}
+
+// Art 3: RB_ProjectionShadowDeform (tr_shadows.cpp) - jede Ecke entlang der
+// Lichtrichtung auf die Ebene des Bodens gedrueckt. Die Richtung wird so
+// gekippt, dass sie mindestens 0.5 nach oben zeigt ("don't let the shadows
+// get too long or go negative"). Gezeichnet mit dem Shader
+// `projectionShadow`: polygonOffset, schwarz, deckend.
+std::string schattenFlachVsHlsl() {
+    std::string s = kKonstanten;
+    s += kKnochen;
+    s += kSchattenHaut;
+    s += R"(
+struct VSOut {
+    float4 pos : SV_POSITION;
+};
+VSOut main(VSIn ein) {
+    VSOut aus;
+    float3 p = hautInWelt(ein);
+    float3 l = gSchattenLicht.xyz;
+    float d = l.z;
+    if (d < 0.5) {
+        l.z += 0.5 - d;
+        d = l.z;
+    }
+    l /= d;
+    p -= l * (p.z - gSchattenLicht.w);
+    aus.pos = mul(gViewProj, float4(p, 1.0));
+    return aus;
+}
+)";
+    return s;
+}
+
+// Schwarz und deckend (`rgbGen wave square 0 0 0 0`, blendFunc GL_ONE
+// GL_ZERO) fuer Art 3; fuer Art 2 dasselbe mit Alpha 0.5 auf allem, was im
+// Volumen liegt (RB_ShadowFinish: qglColor4f(0, 0, 0, 0.5), GL_SRC_ALPHA
+// GL_ONE_MINUS_SRC_ALPHA, Stencil ungleich null).
+std::string schattenSchwarzPsHlsl() {
+    return R"(
+float4 main(float4 pos : SV_POSITION) : SV_TARGET {
+    return float4(0, 0, 0, 1);
+}
+)";
+}
+
+std::string schattenAbdunkelnPsHlsl() {
+    return R"(
+struct VSOut {
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+};
+float4 main(VSOut ein) : SV_TARGET {
+    return float4(0, 0, 0, 0.5);
+}
+)";
+}
+
+// --- Nebel (r_drawfog 1) -----------------------------------------------------
+//
+// RB_FogPass (tr_shade.cpp): die Flaeche ein zweites Mal, in der Farbe des
+// Nebels, mit tr.fogImage als Alpha, GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA,
+// auf der schon gezeichneten Tiefe. Die beiden Koordinaten rechnet
+// RB_CalcFogTexCoords JE ECKE (tr_shade_calc.cpp) - hier im Vertex-Shader,
+// damit sie genauso ueber das Dreieck laufen wie in der Engine:
+//
+//     s = tcScale * (Abstand entlang der Blickrichtung) + 1/512
+//     t = Tiefe unter der Nebeloberflaeche, je nachdem, ob das Auge im
+//         Nebel steht, auf 1/32 .. 31/32 abgebildet
+//
+// und das Bild selbst ist R_FogFactor (tr_image.cpp) mit der Tabelle aus
+// R_InitFogTable (Wurzel) - hier ausgerechnet statt nachgeschlagen.
+//
+// JeNebel (b6):
+//     gNebelFarbe   rgb, w = tcScale
+//     gNebelEbene   fog->surface als Tiefenvektor (xyz, w)
+//     gNebelInfo    x 1 = mit Oberflaeche, y eye_t, z Alphaschwelle
+namespace {
+const char* kNebelKonstanten = R"(
+cbuffer JeNebel : register(b6) {
+    float4 gNebelFarbe;
+    float4 gNebelEbene;
+    float4 gNebelInfo;
+};
+struct VSNebel {
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+    float2 st  : TEXCOORD1;
+};
+float2 nebelST(float3 v) {
+    float s = gNebelFarbe.w * (dot(v, gVorn) - dot(gKamera, gVorn)) + 1.0 / 512.0;
+    float t = 1.0;
+    float augeT = 1.0;
+    if (gNebelInfo.x > 0.5) {
+        t = dot(v, gNebelEbene.xyz) + gNebelEbene.w;
+        augeT = gNebelInfo.y;
+    }
+    if (augeT < 0.0) {
+        t = (t < 1.0) ? 1.0 / 32.0 : 1.0 / 32.0 + 30.0 / 32.0 * t / (t - augeT);
+    } else {
+        t = (t < 0.0) ? 1.0 / 32.0 : 31.0 / 32.0;
+    }
+    return float2(s, t);
+}
+)";
+}  // namespace
+
+std::string nebelVertexShaderHlsl() {
+    std::string s = kKonstanten;
+    s += kNebelKonstanten;
+    s += R"(
+struct VSIn {
+    float3 pos    : POSITION;
+    float3 normal : NORMAL;
+    float2 uv     : TEXCOORD0;
+    float2 uvLm   : TEXCOORD1;
+    float4 farbe  : COLOR0;
+};
+VSNebel main(VSIn ein) {
+    VSNebel aus;
+    aus.pos = mul(gViewProj, float4(ein.pos, 1.0));
+    aus.uv = ein.uv;
+    aus.st = nebelST(ein.pos);
+    return aus;
+}
+)";
+    return s;
+}
+
+std::string nebelFigurVertexShaderHlsl() {
+    std::string s = kKonstanten;
+    s += kKnochen;
+    s += kSchattenHaut;
+    s += kNebelKonstanten;
+    s += R"(
+VSNebel main(VSIn ein) {
+    VSNebel aus;
+    float3 p = hautInWelt(ein);
+    aus.pos = mul(gViewProj, float4(p, 1.0));
+    aus.uv = ein.uv;
+    aus.st = nebelST(p);
+    return aus;
+}
+)";
+    return s;
+}
+
+std::string nebelPixelShaderHlsl() {
+    std::string s = kKonstanten;
+    s += kNebelKonstanten;
+    s += R"(
+Texture2D    gBild    : register(t0);
+SamplerState gSampler : register(s0);
+float4 main(VSNebel ein) : SV_TARGET {
+    if (gNebelInfo.z > 0.0) {
+        clip(gBild.Sample(gSampler, ein.uv).a - gNebelInfo.z);
+    }
+    float sv = ein.st.x - 1.0 / 512.0;
+    float t = ein.st.y;
+    if (sv < 0.0 || t < 1.0 / 32.0) {
+        discard;
+    }
+    if (t < 31.0 / 32.0) {
+        sv *= (t - 1.0 / 32.0) / (30.0 / 32.0);
+    }
+    sv = min(sv * 8.0, 1.0);
+    return float4(gNebelFarbe.rgb, sqrt(sv));
+}
+)";
+    return s;
+}
+
 // Der Hintergrund des Modellfensters: ein senkrechter Verlauf, wie ihn
 // renderModel zeichnete - oben 56, unten 34 (von 255), gleich in allen
 // drei Kanaelen.

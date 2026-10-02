@@ -1898,7 +1898,10 @@ bool bereiteZiel(int breite, int hoehe) {
         return false;
     }
     D3D11_TEXTURE2D_DESC dd = td;
-    dd.Format = DXGI_FORMAT_D32_FLOAT;
+    // Tiefe weiter als 32-Bit-Fliesskomma, dazu acht Bit Stencil fuer die
+    // Schattenvolumen (cg_shadows 2, tr_shadows.cpp). D24S8 haette die
+    // Tiefe auf 24 Bit gekuerzt - in grossen Karten flimmert das.
+    dd.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
     dd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
     if (FAILED(d->CreateTexture2D(&dd, nullptr, &g_tiefeTex))) {
         return false;
@@ -1952,12 +1955,15 @@ bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, fl
     // Tiefe d = a + b / z mit a = f/(f-n), b = -n f/(f-n) (baueViewProj),
     // also z = n f / (f - d (f - n)). d = 1 ist "nichts gezeichnet".
     const float fn = fern - nah;
+    // D32_FLOAT_S8X24: je Bildpunkt die Tiefe als float, dahinter 32 Bit
+    // mit dem Stencil - also jeder zweite float.
+    const std::size_t schrittF = (td.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT) ? 2U : 1U;
     for (int y = 0; y < hoehe; ++y) {
         const float* zeile = reinterpret_cast<const float*>(
             static_cast<const unsigned char*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch);
         float* aus = abstand.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(breite);
         for (int x = 0; x < breite; ++x) {
-            const float t = zeile[x];
+            const float t = zeile[static_cast<std::size_t>(x) * schrittF];
             aus[x] = (t >= 0.999999F) ? 1.0e30F : nah * fern / (fern - t * fn);
         }
     }
@@ -2768,6 +2774,585 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
     return abgesetzt;
 }
 
+// --- Die Schattenarten 2 und 3 an den Figuren --------------------------------
+namespace {
+
+ID3D11VertexShader* g_volumenVs = nullptr;
+ID3D11GeometryShader* g_volumenGs = nullptr;
+ID3D11VertexShader* g_flachVs = nullptr;
+ID3D11VertexShader* g_schattenVollVs = nullptr;
+ID3D11PixelShader* g_schwarzPs = nullptr;
+ID3D11PixelShader* g_abdunkelnPs = nullptr;
+ID3D11DepthStencilState* g_dsVolumen = nullptr;
+ID3D11DepthStencilState* g_dsAbdunkeln = nullptr;
+ID3D11RasterizerState* g_rsVolumen = nullptr;
+ID3D11BlendState* g_bsOhneFarbe = nullptr;
+ID3D11Buffer* g_cbSchatten = nullptr;
+bool g_figSchattenVersucht = false;
+
+bool holeFigurSchattenZeug(std::string* fehler) {
+    if (g_volumenVs != nullptr && g_volumenGs != nullptr && g_flachVs != nullptr &&
+        g_schattenVollVs != nullptr && g_schwarzPs != nullptr && g_abdunkelnPs != nullptr &&
+        g_dsVolumen != nullptr && g_dsAbdunkeln != nullptr && g_rsVolumen != nullptr &&
+        g_bsOhneFarbe != nullptr && g_cbSchatten != nullptr) {
+        return true;
+    }
+    if (g_figSchattenVersucht) {
+        if (fehler != nullptr) { *fehler = "Schatten-Shader nicht uebersetzbar"; }
+        return false;
+    }
+    g_figSchattenVersucht = true;
+    ID3D11Device* d = dev();
+    if (d == nullptr) {
+        return false;
+    }
+    struct Quelle {
+        std::string text;
+        const char* profil;
+        const char* name;
+    };
+    const Quelle quellen[6] = {
+        {schattenVolumenVsHlsl(), "vs_4_0", "schattenvolumen"},
+        {schattenVolumenGsHlsl(), "gs_4_0", "schattenvolumen"},
+        {schattenFlachVsHlsl(), "vs_4_0", "schattenflach"},
+        {vollbildVertexShaderHlsl(), "vs_4_0", "schattenvoll"},
+        {schattenSchwarzPsHlsl(), "ps_4_0", "schattenschwarz"},
+        {schattenAbdunkelnPsHlsl(), "ps_4_0", "schattenabdunkeln"},
+    };
+    ID3DBlob* b[6] = {};
+    bool ok = true;
+    for (int i = 0; i < 6 && ok; ++i) {
+        b[i] = uebersetze(quellen[i].text, quellen[i].profil, quellen[i].name, fehler);
+        ok = (b[i] != nullptr);
+    }
+    if (ok) {
+        d->CreateVertexShader(b[0]->GetBufferPointer(), b[0]->GetBufferSize(), nullptr, &g_volumenVs);
+        d->CreateGeometryShader(b[1]->GetBufferPointer(), b[1]->GetBufferSize(), nullptr, &g_volumenGs);
+        d->CreateVertexShader(b[2]->GetBufferPointer(), b[2]->GetBufferSize(), nullptr, &g_flachVs);
+        d->CreateVertexShader(b[3]->GetBufferPointer(), b[3]->GetBufferSize(), nullptr, &g_schattenVollVs);
+        d->CreatePixelShader(b[4]->GetBufferPointer(), b[4]->GetBufferSize(), nullptr, &g_schwarzPs);
+        d->CreatePixelShader(b[5]->GetBufferPointer(), b[5]->GetBufferSize(), nullptr, &g_abdunkelnPs);
+    }
+    for (ID3DBlob* x : b) {
+        if (x != nullptr) { x->Release(); }
+    }
+    if (!ok) {
+        return false;
+    }
+    // Das Volumen: Tiefe pruefen (GL_LESS), nicht schreiben, keine Farbe.
+    // Carmack Reverse wie in der Engine mit doStencilShadowsInOneDrawcall:
+    // Vorderseiten zaehlen beim Tiefenfehler hoch, Rueckseiten herunter.
+    {
+        D3D11_DEPTH_STENCIL_DESC dd{};
+        dd.DepthEnable = TRUE;
+        dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+        dd.DepthFunc = D3D11_COMPARISON_LESS;
+        dd.StencilEnable = TRUE;
+        dd.StencilReadMask = 0xFF;
+        dd.StencilWriteMask = 0xFF;
+        dd.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        dd.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+        dd.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        dd.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+        dd.BackFace = dd.FrontFace;
+        dd.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+        d->CreateDepthStencilState(&dd, &g_dsVolumen);
+    }
+    // Das Abdunkeln: ueberall, wo der Zaehler nicht null ist.
+    {
+        D3D11_DEPTH_STENCIL_DESC dd{};
+        dd.DepthEnable = FALSE;
+        dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+        dd.DepthFunc = D3D11_COMPARISON_ALWAYS;
+        dd.StencilEnable = TRUE;
+        dd.StencilReadMask = 0xFF;
+        dd.StencilWriteMask = 0x00;
+        dd.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        dd.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+        dd.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        dd.FrontFace.StencilFunc = D3D11_COMPARISON_NOT_EQUAL;
+        dd.BackFace = dd.FrontFace;
+        d->CreateDepthStencilState(&dd, &g_dsAbdunkeln);
+    }
+    // Beide Seiten (GL_Cull(CT_TWO_SIDED)). Ohne Tiefenbeschnitt: ein
+    // Volumen, dessen hinterer Deckel an der fernen Ebene abgeschnitten
+    // wird, zaehlt beim z-fail falsch.
+    {
+        D3D11_RASTERIZER_DESC rd{};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        rd.FrontCounterClockwise = FALSE;
+        rd.DepthClipEnable = FALSE;
+        d->CreateRasterizerState(&rd, &g_rsVolumen);
+    }
+    {
+        D3D11_BLEND_DESC bd{};
+        bd.RenderTarget[0].BlendEnable = FALSE;
+        bd.RenderTarget[0].RenderTargetWriteMask = 0;
+        d->CreateBlendState(&bd, &g_bsOhneFarbe);
+    }
+    {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 16U;
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        d->CreateBuffer(&bd, nullptr, &g_cbSchatten);
+    }
+    if (g_dsVolumen == nullptr || g_dsAbdunkeln == nullptr || g_rsVolumen == nullptr ||
+        g_bsOhneFarbe == nullptr || g_cbSchatten == nullptr) {
+        if (fehler != nullptr) { *fehler = "Schatten-Zustaende nicht anlegbar"; }
+        return false;
+    }
+    return true;
+}
+
+void gibFigurSchattenFrei() {
+    if (g_volumenVs != nullptr) { g_volumenVs->Release(); g_volumenVs = nullptr; }
+    if (g_volumenGs != nullptr) { g_volumenGs->Release(); g_volumenGs = nullptr; }
+    if (g_flachVs != nullptr) { g_flachVs->Release(); g_flachVs = nullptr; }
+    if (g_schattenVollVs != nullptr) { g_schattenVollVs->Release(); g_schattenVollVs = nullptr; }
+    if (g_schwarzPs != nullptr) { g_schwarzPs->Release(); g_schwarzPs = nullptr; }
+    if (g_abdunkelnPs != nullptr) { g_abdunkelnPs->Release(); g_abdunkelnPs = nullptr; }
+    if (g_dsVolumen != nullptr) { g_dsVolumen->Release(); g_dsVolumen = nullptr; }
+    if (g_dsAbdunkeln != nullptr) { g_dsAbdunkeln->Release(); g_dsAbdunkeln = nullptr; }
+    if (g_rsVolumen != nullptr) { g_rsVolumen->Release(); g_rsVolumen = nullptr; }
+    if (g_bsOhneFarbe != nullptr) { g_bsOhneFarbe->Release(); g_bsOhneFarbe = nullptr; }
+    if (g_cbSchatten != nullptr) { g_cbSchatten->Release(); g_cbSchatten = nullptr; }
+    g_figSchattenVersucht = false;
+}
+
+}  // namespace
+
+int zeichneFigurSchatten(const std::vector<FigurSchatten>& figuren, int art,
+                         const float* viewProj, std::string* fehler) {
+    ID3D11DeviceContext* c = ctx();
+    if (c == nullptr || figuren.empty() || viewProj == nullptr || (art != 2 && art != 3) ||
+        g_zielRtv == nullptr || g_tiefeDsv == nullptr || g_cbFigur == nullptr) {
+        return 0;
+    }
+    setzeSchritt("Schatten: Shader");
+    if (!holeFigurSchattenZeug(fehler)) {
+        return 0;
+    }
+    std::string sfehler;
+    ShaderPaar* fig = holeFigurShader(&sfehler);
+    if (fig == nullptr) {
+        return 0;
+    }
+    if (g_bildDatenDa && g_cbBild != nullptr) {
+        std::memcpy(g_bildDaten, viewProj, 16U * sizeof(float));
+        D3D11_MAPPED_SUBRESOURCE mb{};
+        if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
+            std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+            c->Unmap(g_cbBild, 0);
+        }
+    }
+    setzeSchritt("Schatten: binden");
+    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+    D3D11_VIEWPORT vp{};
+    vp.Width = static_cast<float>(g_zielW);
+    vp.Height = static_cast<float>(g_zielH);
+    vp.MaxDepth = 1.0F;
+    c->RSSetViewports(1, &vp);
+    c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    c->IASetInputLayout(fig->layout);
+    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    const bool volumen = (art == 2);
+    if (volumen) {
+        c->VSSetShader(g_volumenVs, nullptr, 0);
+        c->GSSetShader(g_volumenGs, nullptr, 0);
+        c->PSSetShader(nullptr, nullptr, 0);
+        c->OMSetDepthStencilState(g_dsVolumen, 0);
+        c->RSSetState(g_rsVolumen);
+        c->OMSetBlendState(g_bsOhneFarbe, faktor, 0xFFFFFFFFU);
+        c->GSSetConstantBuffers(0, 1, &g_cbBild);
+        c->GSSetConstantBuffers(5, 1, &g_cbSchatten);
+    } else {
+        // projectionShadow: polygonOffset, deckend, schreibt Tiefe.
+        c->VSSetShader(g_flachVs, nullptr, 0);
+        c->PSSetShader(g_schwarzPs, nullptr, 0);
+        PipelineState deckend;
+        ID3D11DepthStencilState* ds = holeTiefe(deckend);
+        if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
+        ID3D11RasterizerState* rs = holeRaster(kPolygonOffset);
+        if (rs != nullptr) { c->RSSetState(rs); }
+        ID3D11BlendState* bs = holeBlend(Blend::Opaque);
+        if (bs != nullptr) { c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU); }
+    }
+    c->VSSetConstantBuffers(0, 1, &g_cbBild);
+    c->VSSetConstantBuffers(2, 1, &g_cbFigur);
+    c->VSSetConstantBuffers(5, 1, &g_cbSchatten);
+
+    setzeSchritt("Schatten: zeichnen");
+    int abgesetzt = 0;
+    for (const FigurSchatten& f : figuren) {
+        if (f.model == nullptr || !f.schatten) {
+            continue;
+        }
+        FigurPuffer* fp = holeFigurPuffer(*f.model, fehler);
+        if (fp == nullptr) {
+            continue;
+        }
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (FAILED(c->Map(g_cbFigur, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            continue;
+        }
+        auto* fk = static_cast<float*>(m.pData);
+        packeKnochen(f.knochen, fk);
+        std::memcpy(fk + static_cast<std::size_t>(kMaxKnochen) * 12U, f.welt, 16U * sizeof(float));
+        float* l = fk + static_cast<std::size_t>(kMaxKnochen) * 12U + 16U;
+        for (int k = 0; k < 12; ++k) { l[k] = 0.0F; }
+        c->Unmap(g_cbFigur, 0);
+        if (FAILED(c->Map(g_cbSchatten, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            continue;
+        }
+        auto* sk = static_cast<float*>(m.pData);
+        if (volumen) {
+            // RB_DoShadowTessEnd: nur die waagrechte Lichtrichtung, mal
+            // 0.3, und z = 1 - "just cast them straight down no matter
+            // what onto the ground plane".
+            float lx = f.richtung[0];
+            float ly = f.richtung[1];
+            const float lw = std::sqrt(lx * lx + ly * ly);
+            if (lw > 1.0e-6F) {
+                lx /= lw;
+                ly /= lw;
+            } else {
+                lx = ly = 0.0F;
+            }
+            sk[0] = lx * 0.3F;
+            sk[1] = ly * 0.3F;
+            sk[2] = 1.0F;
+        } else {
+            sk[0] = f.richtung[0];
+            sk[1] = f.richtung[1];
+            sk[2] = f.richtung[2];
+        }
+        sk[3] = f.ebene;
+        c->Unmap(g_cbSchatten, 0);
+
+        const UINT schritt = sizeof(SkinVertex);
+        const UINT versatz = 0;
+        c->IASetVertexBuffers(0, 1, &fp->vb, &schritt, &versatz);
+        c->IASetIndexBuffer(fp->ib, DXGI_FORMAT_R32_UINT, 0);
+        for (const FigurTeil& t : fp->teile) {
+            if (t.kappe && !f.kappen) {
+                continue;
+            }
+            // Nur, was auch gezeichnet wird, und nur Deckendes
+            // (shader->sort == SS_OPAQUE in RenderSurfaces).
+            if (holeFigurBild(f.textures, t.surface) == nullptr) {
+                continue;
+            }
+            if (f.textures != nullptr && t.surface < f.textures->bySurface.size()) {
+                const BatchState fbs = batchStateFor(f.textures->bySurface[t.surface], 0.0F);
+                if (pipelineFor(fbs, false, false, false).blend != Blend::Opaque) {
+                    continue;
+                }
+            }
+            c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+            ++abgesetzt;
+        }
+    }
+    if (volumen) {
+        c->GSSetShader(nullptr, nullptr, 0);
+        // RB_ShadowFinish: alles im Volumen mit Schwarz zu 50 % abdunkeln.
+        setzeSchritt("Schatten: abdunkeln");
+        c->IASetInputLayout(nullptr);
+        c->VSSetShader(g_schattenVollVs, nullptr, 0);
+        c->PSSetShader(g_abdunkelnPs, nullptr, 0);
+        c->OMSetDepthStencilState(g_dsAbdunkeln, 0);
+        c->RSSetState(g_rsVolumen);
+        ID3D11BlendState* bs = holeBlend(Blend::AlphaBlend);
+        if (bs != nullptr) { c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU); }
+        c->Draw(3, 0);
+        ++abgesetzt;
+    }
+    return abgesetzt;
+}
+
+// --- Nebel ------------------------------------------------------------------
+namespace {
+
+ID3D11VertexShader* g_nebelVs = nullptr;
+ID3D11VertexShader* g_nebelFigurVs = nullptr;
+ID3D11PixelShader* g_nebelPs = nullptr;
+ID3D11InputLayout* g_nebelLayout = nullptr;
+ID3D11Buffer* g_cbNebel = nullptr;
+bool g_nebelVersucht = false;
+
+bool holeNebelZeug(std::string* fehler) {
+    if (g_nebelVs != nullptr && g_nebelFigurVs != nullptr && g_nebelPs != nullptr &&
+        g_nebelLayout != nullptr && g_cbNebel != nullptr) {
+        return true;
+    }
+    if (g_nebelVersucht) {
+        if (fehler != nullptr) { *fehler = "Nebel-Shader nicht uebersetzbar"; }
+        return false;
+    }
+    g_nebelVersucht = true;
+    ID3D11Device* d = dev();
+    if (d == nullptr) {
+        return false;
+    }
+    ID3DBlob* vs = uebersetze(nebelVertexShaderHlsl(), "vs_4_0", "nebel", fehler);
+    ID3DBlob* vf = uebersetze(nebelFigurVertexShaderHlsl(), "vs_4_0", "nebelfigur", fehler);
+    ID3DBlob* ps = uebersetze(nebelPixelShaderHlsl(), "ps_4_0", "nebel", fehler);
+    const bool ok = vs != nullptr && vf != nullptr && ps != nullptr;
+    if (ok) {
+        d->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &g_nebelVs);
+        d->CreateVertexShader(vf->GetBufferPointer(), vf->GetBufferSize(), nullptr, &g_nebelFigurVs);
+        d->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &g_nebelPs);
+        // Dieselbe Ecke wie in holeShader (zeichneKarte, `Ecke`, 44 Byte).
+        const D3D11_INPUT_ELEMENT_DESC ein[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        };
+        d->CreateInputLayout(ein, static_cast<UINT>(std::size(ein)), vs->GetBufferPointer(),
+                             vs->GetBufferSize(), &g_nebelLayout);
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 48U;
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        d->CreateBuffer(&bd, nullptr, &g_cbNebel);
+    }
+    if (vs != nullptr) { vs->Release(); }
+    if (vf != nullptr) { vf->Release(); }
+    if (ps != nullptr) { ps->Release(); }
+    if (g_nebelVs == nullptr || g_nebelFigurVs == nullptr || g_nebelPs == nullptr ||
+        g_nebelLayout == nullptr || g_cbNebel == nullptr) {
+        if (fehler != nullptr && fehler->empty()) { *fehler = "Nebel-Shader unvollstaendig"; }
+        return false;
+    }
+    return true;
+}
+
+void gibNebelFrei() {
+    if (g_nebelVs != nullptr) { g_nebelVs->Release(); g_nebelVs = nullptr; }
+    if (g_nebelFigurVs != nullptr) { g_nebelFigurVs->Release(); g_nebelFigurVs = nullptr; }
+    if (g_nebelPs != nullptr) { g_nebelPs->Release(); g_nebelPs = nullptr; }
+    if (g_nebelLayout != nullptr) { g_nebelLayout->Release(); g_nebelLayout = nullptr; }
+    if (g_cbNebel != nullptr) { g_cbNebel->Release(); g_cbNebel = nullptr; }
+    g_nebelVersucht = false;
+}
+
+// JeNebel fuer einen Nebel und eine Alphaschwelle.
+bool packeNebel(ID3D11DeviceContext* c, const NebelGpu& n, const float* kamera,
+                float schwelle) {
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(c->Map(g_cbNebel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+        return false;
+    }
+    auto* f = static_cast<float*>(m.pData);
+    f[0] = n.farbe[0];
+    f[1] = n.farbe[1];
+    f[2] = n.farbe[2];
+    f[3] = n.tcScale;
+    for (int k = 0; k < 4; ++k) { f[4 + k] = n.ebene[k]; }
+    f[8] = n.hatFlaeche ? 1.0F : 0.0F;
+    // eye_t: die Tiefe des AUGES unter der Nebeloberflaeche.
+    f[9] = n.hatFlaeche ? (kamera[0] * n.ebene[0] + kamera[1] * n.ebene[1] +
+                           kamera[2] * n.ebene[2] + n.ebene[3])
+                        : 1.0F;
+    f[10] = schwelle;
+    f[11] = 0.0F;
+    c->Unmap(g_cbNebel, 0);
+    return true;
+}
+
+}  // namespace
+
+int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeometry* geo,
+                 const float* viewProj, float zeitSekunden, const float* kamera,
+                 const std::vector<NebelGpu>& nebel,
+                 const std::vector<FigurSchatten>& figuren, std::string* fehler) {
+    ID3D11DeviceContext* c = ctx();
+    if (c == nullptr || nebel.empty() || viewProj == nullptr || kamera == nullptr ||
+        g_zielRtv == nullptr || g_tiefeDsv == nullptr || geo == nullptr) {
+        return 0;
+    }
+    setzeSchritt("Nebel: Shader");
+    if (!holeNebelZeug(fehler)) {
+        return 0;
+    }
+    if (g_bildDatenDa && g_cbBild != nullptr) {
+        std::memcpy(g_bildDaten, viewProj, 16U * sizeof(float));
+        D3D11_MAPPED_SUBRESOURCE mb{};
+        if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
+            std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+            c->Unmap(g_cbBild, 0);
+        }
+    }
+    setzeSchritt("Nebel: binden");
+    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+    D3D11_VIEWPORT vp{};
+    vp.Width = static_cast<float>(g_zielW);
+    vp.Height = static_cast<float>(g_zielH);
+    vp.MaxDepth = 1.0F;
+    c->RSSetViewports(1, &vp);
+    c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    c->VSSetConstantBuffers(0, 1, &g_cbBild);
+    c->VSSetConstantBuffers(6, 1, &g_cbNebel);
+    c->PSSetConstantBuffers(6, 1, &g_cbNebel);
+    c->PSSetShader(g_nebelPs, nullptr, 0);
+    c->PSSetSamplers(0, 1, &g_sampler);
+    // FP_EQUAL: auf der schon gezeichneten Flaeche (holeTiefe: LESS_EQUAL).
+    PipelineState tiefe;
+    tiefe.blend = Blend::AlphaBlend;
+    tiefe.depthWrite = false;
+    tiefe.depthTestEqual = true;
+    ID3D11DepthStencilState* ds = holeTiefe(tiefe);
+    if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
+    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    ID3D11BlendState* bs = holeBlend(Blend::AlphaBlend);
+    if (bs != nullptr) { c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU); }
+
+    int abgesetzt = 0;
+    // --- Die Karte: je Flaeche ihr eigener Nebel (dsurface_t.fogNum) ------
+    Netzpuffer& np = g_netz[0];
+    if (np.vb != nullptr && np.ib != nullptr && np.schrittweite != 0) {
+        const UINT schritt = np.schrittweite;
+        const UINT versatz = 0;
+        c->IASetVertexBuffers(0, 1, &np.vb, &schritt, &versatz);
+        c->IASetIndexBuffer(np.ib, DXGI_FORMAT_R32_UINT, 0);
+        c->IASetInputLayout(g_nebelLayout);
+        c->VSSetShader(g_nebelVs, nullptr, 0);
+        setzeSchritt("Nebel: Karte");
+        const std::vector<DrawCall> calls = buildDrawCalls(mesh, textures, zeitSekunden);
+        for (const DrawCall& call : calls) {
+            // Nur Shader bis SS_SEE_THROUGH bekommen den Nebeldurchgang
+            // (GeneratePermanentShader: fogPass = FP_EQUAL). Durchscheinendes
+            // bleibt in der Engine ungenebelt - ausser den Nebelflaechen
+            // selbst, die hier gar nicht gezeichnet werden.
+            if (call.zusatzstufe || call.state.blend != Blend::Opaque ||
+                (call.state.features & (kSky | kDeform | kAutosprite)) != 0U ||
+                call.batch >= mesh.batches.size()) {
+                continue;
+            }
+            const BspMesh::Batch& bt = mesh.batches[call.batch];
+            const float stapelZeit = zeitSekunden - bt.shaderTime;
+            ID3D11ShaderResourceView* bild =
+                holeBild(textures, animBildFuer(textures, call.bild, stapelZeit));
+            if (bild == nullptr) {
+                continue;
+            }
+            const float schwelle = ((call.state.features & kAlphaTest) != 0U)
+                                       ? std::max(call.state.alphaSchwelle, 1.0e-4F)
+                                       : 0.0F;
+            bool gebunden = false;
+            // Abschnitte gleichen Nebels zusammenfassen.
+            int offenNebel = -1;
+            std::uint32_t offenAnfang = 0;
+            std::uint32_t offenZahl = 0;
+            auto absetzen = [&]() {
+                if (offenNebel < 0 || offenZahl == 0U) {
+                    return;
+                }
+                if (!gebunden) {
+                    c->RSSetState(holeRaster(call.state.features));
+                    ID3D11ShaderResourceView* srvs[1] = {bild};
+                    c->PSSetShaderResources(0, 1, srvs);
+                    gebunden = true;
+                }
+                if (packeNebel(c, nebel[static_cast<std::size_t>(offenNebel)], kamera, schwelle)) {
+                    c->DrawIndexed(offenZahl, offenAnfang, 0);
+                    ++abgesetzt;
+                }
+            };
+            const std::uint32_t ende = std::min<std::uint32_t>(
+                bt.firstRun + bt.numRuns, static_cast<std::uint32_t>(mesh.runs.size()));
+            for (std::uint32_t r = bt.firstRun; r < ende; ++r) {
+                const BspMesh::Run& run = mesh.runs[r];
+                int fog = -1;
+                if (run.surface < geo->surfaces.size()) {
+                    fog = geo->surfaces[run.surface].fog;
+                }
+                if (fog < 0 || static_cast<std::size_t>(fog) >= nebel.size() ||
+                    !nebel[static_cast<std::size_t>(fog)].gueltig) {
+                    fog = -1;
+                }
+                if (fog == offenNebel && fog >= 0 && run.firstIndex == offenAnfang + offenZahl) {
+                    offenZahl += run.numIndexes;
+                    continue;
+                }
+                absetzen();
+                offenNebel = fog;
+                offenAnfang = run.firstIndex;
+                offenZahl = run.numIndexes;
+            }
+            absetzen();
+        }
+    }
+
+    // --- Die Figuren: ein Nebel je Figur (R_GComputeFogNum) ----------------
+    std::string sfehler;
+    ShaderPaar* fig = holeFigurShader(&sfehler);
+    bool figurGebunden = false;
+    for (const FigurSchatten& f : figuren) {
+        if (f.model == nullptr || f.nebel < 0 || static_cast<std::size_t>(f.nebel) >= nebel.size() ||
+            !nebel[static_cast<std::size_t>(f.nebel)].gueltig || fig == nullptr ||
+            g_cbFigur == nullptr) {
+            continue;
+        }
+        FigurPuffer* fp = holeFigurPuffer(*f.model, fehler);
+        if (fp == nullptr) {
+            continue;
+        }
+        if (!figurGebunden) {
+            setzeSchritt("Nebel: Figuren");
+            c->IASetInputLayout(fig->layout);
+            c->VSSetShader(g_nebelFigurVs, nullptr, 0);
+            c->VSSetConstantBuffers(2, 1, &g_cbFigur);
+            c->RSSetState(holeRaster(kNichts));
+            figurGebunden = true;
+        }
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (FAILED(c->Map(g_cbFigur, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            continue;
+        }
+        auto* fk = static_cast<float*>(m.pData);
+        packeKnochen(f.knochen, fk);
+        std::memcpy(fk + static_cast<std::size_t>(kMaxKnochen) * 12U, f.welt, 16U * sizeof(float));
+        float* l = fk + static_cast<std::size_t>(kMaxKnochen) * 12U + 16U;
+        for (int k = 0; k < 12; ++k) { l[k] = 0.0F; }
+        c->Unmap(g_cbFigur, 0);
+        if (!packeNebel(c, nebel[static_cast<std::size_t>(f.nebel)], kamera, 0.0F)) {
+            continue;
+        }
+        const UINT schritt = sizeof(SkinVertex);
+        const UINT versatz = 0;
+        c->IASetVertexBuffers(0, 1, &fp->vb, &schritt, &versatz);
+        c->IASetIndexBuffer(fp->ib, DXGI_FORMAT_R32_UINT, 0);
+        for (const FigurTeil& t : fp->teile) {
+            if (t.kappe && !f.kappen) {
+                continue;
+            }
+            ID3D11ShaderResourceView* bild = holeFigurBild(f.textures, t.surface);
+            if (bild == nullptr) {
+                continue;
+            }
+            if (f.textures != nullptr && t.surface < f.textures->bySurface.size()) {
+                const BatchState fbs = batchStateFor(f.textures->bySurface[t.surface], 0.0F);
+                if (pipelineFor(fbs, false, false, false).blend != Blend::Opaque) {
+                    continue;
+                }
+            }
+            ID3D11ShaderResourceView* srvs[1] = {bild};
+            c->PSSetShaderResources(0, 1, srvs);
+            c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+            ++abgesetzt;
+        }
+    }
+    ID3D11ShaderResourceView* nichts[1] = {nullptr};
+    c->PSSetShaderResources(0, 1, nichts);
+    return abgesetzt;
+}
+
 // --- Die Klingen der Lichtschwerter -------------------------------------
 namespace {
 struct KlingenEcke {
@@ -3169,6 +3754,31 @@ void shutdown() {
     gibKlingenFrei();
     gibModellFrei();
     gibLichtFrei();
+    gibFigurSchattenFrei();
+    gibNebelFrei();
+    // Ausgeschrieben fuer lint_d3dbesitz (die drei Aufrufe darueber haben
+    // schon genullt).
+    if (g_lichtVs != nullptr) { g_lichtVs->Release(); g_lichtVs = nullptr; }
+    if (g_lichtPs != nullptr) { g_lichtPs->Release(); g_lichtPs = nullptr; }
+    if (g_schattenPs != nullptr) { g_schattenPs->Release(); g_schattenPs = nullptr; }
+    if (g_lichtLayout != nullptr) { g_lichtLayout->Release(); g_lichtLayout = nullptr; }
+    if (g_cbLicht != nullptr) { g_cbLicht->Release(); g_cbLicht = nullptr; }
+    if (g_volumenVs != nullptr) { g_volumenVs->Release(); g_volumenVs = nullptr; }
+    if (g_volumenGs != nullptr) { g_volumenGs->Release(); g_volumenGs = nullptr; }
+    if (g_flachVs != nullptr) { g_flachVs->Release(); g_flachVs = nullptr; }
+    if (g_schattenVollVs != nullptr) { g_schattenVollVs->Release(); g_schattenVollVs = nullptr; }
+    if (g_schwarzPs != nullptr) { g_schwarzPs->Release(); g_schwarzPs = nullptr; }
+    if (g_abdunkelnPs != nullptr) { g_abdunkelnPs->Release(); g_abdunkelnPs = nullptr; }
+    if (g_dsVolumen != nullptr) { g_dsVolumen->Release(); g_dsVolumen = nullptr; }
+    if (g_dsAbdunkeln != nullptr) { g_dsAbdunkeln->Release(); g_dsAbdunkeln = nullptr; }
+    if (g_rsVolumen != nullptr) { g_rsVolumen->Release(); g_rsVolumen = nullptr; }
+    if (g_bsOhneFarbe != nullptr) { g_bsOhneFarbe->Release(); g_bsOhneFarbe = nullptr; }
+    if (g_cbSchatten != nullptr) { g_cbSchatten->Release(); g_cbSchatten = nullptr; }
+    if (g_nebelVs != nullptr) { g_nebelVs->Release(); g_nebelVs = nullptr; }
+    if (g_nebelFigurVs != nullptr) { g_nebelFigurVs->Release(); g_nebelFigurVs = nullptr; }
+    if (g_nebelPs != nullptr) { g_nebelPs->Release(); g_nebelPs = nullptr; }
+    if (g_nebelLayout != nullptr) { g_nebelLayout->Release(); g_nebelLayout = nullptr; }
+    if (g_cbNebel != nullptr) { g_cbNebel->Release(); g_cbNebel = nullptr; }
     // Dieselben Freigaben noch einmal ausgeschrieben, damit lint_d3dbesitz
     // sie sieht (gibKlingenFrei/gibModellFrei haben sie schon genullt).
     if (g_klingeVb != nullptr) { g_klingeVb->Release(); g_klingeVb = nullptr; }
@@ -4046,7 +4656,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     // gezeichnet wurde, waere weg.
     if (netzId == 0 && lage != Lage::Gemischt) {
         c->ClearRenderTargetView(g_zielRtv, leer);
-        c->ClearDepthStencilView(g_tiefeDsv, D3D11_CLEAR_DEPTH, 1.0F, 0);
+        c->ClearDepthStencilView(g_tiefeDsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0F, 0);
     }
     D3D11_VIEWPORT vp{};
     vp.Width = static_cast<float>(g_zielW);
@@ -4104,6 +4714,17 @@ int zeichneMover(const BspMesh&, const TextureSet*, const BspGeometry*,
 int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
                    const float*, float, int, int, bool,
                    std::string* fehler) {
+    if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
+    return 0;
+}
+int zeichneNebel(const BspMesh&, const TextureSet*, const BspGeometry*, const float*, float,
+                 const float*, const std::vector<NebelGpu>&,
+                 const std::vector<FigurSchatten>&, std::string* fehler) {
+    if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
+    return 0;
+}
+int zeichneFigurSchatten(const std::vector<FigurSchatten>&, int, const float*,
+                         std::string* fehler) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }

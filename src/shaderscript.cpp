@@ -3,6 +3,7 @@
 
 #include "bhed/num.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <string>
@@ -86,6 +87,69 @@ std::string secondWord(const std::string& s) {
 }
 
 }  // namespace
+
+void parseFogParms(const std::string& text, NebelMap& out) {
+    std::string name;
+    int depth = 0;
+    std::size_t at = 0;
+    while (at < text.size()) {
+        std::size_t eol = text.find('\n', at);
+        if (eol == std::string::npos) {
+            eol = text.size();
+        }
+        std::string line = trim(text.substr(at, eol - at));
+        at = eol + 1;
+        const std::size_t slash = line.find("//");
+        if (slash != std::string::npos) {
+            line = trim(line.substr(0, slash));
+        }
+        if (line.empty()) {
+            continue;
+        }
+        // Klammern koennen am Zeilenende oder allein stehen.
+        if (line == "{") { ++depth; continue; }
+        if (line == "}") { depth = std::max(0, depth - 1); continue; }
+        if (depth == 0) {
+            if (line.back() == '{') {
+                name = trim(line.substr(0, line.size() - 1));
+                depth = 1;
+            } else {
+                name = line;
+            }
+            continue;
+        }
+        if (depth == 1 && lower(firstWord(line)) == "fogparms") {
+            std::string zahlen = secondWord(line);
+            for (char& c : zahlen) {
+                if (c == '(' || c == ')') { c = ' '; }
+            }
+            NebelParms p;
+            float v[4] = {1.0F, 0.0F, 0.0F, 250.0F};
+            int n = 0;
+            std::size_t pos = 0;
+            while (n < 4 && pos < zahlen.size()) {
+                const char* anfang = zahlen.c_str() + pos;
+                char* ende = nullptr;
+                const float x = std::strtof(anfang, &ende);
+                if (ende == anfang) {
+                    ++pos;
+                    continue;
+                }
+                v[n++] = x;
+                pos = static_cast<std::size_t>(ende - zahlen.c_str());
+            }
+            if (n == 4 && !name.empty()) {
+                p.farbe[0] = v[0];
+                p.farbe[1] = v[1];
+                p.farbe[2] = v[2];
+                p.tiefe = v[3];
+                out[lower(name)] = p;
+            }
+        }
+        if (line.back() == '{') { ++depth; }
+        if (line.front() == '}') { depth = std::max(0, depth - 1); }
+    }
+}
 
 void parseShaderScript(const std::string& text, ShaderMap& out) {
     std::vector<std::string> lines;

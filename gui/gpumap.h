@@ -210,6 +210,49 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
                             const TextureSet::Tex* schattenBild,
                             std::string* fehler);
 
+// --- Die Schattenarten 2 und 3 an den Figuren -----------------------------
+//
+// cg_shadows 2: ein Schattenvolumen je Figur in den Stencil-Puffer (z-fail),
+// danach alles darin mit Schwarz zu 50 % abdunkeln (RB_DoShadowTessEnd,
+// RB_ShadowFinish). cg_shadows 3: die Figur schwarz auf die Bodenebene
+// gedrueckt (RB_ProjectionShadowDeform, Shader projectionShadow).
+//
+// Nach allem Deckenden - Karte, Mover, Figuren - und vor dem
+// Durchscheinenden (RB_ShadowFinish laeuft vor der ersten Sortierstufe ueber
+// SS_BANNER).
+struct FigurSchatten {
+    const GlmModel* model = nullptr;
+    const ModelTextures* textures = nullptr;
+    std::vector<BoneMatrix> knochen;          // fertig fuer die Haut; leer = starr
+    float welt[16]{};                         // wie bei zeichneFigur
+    float richtung[3] = {0.0F, 0.0F, 1.0F};   // Lichtrichtung der Figur, zum Licht hin
+    float ebene = 0.0F;                       // shadowPlane: Boden + 1
+    bool kappen = false;
+    // Wirft diese Figur einen Schatten der Art 2/3? Der Eintrag dient auch
+    // dem Nebel (`nebel`), und eine Figur im Nebel muss nicht schatten.
+    bool schatten = true;
+    int nebel = -1;                           // Platz in der Nebelliste, -1 keiner
+};
+int zeichneFigurSchatten(const std::vector<FigurSchatten>& figuren, int art,
+                         const float* viewProj, std::string* fehler);
+
+// --- Nebel (r_drawfog 1, RB_FogPass) --------------------------------------
+//
+// Nach allem Deckenden: jede deckende Kartenflaeche, die in einem Nebel liegt
+// (dsurface_t.fogNum), und jede Figur, deren Ursprung in einem Nebel steht
+// (R_GComputeFogNum), bekommt die Nebelfarbe darueber gemischt.
+struct NebelGpu {
+    bool gueltig = false;
+    float farbe[3] = {1.0F, 0.0F, 0.0F};
+    float tcScale = 1.0F / 2000.0F;           // 1 / (max(1, depthForOpaque) * 8)
+    bool hatFlaeche = false;
+    float ebene[4]{};                         // BspGeometry::Nebel::ebene
+};
+int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeometry* geo,
+                 const float* viewProj, float zeitSekunden, const float* kamera,
+                 const std::vector<NebelGpu>& nebel,
+                 const std::vector<FigurSchatten>& figuren, std::string* fehler);
+
 // Das Renderziel auf die gewuenschte Groesse bringen. Legt beim ersten Mal
 // und bei jeder Groessenaenderung neu an.
 //

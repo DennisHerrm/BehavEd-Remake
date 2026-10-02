@@ -11808,6 +11808,7 @@ void loadMapTextures() {
                 std::string text;
                 if (readFromArchives(f.name, text)) {
                     parseShaderScript(text, shaderMap);
+                    parseFogParms(text, g_app->nebelMap);
                 }
             }
         }

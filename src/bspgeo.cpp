@@ -254,6 +254,67 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                 out.planes.push_back(p);
             }
         }
+        // --- Nebel: dfog_t (72 Byte), dbrush_t und dbrushside_t (je 12) ---
+        //
+        // Wie R_LoadFogs (rd-vanilla/tr_bsp.cpp): Kasten aus den sechs
+        // achsparallelen Seiten des Brushs ("brushes are always sorted with
+        // the axial sides first"), die Ebene aus der sichtbaren Seite mit
+        // umgedrehter Normale.
+        {
+            constexpr int kLumpBrushes = 8;
+            constexpr int kLumpBrushSides = 9;
+            constexpr int kLumpFogs = 12;
+            const Lump fo = lumpAt(b, kLumpFogs);
+            const Lump br = lumpAt(b, kLumpBrushes);
+            const Lump bs = lumpAt(b, kLumpBrushSides);
+            if (fo.fits(b.size()) && br.fits(b.size()) && bs.fits(b.size())) {
+                const auto nBrushes = static_cast<std::int32_t>(br.length / 12U);
+                const auto nSides = static_cast<std::int32_t>(bs.length / 12U);
+                const auto nPlanes = static_cast<std::int32_t>(out.planes.size());
+                auto ebeneDerSeite = [&](std::int32_t seite) -> const BspGeometry::Plane* {
+                    if (seite < 0 || seite >= nSides) {
+                        return nullptr;
+                    }
+                    const std::int32_t pn = i32(b, bs.offset + static_cast<std::size_t>(seite) * 12U);
+                    if (pn < 0 || pn >= nPlanes) {
+                        return nullptr;
+                    }
+                    return &out.planes[static_cast<std::size_t>(pn)];
+                };
+                for (std::size_t i = 0; i + 72 <= fo.length; i += 72) {
+                    const std::size_t at = fo.offset + i;
+                    BspGeometry::Nebel n;
+                    n.shader.assign(b.data() + at, ::strnlen(b.data() + at, 64));
+                    n.brush = i32(b, at + 64);
+                    const std::int32_t sichtbar = i32(b, at + 68);
+                    if (n.brush == -1) {
+                        n.global = true;
+                        for (int k = 0; k < 3; ++k) {
+                            n.mins[k] = -1.0e9F;
+                            n.maxs[k] = 1.0e9F;
+                        }
+                    } else if (n.brush >= 0 && n.brush < nBrushes) {
+                        const std::int32_t erste =
+                            i32(b, br.offset + static_cast<std::size_t>(n.brush) * 12U);
+                        for (int k = 0; k < 3; ++k) {
+                            const BspGeometry::Plane* lo = ebeneDerSeite(erste + k * 2);
+                            const BspGeometry::Plane* hi = ebeneDerSeite(erste + k * 2 + 1);
+                            n.mins[k] = (lo != nullptr) ? -lo->dist : 0.0F;
+                            n.maxs[k] = (hi != nullptr) ? hi->dist : 0.0F;
+                        }
+                        if (sichtbar != -1) {
+                            const BspGeometry::Plane* p = ebeneDerSeite(erste + sichtbar);
+                            if (p != nullptr) {
+                                n.hatFlaeche = true;
+                                for (int k = 0; k < 3; ++k) { n.ebene[k] = -p->normal[k]; }
+                                n.ebene[3] = p->dist;
+                            }
+                        }
+                    }
+                    out.nebel.push_back(std::move(n));
+                }
+            }
+        }
         // dnode_t ist 36 Byte: planeNum, children[2], mins[3], maxs[3].
         const Lump nd = lumpAt(b, kLumpNodes);
         if (nd.fits(b.size())) {
@@ -326,6 +387,7 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         s.firstIndex = i32(b, at + 20);
         s.numIndexes = i32(b, at + 24);
         s.lightmap = i32(b, at + 36);          // erste von vier
+        s.fog = i32(b, at + 4);                // fogNum, -1 = keiner
         s.patchWidth = i32(b, at + 140);
         s.patchHeight = i32(b, at + 144);
 

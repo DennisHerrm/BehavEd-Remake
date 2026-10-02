@@ -70,6 +70,18 @@ namespace bhed::gpu {
 [[nodiscard]] std::string lichtVertexShaderHlsl();
 [[nodiscard]] std::string lichtPixelShaderHlsl();
 [[nodiscard]] std::string schattenPixelShaderHlsl();
+// Die Schattenarten 2 (Volumen, Stencil) und 3 (flach auf den Boden) an
+// der Figur - Konstanten in JeSchatten (b5).
+[[nodiscard]] std::string schattenVolumenVsHlsl();
+[[nodiscard]] std::string schattenVolumenGsHlsl();
+[[nodiscard]] std::string schattenFlachVsHlsl();
+[[nodiscard]] std::string schattenSchwarzPsHlsl();
+[[nodiscard]] std::string schattenAbdunkelnPsHlsl();
+// Nebel (RB_FogPass): Karte, Figur, und der gemeinsame Pixel-Shader -
+// Konstanten in JeNebel (b6).
+[[nodiscard]] std::string nebelVertexShaderHlsl();
+[[nodiscard]] std::string nebelFigurVertexShaderHlsl();
+[[nodiscard]] std::string nebelPixelShaderHlsl();
 // Der Verlauf hinter dem Modellfenster (zu vollbildVertexShaderHlsl).
 [[nodiscard]] std::string modellHintergrundPixelShaderHlsl();
 [[nodiscard]] std::string glowShrinkPixelShaderHlsl();

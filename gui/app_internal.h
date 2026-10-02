@@ -273,11 +273,16 @@ struct App {
     // Abschaltbar, weil es einen zweiten Zeichendurchgang kostet und weil
     // man beim Suchen eines Fehlers das rohe Bild sehen will.
     bool showGlow = true;
-    // Blobschatten unter den Figuren (cg_shadows 1) und dynamisches Licht
-    // auf Waenden und Boden (r_dynamiclight) - siehe
-    // gpu::zeichneLichtUndSchatten. Beides ist im Spiel ab Werk an.
-    bool showShadows = true;
+    // Die Schattenart wie cg_shadows: 0 aus, 1 der runde Fleck (markShadow,
+    // ab Werk), 2 Schattenvolumen im Stencil-Puffer, 3 die Figur schwarz auf
+    // den Boden gedrueckt - siehe gpu::zeichneLichtUndSchatten und
+    // gpu::zeichneFigurSchatten. Dazu dynamisches Licht auf Waenden und Boden
+    // (r_dynamiclight), ebenfalls ab Werk an.
+    int schattenArt = 1;
     bool showDynLights = true;
+    // Nebel aus der Karte (r_drawfog 1, RB_FogPass) - siehe gpu::zeichneNebel.
+    bool showFog = true;
+    int nebelAufrufe = 0;
     // Die Schwertlichter des letzten Bildes. Die Figuren bekommen ihr Licht
     // VOR dem Zeichnen, die Klingen stehen erst danach fest - ein Bild
     // Verzug, den niemand sieht. Die Engine rechnet alle Lichter der Szene
@@ -825,6 +830,8 @@ struct App {
     // Shadereintraege gelesen" dutzendfach; das Programm schien zu haengen,
     // rechnete aber dieselbe Tabelle immer wieder.
     ShaderMap shaderMap;
+    // fogparms aller Nebelshader - mit shaderMap zusammen gelesen.
+    NebelMap nebelMap;
     // --- Bilder nur EINMAL lesen und entpacken --------------------------
     //
     // Gemessen in rc186: von 6,2 s beim Laden gingen 5,0 s in das Aufloesen

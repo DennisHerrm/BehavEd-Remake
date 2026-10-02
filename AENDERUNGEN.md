@@ -1,5 +1,44 @@
 # Änderungen seit rc94
 
+## rc576 — Alle Schattenarten und der Nebel aus der Karte
+
+Gemeldet: „Es gibt mehrere Schattenarten – und ja, mach mit Nebel weiter.“
+
+**Schatten wie `cg_shadows` 0–3** (Auswahl statt Schalter in der Seitenleiste):
+
+* **1 Rund** – der Fleck aus rc575, weiter die Vorgabe des Spiels.
+* **2 Volumen** – RB_DoShadowTessEnd/RB_ShadowFinish der Mod: je Figur ein
+  Schattenvolumen. Für jedes zur Lichtrichtung zeigende Dreieck alle drei
+  Kanten und beide Deckel (`_STENCIL_REVERSE`, z-fail), verschoben um
+  (z − shadowPlane + 100) entlang (x·0,3, y·0,3, 1) der waagrechten
+  Lichtrichtung. Danach alles mit Stencil ≠ 0 mit Schwarz zu 50 % abdunkeln –
+  auch die Figur selbst, wie im Spiel. Gebaut im Geometrie-Shader, gezählt im
+  Stencil-Puffer; der Tiefenpuffer ist dafür jetzt D32_FLOAT_S8X24
+  (Tiefe weiter 32 Bit Fließkomma, `leseTiefe` liest jeden zweiten float).
+* **3 Projiziert** – RB_ProjectionShadowDeform: jede Ecke entlang der
+  Lichtrichtung auf die Bodenebene gedrückt (Richtung mindestens 0,5 nach
+  oben), gezeichnet wie `projectionShadow`: schwarz, deckend, polygonOffset.
+* Beide nur für deckende Flächen (SS_OPAQUE), mit Waffe und Griff, bis 1000
+  Einheiten vor der Kamera (bInShadowRange). Art 3 braucht Boden innerhalb von
+  128 Einheiten, Art 2 zeichnet auch ohne (shadowPlane 0).
+
+**Nebel** (r_drawfog 1, Schalter „Nebel“, ab Werk an):
+
+* Die Karte liefert die Nebel jetzt mit (Lump 12, R_LoadFogs): Kasten aus den
+  sechs achsparallelen Seiten des Brushs, die Oberfläche aus der sichtbaren
+  Seite, Brush −1 ist der globale Nebel. Farbe und Weite kommen aus
+  `fogparms` in den Shadern (neuer Leser `parseFogParms`, eigene Tabelle).
+  Jede Fläche trägt ihren Nebel (`dsurface_t.fogNum`).
+* RB_FogPass nachgebaut: die deckende Fläche noch einmal in Nebelfarbe,
+  Alpha aus R_FogFactor (Wurzel der Weite), mit s/t je Ecke wie
+  RB_CalcFogTexCoords – Abstand entlang der Blickrichtung mal tcScale, Tiefe
+  unter der Nebeloberfläche, abhängig davon, ob das Auge im Nebel steht.
+* Figuren im Nebel bekommen ihn ebenfalls (R_GComputeFogNum: der erste Nebel,
+  dessen Kasten den Ursprung enthält).
+* Durchscheinendes bleibt ungenebelt – wie in der Engine (fogPass nur bis
+  SS_SEE_THROUGH). Bewegliche Brush-Modelle (Türen) sind noch ohne Nebel.
+* Geprüft an hoth3, t1_rail, md_dotf_jedi und taspir1 (Fotos alt/neu).
+
 ## rc575 — Schatten und dynamisches Licht wie im Spiel
 
 Gefragt: „Haben wir eigentlich Schatten und Lightning wie im Spiel? Dynamic

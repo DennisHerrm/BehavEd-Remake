@@ -55,6 +55,11 @@ struct BspSurface {
     int lightmap = -1;
     int patchWidth = 0;       // nur bei Patch
     int patchHeight = 0;
+    // In welchem Nebel die Flaeche liegt - dsurface_t.fogNum, -1 keiner.
+    // Die Engine nimmt fogNum + 1 (tr_bsp.cpp, `surf->fogIndex`), weil bei
+    // ihr Platz 0 "kein Nebel" heisst; hier zeigt die Zahl direkt in
+    // BspGeometry::nebel.
+    int fog = -1;
 
     // --- Der Kasten um diese Flaeche -----------------------------------
     //
@@ -206,6 +211,27 @@ struct BspGeometry {
         float maxs[3]{};
     };
     std::vector<Plane> planes;
+
+    // --- Nebel (Lump 12, R_LoadFogs) ----------------------------------
+    //
+    // dfog_t: Shadername, Brush, sichtbare Seite. Der Brush liefert den
+    // Kasten (seine ersten sechs Seiten sind die achsparallelen), die
+    // sichtbare Seite die Ebene, an der der Nebel nach oben aufhoert. Brush
+    // -1 ist der GLOBALE Nebel ueber der ganzen Karte. Farbe und Dichte
+    // stehen nicht hier, sondern im Shader (`fogparms`).
+    struct Nebel {
+        std::string shader;
+        int brush = -1;
+        float mins[3]{};
+        float maxs[3]{};
+        bool global = false;
+        // fog->surface, schon so, wie RB_CalcFogTexCoords sie braucht:
+        // t = dot(punkt, ebene.xyz) + ebene.w ist die Tiefe UNTER der
+        // Oberflaeche des Nebels (positiv = im Nebel).
+        bool hatFlaeche = false;
+        float ebene[4]{};
+    };
+    std::vector<Nebel> nebel;
     std::vector<Node> nodes;
     std::vector<Leaf> leafs;
     std::vector<int> leafSurfaces;
