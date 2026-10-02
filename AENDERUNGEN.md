@@ -1,5 +1,62 @@
 # Änderungen seit rc94
 
+## rc571 — Datenverlust beim Schließen von Reitern behoben, Sicherungen, Undo aus der Mitte
+
+### Arbeit ging verloren, wenn man einen ANDEREN Reiter schloss
+
+Gemeldet: „I closed some scripts/tabs I was no longer using and went back to
+continue working on the script but it had reset. All my changes were lost with
+no undo/redo history. It was like I just opened the file again.“
+
+* **Nachgestellt** (Selbsttest): drei Skripte, im mittleren zweimal ändern,
+  einen anderen, unveränderten Reiter schließen – danach stand der mittlere
+  wieder auf „wait 2.000“, Undo 0. Genau die Meldung.
+* **Ursache:** Der aktive Reiter lebt im Arbeitsdokument; seine Kopie in der
+  Reiterliste ist der Stand beim letzten Reiterwechsel. Beim Schließen eines
+  anderen Reiters wurde der aktive danach aus dieser veralteten Kopie neu
+  geholt – ohne ihn vorher zu sichern. Alles seit dem letzten Wechsel (oder
+  seit dem Öffnen) war weg, samt Undo. Lag der geschlossene Reiter links,
+  rutschte zudem die Nummer nicht nach, und es wurde der Nachbar geholt.
+* **Behoben:** vor dem Schließen wird der aktive Reiter gesichert, seine Nummer
+  und die der geteilten Felder rücken nach.
+* **Dazu gefunden:** ImGuis Reiterleiste merkt sich ihre eigene Auswahl. Wechselte
+  das Programm den Reiter ohne Klick (mehrere Skripte geöffnet, Reiter
+  geschlossen), zog ImGuis veraltete Wahl es im nächsten Bild zurück –
+  „plötzlich in einem anderen Tab“. Jetzt wird ImGui nachgeführt.
+* Gegenprobe ohne die Korrektur: 4 Fehler; mit: alle bestanden.
+
+### Rollende Sicherung der letzten 10 Speicherungen
+
+Gewünscht: „a backup of the .txt file after each save … a rolling backup system
+of the last 10 saves/compiles named backup1.txt, backup2.txt etc.“
+
+* Jedes Speichern (auch durch Kompilieren und „Save all“) legt eine Kopie ab in
+  `backup/<Skriptname>/` neben `behaved.exe`: `backup1.txt` ist die neueste,
+  `backup10.txt` die älteste. Unveränderter Inhalt gibt keine neue Kopie.
+* File → „Open backup folder“ öffnet den Ordner des aktuellen Skripts.
+
+### Undo-Liste
+
+* **Aktualisiert sich**, wenn man bei offener Liste Strg+Z/Strg+Y drückt („the
+  window doesn't update“).
+* **Einen Schritt aus der Mitte zurücknehmen** („einen Undo-Befehl mittendrin
+  anklicken … und nicht der Reihe nach“): Knopf „Undo only this step“. Nimmt
+  nur den angeklickten Schritt zurück – geänderte Felder zurück, Eingefügtes
+  entfernt, Gelöschtes an seinen alten Platz – und lässt alles Spätere stehen;
+  selbst ein normaler, rückgängig machbarer Schritt. Der angeklickte Eintrag ist
+  kräftig markiert, die von „Undo“ mitgenommenen darüber blass.
+* Unten stand manchmal ein veralteter Text („Undo history (6): edit“) – der
+  Zwischenspeicher hing an der Adresse des letzten Schritts. Jetzt an einem
+  Änderungszähler des Dokuments.
+* Der Hinweis nennt 3ds Max nicht mehr.
+
+### Statusleiste aufgeräumt
+
+„Notes | Undo history ———— Script info | Compiled: time/date“: links Hinweise
+und Undo-Liste, rechts Skript-Info und „Compiled: …“, durch „|“ getrennt. Die
+Bildrate nur noch im Karten-Reiter („Don't really need an FPS counter for
+scripting“).
+
 ## rc570 — Updates aus einem öffentlichen Release-Repository
 
 Gefragt: „Wieso kann es nicht privat sein und er sieht die Updates trotzdem?“

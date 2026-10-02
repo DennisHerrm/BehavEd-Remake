@@ -1862,6 +1862,9 @@ const char* kuerzelName(keys::Action a);
 int tabKennung(int tab);
 // Einen Reiter schliessen wie mit dem x am Reiter (fragt bei Aenderungen).
 void reiterSchliessen(int index);
+// Nur Schritt i des Undo-Stapels zuruecknehmen (0 = aeltester), die spaeteren
+// bleiben. Ein neuer Schritt. `bericht`: was zurueckgenommen wurde.
+bool einzelnenSchrittZuruecknehmen(std::size_t i, std::string* bericht);
 // Aenderungsrand je Zeile: 0 nichts, 1 geaendert (orange), 2 geaendert und
 // gespeichert (gruen), 3 nach dem Speichern wieder wie beim Oeffnen (blau).
 enum : std::uint8_t { kMarkeKeine = 0, kMarkeGeaendert = 1, kMarkeGespeichert = 2, kMarkeZurueck = 3 };

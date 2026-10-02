@@ -863,6 +863,7 @@ void Document::merkeBeitritt(const Path& weg, std::size_t anzahl, Kennung makro)
 
 void Document::snapshot(const char* what) {
     ++aenderungen_;
+    ++stand_;
     undo_.push_back(Step{s_, what});
     if (undo_.size() > kMaxUndo) {
         undo_.erase(undo_.begin());
@@ -1500,6 +1501,12 @@ bool Document::insertRem(const Path& p) {
     return insertAfter(p, std::move(rem));
 }
 
+bool Document::ersetzeSkript(Script neu, const char* was) {
+    snapshot(was);
+    s_ = std::move(neu);
+    return true;
+}
+
 bool Document::replaceMany(const std::vector<std::pair<Path, Node>>& ersatz) {
     MakroWache wache(*this);
     bool gueltig = false;
@@ -1704,6 +1711,7 @@ bool Document::undo() {
         return false;
     }
     redo_.push_back(Step{s_, undo_.back().what});
+    ++stand_;
     s_ = undo_.back().script;
     undo_.pop_back();
     return true;
@@ -1714,6 +1722,7 @@ bool Document::redo() {
         return false;
     }
     undo_.push_back(Step{s_, redo_.back().what});
+    ++stand_;
     s_ = redo_.back().script;
     redo_.pop_back();
     return true;

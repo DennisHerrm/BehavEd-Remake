@@ -41,6 +41,8 @@ bool startBehavedWith(const std::string& datei);
 // Dorthin gehoert das Protokoll: wer es hinschicken soll, findet es neben der
 // .exe, statt es in %APPDATA% suchen zu muessen.
 [[nodiscard]] std::string executableDirectory();
+// Einen Ordner im Explorer zeigen.
+void openInExplorer(const std::string& folder);
 
 // Die Dateinamen eines Ordners, ohne Pfad und ohne Unterordner.
 //

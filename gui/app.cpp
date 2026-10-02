@@ -3738,6 +3738,52 @@ std::string mitEndung(const std::string& pfad, const char* neu) {
     return (hatEndung ? pfad.substr(0, punkt) : pfad) + neu;
 }
 
+// --- Rollende Sicherung der letzten 10 Speicherungen ----------------------
+//
+// shank, 02.10.: "Might be a good idea to have a backup of the .txt file
+// after each save ... a rolling backup system of the last 10 saves/compiles
+// named backup1.txt, backup2.txt etc." - neben der .exe, in
+// backup/<Skriptname>/. backup1.txt ist die neueste. Gleicher Inhalt wie die
+// letzte Sicherung (Kompilieren ohne Aenderung) gibt keine neue.
+std::string sicherungsOrdner(const std::string& quelle) {
+    std::string name = fileName(quelle);
+    const std::size_t punkt = name.find_last_of('.');
+    if (punkt != std::string::npos && punkt > 0) { name.resize(punkt); }
+    if (name.empty()) { name = "unnamed"; }
+    return platform::executableDirectory() + "/backup/" + name;
+}
+
+void sicherungAnlegen(const std::string& quelle, const std::string& inhalt) {
+    namespace fs = std::filesystem;
+    constexpr int kAnzahl = 10;
+    std::error_code ec;
+    const std::string ordner = sicherungsOrdner(quelle);
+    fs::create_directories(fs::u8path(ordner), ec);
+    const auto datei = [&](int n) { return ordner + "/backup" + std::to_string(n) + ".txt"; };
+    if (fs::exists(fs::u8path(datei(1)), ec) && slurp(datei(1)) == inhalt) {
+        return;
+    }
+    fs::remove(fs::u8path(datei(kAnzahl)), ec);
+    for (int n = kAnzahl - 1; n >= 1; --n) {
+        if (fs::exists(fs::u8path(datei(n)), ec)) {
+            fs::rename(fs::u8path(datei(n)), fs::u8path(datei(n + 1)), ec);
+        }
+    }
+    if (!spew(datei(1), inhalt)) {
+        diag::detail("Sicherung: " + datei(1) + " nicht schreibbar");
+        return;
+    }
+    diag::detail("Sicherung: " + datei(1));
+}
+
+void sicherungsOrdnerOeffnen() {
+    const std::string o = g_app->path.empty() ? platform::executableDirectory() + "/backup"
+                                              : sicherungsOrdner(g_app->path);
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::u8path(o), ec);
+    platform::openInExplorer(o);
+}
+
 bool doSave() {
     if (g_app->path.empty()) {
         return doSaveAs();
@@ -3772,10 +3818,12 @@ bool doSave() {
             return false;
         }
     }
-    if (!spew(quelle, writeScript(g_app->doc.script()))) {
+    const std::string inhalt = writeScript(g_app->doc.script());
+    if (!spew(quelle, inhalt)) {
         platform::showError(quelle, tr(Str::AppTitle));
         return false;
     }
+    sicherungAnlegen(quelle, inhalt);
     // Ab jetzt ist die Quelle die Datei, an der gearbeitet wird. Sonst
     // schriebe das naechste Speichern wieder neben die .ibi.
     if (quelle != g_app->path) {
@@ -4164,9 +4212,27 @@ void dropTab(int index) {
     if (index < 0 || index >= n) {
         return;
     }
+    // --- Den aktiven Reiter VORHER parken ---------------------------------
+    //
+    // shank, 02.10.: "I closed some scripts/tabs I was no longer using and
+    // went back to continue working on the script but it had reset. All my
+    // changes were lost with no undo/redo history."
+    //
+    // Der aktive Reiter lebt in g_app->doc; seine Kopie in tabs[] ist der
+    // Stand beim letzten Reiterwechsel. Unten holt takeTab() den Reiter aus
+    // dieser Kopie zurueck - ohne Parken vorher war alles seit dem letzten
+    // Wechsel weg, samt Undo. Und lag der geschlossene Reiter LINKS, rutschte
+    // die Nummer nicht nach: geholt wurde der Nachbar.
+    const bool andererReiter = (index != g_app->activeTab);
+    if (andererReiter) {
+        parkActive(false);
+    }
     g_app->tabs.erase(g_app->tabs.begin() + index);
     if (g_app->tabs.empty()) {
         g_app->tabs.push_back(App::Parked{});
+    }
+    if (andererReiter && index < g_app->activeTab) {
+        --g_app->activeTab;
     }
     g_app->activeTab = std::clamp(g_app->activeTab, 0,
                                   static_cast<int>(g_app->tabs.size()) - 1);
@@ -4189,10 +4255,13 @@ void dropTab(int index) {
                                    std::max(1, uebrig));
     g_app->focusPane = std::clamp(g_app->focusPane, 0, g_app->splitCount - 1);
     for (auto& pn : g_app->splitPanes) {
+        // Wer rechts vom geschlossenen stand, rueckt eins nach links.
+        if (pn.tab > index) { --pn.tab; }
         pn.tab = std::clamp(pn.tab, 0, std::max(0, uebrig - 1));
         pn.dirty = true;
     }
-    takeTab(g_app->activeTab);
+    // layout=false: die Aufteilung ist eben schon nachgefuehrt.
+    takeTab(g_app->activeTab, true, !andererReiter);
 }
 
 // Einen Reiter schliessen - mit Nachfrage, falls noetig.
@@ -4474,6 +4543,7 @@ const char* stepName(const char* key) {
     if (k == "comment") { return tr(Str::StepComment); }
     if (k == "uncomment") { return tr(Str::StepUncomment); }
     if (k == "paste") { return tr(Str::StepPaste); }
+    if (k == "selective") { return tr(Str::StepSelectiveUndo); }
     return tr(Str::StepEdit);
 }
 
@@ -4688,6 +4758,133 @@ std::string aenderungsText(const Script& a, const Script& b, Path* ziel) {
     return out;
 }
 
+namespace {
+
+// Wo steht der Knoten mit dieser Kennung? Eltern-Liste und Stelle, sonst null.
+std::vector<Node>* sucheKennung(std::vector<Node>& ns, Kennung k, std::size_t& stelle) {
+    for (std::size_t i = 0; i < ns.size(); ++i) {
+        if (ns[i].kennung == k) {
+            stelle = i;
+            return &ns;
+        }
+        if (std::vector<Node>* tief = sucheKennung(ns[i].children, k, stelle)) {
+            return tief;
+        }
+    }
+    return nullptr;
+}
+
+// Eltern-Kennung (0 = oberste Ebene) und Vorgaenger-Kennung (0 = erster) in a.
+bool lageIn(const std::vector<Node>& ns, Kennung k, Kennung eltern, Kennung& outEltern, Kennung& outVor) {
+    for (std::size_t i = 0; i < ns.size(); ++i) {
+        if (ns[i].kennung == k) {
+            outEltern = eltern;
+            outVor = 0;
+            for (std::size_t j = i; j-- > 0;) {
+                if (ns[j].kennung != 0) { outVor = ns[j].kennung; break; }
+            }
+            return true;
+        }
+        if (lageIn(ns[i].children, k, ns[i].kennung, outEltern, outVor)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+// --- Einen Schritt aus der MITTE zuruecknehmen -----------------------------
+//
+// shank: "es waere auch nice, dass man in der Liste einen Undo-Befehl
+// mittendrin anklicken kann und den dann undo machen kann und nicht der Reihe
+// nach muss". Schritt i fuehrte von undoStand(i) (a) zu b. Zurueckgenommen
+// wird NUR, was er getan hat, und zwar am JETZIGEN Stand - alles danach bleibt:
+//   geaendert   -> der Befehl bekommt seine alten Felder (falls es ihn noch gibt)
+//   eingefuegt  -> der Befehl wird entfernt (samt Block)
+//   geloescht   -> der Befehl kommt wieder, hinter seinen alten Vorgaenger
+//                  (sonst an den Anfang seines alten Blocks)
+// Verschiebungen werden nicht zurueckgenommen. Das Ganze ist EIN neuer
+// Schritt und laesst sich selbst wieder rueckgaengig machen.
+bool schrittEinzelnZurueck(std::size_t i, std::string* bericht) {
+    Document& d = g_app->doc;
+    d.vergibKennungen();
+    if (i >= d.undoDepth()) {
+        return false;
+    }
+    const Script& a = d.undoStand(i);
+    const Script& b = (i + 1 < d.undoDepth()) ? d.undoStand(i + 1) : d.script();
+    std::map<Kennung, Flach> fa;
+    std::map<Kennung, Flach> fb;
+    Path w;
+    std::size_t ord = 0;
+    flachen(a.nodes, w, fa, ord);
+    ord = 0;
+    flachen(b.nodes, w, fb, ord);
+    Script neu = d.script();
+    int getan = 0;
+    // Eingefuegt -> entfernen.
+    for (const auto& [k, eb] : fb) {
+        if (fa.count(k) != 0) { continue; }
+        std::size_t stelle = 0;
+        if (std::vector<Node>* liste = sucheKennung(neu.nodes, k, stelle)) {
+            liste->erase(liste->begin() + static_cast<std::ptrdiff_t>(stelle));
+            ++getan;
+        }
+    }
+    // Geaendert -> alte Felder.
+    for (const auto& [k, eb] : fb) {
+        const auto ea = fa.find(k);
+        if (ea == fa.end() || ea->second.text == eb.text) { continue; }
+        std::size_t stelle = 0;
+        if (std::vector<Node>* liste = sucheKennung(neu.nodes, k, stelle)) {
+            Node alt = *ea->second.knoten;
+            alt.children = std::move((*liste)[stelle].children);
+            alt.kennung = k;
+            (*liste)[stelle] = std::move(alt);
+            ++getan;
+        }
+    }
+    // Geloescht -> wieder einsetzen (in der Reihenfolge von a).
+    std::vector<const Flach*> weg;
+    for (const auto& [k, ea] : fa) {
+        if (fb.count(k) == 0) { weg.push_back(&ea); }
+    }
+    std::sort(weg.begin(), weg.end(), [](const Flach* x, const Flach* y) { return x->ord < y->ord; });
+    for (const Flach* f : weg) {
+        // Ein Kind eines ebenfalls geloeschten Blocks kommt mit dem Block.
+        Kennung eltern = 0;
+        Kennung vor = 0;
+        if (!lageIn(a.nodes, f->knoten->kennung, 0, eltern, vor)) { continue; }
+        if (eltern != 0 && fb.count(eltern) == 0) { continue; }
+        std::size_t stelle = 0;
+        if (vor != 0) {
+            if (std::vector<Node>* liste = sucheKennung(neu.nodes, vor, stelle)) {
+                liste->insert(liste->begin() + static_cast<std::ptrdiff_t>(stelle) + 1, *f->knoten);
+                ++getan;
+                continue;
+            }
+        }
+        if (eltern != 0) {
+            if (std::vector<Node>* liste = sucheKennung(neu.nodes, eltern, stelle)) {
+                auto& kinder = (*liste)[stelle].children;
+                kinder.insert(kinder.begin(), *f->knoten);
+                ++getan;
+                continue;
+            }
+        }
+        neu.nodes.insert(neu.nodes.begin(), *f->knoten);
+        ++getan;
+    }
+    if (getan == 0) {
+        return false;
+    }
+    // Benannt wird die AKTION, die zurueckgenommen wird - wie beim normalen Undo.
+    const std::string text = aenderungsText(a, b, nullptr);
+    if (bericht != nullptr) { *bericht = text; }
+    return d.ersetzeSkript(std::move(neu), "selective");
+}
+
 void undoSchritte(int anzahl) { schritteAusfuehren(anzahl, false); }
 void redoSchritte(int anzahl) { schritteAusfuehren(anzahl, true); }
 
@@ -4701,10 +4898,22 @@ void doRedo() { redoSchritte(1); }
 // Eintrag markiert ihn und alle darueber; "Undo" nimmt sie zurueck, "Cancel"
 // schliesst. Doppelklick tut beides auf einmal.
 void drawUndoListe() {
-    if (g_app->undoListeAnfrage != 0) {
-        g_app->undoListeRedo = (g_app->undoListeAnfrage == 2);
+    // Die Eintraege aus dem Stapel. Neu gerechnet beim Oeffnen UND immer,
+    // wenn sich das Dokument aendert, waehrend die Liste offen ist (shank:
+    // "If I have the undo history window open and start doing CTRL Z/Y,
+    // the window doesn't update").
+    static std::uint64_t gefuellterStand = 0;
+    static int gefuellterReiter = -1;
+    const bool offen = ImGui::IsPopupOpen("##undoliste");
+    const bool neuOeffnen = g_app->undoListeAnfrage != 0;
+    if (neuOeffnen || (offen && (g_app->doc.stand() != gefuellterStand || g_app->activeTab != gefuellterReiter))) {
+        if (neuOeffnen) {
+            g_app->undoListeRedo = (g_app->undoListeAnfrage == 2);
+            g_app->undoListeMarke = 0;
+        }
         g_app->undoListeAnfrage = 0;
-        g_app->undoListeMarke = 0;
+        gefuellterStand = g_app->doc.stand();
+        gefuellterReiter = g_app->activeTab;
         g_app->undoListeEintraege.clear();
         Document& d = g_app->doc;
         d.vergibKennungen();
@@ -4725,7 +4934,11 @@ void drawUndoListe() {
                 g_app->undoListeEintraege.push_back(t.empty() ? std::string(stepName(d.redoWas(j))) : t);
             }
         }
-        ImGui::OpenPopup("##undoliste");
+        g_app->undoListeMarke = std::clamp(g_app->undoListeMarke, 0,
+                                           std::max(0, static_cast<int>(g_app->undoListeEintraege.size()) - 1));
+        if (neuOeffnen) {
+            ImGui::OpenPopup("##undoliste");
+        }
     }
     ImGui::SetNextWindowSizeConstraints(ImVec2{ImGui::GetFontSize() * 22.0F, 0.0F},
                                         ImVec2{ImGui::GetFontSize() * 64.0F, FLT_MAX});
@@ -4754,11 +4967,23 @@ void drawUndoListe() {
         for (std::size_t k = 0; k < e.size(); ++k) {
             ImGui::PushID(static_cast<int>(k));
             const bool markiert = static_cast<int>(k) <= g_app->undoListeMarke;
+            // Der angeklickte Eintrag kraeftig, die mitgenommenen darueber
+            // blass: "Undo" nimmt alle markierten, "Undo only this step" nur
+            // den kraeftigen.
+            const bool blass = markiert && static_cast<int>(k) != g_app->undoListeMarke;
+            if (blass) {
+                ImVec4 c = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+                c.w *= 0.40F;
+                ImGui::PushStyleColor(ImGuiCol_Header, c);
+            }
             if (ImGui::Selectable(e[k].c_str(), markiert, ImGuiSelectableFlags_AllowDoubleClick)) {
                 g_app->undoListeMarke = static_cast<int>(k);
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                     ausfuehren = true;
                 }
+            }
+            if (blass) {
+                ImGui::PopStyleColor();
             }
             ImGui::PopID();
         }
@@ -4772,6 +4997,35 @@ void drawUndoListe() {
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button(tr(Str::EditorCancel), ImVec2{-FLT_MIN, 0.0F})) {
+        ImGui::CloseCurrentPopup();
+    }
+    // Nur den angeklickten Schritt zuruecknehmen, die spaeteren bleiben.
+    bool nurDieser = false;
+    if (!g_app->undoListeRedo) {
+        ImGui::BeginDisabled(e.empty());
+        if (ImGui::Button(tr(Str::UndoOnlyThis), ImVec2{-FLT_MIN, 0.0F})) {
+            nurDieser = true;
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", tr(Str::UndoOnlyThisHint));
+        }
+    }
+    if (nurDieser && !e.empty()) {
+        const std::size_t n = g_app->doc.undoDepth();
+        const std::size_t k = static_cast<std::size_t>(std::max(0, g_app->undoListeMarke));
+        std::string bericht;
+        if (k < n && schrittEinzelnZurueck(n - 1 - k, &bericht)) {
+            char z[400];
+            std::snprintf(z, sizeof(z), tr(Str::UndoOf), bericht.empty() ? stepName("selective") : bericht.c_str());
+            g_app->undoMeldung = z;
+            g_app->undoMeldungRedo = false;
+            g_app->undoMeldungTiefe = g_app->doc.undoDepth();
+            diag::detail("Undo-Meldung (einzeln): " + g_app->undoMeldung);
+            g_app->selectedPath.clear();
+            g_app->selection.clear();
+            rebuildTree();
+        }
         ImGui::CloseCurrentPopup();
     }
     if (ausfuehren && !e.empty()) {
@@ -8654,11 +8908,12 @@ void drawStatus(const Layout& l) {
         ImGui::SameLine();
     }
 
-    // Die letzte Statusmeldung - die davor stehen im Fenster.
-    if (!g_app->statusLines.empty()) {
-        ImGui::TextDisabled("%s", g_app->statusLines.back().c_str());
+    // Ein leiser Trenner zwischen den Gruppen (shank: "Notes | Undo history
+    // ---- Script info | Compiled: time/date").
+    const auto trenner = [] {
+        ImGui::TextDisabled("|");
         ImGui::SameLine();
-    }
+    };
 
     // Was das letzte Undo/Redo getan hat - anklickbar: oeffnet die
     // Undo-Liste. Hat sich das Dokument seitdem geaendert (neue Bearbeitung,
@@ -8675,14 +8930,14 @@ void drawStatus(const Layout& l) {
     bool redoListe = g_app->undoMeldungRedo;
     if (eintrag.empty() && g_app->doc.undoDepth() > 0) {
         static std::string letzterText;
-        static const void* letzterStand = nullptr;
-        static std::size_t letzteTiefe = 0;
+        static std::uint64_t letzterStand = static_cast<std::uint64_t>(-1);
         static int letzterReiter = -1;
         const std::size_t n = g_app->doc.undoDepth();
-        const void* stand = &g_app->doc.undoStand(n - 1);
-        if (stand != letzterStand || n != letzteTiefe || g_app->activeTab != letzterReiter) {
-            letzterStand = stand;
-            letzteTiefe = n;
+        // Nach dem Stand des Dokuments, nicht nach der Adresse des letzten
+        // Schritts: die kann nach Undo und neuer Bearbeitung gleich bleiben,
+        // und dann stand unten ein veralteter Text ("Undo history (6): edit").
+        if (g_app->doc.stand() != letzterStand || g_app->activeTab != letzterReiter) {
+            letzterStand = g_app->doc.stand();
             letzterReiter = g_app->activeTab;
             g_app->doc.vergibKennungen();
             std::string t = aenderungsText(g_app->doc.undoStand(n - 1), g_app->doc.script(), nullptr);
@@ -8695,6 +8950,7 @@ void drawStatus(const Layout& l) {
         redoListe = false;
     }
     if (!eintrag.empty()) {
+        trenner();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0, 0, 0, 0});
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{0.55F, 0.75F, 1.0F, 1.0F});
         if (ImGui::SmallButton(eintrag.c_str())) {
@@ -8748,23 +9004,42 @@ void drawStatus(const Layout& l) {
             }
         }
     }
-    char rechts[64];
-    std::snprintf(rechts, sizeof(rechts), "%.0f fps",
-                  static_cast<double>(ImGui::GetIO().Framerate));
-    const float abstand = ImGui::GetFontSize() * 2.0F;
-    const float zeitBreite = letzteZeit.empty() ? 0.0F : ImGui::CalcTextSize(letzteZeit.c_str()).x + abstand;
-    const float breite = zeitBreite + ImGui::CalcTextSize(rechts).x;
+    // --- Rechts: Skript-Info | Compiled: ... [| fps nur auf der Karte] -----
+    //
+    // shank: "Don't really need an FPS counter for scripting, maybe just have
+    // it on the map window" - die Bildrate nur im Karten-Reiter.
+    std::vector<std::string> teile;
+    if (!g_app->statusLines.empty()) {
+        teile.push_back(g_app->statusLines.back());
+    }
+    if (!letzteZeit.empty()) {
+        teile.push_back(letzteZeit);
+    }
+    if (g_app->leftMode == 1) {
+        char fps[32];
+        std::snprintf(fps, sizeof(fps), "%.0f fps", static_cast<double>(ImGui::GetIO().Framerate));
+        teile.emplace_back(fps);
+    }
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float strich = ImGui::CalcTextSize("|").x + st.ItemSpacing.x * 2.0F;
+    float breite = 0.0F;
+    for (std::size_t i = 0; i < teile.size(); ++i) {
+        breite += ImGui::CalcTextSize(teile[i].c_str()).x + (i > 0 ? strich : 0.0F);
+    }
     const float frei = ImGui::GetContentRegionAvail().x;
-    if (frei > breite + ImGui::GetStyle().ItemSpacing.x) {
+    if (!teile.empty() && frei > breite + st.ItemSpacing.x) {
         ImGui::SameLine(ImGui::GetCursorPosX() + frei - breite);
-        if (!letzteZeit.empty()) {
-            ImGui::TextDisabled("%s", letzteZeit.c_str());
-            if (ImGui::IsItemHovered()) {
+        for (std::size_t i = 0; i < teile.size(); ++i) {
+            if (i > 0) {
+                ImGui::TextDisabled("|");
+                ImGui::SameLine();
+            }
+            ImGui::TextDisabled("%s", teile[i].c_str());
+            if (teile[i] == letzteZeit && ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s", tr(Str::StatusLastCompileHint));
             }
-            ImGui::SameLine(0.0F, abstand);
+            if (i + 1 < teile.size()) { ImGui::SameLine(); }
         }
-        ImGui::TextDisabled("%s", rechts);
     } else {
         ImGui::NewLine();
     }
@@ -9003,6 +9278,12 @@ void drawMenu() {
             ImGui::EndTooltip();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem(tr(Str::FileBackupFolder))) {
+            sicherungsOrdnerOeffnen();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tr(Str::FileBackupFolderHint));
+        }
         // Auto-Updater: von Hand nachsehen, und ob es beim Start geschehen soll.
         if (ImGui::MenuItem(tr(Str::UpdMenu))) {
             updater::pruefen(false);
@@ -13089,6 +13370,20 @@ void draw() {
                                    ImGuiTabBarFlags_TabListPopupButton)) {
             int wechselZu = -1;
             int schliesse = -1;
+            // --- ImGuis eigene Auswahl dem Programm nachfuehren -------------
+            //
+            // ImGui merkt sich selbst, welcher Reiter gewaehlt ist, und
+            // meldet ihn jedes Bild. Wechselt das PROGRAMM den Reiter (drei
+            // Skripte auf einmal geoeffnet, ein Reiter geschlossen, Fokus
+            // aus einem Feld der Aufteilung), steht ImGui noch auf dem alten
+            // - und die Meldung unten zog das Programm dorthin zurueck:
+            // "ploetzlich in einem anderen Tab" (Selbsttest beim Nachstellen
+            // von shanks Datenverlust, 02.10.). Deshalb: weicht ImGuis Wahl
+            // vom Besitzer ab, bekommt dessen Reiter SetSelected, und in
+            // diesem Bild ist ImGuis Meldung kein Klick.
+            static int imguiWahl = -1;
+            const bool nachfuehren = (imguiWahl != g_app->homeTab);
+            int gemeldet = -1;
             for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
                 // Fuer NAME und Zustand gilt weiter der aktive Reiter: nur
                 // er hat das lebende Dokument. Fuer die AUSWAHL im Band
@@ -13111,7 +13406,11 @@ void draw() {
                 // Speichern die Zuordnung.
                 name += "###tab" + std::to_string(i);
                 bool offen = true;
-                if (ImGui::BeginTabItem(name.c_str(), &offen)) {
+                const ImGuiTabItemFlags fahnenReiter =
+                    (nachfuehren && static_cast<int>(i) == g_app->homeTab) ? ImGuiTabItemFlags_SetSelected
+                                                                           : ImGuiTabItemFlags_None;
+                if (ImGui::BeginTabItem(name.c_str(), &offen, fahnenReiter)) {
+                    gemeldet = static_cast<int>(i);
                     // Verglichen wird mit dem BESITZER, nicht mit dem
                     // aktiven Reiter.
                     //
@@ -13124,7 +13423,7 @@ void draw() {
                     // Der Besitzer aendert sich nur, wenn man wirklich
                     // einen Reiter anklickt. Damit bleibt das Band ruhig,
                     // waehrend man in den Feldern arbeitet.
-                    if (static_cast<int>(i) != g_app->homeTab) {
+                    if (static_cast<int>(i) != g_app->homeTab && !nachfuehren) {
                         wechselZu = static_cast<int>(i);
                     }
                     ImGui::EndTabItem();
@@ -13141,6 +13440,7 @@ void draw() {
                 takeTab(g_app->activeTab);
             }
             ImGui::EndTabBar();
+            imguiWahl = gemeldet;
             // ERST nach EndTabBar handeln - ein Umschalten mitten in der
             // Leiste zieht ImGui den Boden unter den Fuessen weg.
             if (schliesse >= 0) {
@@ -14439,6 +14739,7 @@ void markiereKennungen(const std::vector<Kennung>& ks) {
 }
 
 void reiterSchliessen(int index) { closeTab(index); }
+bool einzelnenSchrittZuruecknehmen(std::size_t i, std::string* bericht) { return schrittEinzelnZurueck(i, bericht); }
 
 // --- Lesezeichen und Aenderungsrand --------------------------------------
 //

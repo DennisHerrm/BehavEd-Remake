@@ -260,6 +260,10 @@ public:
     // Mehrere Knoten auf einmal ersetzen (Felder, nicht Blockinhalt) - EIN
     // Rueckgaengig-Schritt. Fuer "Revert to original".
     bool replaceMany(const std::vector<std::pair<Path, Node>>& ersatz);
+    // Das ganze Skript durch ein anderes ersetzen - EIN Rueckgaengig-Schritt
+    // mit der Bezeichnung `was`. Fuer "nur diesen Schritt zuruecknehmen"
+    // aus der Undo-Liste, das an mehreren Stellen zugleich aendern kann.
+    bool ersetzeSkript(Script neu, const char* was);
 
     // --- Zwischenablage ---------------------------------------------------
     bool copyAt(const Path& p);
@@ -401,6 +405,9 @@ public:
     // was passiert.
     [[nodiscard]] const char* undoLabel() const;
     [[nodiscard]] const char* redoLabel() const;
+    // Zaehlt jede Aenderung des Inhalts, auch Undo und Redo - fuer Anzeigen,
+    // die sich nur bei einer Aenderung neu rechnen sollen.
+    [[nodiscard]] std::uint64_t stand() const { return stand_; }
 
     // Fuer die Undo-Liste (wie in 3ds Max). undoStand(i) ist der Stand VOR
     // Schritt i (0 = der aelteste), undoWas(i) seine Bezeichnung. Beim Redo
@@ -460,6 +467,7 @@ private:
     std::vector<Step> undo_;
     std::vector<Step> redo_;
     std::size_t savedDepth_ = 0;
+    std::uint64_t stand_ = 0;
     std::vector<Node> clip_;
 };
 

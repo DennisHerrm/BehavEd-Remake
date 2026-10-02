@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 
@@ -249,6 +250,10 @@ std::string settingsDirectory() {
     return dir;
 }
 
+
+void openInExplorer(const std::string& folder) {
+    ShellExecuteW(nullptr, L"open", toWide(folder).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
 
 std::string executableDirectory() {
     // GetModuleFileNameW mit wachsendem Puffer: der Pfad kann laenger als
