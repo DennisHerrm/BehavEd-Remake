@@ -12121,6 +12121,26 @@ void loadMapTextures() {
                     // des Shaders - darum geht es ja gerade.
                     zusatz.blend = st.blend;
                     zusatz.alphaTest = st.alphaTest;
+                    // --- `depthFunc equal` auf einer alphagetesteten Grundstufe
+                    //
+                    // shank, 02.10.: die Geonosier im Publikum der Arena
+                    // (textures/md_ga/geonosian1) standen in einem schwarzen
+                    // Viereck. Der Shader: Bild mit `alphaFunc GE128`, dann
+                    // DASSELBE Bild noch einmal multiplizierend mit
+                    // `depthFunc equal`. Im Spiel scheitert diese Stufe genau
+                    // dort, wo die erste den Bildpunkt verworfen und keine
+                    // Tiefe geschrieben hat. Unser Zeichner rechnet "equal"
+                    // als LESS_EQUAL (siehe gpumap_win32.cpp, holeTiefe) - die
+                    // Stufe lag VOR der Wand dahinter, bestand den Test und
+                    // multiplizierte die Wand mit dem schwarzen Rand des
+                    // Bildes. Mit demselben Bild ist der Alphatest der
+                    // Grundstufe genau die Maske, die das Spiel ueber die
+                    // Tiefe bekommt.
+                    if (st.depthFunc == DepthFunc::Equal && zusatz.alphaTest == AlphaTest::None &&
+                        t.alphaTest != AlphaTest::None &&
+                        image::mappingName(st.image) == image::mappingName(si->second.image)) {
+                        zusatz.alphaTest = t.alphaTest;
+                    }
                     zusatz.alphaConst = st.alphaConst;
                     for (int k = 0; k < st.numTexMods; ++k) {
                         zusatz.texMods[k] = st.texMods[k];

@@ -1,5 +1,26 @@
 # Änderungen seit rc94
 
+## rc574 — Geonosier in der Arena ohne schwarzes Viereck
+
+Gemeldet: „In der geonosianischen Arena … die müssten eigentlich durchsichtig
+sein außenrum und nicht ein schwarzes Viereck.“
+
+* Das Publikum in md_ga sind flache Kartenflächen mit dem Shader
+  `textures/md_ga/geonosian1`: (1) das Bild mit `alphaFunc GE128` und
+  `depthWrite`, (2) die Lightmap, (3) **dasselbe Bild** noch einmal
+  multiplizierend mit `depthFunc equal`.
+* Im Spiel scheitert Stufe 3 genau dort, wo Stufe 1 den Bildpunkt verworfen
+  und keine Tiefe geschrieben hat. Unser Zeichner rechnet „equal“ als
+  „kleiner oder gleich“ (wegen Rundung bei Fließkomma). Stufe 3 lag vor der
+  Wand dahinter, bestand den Test und multiplizierte die Wand mit dem schwarzen
+  Rand des Bildes – das Viereck.
+* Jetzt übernimmt eine Zusatzstufe mit `depthFunc equal`, die dasselbe Bild wie
+  die alphagetestete Grundstufe zeichnet, deren Alphatest – das ist genau die
+  Maske, die das Spiel über die Tiefe bekommt. Gilt für jeden Shader mit dieser
+  Bauart, nicht nur für die Arena.
+* Geprüft mit Fotos an der gemeldeten Stelle (alt: Viereck, neu: freistehende
+  Figur).
+
 ## rc573 — Das Repository ist öffentlich; Updates von dort
 
 Gewünscht: „Kannst du das Repository public machen … und darauf dann in
