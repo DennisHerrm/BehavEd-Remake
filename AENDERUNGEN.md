@@ -1,5 +1,19 @@
 # Änderungen seit rc94
 
+## rc578 — NPC-Größe aus der .npc (Jünglinge)
+
+Gemeldet: „In der einen Mission ist das Model Scaling nicht richtig“ – die
+Jünglinge in md_jt (young_sith) standen in Erwachsenengröße da.
+
+* behaved las `scale` / `scaleX` / `scaleY` / `scaleZ` aus den .npc-Dateien
+  gar nicht. Die Jünglinge der Mod haben `scale 50`.
+* Jetzt wie NPC_ParseParms (Prozent, nur ungleich 100 und nicht negativ) und
+  CG_Player: die Achsen der Figur mal modelScale, der Ursprung um
+  24 · (modelScale[2] − 1) gesenkt, damit die Füße am Boden bleiben. Griffe,
+  Klingen, Schatten und Nebel hängen an derselben Matrix und skalieren mit.
+* Geprüft an md_jt/young_sith: die Nahaufnahme bei der Hälfte der Szene zeigt
+  jetzt das Gesicht des Jünglings statt das Innere des Gewands.
+
 ## rc577 — Licht und Nebel auf Movern, AT-ST-Fußschatten, Einstellungen bleiben
 
 Gewünscht: „Mach mit allem weiter“ – die offenen Punkte aus rc576.

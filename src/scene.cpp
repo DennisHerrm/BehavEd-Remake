@@ -1092,6 +1092,17 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
         if (key == "class") {
             cur.klasse = wert;
         }
+        if (key == "scale" || key == "scalex" || key == "scaley" || key == "scalez") {
+            const long n = std::strtol(wert.c_str(), nullptr, 10);
+            if (n >= 0 && n != 100) {
+                const float f = static_cast<float>(n) / 100.0F;
+                if (key == "scale") {
+                    cur.skala[0] = cur.skala[1] = cur.skala[2] = f;
+                } else {
+                    cur.skala[key[5] - 'x'] = f;
+                }
+            }
+        }
         if (key == "rank") {
             cur.rang = wert;
         }

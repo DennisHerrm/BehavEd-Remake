@@ -549,6 +549,8 @@ struct ActorDraw {
     // Der AT-ST bekommt zusaetzlich unter jeden Fuss einen kleinen
     // (Radius 28, an "*l_foot"/"*r_foot" + 30 nach oben).
     bool schattenFuesse = false;
+    // Die Groesse aus der .npc (`scale`, `scaleX/Y/Z`) - siehe NpcDef::skala.
+    float skala[3] = {1.0F, 1.0F, 1.0F};
 
     // --- Was die Figur in den Haenden haelt ------------------------------
     //

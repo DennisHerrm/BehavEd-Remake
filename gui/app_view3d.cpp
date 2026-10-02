@@ -2751,6 +2751,20 @@ bool blobSchattenFuer(const float ursprung[3], float radius, gpu::BlobSchatten& 
     return true;
 }
 
+// Die Groesse eines NPC-Typs aus seiner .npc (scale / scaleX/Y/Z).
+void npcSkalaFuer(const std::string& npcType, float aus[3]) {
+    aus[0] = aus[1] = aus[2] = 1.0F;
+    auto it = g_app->npcMap.find(npcType);
+    if (it == g_app->npcMap.end()) {
+        std::string k = npcType;
+        for (char& c : k) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        it = g_app->npcMap.find(k);
+    }
+    if (it != g_app->npcMap.end()) {
+        for (int i = 0; i < 3; ++i) { aus[i] = it->second.skala[i]; }
+    }
+}
+
 // In welchem Nebel steht dieser Punkt? R_GComputeFogNum (tr_ghoul2.cpp):
 // der erste, dessen Kasten die Figur ganz enthaelt - der globale Nebel hat
 // einen Kasten ueber die ganze Welt. Ohne Radius (refEntity_t.radius setzt
@@ -10258,6 +10272,7 @@ void drawMapView() {
                 // (R_SetupEntityLighting, tr_light.cpp:435 ff.).
                 addDynamicLights(d.light, d.pos, figurLichter);
                 d.schattenRadius = schattenRadiusFuer(a.npcType, &d.schattenFuesse);
+                npcSkalaFuer(a.npcType, d.skala);
 
                 // --- Waffe, Lichtschwerter, Kinomodelle -------------
                 //
@@ -10622,6 +10637,24 @@ void drawMapView() {
                         }
                         float fw[16];
                         gpu::baueFigurWelt(a.yaw + a.yawOffset, a.pos, fw);
+                        // --- Die Groesse aus der .npc ----------------------
+                        //
+                        // CG_Player (cg_players.cpp der Mod): die Achsen der
+                        // Figur mal modelScale, und der Ursprung um
+                        // 24 * (modelScale[2] - 1) gesenkt - der Ursprung
+                        // liegt 24 ueber den Fuessen, so bleiben sie am Boden.
+                        // Wegen des 90-Grad-Zuschlags in baueFigurWelt ist
+                        // die Spalte 1 die Vorwaertsachse (modelScale[0]) und
+                        // Spalte 0 die seitliche (modelScale[1]).
+                        if (a.skala[0] != 1.0F || a.skala[1] != 1.0F || a.skala[2] != 1.0F) {
+                            const float spalte[3] = {a.skala[1], a.skala[0], a.skala[2]};
+                            for (int r = 0; r < 3; ++r) {
+                                for (int c = 0; c < 3; ++c) { fw[r * 4 + c] *= spalte[c]; }
+                            }
+                            if (a.skala[2] != 0.0F) {
+                                fw[11] += 24.0F * (a.skala[2] - 1.0F);
+                            }
+                        }
                         // Das Licht an ihrem Standort (Gitter + Effekt-
                         // lichter), mal Helligkeit und auf 0..1 - wie im
                         // Rasterer (renderActors).

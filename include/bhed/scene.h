@@ -782,6 +782,10 @@ struct NpcDef {
     // `class` (z.B. "CLASS_VADER") und `rank` (z.B. "lt"), klein wie gelesen.
     std::string klasse;
     std::string rang;
+    // `scale` / `scaleX` / `scaleY` / `scaleZ` in Prozent, als Faktor
+    // (NPC_ParseParms, NPC_stats.cpp: s.modelScale = n / 100, nur wenn
+    // n != 100 und nicht negativ). Die Juenglinge der Mod haben 50.
+    float skala[3] = {1.0F, 1.0F, 1.0F};
     // playerTeam, z.B. "TEAM_ENEMY" (ebenda:3378). Braucht es fuer die
     // Vorgabewaffe, wenn `weapon` fehlt oder WP_NONE ist (npcTeamWaffe).
     std::string team;
