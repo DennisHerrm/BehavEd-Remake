@@ -6834,9 +6834,19 @@ void loadMission(const Mission& m) {
     constexpr std::size_t kMaxSkripte = 999;
     std::size_t geladen = 0;
     std::size_t uebersprungen = 0;
+    g_app->missionErstesSkript.clear();
+    // Der Reiter des ERSTEN Skripts - gemerkt, nicht ausgerechnet. Hier
+    // stand "Reiter minus geladene": das traf nur, solange alle neuen Reiter
+    // hinten am Stueck lagen. Lag ein wiederverwendeter leerer Reiter in der
+    // Mitte, oder war das erste Skript schon offen (Mission zum zweiten Mal
+    // geladen), stand danach ein fremdes Skript vorn (Selbsttest "mission").
+    int erstesReiter = -1;
     for (const Mission::Script& sc2 : m.scripts) {
         if (sc2.file.empty()) {
             continue;
+        }
+        if (g_app->missionErstesSkript.empty()) {
+            g_app->missionErstesSkript = sc2.file;
         }
         if (geladen >= kMaxSkripte) {
             ++uebersprungen;
@@ -6846,10 +6856,12 @@ void loadMission(const Mission& m) {
             // Schon offen (die Mission zum zweiten Mal geladen)? Dann bleibt
             // der Reiter samt Aenderungen und Verlauf - siehe
             // oeffneSkriptAusSpeicher.
-            if (reiterMitSkript(sc2.file) >= 0) {
+            if (const int offen = reiterMitSkript(sc2.file); offen >= 0) {
+                if (erstesReiter < 0) { erstesReiter = offen; }
                 continue;
             }
             openScriptFromMemory(data, sc2.file);
+            if (erstesReiter < 0) { erstesReiter = g_app->activeTab; }
             ++geladen;
         }
     }
@@ -6863,12 +6875,8 @@ void loadMission(const Mission& m) {
     // Zurueck auf das ERSTE - meistens das intro, und das will man sehen.
     //
     // Ohne das stuende man im letzten geladenen, was willkuerlich waere.
-    if (geladen > 1 && !g_app->tabs.empty()) {
-        const int erstes =
-            static_cast<int>(g_app->tabs.size()) - static_cast<int>(geladen);
-        if (erstes >= 0) {
-            activateTab(erstes);
-        }
+    if (erstesReiter >= 0 && erstesReiter < static_cast<int>(g_app->tabs.size())) {
+        activateTab(erstesReiter);
     }
 
     // Und jetzt alles auf einmal, statt beim ersten Bewegen.

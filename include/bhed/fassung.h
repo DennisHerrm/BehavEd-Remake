@@ -17,7 +17,7 @@
 
 namespace bhed {
 
-inline constexpr const char* kFassung = "rc580";
+inline constexpr const char* kFassung = "rc581";
 
 }  // namespace bhed
 

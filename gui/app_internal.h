@@ -833,6 +833,9 @@ struct App {
     // Beim Beenden: der Reiter, in dem man vor der ersten Speichernfrage
     // stand - dorthin bei "Abbrechen" (confirmQuit).
     int quitZurueck = -1;
+    // Das erste Skript der zuletzt geladenen Mission (sc2.file) - nach dem
+    // Laden soll sein Reiter vorn stehen (loadMission).
+    std::string missionErstesSkript;
     // fogparms aller Nebelshader - mit shaderMap zusammen gelesen.
     NebelMap nebelMap;
     // --- Bilder nur EINMAL lesen und entpacken --------------------------

@@ -4241,6 +4241,21 @@ void dropTab(int index) {
     if (g_app->tabs.empty()) {
         g_app->tabs.push_back(App::Parked{});
     }
+    // Die gemerkten Aufteilungen ALLER Reiter nachziehen: sie stehen als
+    // Reiter-NUMMERN in Parked::splitTabs. Ohne das zeigte ein Feld, wenn man
+    // in einen geteilten Reiter zurueckkam, das Skript rechts neben dem
+    // gemeinten (Selbsttest "Belegung", 03.10.). Ein Feld, das den
+    // geschlossenen Reiter zeigte, faellt auf den Besitzer zurueck.
+    for (std::size_t k = 0; k < g_app->tabs.size(); ++k) {
+        App::Parked& t = g_app->tabs[k];
+        for (int& st : t.splitTabs) {
+            if (st > index) {
+                --st;
+            } else if (st == index) {
+                st = static_cast<int>(k);
+            }
+        }
+    }
     if (andererReiter && index < g_app->activeTab) {
         --g_app->activeTab;
     }
@@ -6197,13 +6212,25 @@ void rollpositionMerken(int tab) {
 
 
 bool beginGroupBox(const char* label, const char* id, ImVec2 size,
-                   float headerH) {
+                   float headerH, const std::function<void()>& kopf = {}) {
     ImGui::BeginGroup();
     const float top = ImGui::GetCursorPosY();
     ImGui::TextUnformatted(label);
     if (headerH > 0.0F) {
         ImGui::SetCursorPosY(top + headerH);
     ImGui::Dummy(ImVec2{0.0F, 0.0F});
+    }
+    // --- Die Kopfzeile VOR dem Rollbereich --------------------------------
+    //
+    // shank, 03.10.: "wenn ich compare offen habe und runter scrolle sehe
+    // ich nicht welches script ich gerade arbeite". Das Klappfeld mit dem
+    // Skriptnamen stand IM Kindfenster und rollte mit dem Baum weg. Jetzt
+    // steht es darueber, und der Rahmen wird um seine Hoehe kuerzer - das
+    // Kindfenster (Kennung, Rollstand) bleibt dasselbe.
+    if (kopf) {
+        const float vorher = ImGui::GetCursorPosY();
+        kopf();
+        size.y = std::max(1.0F, size.y - (ImGui::GetCursorPosY() - vorher));
     }
     return ImGui::BeginChild(id, size, ImGuiChildFlags_Borders);
 }
@@ -7039,10 +7066,10 @@ void drawSplitTree(const Layout& l, int pane, float breite, float hoehe) {
     // Jetzt heisst Feld 0 immer "Script Flow" und die uebrigen immer
     // "Compare", egal wo der Fokus steht. Welches Feld bearbeitbar ist,
     // zeigt der leuchtende Rahmen - dafuer ist er da.
-    if (beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
-                      kennung.c_str(), ImVec2{breite, hoehe}, l.headerH)) {
+    // Welcher Reiter? Ein Klappfeld UEBER der Liste - es rollt nicht mit.
+    const auto kopf = [&] {
         // Welcher Reiter? Ein Klappfeld ueber der Liste.
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SetNextItemWidth(breite);
         std::string aktuell = "-";
         if (n > 0) {
             const std::size_t at = static_cast<std::size_t>(sp.tab);
@@ -7094,6 +7121,9 @@ void drawSplitTree(const Layout& l, int pane, float breite, float hoehe) {
             }
             ImGui::EndCombo();
         }
+    };
+    if (beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
+                      kennung.c_str(), ImVec2{breite, hoehe}, l.headerH, kopf)) {
 
         // Den Baum bauen, wenn noetig.
         //
@@ -7753,26 +7783,12 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
     // Jetzt heisst jedes Feld immer gleich, egal ob es gerade das lebende
     // Dokument zeigt oder nicht. Der Rollstand bleibt, wo er war.
     const std::string kennung = "pane" + std::to_string(pane);
-    const bool offen =
-        beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
-                      kennung.c_str(), ImVec2{breite, hoehe}, l.headerH);
-    if (mehrere) {
-        ImGui::PopStyleColor();
-    }
-    if (offen) {
-        // Bei mehreren Feldern steht auch HIER das Klappfeld mit dem
-        // Reiternamen - aus zwei Gruenden. Erstens sieht das fokussierte
-        // Feld damit aus wie die anderen; vorher verschob der Fokuswechsel
-        // den Inhalt um genau die Hoehe des Klappfelds, und die Zeilen
-        // sprangen. Zweitens wechselt man so den Reiter eines Feldes,
-        // ohne es erst zum Vergleichsfeld machen zu muessen - wie in VS
-        // Code, wo jede Gruppe ihre eigene Reiterleiste hat.
-        //
-        // Der Wechsel ist ANGEFORDERT, nicht sofort: switchTab mitten im
-        // Zeichnen zoege dem Baum darunter den Boden weg.
+    // Bei mehreren Feldern das Klappfeld mit dem Reiternamen - UEBER der
+    // Liste, damit es beim Rollen stehen bleibt (siehe beginGroupBox).
+    const auto kopf = [&] {
         if (mehrere) {
             const int nT = static_cast<int>(g_app->tabs.size());
-            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SetNextItemWidth(breite);
             std::string aktuell = !g_app->path.empty() ? fileName(g_app->path)
                                   : !g_app->shownName.empty()
                                       ? g_app->shownName
@@ -7808,6 +7824,25 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                 ImGui::EndCombo();
             }
         }
+    };
+    const bool offen =
+        beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
+                      kennung.c_str(), ImVec2{breite, hoehe}, l.headerH,
+                      mehrere ? std::function<void()>(kopf) : std::function<void()>());
+    if (mehrere) {
+        ImGui::PopStyleColor();
+    }
+    if (offen) {
+        // Bei mehreren Feldern steht auch HIER das Klappfeld mit dem
+        // Reiternamen - aus zwei Gruenden. Erstens sieht das fokussierte
+        // Feld damit aus wie die anderen; vorher verschob der Fokuswechsel
+        // den Inhalt um genau die Hoehe des Klappfelds, und die Zeilen
+        // sprangen. Zweitens wechselt man so den Reiter eines Feldes,
+        // ohne es erst zum Vergleichsfeld machen zu muessen - wie in VS
+        // Code, wo jede Gruppe ihre eigene Reiterleiste hat.
+        //
+        // Der Wechsel ist ANGEFORDERT, nicht sofort: switchTab mitten im
+        // Zeichnen zoege dem Baum darunter den Boden weg.
         if (g_app->rows.empty()) {
             ImGui::TextDisabled("%s", tr(Str::MsgNoScript));
         }

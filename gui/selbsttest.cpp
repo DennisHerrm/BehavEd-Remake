@@ -1888,7 +1888,7 @@ std::vector<Schritt> geteiltSchritte() {
     }));
     s.push_back(stabil("Split 2 nach dem Umschalten"));
     // A ins Nebenfeld holen - ueber die Auswahl oben im Feld.
-    s.push_back(klick("##splitpick1", "/pane1_"));
+    s.push_back(klick("##splitpick1", ""));
     s.push_back(waehleInListe("split_a.txt", false));
     s.push_back(pruefe("Nebenfeld zeigt A", [=] { return g_app->splitPanes[1].tab == g->a; }));
     s.push_back(stabil("Split 2 mit A im Nebenfeld"));
@@ -2032,44 +2032,44 @@ std::vector<Schritt> geteiltSchritte() {
     // Ein neuer Reiter bringt seinen eigenen, ungeteilten Arbeitsbereich mit
     // (addTab) - also fuer C wieder zwei Felder.
     splitMenue(s, 2);
-    s.push_back(klick("##splitpick1", "/pane1_"));
+    s.push_back(klick("##splitpick1", ""));
     s.push_back(waehleInListe("selbsttest-split_a", true));
     s.push_back(pruefe("Hauptfeld zeigt das leere C, Nebenfeld A", [=] {
         return g_app->focusPane == 0 && g_app->activeTab == g->c &&
                g_app->splitPanes[1].tab == g->a && folge(g->c).empty();
     }));
     const ImVec2 tief{0.0F, 250.0F};
-    s.push_back(ziehe("wait", "/pane1_", "##splitpick0", "/pane0_", 0, 0, 0.5F, true, tief));
+    s.push_back(ziehe("wait", "/pane1_", "##splitpick0", "", 0, 0, 0.5F, true, tief));
     s.push_back(pruefe("Ziehen A -> leeres C: wait steht in C", [=] {
         diag::detail("Knopftest: C = " + folge(g->c));
         return folge(g->c) == "wait" && erstesArg(g->c, "wait") == "222.000";
     }));
-    s.push_back(ziehe("set", "/pane1_", "##splitpick0", "/pane0_", 0, 0, 0.5F, true, tief));
+    s.push_back(ziehe("set", "/pane1_", "##splitpick0", "", 0, 0, 0.5F, true, tief));
     s.push_back(pruefe("Ziehen A -> freie Flaeche unter C: set ans Ende", [=] {
         diag::detail("Knopftest: C = " + folge(g->c));
         return folge(g->c) == "wait set";
     }));
-    s.push_back(ziehe("flush  ", "", "##splitpick0", "/pane0_", 0, 0, 0.5F, true, tief, true));
+    s.push_back(ziehe("flush  ", "", "##splitpick0", "", 0, 0, 0.5F, true, tief, true));
     s.push_back(pruefe("Ereignisliste -> freie Flaeche unter C: flush ans Ende", [=] {
         diag::detail("Knopftest: C = " + folge(g->c));
         return folge(g->c) == "wait set flush";
     }));
-    s.push_back(ziehe("wait", "/pane0_", "##splitpick0", "/pane0_", 0, 0, 0.5F, true, tief));
+    s.push_back(ziehe("wait", "/pane0_", "##splitpick0", "", 0, 0, 0.5F, true, tief));
     s.push_back(pruefe("Im selben Skript auf die freie Flaeche: wait ans Ende verschoben", [=] {
         diag::detail("Knopftest: C = " + folge(g->c));
         return folge(g->c) == "set flush wait";
     }));
-    s.push_back(klick("##splitpick1", "/pane1_"));
+    s.push_back(klick("##splitpick1", ""));
     s.push_back(waehleInListe("split_d.txt", false));
     s.push_back(pruefe("Nebenfeld zeigt das leere D", [=] {
         return g_app->splitPanes[1].tab == g->d && folge(g->d).empty();
     }));
-    s.push_back(ziehe("set", "/pane0_", "##splitpick1", "/pane1_", 0, 0, 0.5F, true, tief));
+    s.push_back(ziehe("set", "/pane0_", "##splitpick1", "", 0, 0, 0.5F, true, tief));
     s.push_back(pruefe("Ziehen C -> leeres D: set steht in D, C unveraendert", [=] {
         diag::detail("Knopftest: C = " + folge(g->c) + " | D = " + folge(g->d));
         return folge(g->d) == "set" && folge(g->c) == "set flush wait";
     }));
-    s.push_back(ziehe("flush  ", "", "##splitpick1", "/pane1_", 0, 0, 0.5F, true, tief, true));
+    s.push_back(ziehe("flush  ", "", "##splitpick1", "", 0, 0, 0.5F, true, tief, true));
     s.push_back(pruefe("Ereignisliste -> freie Flaeche unter D: flush ans Ende", [=] {
         diag::detail("Knopftest: D = " + folge(g->d));
         return folge(g->d) == "set flush";
@@ -2092,7 +2092,7 @@ std::vector<Schritt> geteiltSchritte() {
     s.push_back(stabil("Split 3 nach dem Umschalten"));
     // Nebenfeld -> Nebenfeld: A in Feld 2 holen, dann aus D (Feld 1)
     // hinueber ziehen - einmal auf eine Zeile, einmal auf die freie Flaeche.
-    s.push_back(klick("##splitpick2", "/pane2_"));
+    s.push_back(klick("##splitpick2", ""));
     s.push_back(waehleInListe("selbsttest-split_a", true));
     s.push_back(pruefe("Feld 1 zeigt D, Feld 2 zeigt A", [=] {
         return g_app->splitPanes[1].tab == g->d && g_app->splitPanes[2].tab == g->a;
@@ -2104,7 +2104,7 @@ std::vector<Schritt> geteiltSchritte() {
         diag::detail("Knopftest: A = " + folge(g->a));
         return folge(g->a).rfind("print flush", 0) == 0;
     }));
-    s.push_back(ziehe("print", "/pane1_", "##splitpick2", "/pane2_", 0, 0, 0.5F, true,
+    s.push_back(ziehe("print", "/pane1_", "##splitpick2", "", 0, 0, 0.5F, true,
                       ImVec2{0.0F, 250.0F}));
     s.push_back(pruefe("Nebenfeld D -> freie Flaeche in A: print ans Ende", [=] {
         diag::detail("Knopftest: A = " + folge(g->a));
@@ -2119,7 +2119,7 @@ std::vector<Schritt> geteiltSchritte() {
     s.push_back(tu("Teilerstand merken", [=] { *frac = g_app->splitFracX; }));
     // In der Luecke greifen: die rechte Haelfte des Griffs liegt unter dem
     // rechten Feld, und dort nimmt das Feld die Maus.
-    s.push_back(ziehe("##splitx", "###main", "##splitpick1", "/pane1_", 0, 0, 0.25F, false));
+    s.push_back(ziehe("##splitx", "###main", "##splitpick1", "", 0, 0, 0.25F, false));
     s.push_back(pruefe("Teiler ziehen verschiebt die Felder", [=] {
         return std::fabs(g_app->splitFracX - *frac) > 0.01F;
     }));
@@ -5673,6 +5673,210 @@ std::vector<Schritt> einzelSchritte() {
     return s;
 }
 
+// --- Die Kopfzeile eines Feldes (Skriptname) bleibt beim Rollen stehen -----
+//
+// shank, 03.10.: "wenn ich compare offen habe und runter scrolle sehe ich
+// nicht welches script ich gerade arbeite ... immer oben anzeigen lassen".
+std::vector<Schritt> kopfSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const auto sichtbar = [](const std::string& name) {
+        const Element* e = finde(name, "", 0, false);
+        if (e == nullptr) {
+            diag::detail("Knopftest: Kopf - " + name + " nicht gefunden");
+            return false;
+        }
+        const bool ja = e->rect.Min.y >= e->clip.Min.y - 0.5F && e->rect.Max.y <= e->clip.Max.y + 0.5F;
+        char z[240];
+        std::snprintf(z, sizeof(z), "Knopftest: Kopf - %s bei y %.0f..%.0f, sichtbar %.0f..%.0f -> %s",
+                      name.c_str(), static_cast<double>(e->rect.Min.y), static_cast<double>(e->rect.Max.y),
+                      static_cast<double>(e->clip.Min.y), static_cast<double>(e->clip.Max.y), ja ? "ja" : "NEIN");
+        diag::detail(z);
+        return ja;
+    };
+    const auto findeReiter = [](const std::string& name) {
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const std::string& n = (static_cast<int>(i) == g_app->activeTab) ? g_app->shownName
+                                                                             : g_app->tabs[i].shownName;
+            if (n == name) { return static_cast<int>(i); }
+        }
+        return -1;
+    };
+    add(tu("Kopf: zwei lange Skripte", [=] {
+        openScriptFromMemory(langesSkript(1000).c_str(), "kopf_a.txt");
+        openScriptFromMemory(langesSkript(2000).c_str(), "kopf_b.txt");
+        activateTab(findeReiter("kopf_a.txt"));
+    }));
+    add(pause(0.3));
+    splitMenue(s, 2);
+    add(tu("Kopf: Vergleichsfeld zeigt das zweite", [=] {
+        g_app->splitPanes[1].tab = findeReiter("kopf_b.txt");
+        g_app->splitPanes[1].dirty = true;
+    }));
+    add(pause(0.5));
+    add(pruefe("Kopf: vor dem Rollen sind beide Skriptnamen sichtbar",
+               [=] { return sichtbar("##splitpick0") && sichtbar("##splitpick1"); }));
+    add(rolleBaum("/pane1_", 1.0F));
+    add(rolleBaum("/pane0_", 1.0F));
+    add(pause(0.5));
+    add(pruefe("Kopf: im Vergleichsfeld bleibt der Skriptname nach dem Rollen oben sichtbar",
+               [=] { return sichtbar("##splitpick1"); }));
+    add(pruefe("Kopf: im bearbeiteten Feld ebenso",
+               [=] { return sichtbar("##splitpick0"); }));
+    add(foto("kopf_gerollt"));
+    splitMenue(s, 1);
+    add(tu("Kopf: aufraeumen", [=] {
+        for (const char* n : {"kopf_a.txt", "kopf_b.txt"}) {
+            const int i = findeReiter(n);
+            if (i >= 0) {
+                g_app->tabs[static_cast<std::size_t>(i)].doc.markSaved();
+                if (i == g_app->activeTab) { g_app->doc.markSaved(); }
+                reiterSchliessen(i);
+            }
+        }
+    }));
+    add(pause(0.3));
+    return s;
+}
+
+// --- Nach dem Laden einer Mission steht ihr ERSTES Skript vorn --------------
+//
+// Code-Pruefung 03.10.: wurde das erste Skript in einen leeren Reiter geladen
+// (statt in einen neuen), rechnete loadMission "Reiter minus geladene" und
+// landete auf dem ZWEITEN Skript.
+std::vector<Schritt> missionReiterSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto archiv = std::make_shared<std::string>();
+    add(tu("Mission: ein leerer Reiter, DAHINTER noch ein Skript, Archiv suchen", [=] {
+        neuerReiter();
+        const int leer = g_app->activeTab;
+        // Erst in einen gefuellten Reiter - sonst landete das Skript im
+        // leeren (der wird wiederverwendet) und es gaebe keinen in der Mitte.
+        activateTab(0);
+        openScriptFromMemory("//Generated by BehavEd\nwait ( 1.000 );\n", "mission_hinten.txt");
+        activateTab(leer);
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const Pk3& arc : gp.archives) {
+                if (arc.find("maps/md_am_sith.bsp") != nullptr) { *archiv = arc.path; }
+            }
+        }
+        diag::detail("Knopftest: Mission - aktiv leer: " +
+                     std::string(g_app->path.empty() && g_app->doc.script().nodes.empty() ? "ja" : "nein") +
+                     ", Archiv \"" + *archiv + "\"");
+    }));
+    add(pruefe("Mission: Archiv gefunden", [=] { return !archiv->empty(); }));
+    add(tu("Mission: Missionen des Archivs", [=] { if (!archiv->empty()) { missionenAusArchiv(*archiv); } }));
+    add(pruefe("Mission: Auswahl offen", [] { return g_app->missionPickOpen; }));
+    add(waehleInListe("md_am_sith", false, 0, "##missionpick"));
+    add(warteBis("Mission geladen", [] {
+        return !g_app->map.empty() && g_app->tabs.size() > 2 && g_app->camTrackValid;
+    }, 1200));
+    add(pause(0.5));
+    add(pruefe("Mission: nach dem Laden ist das ERSTE Missionsskript aktiv", [] {
+        std::string erwartet = g_app->missionErstesSkript;
+        const auto strich = erwartet.find_last_of("/\\");
+        if (strich != std::string::npos) { erwartet = erwartet.substr(strich + 1); }
+        diag::detail("Knopftest: Mission - erstes Skript " + g_app->missionErstesSkript + ", aktiv " +
+                     g_app->shownName + " (Reiter " + std::to_string(g_app->activeTab) + " von " +
+                     std::to_string(g_app->tabs.size()) + "), Band " + std::to_string(g_app->homeTab));
+        return !erwartet.empty() && g_app->shownName == erwartet && g_app->homeTab == g_app->activeTab;
+    }));
+    // Zweiter Fall: dieselbe Mission noch einmal laden, waehrend ein anderer
+    // Reiter vorn ist - alle Skripte sind schon offen (rc579: nicht doppelt),
+    // vorn stehen soll trotzdem das erste.
+    add(tu("Mission: in einen anderen Reiter, dieselbe Mission noch einmal", [=] {
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const std::string& n = (static_cast<int>(i) == g_app->activeTab) ? g_app->shownName
+                                                                             : g_app->tabs[i].shownName;
+            if (n == "mission_hinten.txt") { activateTab(static_cast<int>(i)); }
+        }
+        if (!archiv->empty()) { missionenAusArchiv(*archiv); }
+    }));
+    add(pruefe("Mission: Auswahl wieder offen", [] { return g_app->missionPickOpen; }));
+    add(waehleInListe("md_am_sith", false, 0, "##missionpick"));
+    add(pause(1.5));
+    add(pruefe("Mission: auch beim zweiten Laden steht das erste Skript vorn, nichts doppelt", [] {
+        std::string erwartet = g_app->missionErstesSkript;
+        const auto strich = erwartet.find_last_of("/\\");
+        if (strich != std::string::npos) { erwartet = erwartet.substr(strich + 1); }
+        int anzahl = 0;
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const std::string& n = (static_cast<int>(i) == g_app->activeTab) ? g_app->shownName
+                                                                             : g_app->tabs[i].shownName;
+            if (n == erwartet) { ++anzahl; }
+        }
+        diag::detail("Knopftest: Mission - zweites Laden, aktiv " + g_app->shownName + ", " + erwartet + " " +
+                     std::to_string(anzahl) + " mal offen, Reiter " + std::to_string(g_app->tabs.size()));
+        return g_app->shownName == erwartet && anzahl == 1;
+    }));
+    return s;
+}
+
+// --- Die Feldbelegung eines anderen Reiters nach dem Schliessen -----------
+//
+// Code-Pruefung 03.10.: jeder Reiter merkt sich seine Aufteilung als
+// Reiter-NUMMERN (Parked::splitTabs). Wird links davon einer geschlossen,
+// rutschen die Nummern - die gemerkten nicht. Zurueck im Reiter zeigt ein
+// Feld dann ein fremdes Skript.
+std::vector<Schritt> belegungSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const auto findeReiter = [](const std::string& name) {
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const std::string& n = (static_cast<int>(i) == g_app->activeTab) ? g_app->shownName
+                                                                             : g_app->tabs[i].shownName;
+            if (n == name) { return static_cast<int>(i); }
+        }
+        return -1;
+    };
+    const auto nameVon = [](int i) {
+        if (i < 0 || i >= static_cast<int>(g_app->tabs.size())) { return std::string("?"); }
+        return (i == g_app->activeTab) ? g_app->shownName : g_app->tabs[static_cast<std::size_t>(i)].shownName;
+    };
+    add(tu("Belegung: vier Skripte b_a, b_x, b_y, b_z", [=] {
+        openScriptFromMemory("//Generated by BehavEd\nwait ( 1.000 );\n", "b_a.txt");
+        openScriptFromMemory("//Generated by BehavEd\nwait ( 2.000 );\n", "b_x.txt");
+        openScriptFromMemory("//Generated by BehavEd\nwait ( 3.000 );\n", "b_y.txt");
+        openScriptFromMemory("//Generated by BehavEd\nwait ( 4.000 );\n", "b_z.txt");
+        activateTab(findeReiter("b_x.txt"));
+    }));
+    add(pause(0.3));
+    splitMenue(s, 2);
+    add(tu("Belegung: zweites Feld zeigt b_y", [=] {
+        g_app->splitPanes[1].tab = findeReiter("b_y.txt");
+        g_app->splitPanes[1].dirty = true;
+    }));
+    add(pause(0.3));
+    add(tu("Belegung: zu b_z wechseln (wie ein Klick auf seinen Reiter)", [=] {
+        activateTab(findeReiter("b_z.txt"));
+    }));
+    add(pause(0.3));
+    add(tu("Belegung: b_a schliessen (liegt links von allen)", [=] { reiterSchliessen(findeReiter("b_a.txt")); }));
+    add(pause(0.3));
+    add(tu("Belegung: zurueck zu b_x", [=] { activateTab(findeReiter("b_x.txt")); }));
+    add(pause(0.4));
+    add(pruefe("Belegung: in b_x zeigt das zweite Feld weiter b_y", [=] {
+        diag::detail("Knopftest: Belegung - aktiv " + g_app->shownName + ", Felder " +
+                     std::to_string(g_app->splitCount) + ", Feld 1 zeigt " + nameVon(g_app->splitPanes[1].tab));
+        return g_app->shownName == "b_x.txt" && g_app->splitCount == 2 &&
+               nameVon(g_app->splitPanes[1].tab) == "b_y.txt";
+    }));
+    splitMenue(s, 1);
+    add(tu("Belegung: aufraeumen", [=] {
+        for (const char* n : {"b_a.txt", "b_x.txt", "b_y.txt", "b_z.txt"}) {
+            const int i = findeReiter(n);
+            if (i >= 0) {
+                g_app->tabs[static_cast<std::size_t>(i)].doc.markSaved();
+                if (i == g_app->activeTab) { g_app->doc.markSaved(); }
+                reiterSchliessen(i);
+            }
+        }
+    }));
+    add(pause(0.3));
+    return s;
+}
+
 // --- Rollende Sicherung: die letzten 10 Speicherungen ---------------------
 std::vector<Schritt> sicherungSchritte() {
     std::vector<Schritt> s;
@@ -8729,6 +8933,8 @@ void selbsttest() {
     static const bool nurReiter = std::strcmp(modus, "reiter") == 0;
     // Ein zweiter Start reicht an diesen weiter (braucht BHED_EINZEL).
     static const bool nurEinzel = std::strcmp(modus, "einzel") == 0;
+    // Mission laden mit leerem Reiter vorn (braucht die Spieldaten).
+    static const bool nurMission = std::strcmp(modus, "mission") == 0;
     ImGuiContext& g = *ImGui::GetCurrentContext();
     g.TestEngineHookItems = true;
     Ablauf& a = g_ablauf;
@@ -8767,12 +8973,18 @@ void selbsttest() {
                 a.schritte = ablaufSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
+            } else if (nurMission) {
+                a.schritte = missionReiterSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
             } else if (nurEinzel) {
                 a.schritte = einzelSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurReiter) {
-                a.schritte = reiterSchliessenSchritte();
+                a.schritte = kopfSchritte();
+                for (Schritt& x : belegungSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : reiterSchliessenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : schutzBeendenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;

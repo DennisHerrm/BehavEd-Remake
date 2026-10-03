@@ -1,5 +1,34 @@
 # Änderungen seit rc94
 
+## rc581 — Skriptname bleibt beim Rollen stehen, Mission und Feldbelegung
+
+Gewünscht: „Wenn ich Compare offen habe und runter scrolle, sehe ich nicht,
+welches Script ich gerade bearbeite … immer oben anzeigen lassen.“ Und: „fixe
+alles was du kannst und überprüfe noch alles das wir wissen.“
+
+Jeder Punkt erst im laufenden Programm nachgestellt (Test schlägt mit dem alten
+Stand fehl), dann behoben:
+
+* **Die Kopfzeile eines Feldes rollt nicht mehr mit.** Das Klappfeld mit dem
+  Skriptnamen stand im Rollbereich und war nach dem Herunterrollen weg
+  (gemessen: y −3119 bei sichtbarem Bereich 122–1419). Jetzt steht es über dem
+  Rahmen (`beginGroupBox` mit Kopf), der Rahmen wird um seine Höhe kürzer – das
+  Kindfenster `paneN` mit Rollstand bleibt dasselbe.
+* **Nach dem Laden einer Mission stand ein fremdes Skript vorn.** loadMission
+  rechnete „Reiter minus geladene“ – das traf nur, solange alle neuen Reiter am
+  Stück hinten lagen. Mit einem wiederverwendeten leeren Reiter in der Mitte
+  oder beim zweiten Laden (alle Skripte schon offen) stand z. B.
+  `mission_hinten.txt` statt `intro2_sith.ibi` vorn. Jetzt wird der Reiter des
+  ersten Skripts gemerkt. Neuer Testmodus `mission` (md_am_sith aus dem Archiv).
+* **Feldbelegung nach dem Schließen eines Reiters.** Jeder Reiter merkt sich
+  seine Aufteilung als Reiter-Nummern; schloss man links davon einen, zeigte das
+  zweite Feld beim Zurückkommen das Skript daneben (`b_z` statt `b_y`). Jetzt
+  werden die gemerkten Nummern aller Reiter mitgezogen.
+* Überprüft: die AT-ST-Fußschatten an den Spieldaten – NPC `atst` ist
+  `CLASS_ATST`, beide Modelle (assets1, MD_Models_OT-ST) haben `*l_foot` und
+  `*r_foot`. Ein Foto geht nicht: in keiner Zwischensequenz läuft ein AT-ST
+  (nur das abgestürzte Kartenmodell in hoth2).
+
 ## rc580 — Nur ein behaved: Doppelklick öffnet im laufenden Fenster
 
 Aus der Code-Prüfung zu rc579: ein Doppelklick auf ein Skript im Explorer
