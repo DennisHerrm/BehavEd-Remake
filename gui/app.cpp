@@ -181,6 +181,11 @@ void handleTreeKeys();
 void* logoTextureId();
 extern const char* kScriptFilter;
 void loadPath(const std::string& p);
+int reiterMitPfadI(const std::string& p);
+namespace {
+std::string pfadSchluessel(const std::string& p);   // steht weiter unten, ebenso verschachtelt
+}  // namespace
+bool speichereReiterI(int tab);
 void oeffneSkriptAusSpeicherI(const std::string& data, const std::string& name);
 std::string descFor(const Command& c);
 void doSaveAll();
@@ -195,6 +200,17 @@ void doRedo();
 const char* stepName(const char* key);
 void addGamePath();
 void applyTheme(const theme::Theme& t);
+
+// Fuer InputText mit std::string: ImGui meldet die neue Laenge, der
+// String waechst mit (wie misc/cpp/imgui_stdlib.cpp).
+int textFeldWaechst(ImGuiInputTextCallbackData* d) {
+    if (d->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+        auto* text = static_cast<std::string*>(d->UserData);
+        text->resize(static_cast<std::size_t>(d->BufTextLen));
+        d->Buf = text->data();
+    }
+    return 0;
+}
 
 float dx(float v) { return v * kDluX * g_app->uiScale; }
 float dy(float v) { return v * kDluY * g_app->uiScale; }
@@ -1552,9 +1568,13 @@ void drawEditor() {
                 }
             }
         } else {
-            char buf[256];
-            std::snprintf(buf, sizeof(buf), "%s", v.c_str());
-            if (ImGui::InputText("##v", buf, sizeof(buf))) { v = buf; }
+            // Ohne feste Laenge: der Puffer waechst mit (CallbackResize).
+            // Vorher 256 Byte - wer in einem langen print ein Zeichen
+            // loeschte, bekam nur die ersten 254 ins Skript zurueck, und
+            // anhaengen ging gar nicht (Code-Pruefung 03.10., Selbsttest
+            // "pruefung").
+            (void)ImGui::InputText("##v", v.data(), v.capacity() + 1, ImGuiInputTextFlags_CallbackResize,
+                                   textFeldWaechst, &v);
             // Eingabe bestaetigt und Escape bricht ab - auch wenn der
             // Schreibzeiger noch im Feld steht.
             //
@@ -3746,12 +3766,37 @@ std::string mitEndung(const std::string& pfad, const char* neu) {
 // named backup1.txt, backup2.txt etc." - neben der .exe, in
 // backup/<Skriptname>/. backup1.txt ist die neueste. Gleicher Inhalt wie die
 // letzte Sicherung (Kompilieren ohne Aenderung) gibt keine neue.
+//
+// Zwei Skripte mit gleichem Namen aus verschiedenen Ordnern (intro.txt gibt
+// es in fast jedem Missionsordner) teilten sich bisher EINEN Ordner - das
+// eine schob die Sicherungen des anderen hinaus (Code-Pruefung 03.10.). Jetzt
+// merkt sich jeder Ordner in quelle.txt, wem er gehoert; ein anderes Skript
+// gleichen Namens bekommt <Name>~2, ~3 ... Ein Ordner ohne quelle.txt (von
+// vor rc582) gehoert dem ersten, der wieder speichert.
+const char* const kSicherungsMarke = "/quelle.txt";
+
 std::string sicherungsOrdner(const std::string& quelle) {
     std::string name = fileName(quelle);
     const std::size_t punkt = name.find_last_of('.');
     if (punkt != std::string::npos && punkt > 0) { name.resize(punkt); }
     if (name.empty()) { name = "unnamed"; }
-    return platform::executableDirectory() + "/backup/" + name;
+    const std::string basis = platform::executableDirectory() + "/backup/" + name;
+    const std::string schluessel = pfadSchluessel(quelle);
+    for (int n = 1; n <= 99; ++n) {
+        const std::string ordner = n == 1 ? basis : basis + "~" + std::to_string(n);
+        std::error_code ec;
+        if (!std::filesystem::exists(std::filesystem::u8path(ordner), ec)) {
+            return ordner;
+        }
+        const std::string marke = ordner + kSicherungsMarke;
+        if (!std::filesystem::exists(std::filesystem::u8path(marke), ec)) {
+            return ordner;
+        }
+        if (pfadSchluessel(slurp(marke)) == schluessel) {
+            return ordner;
+        }
+    }
+    return basis;
 }
 
 void sicherungAnlegen(const std::string& quelle, const std::string& inhalt) {
@@ -3760,6 +3805,9 @@ void sicherungAnlegen(const std::string& quelle, const std::string& inhalt) {
     std::error_code ec;
     const std::string ordner = sicherungsOrdner(quelle);
     fs::create_directories(fs::u8path(ordner), ec);
+    if (!fs::exists(fs::u8path(ordner + kSicherungsMarke), ec)) {
+        (void)spew(ordner + kSicherungsMarke, quelle);
+    }
     const auto datei = [&](int n) { return ordner + "/backup" + std::to_string(n) + ".txt"; };
     if (fs::exists(fs::u8path(datei(1)), ec) && slurp(datei(1)) == inhalt) {
         return;
@@ -3804,7 +3852,12 @@ bool doSave() {
              std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
             char text[900];
             std::snprintf(text, sizeof(text), tr(Str::AskUnprotect), quelle.c_str());
-            frage(text, [fp] {
+            // Den Reiter ueber seinen PFAD wiederfinden, nicht "den aktiven":
+            // bei Save all ist bis zur Antwort laengst ein anderer vorn, und
+            // "Ja" sicherte dann diesen (ohne Pfad: Save-As-Dialog) statt der
+            // geschuetzten Datei (Code-Pruefung 03.10.).
+            const std::string reiterPfad = g_app->path;
+            frage(text, [fp, reiterPfad] {
                 std::error_code ec2;
                 std::filesystem::permissions(fp, std::filesystem::perms::owner_write,
                                              std::filesystem::perm_options::add, ec2);
@@ -3812,7 +3865,12 @@ bool doSave() {
                     addStatus("Failed to remove write protect, aborting...");
                     return;
                 }
-                if (doSave()) {
+                const int reiter = reiterMitPfadI(reiterPfad);
+                if (reiter < 0) {
+                    addStatus("(The tab was closed, aborting save)");
+                    return;
+                }
+                if (speichereReiterI(reiter)) {
                     addStatus(tr(Str::MsgSaved));
                 }
             }, [] { addStatus("(File was not write-enabled, aborting save)"); });
@@ -3839,6 +3897,41 @@ bool doSave() {
     return true;
 }
 
+// Das eigentliche "Save As" ohne den Dialog - der Selbsttest ruft es mit
+// einem festen Pfad (ein Windows-Dialog wuerde den Lauf anhalten).
+//
+// Zwei Regeln (Code-Pruefung 03.10., beide im Selbsttest nachgestellt):
+//  - Ist die Datei in einem ANDEREN Reiter offen, nicht darueber schreiben.
+//    Sonst standen zwei Reiter mit demselben Pfad da, und der naechste Save
+//    im anderen ueberschrieb diese Arbeit wieder. Gespeichert wird als .txt -
+//    also auch die .txt-Fassung des Namens pruefen.
+//  - Der neue Pfad gilt erst, wenn das Speichern geklappt hat. Vorher stand
+//    nach einem gescheiterten Save As der Reiter auf einer Datei, die es
+//    nicht gibt, und sie stand in der Liste der zuletzt geoeffneten.
+bool speichernUnterPfadI(const std::string& p) {
+    for (const std::string& ziel : {p, mitEndung(p, ".txt")}) {
+        const int offen = reiterMitPfadI(ziel);
+        if (offen >= 0 && offen != g_app->activeTab) {
+            platform::showError("\"" + ziel + "\" is open in another tab.\n"
+                                "Close it there first, or choose a different name.",
+                                tr(Str::AppTitle));
+            return false;
+        }
+    }
+    const std::string vorher = g_app->path;
+    g_app->path = p;
+    if (doSave()) {
+        g_app->settings.noteRecent(g_app->path);
+        return true;
+    }
+    // Fragt doSave gerade nach dem Schreibschutz, gehoert der neue Name zu
+    // dieser Frage - "Ja" speichert unter ihm.
+    if (!g_app->frageOffen) {
+        g_app->path = vorher;
+    }
+    return false;
+}
+
 bool doSaveAs() {
     const std::string p = platform::saveFileDialog(
         tr(Str::FileSaveAs), kScriptFilter,
@@ -3847,9 +3940,7 @@ bool doSaveAs() {
     if (p.empty()) {
         return false;
     }
-    g_app->path = p;
-    g_app->settings.noteRecent(p);
-    return doSave();
+    return speichernUnterPfadI(p);
 }
 
 
@@ -4605,8 +4696,37 @@ void neuesSkript() {
 // Reiter ohne Pfad (aus einem Archiv geladen) werden UEBERSPRUNGEN: dorthin
 // laesst sich nicht zurueckschreiben, und ein Dateidialog je Reiter waere
 // das Gegenteil von "alle sichern".
+// Einen Reiter sichern, ohne dass sich die Ansicht bewegt: aktiver Reiter,
+// Band, Feldaufteilung und Fokus stehen danach wie vorher. Save all ging
+// ueber switchTab - das holte die Aufteilung jedes Reiters mit, und aus zwei
+// Feldern wurde eines (Code-Pruefung 03.10.).
+bool speichereReiterI(int tab) {
+    if (tab == g_app->activeTab) {
+        return doSave();
+    }
+    if (tab < 0 || tab >= static_cast<int>(g_app->tabs.size())) {
+        return false;
+    }
+    const int aktiv = g_app->activeTab;
+    const int band = g_app->homeTab;
+    const int fokus = g_app->focusPane;
+    const int felder = g_app->splitCount;
+    int belegung[App::kMaxSplit];
+    for (int k = 0; k < App::kMaxSplit; ++k) { belegung[k] = g_app->splitPanes[k].tab; }
+    switchTab(tab, false, false);
+    const bool ok = doSave();
+    switchTab(aktiv, false, false);
+    g_app->homeTab = band;
+    g_app->focusPane = fokus;
+    g_app->splitCount = felder;
+    for (int k = 0; k < App::kMaxSplit; ++k) {
+        g_app->splitPanes[k].tab = belegung[k];
+        g_app->splitPanes[k].dirty = true;
+    }
+    return ok;
+}
+
 void doSaveAll() {
-    const int vorher = g_app->activeTab;
     int gesichert = 0;
     int ohnePfad = 0;
     for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
@@ -4622,12 +4742,10 @@ void doSaveAll() {
             ++ohnePfad;
             continue;
         }
-        switchTab(static_cast<int>(i));
-        if (doSave()) {
+        if (speichereReiterI(static_cast<int>(i))) {
             ++gesichert;
         }
     }
-    switchTab(vorher);
     setStatus(tr(Str::MsgSavedAll), gesichert, ohnePfad);
 }
 
@@ -5416,8 +5534,10 @@ void doCompile() {
             return;
         }
     } else {
-        const std::size_t dot = out.find_last_of('.');
-        out = (dot == std::string::npos ? out : out.substr(0, dot)) + ".ibi";
+        // mitEndung: ein Punkt im ORDNERNAMEN ist keine Endung. Vorher wurde
+        // aus pruef.ordner\\skript die Datei pruef.ibi eine Ebene hoeher
+        // (Code-Pruefung 03.10.).
+        out = mitEndung(out, ".ibi");
     }
     if (!spew(out, bytes)) {
         platform::showError(out, tr(Str::AppTitle));
@@ -7866,6 +7986,13 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
         if (g_app->settings.highlightSame && !g_app->selectedPath.empty()) {
             vorbild = nodeAt(g_app->doc.script(), g_app->selectedPath);
         }
+        // Was den Baum SOFORT neu baut, laeuft erst nach der Schleife: der
+        // Editor (bei einem Makro klappt er es um, openEditorForNode ruft
+        // rebuildTree) und das Ziehen aus einem anderen Skript. Mitten in der
+        // Schleife las sie danach weiter aus `r` - Speicher, den der Neubau
+        // freigegeben hatte (ASan, Doppelklick auf eine Makrozeile,
+        // Code-Pruefung 03.10.).
+        std::function<void()> nachDerSchleife;
         for (std::size_t i = 0; i < g_app->rows.size(); ++i) {
             const Row& r = g_app->rows[i];
             ImGui::PushID(static_cast<int>(i));
@@ -8075,7 +8202,7 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                             // Zeitleiste und ueber die Schluessel in der
                             // Ansicht - dort ist es ein Klick, kein
                             // Ratespiel.
-                            openEditorForNode(r.path);
+                            nachDerSchleife = [p = r.path] { openEditorForNode(p); };
                         }
                     }
                 }
@@ -8233,11 +8360,13 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                             dn.pane = g_app->dragFromPane;
                             dn.tab = g_app->dragFromTab;
                             dn.row = -1;
-                            knotenZiehen(dn, -1, static_cast<int>(i));
-                            g_app->dragging = false;
-                            g_app->dbgZiehWeg.clear();
-                            g_app->dragFrom.clear();
-                            g_app->dragFromTab = -1;
+                            nachDerSchleife = [dn, ziel = static_cast<int>(i)] {
+                                knotenZiehen(dn, -1, ziel);
+                                g_app->dragging = false;
+                                g_app->dbgZiehWeg.clear();
+                                g_app->dragFrom.clear();
+                                g_app->dragFromTab = -1;
+                            };
                         } else {
                             const std::vector<Path> m = selectionOrCurrent();
                             const std::vector<Path> ziehen =
@@ -8396,7 +8525,7 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                     g_app->selectedPath = r.path;
                 }
                 if (ImGui::MenuItem(tr(Str::ActEdit), chordName(keys::Action::EditItem))) {
-                    openEditorForNode(r.path);
+                    nachDerSchleife = [p = r.path] { openEditorForNode(p); };
                 }
                 // --- Auf das Original zuruecksetzen ----------------------
                 //
@@ -8586,6 +8715,9 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                 ImGui::Dummy(ImVec2{0.0F, 0.0F});
                 break;
             }
+        }
+        if (nachDerSchleife) {
+            nachDerSchleife();
         }
 
         ImGui::Unindent(rinne);
@@ -9872,7 +10004,18 @@ void dateiVonAussen(const std::string& pfad) {
     diag::info("Von einer zweiten Instanz: " + (pfad.empty() ? std::string("(nur nach vorn)") : pfad));
 }
 void dateienVonAussenOeffnen() {
-    if (g_app == nullptr || g_app->askSaveOpen || g_app->frageOffen || dateienVonAussen().empty()) {
+    if (g_app == nullptr || dateienVonAussen().empty()) {
+        return;
+    }
+    // Warten, solange etwas offen ist, das am AKTIVEN Reiter haengt: der
+    // Ereigniseditor merkt sich nur den Weg im Skript - wechselte der Reiter
+    // darunter weg, schrieb "Ok" in das neu geoeffnete Skript (Code-Pruefung
+    // 03.10., im Selbsttest "pruefung" nachgestellt). Ebenso Fragen, Dialoge,
+    // offene Menues und ein laufendes Ziehen. Die Datei bleibt vorgemerkt und
+    // geht auf, sobald alles zu ist.
+    if (g_app->askSaveOpen || g_app->frageOffen || g_app->editorOpen || g_app->prefsOpen ||
+        g_app->missionPickOpen || g_app->dragging ||
+        ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
         return;
     }
     std::vector<std::string> liste;
@@ -9893,6 +10036,11 @@ void oeffneSkriptAusSpeicher(const std::string& data, const std::string& name) {
 // Ein neuer, leerer Reiter wie "New" - ohne die Rueckfrage und ohne das
 // Wiederverwenden eines leeren Reiters, die doNew() davorschaltet.
 void neuerReiter() { neuesSkript(); }
+// Fuer den Selbsttest (Modus "pruefung").
+void ladePfad(const std::string& p) { loadPath(p); }
+void uebersetzen() { doCompile(); }
+void alleSpeichern() { doSaveAll(); }
+bool speichernUnterPfad(const std::string& p) { return speichernUnterPfadI(p); }
 
 
 // Eine Zeile ueber ihren WEG auswaehlen und sichtbar machen.
@@ -13474,6 +13622,7 @@ bool confirmQuit() {
             // Abgebrochen: die Kette faengt beim naechsten Versuch von
             // vorn an. Sonst uebersaehe sie die schon gefragten Reiter.
             g_app->quitAskFrom = 0;
+            updater::neustartVergessen();   // "Neu starten" ebenso abgebrochen
             // Und zurueck in den Reiter, in dem man gearbeitet hat - sonst
             // stand man im gefragten, waehrend das Band den alten zeigte.
             const int z = g_app->quitZurueck;
@@ -13493,7 +13642,7 @@ bool confirmQuit() {
             frage(tr(Str::AskExit), [] {
                 g_app->quitConfirmed = true;
                 g_app->wantQuit = true;
-            });
+            }, [] { updater::neustartVergessen(); });
         }
         return false;
     }

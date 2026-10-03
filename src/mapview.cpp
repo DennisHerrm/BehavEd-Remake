@@ -597,8 +597,14 @@ bool figurKnochen(const ActorDraw& act, std::vector<BoneMatrix>& world,
                 std::vector<char> oben(world.size(), 0);
                 if (torsoBlend && taille >= 0) {
                     for (std::size_t b = 0; b < world.size(); ++b) {
+                        // p < Knochenzahl: `parent` kommt ungeprueft aus der
+                        // .gla - ein Verweis ins Leere las hier weit hinter
+                        // der Liste (Code-Pruefung 03.10., Probe in
+                        // tests/pruefung.cpp).
                         for (int p = static_cast<int>(b), schritte = 0;
-                             p >= 0 && schritte < 256; ++schritte) {
+                             p >= 0 && static_cast<std::size_t>(p) < act.anim->bones.size() &&
+                             schritte < 256;
+                             ++schritte) {
                             if (p == taille) { oben[b] = 1; break; }
                             p = act.anim->bones[static_cast<std::size_t>(p)].parent;
                         }

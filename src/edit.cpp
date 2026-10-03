@@ -313,6 +313,10 @@ Arg argForParam(const Param& p, const std::string& value, const CommandDb& db,
         case Param::Kind::Int:
         case Param::Kind::Float:
             a.kind = Arg::Kind::Number;
+            // Komma als Dezimalzeichen (deutsche Tastatur): "1,5" stuende
+            // sonst als  wait ( 1,5 )  in der Datei - zwei Argumente, der
+            // Befehl ist kaputt (Code-Pruefung 03.10.).
+            std::replace(a.text.begin(), a.text.end(), ',', '.');
             break;
         case Param::Kind::Vector:
             a.kind = Arg::Kind::Vector;
@@ -872,12 +876,16 @@ void Document::snapshot(const char* what) {
     // obwohl der Inhalt ein anderer war. Kein Stern, keine Nachfrage beim
     // Schliessen oder Beenden, und die Aenderung war verloren (Code-Pruefung
     // zu shanks Datenverlust, 03.10.).
+    // Fuer verwirf(): den Verlauf so merken, wie er VOR diesem Schritt war.
+    savedVorher_ = savedDepth_;
+    abgeschnitten_ = false;
     if (savedDepth_ != kNieGesichert && savedDepth_ > undo_.size()) {
         savedDepth_ = kNieGesichert;
     }
     undo_.push_back(Step{s_, what});
     if (undo_.size() > kMaxUndo) {
         undo_.erase(undo_.begin());
+        abgeschnitten_ = true;
         // Der aelteste Stand ist weg; der gespeicherte Punkt wandert mit,
         // sonst zeigt das Dokument dauerhaft "ungesichert". War der
         // gespeicherte Stand GENAU der weggefallene, ist er nicht mehr
@@ -890,7 +898,36 @@ void Document::snapshot(const char* what) {
             --savedDepth_;
         }
     }
+    redoVorher_ = std::move(redo_);
     redo_.clear();
+}
+
+// --- Einen Schritt zuruecknehmen, der nichts bewirkt hat -----------------
+//
+// Viele Befehle machen erst die Momentaufnahme und merken dann, dass der Zug
+// nicht geht (Ziel gleich Quelle, nichts verschiebbar). Bisher stand dort
+// undo() + redo_.clear() - damit war der ganze Wiederholen-Speicher weg,
+// obwohl am Skript nichts passiert war: Strg+Z, ein Zug auf dieselbe Stelle,
+// und Strg+Y ging nicht mehr (Code-Pruefung 03.10.). Jetzt kommt der Verlauf
+// genau so zurueck, wie er vor snapshot() war.
+void Document::verwirf() {
+    if (undo_.empty()) {
+        return;
+    }
+    ++stand_;
+    s_ = std::move(undo_.back().script);
+    undo_.pop_back();
+    redo_ = std::move(redoVorher_);
+    redoVorher_.clear();
+    if (!abgeschnitten_) {
+        savedDepth_ = savedVorher_;
+    } else if (savedVorher_ == 0 || savedVorher_ == kNieGesichert) {
+        // Der aelteste Stand fiel beim Abschneiden weg - er bleibt weg.
+        savedDepth_ = kNieGesichert;
+    } else {
+        savedDepth_ = savedVorher_ - 1;
+    }
+    abgeschnitten_ = false;
 }
 
 std::vector<Node>* Document::siblingsOf(const Path& p, std::size_t& idx) {
@@ -1645,6 +1682,29 @@ bool Document::insertAfterAll(const Path& p, const std::vector<Node>& nodes,
     return true;
 }
 
+namespace {
+
+// Kennungen eines Teilbaums loeschen; vergibKennungen gibt dann frische.
+void ohneKennung(std::vector<Node>& ns) {
+    for (Node& n : ns) {
+        n.kennung = 0;
+        ohneKennung(n.children);
+    }
+}
+
+}  // namespace
+
+// Was eingefuegt wird, ist eine KOPIE und bekommt eigene Kennungen. Mit den
+// alten bekam beim Einfuegen VOR dem Original die Kopie dessen Kennung (wer
+// zuerst kommt, behaelt sie) und das Original eine neue - Auswahl, Markierung
+// am Rand und gezieltes Rueckgaengig hingen dann an der Kopie (Code-Pruefung
+// 03.10.).
+std::vector<Node> Document::clipKopie() const {
+    std::vector<Node> k = clip_;
+    ohneKennung(k);
+    return k;
+}
+
 bool Document::pasteAfter(const Path& p) {
     MakroWache wache(*this);
     if (clip_.empty()) {
@@ -1652,7 +1712,8 @@ bool Document::pasteAfter(const Path& p) {
     }
     if (p.empty()) {
         snapshot("paste");
-        s_.nodes.insert(s_.nodes.end(), clip_.begin(), clip_.end());
+        const std::vector<Node> k = clipKopie();
+        s_.nodes.insert(s_.nodes.end(), k.begin(), k.end());
         return true;
     }
     // Wie insertAfter (Makrozeile: dahinter; Befehl darin: hinein).
@@ -1677,8 +1738,8 @@ bool Document::pasteAfter(const Path& p) {
     snapshot("paste");
     std::size_t j = 0;
     std::vector<Node>* s2 = siblingsOf(anker, j);
-    s2->insert(s2->begin() + static_cast<std::ptrdiff_t>(j) + 1,
-               clip_.begin(), clip_.end());
+    const std::vector<Node> k = clipKopie();
+    s2->insert(s2->begin() + static_cast<std::ptrdiff_t>(j) + 1, k.begin(), k.end());
     Path neu = anker;
     neu.back() = j + 1;
     merkeBeitritt(neu, clip_.size(), makro);
@@ -1706,7 +1767,8 @@ bool Document::pasteInto(const Path& block) {
         snapshot("paste");
         std::size_t j = 0;
         std::vector<Node>* s2 = siblingsOf(block, j);
-        s2->insert(s2->begin() + static_cast<std::ptrdiff_t>(j) + 1, clip_.begin(), clip_.end());
+        const std::vector<Node> k = clipKopie();
+        s2->insert(s2->begin() + static_cast<std::ptrdiff_t>(j) + 1, k.begin(), k.end());
         Path neu = block;
         neu.back() = j + 1;
         merkeBeitritt(neu, clip_.size(), mk);
@@ -1719,7 +1781,8 @@ bool Document::pasteInto(const Path& block) {
     std::size_t j = 0;
     std::vector<Node>* s2 = siblingsOf(block, j);
     std::vector<Node>& kids = (*s2)[j].children;
-    kids.insert(kids.begin(), clip_.begin(), clip_.end());
+    const std::vector<Node> k = clipKopie();
+    kids.insert(kids.begin(), k.begin(), k.end());
     return true;
 }
 
@@ -1840,8 +1903,7 @@ bool Document::moveAll(std::vector<Path>& paths, bool up) {
         }
     }
     if (!any) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
     }
     return any;
 }
@@ -1880,8 +1942,7 @@ bool Document::moveInto(const Path& from, const Path& block, Path* nachher) {
         std::size_t i = 0;
         std::vector<Node>* sib = siblingsOf(from, i);
         if (sib == nullptr || i >= sib->size()) {
-            (void)undo();
-            redo_.clear();
+            verwirf();
             return false;
         }
         sib->erase(sib->begin() + static_cast<std::ptrdiff_t>(i));
@@ -1902,8 +1963,7 @@ bool Document::moveInto(const Path& from, const Path& block, Path* nachher) {
                           ? &(*holder)[bi]
                           : nullptr;
     if (blockNode == nullptr) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
         return false;
     }
     blockNode->children.insert(blockNode->children.begin(), copy);
@@ -2052,8 +2112,7 @@ bool Document::moveAllAt(std::vector<Path> paths, const Path& ankerWunsch, Stell
         std::size_t j = 0;
         std::vector<Node>* sib = siblingsOf(a, j);
         if (sib == nullptr || j >= sib->size()) {
-            (void)undo();
-            redo_.clear();
+            verwirf();
             return false;
         }
         sib->insert(sib->begin() + static_cast<std::ptrdiff_t>(j) + 1, genommen.begin(), genommen.end());
@@ -2063,8 +2122,7 @@ bool Document::moveAllAt(std::vector<Path> paths, const Path& ankerWunsch, Stell
         std::size_t j = 0;
         std::vector<Node>* sib = siblingsOf(a, j);
         if (sib == nullptr || j >= sib->size() || !(*sib)[j].hasBlock) {
-            (void)undo();
-            redo_.clear();
+            verwirf();
             return false;
         }
         std::vector<Node>& kids = (*sib)[j].children;
@@ -2075,8 +2133,7 @@ bool Document::moveAllAt(std::vector<Path> paths, const Path& ankerWunsch, Stell
         std::size_t j = 0;
         std::vector<Node>* sib = siblingsOf(a, j);
         if (sib == nullptr || j >= sib->size()) {
-            (void)undo();
-            redo_.clear();
+            verwirf();
             return false;
         }
         const std::size_t bei = (wo == Stelle::Davor) ? j : j + 1;
@@ -2163,8 +2220,7 @@ bool Document::moveAllTo(std::vector<Path> paths, const Path& to) {
     std::size_t j = 0;
     std::vector<Node>* dst = siblingsOf(target, j);
     if (dst == nullptr) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
         return false;
     }
     const std::size_t at = std::min(j + 1, dst->size());
@@ -2212,8 +2268,7 @@ bool Document::moveToEnd(const Path& from, Path* nachher) {
     // machte gar nichts, und dazwischen waere er kurz weg. Genau die Sorte
     // Ueberraschung, die man beim Rueckgaengigmachen am wenigsten will.
     if (!removeAt(from)) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
         return false;
     }
     s_.nodes.push_back(copy);
@@ -2272,8 +2327,7 @@ bool Document::moveTo(const Path& from, const Path& to, Path* nachher) {
         std::size_t i = 0;
         std::vector<Node>* sib = siblingsOf(from, i);
         if (sib == nullptr || i >= sib->size()) {
-            (void)undo();
-            redo_.clear();
+            verwirf();
             return false;
         }
         sib->erase(sib->begin() + static_cast<std::ptrdiff_t>(i));
@@ -2291,8 +2345,7 @@ bool Document::moveTo(const Path& from, const Path& to, Path* nachher) {
     std::size_t j = 0;
     std::vector<Node>* dst = siblingsOf(target, j);
     if (dst == nullptr) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
         return false;
     }
     const std::size_t at = std::min(j + 1, dst->size());
@@ -2312,8 +2365,7 @@ bool Document::moveTo(const Path& from, const Path& to, Path* nachher) {
     // Strg+Z drueckt, erwartet die vorige ECHTE Aenderung zurueck und
     // bekommt nichts.
     if (zielW == from) {
-        (void)undo();
-        redo_.clear();
+        verwirf();
         diag::detail("Baum: \"" + copy.name + "\" gezogen, aber Ziel gleich "
                      "Herkunft (" + wegText(from) + ") - nichts getan");
         abweisung_ = Abweisung::ZielGleichHerkunft;
@@ -2406,8 +2458,7 @@ bool Document::cloneAll(std::vector<Path> paths) {
     if (!any) {
         // Nichts getan: die Momentaufnahme wieder zuruecknehmen, sonst
         // haette man einen leeren Schritt im Rueckgaengig-Stapel.
-        (void)undo();
-        redo_.clear();
+        verwirf();
     }
     return any;
 }
@@ -2433,8 +2484,7 @@ bool Document::removeAll(std::vector<Path> paths) {
     if (!any) {
         // Nichts getan: die Momentaufnahme wieder zuruecknehmen, sonst
         // haette man einen leeren Schritt im Rueckgaengig-Stapel.
-        (void)undo();
-        redo_.clear();
+        verwirf();
     }
     return any;
 }

@@ -190,6 +190,16 @@ bool readPk3File(const Pk3& archive, const Pk3Entry& entry, std::string& out,
     const std::streamoff dataAt =
         static_cast<std::streamoff>(entry.localHeaderOffset) + 30 + nameLen + extraLen;
 
+    // Erst gegen die Archivgroesse pruefen, DANN Speicher anlegen: ein
+    // Eintrag mit 4 GB Laenge in einer kleinen Datei belegte sonst 4 GB,
+    // bevor das Lesen scheiterte (Code-Pruefung 03.10.).
+    f.seekg(0, std::ios::end);
+    const std::streamoff dateiGroesse = f.tellg();
+    if (dateiGroesse < dataAt ||
+        static_cast<std::uint64_t>(dateiGroesse - dataAt) < entry.compressedSize) {
+        if (error != nullptr) { *error = "Daten liegen ausserhalb der Datei"; }
+        return false;
+    }
     std::string b(entry.compressedSize, '\0');
     f.seekg(dataAt);
     f.read(b.data(), static_cast<std::streamsize>(entry.compressedSize));

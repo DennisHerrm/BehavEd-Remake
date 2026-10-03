@@ -11,6 +11,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,7 @@ constexpr int kLumpLightmaps = 14;
 constexpr int kLumpLightGrid = 15;
 constexpr int kLumpLightArray = 17;
 constexpr std::size_t kGridPointSize = 30;   // mgrid_t, tr_local.h:742
+constexpr int kMaxPatchGroesse = 32;          // MAX_PATCH_SIZE, tr_local.h:576
 
 // Nachgemessen an yavin2.bsp und duel_kamino_lp.bsp: beide Lumpgroessen
 // gehen restlos auf.
@@ -301,6 +303,9 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                             const BspGeometry::Plane* hi = ebeneDerSeite(erste + k * 2 + 1);
                             n.mins[k] = (lo != nullptr) ? -lo->dist : 0.0F;
                             n.maxs[k] = (hi != nullptr) ? hi->dist : 0.0F;
+                            if (lo == nullptr || hi == nullptr) {
+                                n.gueltig = false;   // "fog brushsideNumber out of range"
+                            }
                         }
                         if (sichtbar != -1) {
                             const BspGeometry::Plane* p = ebeneDerSeite(erste + sichtbar);
@@ -310,6 +315,13 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                                 n.ebene[3] = p->dist;
                             }
                         }
+                    } else {
+                        // R_LoadFogs bricht hier mit ERR_DROP ab ("fog
+                        // brushNumber out of range"). Bisher blieb der Kasten
+                        // 0..0 stehen, und eine Figur am Nullpunkt stand im
+                        // Nebel. Der Eintrag bleibt (fogNum der Flaechen
+                        // zaehlt mit), wirkt aber nicht.
+                        n.gueltig = false;
                     }
                     out.nebel.push_back(std::move(n));
                 }
@@ -392,13 +404,28 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         s.patchHeight = i32(b, at + 144);
 
         // Alles pruefen, was spaeter als Zeiger benutzt wird.
-        const auto nv = static_cast<std::int32_t>(out.verts.size());
-        const auto ni = static_cast<std::int32_t>(out.indexes.size());
-        const auto ns = static_cast<std::int32_t>(out.shaders.size());
-        if (s.firstVert < 0 || s.numVerts < 0 || s.firstVert + s.numVerts > nv ||
-            s.firstIndex < 0 || s.numIndexes < 0 || s.firstIndex + s.numIndexes > ni ||
+        // In 64 Bit rechnen: firstVert + numVerts lief in int ueber
+        // (0x7FFFFFF0 + 0x20 wird negativ), die Pruefung liess die Flaeche
+        // durch, und buildMesh las weit hinter dem Feld (Code-Pruefung 03.10.).
+        const auto nv = static_cast<std::int64_t>(out.verts.size());
+        const auto ni = static_cast<std::int64_t>(out.indexes.size());
+        const auto ns = static_cast<std::int64_t>(out.shaders.size());
+        if (s.firstVert < 0 || s.numVerts < 0 ||
+            std::int64_t{s.firstVert} + s.numVerts > nv ||
+            s.firstIndex < 0 || s.numIndexes < 0 ||
+            std::int64_t{s.firstIndex} + s.numIndexes > ni ||
             s.shader < 0 || s.shader >= ns) {
             continue;   // kaputte Flaeche uebergehen, nicht die ganze Karte
+        }
+        // Ein Patch, dessen Gitter mehr Punkte braucht als die Flaeche hat,
+        // liest sonst fremde (oder gar keine) Ecken. Die Engine bricht dort
+        // mit "ParseMesh: bad size" ab (MAX_PATCH_SIZE 32, tr_bsp.cpp); hier
+        // bleibt die Karte offen und nur dieser Patch faellt weg.
+        if (s.type == BspSurface::Type::Patch &&
+            (s.patchWidth < 0 || s.patchHeight < 0 ||
+             s.patchWidth > kMaxPatchGroesse || s.patchHeight > kMaxPatchGroesse ||
+             s.patchWidth * s.patchHeight > s.numVerts)) {
+            s.type = BspSurface::Type::Bad;
         }
         // Den Kasten um die Flaeche EINMAL rechnen - siehe
         // BspSurface::mins/maxs. Der Spurtest spart sich damit die
@@ -726,16 +753,26 @@ BspMesh buildMesh(const BspGeometry& geo, int level, bool skipSky) {
 
 int ladeExterneLightmaps(BspGeometry& geo, const std::string& kartenOrdner,
                          const std::function<bool(const std::string&, std::string&)>& lies) {
-    int hoechste = -1;
+    // Nur die Nummern, die eine Flaeche wirklich benutzt - nicht 0 bis zur
+    // hoechsten: eine kaputte Flaeche mit Lightmap 0x7FFFFFFF fragte sonst
+    // Milliarden Dateien ab (und i++ lief am Ende ueber; Code-Pruefung
+    // 03.10.). Ueber kMaxLightmapNummer hat keine Karte Lightmaps.
+    constexpr int kMaxLightmapNummer = 1 << 16;
+    std::set<int> benutzt;
     for (const BspSurface& s : geo.surfaces) {
-        hoechste = std::max(hoechste, s.lightmap);
+        if (s.lightmap >= 0 && s.lightmap < kMaxLightmapNummer) {
+            benutzt.insert(s.lightmap);
+        }
     }
     int geladen = 0;
     // Die aus der .bsp sind 128x128 - ihre Masse eintragen, damit die
     // Listen gleich lang sind.
     geo.lightmapBreite.resize(geo.lightmaps.size(), BspGeometry::kLightmapSize);
     geo.lightmapHoehe.resize(geo.lightmaps.size(), BspGeometry::kLightmapSize);
-    for (int i = 0; i <= hoechste && lies; ++i) {
+    for (const int i : benutzt) {
+        if (!lies) {
+            break;
+        }
         const auto ui = static_cast<std::size_t>(i);
         if (ui < geo.lightmaps.size() && !geo.lightmaps[ui].empty()) {
             continue;

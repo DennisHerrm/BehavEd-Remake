@@ -1094,8 +1094,10 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
         }
         if (key == "scale" || key == "scalex" || key == "scaley" || key == "scalez") {
             const long n = std::strtol(wert.c_str(), nullptr, 10);
+            // 0 setzt das Spiel zwar (NPC_stats.cpp), der Renderer nimmt eine
+            // 0 aber je Achse als 1 (G2_misc.cpp "check for scales of 0").
             if (n >= 0 && n != 100) {
-                const float f = static_cast<float>(n) / 100.0F;
+                const float f = n == 0 ? 1.0F : static_cast<float>(n) / 100.0F;
                 if (key == "scale") {
                     cur.skala[0] = cur.skala[1] = cur.skala[2] = f;
                 } else {

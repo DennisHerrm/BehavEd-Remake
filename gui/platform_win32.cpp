@@ -107,6 +107,13 @@ FilterSpec buildFilter(const char* filter) {
 std::string runDialog(const char* title, const char* filter,
                       const std::string& startDir, const std::string& suggested,
                       bool save, bool folder) {
+    // Im Selbsttest KEIN Dialog: er hielte den Lauf an (unsichtbar hinter
+    // dem Testfenster). Wie "Abbrechen" behandeln und ins Protokoll.
+    if (std::getenv("BHED_EDITORTEST") != nullptr) {
+        diag::detail(std::string("Selbsttest: Dateidialog \"") + (title != nullptr ? title : "") +
+                     "\" unterdrueckt (wie Abbrechen)");
+        return {};
+    }
     IFileDialog* dialog = nullptr;
     const CLSID clsid = save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog;
     const IID iid = save ? IID_IFileSaveDialog : IID_IFileOpenDialog;

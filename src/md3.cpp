@@ -258,6 +258,14 @@ bool readMd3(const std::string& b, Md3Model& out, std::string* error) {
         // ALLE Bilder gelten und deshalb nur einmal dastehen.
         const std::size_t total = static_cast<std::size_t>(sVerts) *
                                   static_cast<std::size_t>(sFrames);
+        // Erst pruefen, ob so viele Ecken ueberhaupt in der Datei stehen:
+        // numFrames 2^31 bei 65536 Ecken wollte sonst 2^47 Ecken anlegen -
+        // bad_alloc und Absturz an einem einzigen kaputten Modell
+        // (Code-Pruefung 03.10.).
+        if (ofsXyz < 0 || at + static_cast<std::size_t>(ofsXyz) > b.size() ||
+            total > (b.size() - at - static_cast<std::size_t>(ofsXyz)) / 8U) {
+            break;
+        }
         sf.verts.resize(total);
         for (std::size_t i = 0; i < total; ++i) {
             const std::size_t va = at + static_cast<std::size_t>(ofsXyz) + i * 8U;

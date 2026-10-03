@@ -608,6 +608,30 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     // zu spaet und alles erscheint verwaschen.
     announceDpiAwareness();
 
+    // Selbsttest "pruefung": der Neustart nach einem Update kommt an. Nur
+    // eine Marke schreiben und gleich wieder gehen - ein zweiter Testlauf im
+    // selben Ordner wuerde das Protokoll des ersten ueberschreiben.
+    if (std::getenv("BHED_EDITORTEST") != nullptr) {
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        const bool neustart = argv != nullptr && argc > 1 && std::wstring(argv[1]).rfind(L"--nach-update=", 0) == 0;
+        if (neustart) {
+            (void)bhed::gui::updater::warteAufVorgaenger(toUtf8(argv[1]));
+        }
+        if (argv != nullptr) {
+            LocalFree(argv);
+        }
+        if (neustart) {
+            const std::filesystem::path marke =
+                std::filesystem::u8path(bhed::platform::executableDirectory()) / "neustart_angekommen.txt";
+            if (FILE* f = _wfopen(marke.c_str(), L"wb")) {
+                std::fputs("ja\n", f);
+                std::fclose(f);
+            }
+            return 0;
+        }
+    }
+
     // --- Laeuft behaved hier schon? Dann dorthin weiterreichen -------------
     //
     // VOR dem Protokoll (siehe einzelAktiv). Nach einem Update erst auf die
@@ -904,6 +928,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     if (g_einzelMutex != nullptr) {
         CloseHandle(g_einzelMutex);
     }
+    // "Neu starten" nach einem Update: erst jetzt, wo alles gesichert und
+    // die Kennung frei ist.
+    bhed::gui::updater::neustartWennVorgemerkt();
     bhed::diag::closeDetail();
     bhed::diag::close();
     if (SUCCEEDED(comInit)) {

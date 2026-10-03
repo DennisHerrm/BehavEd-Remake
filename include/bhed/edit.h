@@ -467,6 +467,14 @@ private:
     std::vector<Step> undo_;
     std::vector<Step> redo_;
     std::size_t savedDepth_ = 0;
+    // Stand des Verlaufs vor der letzten Momentaufnahme - fuer verwirf().
+    std::vector<Step> redoVorher_;
+    std::size_t savedVorher_ = 0;
+    bool abgeschnitten_ = false;
+    // Die letzte Momentaufnahme zuruecknehmen, als waere nie etwas gewesen.
+    void verwirf();
+    // Die Zwischenablage ohne Kennungen - eingefuegt wird eine Kopie.
+    [[nodiscard]] std::vector<Node> clipKopie() const;
     // Der gespeicherte Stand ist aus dem Verlauf gefallen (Wiederholen
     // verworfen oder aelter als kMaxUndo): keine Tiefe ist mehr "gesichert".
     static constexpr std::size_t kNieGesichert = static_cast<std::size_t>(-1);

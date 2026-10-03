@@ -1,5 +1,6 @@
 // ibitest.cpp - .ibi gegen die einzige echte Datei und gegen sich selbst
 #include "bhed/ibi.h"
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
@@ -116,14 +117,20 @@ int main(int argc,char**argv){
                !istIbi("affect ( \"ani1\", FLUSH )\n{\n}\n"));
         expect("und etwas zu Kurzes auch nicht", !istIbi("IBI"));
 
-        // Der Beleg fuer den Fehler: der TEXTLESER liefert dazu nichts.
+        // Der Beleg fuer den Fehler: der TEXTLESER findet darin keinen
+        // Befehl. (Seit rc582 behaelt er unlesbare Zeilen wortgetreu als
+        // Kommentarknoten - Befehle bleiben es trotzdem null.)
         bhed::Script leer;
         std::vector<bhed::Diag> dl;
         (void)bhed::readScript(echt, leer, dl);
-        std::printf("  Textleser auf einer .ibi: %zu Knoten\n",
-                    leer.nodes.size());
-        expect("der Textleser findet in einer .ibi nichts",
-               leer.nodes.empty());
+        std::size_t befehle = 0;
+        for (const bhed::Node& n : leer.nodes) {
+            if (n.kind == bhed::Node::Kind::Command) { ++befehle; }
+        }
+        std::printf("  Textleser auf einer .ibi: %zu Knoten, %zu Befehle\n",
+                    leer.nodes.size(), befehle);
+        expect("der Textleser findet in einer .ibi keinen Befehl",
+               befehle == 0);
     }
     // --- Wie IBIze: rem, dowait, Einfeld-if, Zahlen ---------------------
     //

@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <charconv>
+#include <string>
 
 namespace bhed {
 namespace {
@@ -41,11 +42,18 @@ std::vector<std::string> splitArgs(const std::string& s) {
     bool inExpr = false;
     bool inVec = false;
     int paren = 0;
-    for (char c : s) {
+    for (std::size_t k = 0; k < s.size(); ++k) {
+        const char c = s[k];
         if (inStr) {
             cur += c;
-            if (c == '"') { inStr = false;
-}
+            // Ein '"' schliesst den Text nur, wenn danach (bis auf
+            // Leerzeichen) ein Komma oder das Ende kommt. Das Format kennt
+            // kein Maskieren; ein Text wie  sag "hallo, du"  wurde sonst am
+            // Komma in seiner Mitte zerlegt (Code-Pruefung 03.10.).
+            if (c == '"') {
+                const std::size_t naechstes = s.find_first_not_of(" \t", k + 1);
+                if (naechstes == std::string::npos || s[naechstes] == ',') { inStr = false; }
+            }
             continue;
         }
         if (inExpr) {
@@ -110,6 +118,42 @@ Arg parseArg(const std::string& in) {
     return a;
 }
 
+// Wo beginnt ein "//"-Kommentar HINTER Code? Nicht in "..." oder $...$.
+// npos, wenn keiner da ist.
+std::size_t kommentarAnfang(const std::string& s) {
+    bool inStr = false;
+    bool inExpr = false;
+    for (std::size_t k = 0; k + 1 < s.size(); ++k) {
+        const char c = s[k];
+        if (c == '"' && !inExpr) { inStr = !inStr; continue; }
+        if (c == '$' && !inStr) { inExpr = !inExpr; continue; }
+        if (!inStr && !inExpr && c == '/' && s[k + 1] == '/') { return k; }
+    }
+    return std::string::npos;
+}
+
+// Eine Zeile in Code und Kommentar dahinter zerlegen (beides getrimmt).
+struct Zeile {
+    std::string code;
+    std::string kommentar;   // mit "//", leer wenn keiner
+    std::string einzug;      // fuehrende Leerzeichen/Tabs der Zeile
+};
+
+Zeile zerlege(const std::string& raw) {
+    Zeile z;
+    const std::size_t erst = raw.find_first_not_of(" \t");
+    z.einzug = raw.substr(0, erst == std::string::npos ? raw.size() : erst);
+    const std::string s = trim(raw);
+    const std::size_t k = s.starts_with("//") ? std::string::npos : kommentarAnfang(s);
+    if (k == std::string::npos) {
+        z.code = s;
+    } else {
+        z.code = trim(s.substr(0, k));
+        z.kommentar = s.substr(k);
+    }
+    return z;
+}
+
 struct Reader {
     std::vector<std::string> lines;
     std::size_t pos = 0;
@@ -120,13 +164,44 @@ struct Reader {
 }
     }
 
+    // Ein Kommentar, der hinter Code stand, als eigene Zeile danach.
+    static void kommentarDanach(std::vector<Node>& out, const Zeile& z) {
+        if (z.kommentar.empty()) { return; }
+        Node n;
+        n.kind = Node::Kind::LineComment;
+        n.raw = z.einzug + z.kommentar;
+        out.push_back(std::move(n));
+    }
+
+    // Eine Zeile, die sich nicht lesen laesst, WORTGETREU behalten (als
+    // Kommentarknoten, der Schreiber gibt `raw` unveraendert aus). Bisher
+    // fiel sie still weg und war nach dem naechsten Speichern verloren
+    // (Code-Pruefung 03.10.).
+    static void wortgetreu(std::vector<Node>& out, const std::string& raw) {
+        Node n;
+        n.kind = Node::Kind::LineComment;
+        n.raw = raw;
+        out.push_back(std::move(n));
+    }
+
     // Liest Knoten bis zum passenden '}' (oder Dateiende bei depth==0).
+    //
+    // Kommentare HINTER Code (`wait ( 1000 ); // Tuer`, `} // ende`) werden
+    // abgetrennt und als eigene Kommentarzeile dahinter behalten. Vorher
+    // ging der Kommentar verloren, und `} // ende` schloss den Block nicht -
+    // der Rest der Datei rutschte hinein.
     bool readNodes(std::vector<Node>& out, int depth) {
         while (pos < lines.size()) {
             const std::string raw = lines[pos];
-            const std::string s = trim(raw);
+            const Zeile z = zerlege(raw);
+            const std::string& s = z.code;
             if (s == "}") {
-                if (depth == 0) { note("unerwartete schliessende Klammer"); ++pos; continue; }
+                if (depth == 0) {
+                    note("unerwartete schliessende Klammer");
+                    ++pos;
+                    wortgetreu(out, raw);
+                    continue;
+                }
                 return true;                       // Aufrufer verbraucht die Zeile
             }
             ++pos;
@@ -159,9 +234,13 @@ struct Reader {
                 continue;
             }
             std::size_t op = s.find('(');
-            if (op == std::string::npos) { note("Zeile ohne Klammer: " + s); continue; }
+            if (op == std::string::npos) { note("Zeile ohne Klammer: " + s); wortgetreu(out, raw); continue; }
             std::size_t cl = s.rfind(')');
-            if (cl == std::string::npos || cl < op) { note("Klammer nicht geschlossen: " + s); continue; }
+            if (cl == std::string::npos || cl < op) {
+                note("Klammer nicht geschlossen: " + s);
+                wortgetreu(out, raw);
+                continue;
+            }
 
             Node n;
             n.kind = Node::Kind::Command;
@@ -174,17 +253,21 @@ struct Reader {
             const std::string after = trim(s.substr(cl + 1));
             if (after == ";") {
                 out.push_back(std::move(n));
+                kommentarDanach(out, z);
                 continue;
             }
             // Blockbefehl: '{' steht in der naechsten Zeile (Raven-Stil)
             // oder direkt dahinter.
             if (after == "{" || after.empty()) {
+                Zeile auf;   // die Zeile mit '{', falls sie eine eigene ist
                 if (after.empty()) {
                     while (pos < lines.size() && trim(lines[pos]).empty()) { ++pos;
 }
-                    if (pos >= lines.size() || trim(lines[pos]) != "{") {
+                    if (pos < lines.size()) { auf = zerlege(lines[pos]); }
+                    if (pos >= lines.size() || auf.code != "{") {
                         note("Blockbefehl ohne '{': " + n.name);
                         out.push_back(std::move(n));
+                        kommentarDanach(out, z);
                         continue;
                     }
                     ++pos;
@@ -193,14 +276,20 @@ struct Reader {
                 if (!readNodes(n.children, depth + 1)) {
                     note("Block nicht geschlossen: " + n.name);
                     out.push_back(std::move(n));
+                    kommentarDanach(out, z);
                     return false;
                 }
+                const Zeile zu = zerlege(lines[pos]);
                 ++pos;                              // '}' verbrauchen
                 out.push_back(std::move(n));
+                kommentarDanach(out, z);
+                kommentarDanach(out, auf);
+                kommentarDanach(out, zu);
                 continue;
             }
             note("unbekannter Zeilenrest '" + after + "' bei " + n.name);
             out.push_back(std::move(n));
+            kommentarDanach(out, z);
         }
         return depth == 0;
     }
@@ -261,8 +350,25 @@ void writeNodesInto(std::string& o, const std::vector<Node>& ns, int depth,
     const std::string ind(static_cast<std::size_t>(depth), '\t');
     for (const Node& n : ns) {
         if (n.kind == Node::Kind::Blank) { o += "\r\n"; continue; }
-        if (n.kind == Node::Kind::LineComment || n.kind == Node::Kind::Macro) {
+        if (n.kind == Node::Kind::LineComment) {
             o += n.raw; o += "\r\n"; continue;
+        }
+        if (n.kind == Node::Kind::Macro) {
+            // Die Zahl hinter '@' ist die AKTUELLE Zeilenzahl, nicht die beim
+            // Einlesen: wer einen Befehl aus dem Makro loescht, sonst steht
+            // weiter @3 in der Datei, und beim naechsten Laden schluckt das
+            // Makro den Befehl dahinter. Der Rest der Zeile bleibt wortgetreu.
+            const std::size_t at = n.raw.rfind('@');
+            if (at == std::string::npos) {
+                o += n.raw;
+            } else {
+                std::size_t ende = at + 1;
+                while (ende < n.raw.size() && n.raw[ende] >= '0' && n.raw[ende] <= '9') { ++ende; }
+                o.append(n.raw, 0, at + 1);
+                o += std::to_string(n.count);
+                o.append(n.raw, ende, std::string::npos);
+            }
+            o += "\r\n"; continue;
         }
         o += ind;
         o += n.name;
@@ -287,7 +393,11 @@ bool readScript(const std::string& text, Script& out, std::vector<Diag>& diag) {
     Reader r;
     r.diag = &diag;
     std::string cur;
-    for (char c : text) {
+    // UTF-8-BOM (Notepad speichert so): sonst hiesse der erste Befehl
+    // "<BOM>wait" und waere unbekannt. Die Marke gehoert nicht zum Skript.
+    const std::size_t start = text.starts_with("\xEF\xBB\xBF") ? 3 : 0;
+    for (std::size_t k = start; k < text.size(); ++k) {
+        const char c = text[k];
         if (c == '\n') { r.lines.push_back(cur); cur.clear(); }
         else if (c != '\r') { cur += c;
 }

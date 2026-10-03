@@ -230,6 +230,9 @@ struct BspGeometry {
         // Oberflaeche des Nebels (positiv = im Nebel).
         bool hatFlaeche = false;
         float ebene[4]{};
+        // Brauchbar? Ein Brush ausserhalb der Liste laesst die Engine mit
+        // ERR_DROP abbrechen (R_LoadFogs) - hier gilt der Nebel dann nicht.
+        bool gueltig = true;
     };
     std::vector<Nebel> nebel;
     std::vector<Node> nodes;

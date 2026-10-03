@@ -30,8 +30,14 @@ void beimStart();
 void pruefen(bool stumm);
 // Das gefundene Release laden und installieren (im Hintergrund).
 void installieren();
-// Neu starten (fragt vorher nach ungespeicherten Aenderungen).
+// Neu starten (fragt vorher nach ungespeicherten Aenderungen). Merkt den
+// Neustart nur vor und beendet wie "Exit"; gestartet wird erst, wenn das
+// Programm wirklich zugeht (neustartWennVorgemerkt aus main).
 void neuStarten();
+// Das Beenden wurde abgebrochen - dann auch kein Neustart.
+void neustartVergessen();
+// Ganz am Ende von main: den vorgemerkten Neustart ausfuehren.
+void neustartWennVorgemerkt();
 // Eine Kopie des Zustands (der Hintergrundfaden schreibt ihn).
 [[nodiscard]] Zustand zustand();
 // Die Fassung, gegen die verglichen wird: kFassung, im Selbsttest

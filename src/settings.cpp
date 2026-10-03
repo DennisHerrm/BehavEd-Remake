@@ -152,7 +152,11 @@ bool readSettings(const std::string& text, Settings& out) {
             out.helfer[key.substr(7)] = value;
         }
         else if (key.rfind("lesezeichen.", 0) == 0) {
-            out.lesezeichen[key.substr(12)] = value;
+            // Der Schluessel ist ein Dateipfad und darf '=' enthalten
+            // ("C:/a=b/skript.txt"); der Wert ist nur eine Zahlenliste. Also
+            // am LETZTEN '=' trennen - sonst ging das Lesezeichen verloren.
+            const std::size_t le = line.rfind('=');
+            out.lesezeichen[trim(line.substr(12, le - 12))] = trim(line.substr(le + 1));
         }
         else if (key == "changeHistory") { out.changeHistory = toBool(value); }
         else if (key == "updateCheck") { out.updateCheck = toBool(value); }
@@ -289,7 +293,9 @@ bool readSettings(const std::string& text, Settings& out) {
             }
         }
         else if (key == "gamePath") {
-            if (out.gamePaths.size() < 8) { out.gamePaths.push_back(value); }
+            // Keine Obergrenze: der Dialog nimmt beliebig viele Ordner, und
+            // was gespeichert wurde, muss auch wieder geladen werden.
+            out.gamePaths.push_back(value);
         }
         else if (key == "key") {
             const std::size_t sp = value.find(' ');

@@ -1492,15 +1492,19 @@ private:
             }
             AblaufHerkunft h;
             const Node* n = naechster(wi, &h);
+            // Der Schutz zaehlt auch das dowait: loop(-1){dowait("t")} mit
+            // einem Task, der sofort fertig ist (nur affect), kam sonst ueber
+            // das continue unten nie hier vorbei und hing die Vorschau auf
+            // (Code-Pruefung 03.10.).
+            if (++schutz > 20000) {
+                hinweis(w.name + ": zu viele Befehle in einem Bild (Endlosschleife?)");
+                w.stapel.clear();
+                break;
+            }
             if (n == nullptr) {
                 if (w.warte != Wesen::kNichts) {
                     continue;   // dowait oder zurueckgeholtes Warten
                 }
-                break;
-            }
-            if (++schutz > 20000) {
-                hinweis(w.name + ": zu viele Befehle in einem Bild (Endlosschleife?)");
-                w.stapel.clear();
                 break;
             }
             fuehreAus(wi, *n, h);

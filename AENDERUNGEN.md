@@ -1,5 +1,58 @@
 # Änderungen seit rc94
 
+## rc582 — Code-Prüfung: alles, was Arbeit kosten oder abstürzen kann
+
+Gewünscht: „schau den kompletten Code nochmal an, ob es noch irgendwas gibt,
+das Fehler verursachen könnte. Teste es, und wenn es wirklich einer ist,
+fixen bitte.“ Drei Prüfer (Oberfläche, Kern, 3D) haben den Code durchsucht.
+Jeder Fund wurde erst nachgestellt – Probe in `tests/pruefung.cpp` oder im
+neuen Selbsttestmodus `pruefung`, die mit rc581 fehlschlägt –, dann behoben,
+dann mit derselben Probe bestätigt.
+
+Arbeit ging verloren:
+
+* **Editor offen, Datei aus dem Explorer:** der Reiter wechselte unter dem
+  Ereigniseditor weg, „Ok“ schrieb in das neue Skript. Dateien von außen
+  warten jetzt, bis Editor, Fragen, Menüs und Ziehen zu sind.
+* **Textfelder mit mehr als 255 Zeichen:** fester Puffer – ein Zeichen
+  löschen speicherte nur 254. Das Feld wächst jetzt mit.
+* **Save As auf die Datei eines anderen Reiters** überschrieb sie (zwei
+  Reiter, ein Pfad). Wird jetzt abgelehnt. **Gescheitertes Save As** stellt
+  den Pfad nicht mehr um und trägt nichts in „Zuletzt“ ein.
+* **Save all + Schreibschutz:** „Ja“ sicherte den aktiven Reiter (ohne Pfad
+  sogar mit Save-As-Dialog – das hielt den Testlauf an). Der Reiter wird
+  jetzt über seinen Pfad wiedergefunden.
+* **Save all in geteilter Ansicht** klappte die Aufteilung zu. Neuer Helfer
+  `speichereReiterI`: sichert und stellt Reiter, Band, Felder, Fokus wieder her.
+* **Leser:** Kommentar hinter Code (`wait ( 1000 ); // Tür`, `} // ende`)
+  ging verloren, `} // ende` schloss den Block nicht. Unlesbare Zeilen
+  bleiben jetzt wortgetreu stehen.
+* Makrozähler wird mitgeschrieben; Wiederholen bleibt bei einem Zug ohne
+  Wirkung; eingefügte Kopien bekommen eigene Kennungen; Dezimalkomma `1,5`
+  wird `1.5`; Text mit Anführungszeichen und Komma bleibt ein Argument.
+* **Neustart nach dem Update** mit ungesicherten Reitern beendete ohne
+  Neustart. Jetzt vorgemerkt und erst beim echten Beenden ausgeführt.
+* **Sicherungen** zweier gleichnamiger Skripte (`intro.txt`) teilten einen
+  Ordner – jetzt `quelle.txt` je Ordner, sonst `<Name>~2`.
+* Einstellungen: mehr als 8 Spielordner, Lesezeichen mit `=` im Pfad.
+* Übersetzen: `.ibi` neben das Skript auch bei Punkt im Ordnernamen.
+
+Abstürze und Hänger:
+
+* Doppelklick auf eine Makrozeile las freigegebenen Speicher (ASan: 10
+  Meldungen, jetzt 0). Was den Baum sofort neu baut, läuft nach der Schleife.
+* `loop(-1){dowait("t")}` mit sofort fertigem Task hing die Vorschau auf.
+* Kaputte Dateien: BSP (Überlauf, Patch > 32, Lightmap 0x7FFFFFFF, Nebel mit
+  falschem Brush), MD3 mit 2³¹ Bildern, PK3-Eintrag mit 4 GB, `.gla` mit
+  Elternknochen außerhalb der Liste.
+* UTF-8-BOM; NPC `scale 0` wie im Renderer als 1.
+
+Nicht angefasst (nicht nachstellbar): nicht-atomares Schreiben (nur bei
+Absturz mitten im Schreiben), Lichtkasten-Zwischenspeicher nach Kartenwechsel
+(nur bei zufällig gleichen Adressen), Tiefenzustand nur mit `BHED_D3D_STATES`.
+
+Im Selbsttest öffnen Dateidialoge kein Fenster mehr (wie Abbrechen).
+
 ## rc581 — Skriptname bleibt beim Rollen stehen, Mission und Feldbelegung
 
 Gewünscht: „Wenn ich Compare offen habe und runter scrolle, sehe ich nicht,

@@ -2772,7 +2772,7 @@ void npcSkalaFuer(const std::string& npcType, float aus[3]) {
 int nebelFuer(const float ort[3]) {
     const std::vector<BspGeometry::Nebel>& n = g_app->geo.nebel;
     for (std::size_t i = 0; i < n.size(); ++i) {
-        if (ort[0] >= n[i].mins[0] && ort[0] <= n[i].maxs[0] && ort[1] >= n[i].mins[1] &&
+        if (n[i].gueltig && ort[0] >= n[i].mins[0] && ort[0] <= n[i].maxs[0] && ort[1] >= n[i].mins[1] &&
             ort[1] <= n[i].maxs[1] && ort[2] >= n[i].mins[2] && ort[2] <= n[i].maxs[2]) {
             return static_cast<int>(i);
         }
@@ -2787,7 +2787,7 @@ std::vector<gpu::NebelGpu> nebelListe() {
     std::vector<gpu::NebelGpu> aus;
     for (const BspGeometry::Nebel& n : g_app->geo.nebel) {
         gpu::NebelGpu g;
-        g.gueltig = true;
+        g.gueltig = n.gueltig;
         std::string k = n.shader;
         for (char& c : k) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
         float tiefe = 250.0F;

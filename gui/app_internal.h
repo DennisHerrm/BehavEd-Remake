@@ -1934,6 +1934,13 @@ void selbsttestVorBild();
 // Wie ein Klick in die Ereignisliste: Befehl hinter die Auswahl setzen.
 void fuegeBefehlEin(const Command& c);
 void neuerReiter();
+// Fuer den Selbsttest (Modus "pruefung"): Laden, Uebersetzen, Save all und
+// Save As mit festem Pfad - ohne Windows-Dialog.
+void ladePfad(const std::string& p);
+void uebersetzen();
+void alleSpeichern();
+bool speichernUnterPfad(const std::string& p);
+void dateiVonAussen(const std::string& pfad);
 // Wie "Open" nach dem Dateidialog.
 void ladeSkriptDatei(const std::string& pfad);
 void selbsttestMerkeElement(ImGuiContext* ctx, ImGuiID id, const ImRect& bb);

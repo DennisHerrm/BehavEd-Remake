@@ -499,8 +499,26 @@ void beimStart() {
     }
 }
 
+// Vorher: erst confirmQuit(), und nur wenn das SOFORT true war, den neuen
+// Prozess starten. Mit einem ungesicherten Reiter (oder der Frage "Exit?")
+// ist es das nie - die Fragen kamen, und ihr "Nein"/"Ja" beendete das
+// Programm, OHNE neu zu starten (Code-Pruefung 03.10., im Selbsttest
+// "pruefung" nachgestellt). Jetzt laeuft "Neu starten" durch denselben
+// Ablauf wie "Exit" und startet erst, wenn wirklich beendet wird.
+namespace {
+bool g_neustartVorgemerkt = false;
+}
+
 void neuStarten() {
-    if (!confirmQuit()) { return; }
+    g_neustartVorgemerkt = true;
+    g_app->wantQuit = true;
+}
+
+void neustartVergessen() { g_neustartVorgemerkt = false; }
+
+void neustartWennVorgemerkt() {
+    if (!g_neustartVorgemerkt) { return; }
+    g_neustartVorgemerkt = false;
     const std::wstring exe = exePfad();
     std::wstring zeile = L"\"" + exe + L"\" --nach-update=" + std::to_wstring(GetCurrentProcessId());
     STARTUPINFOW si{};
@@ -509,13 +527,11 @@ void neuStarten() {
     if (CreateProcessW(exe.c_str(), zeile.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-        g_app->quitConfirmed = true;
-        g_app->wantQuit = true;
+        diag::detail("Update: Neustart angestossen");
     } else {
-        setze([](Zustand& z) {
-            z.stand = Stand::Fehler;
-            z.meldung = text(Str::UpdErrRestart, {}, static_cast<long long>(GetLastError()));
-        });
+        const std::string m = text(Str::UpdErrRestart, {}, static_cast<long long>(GetLastError()));
+        diag::detail("Update: " + m);
+        platform::showError(m, "BehavEd");
     }
 }
 
