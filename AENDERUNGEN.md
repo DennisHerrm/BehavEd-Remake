@@ -1,5 +1,47 @@
 # Änderungen seit rc94
 
+## rc579 — Verlorene Änderungen: vier Wege geschlossen
+
+Gemeldet (zum zweiten Mal): „I closed some scripts/tabs … went back … but it
+had reset. All my changes were lost with no undo/redo history. It was like I
+just opened the file again.“ Und: „all the history was reset. Like all the
+colours in the margin.“
+
+Jeder Fehler ist zuerst im laufenden Programm nachgestellt (Selbsttest-Modus
+`reiter`, Gegenprobe mit dem alten Stand schlägt fehl), dann behoben:
+
+* **Dasselbe Skript zweimal geöffnet.** behaved prüfte nicht, ob eine Datei
+  schon in einem Reiter steht. Erneutes Öffnen (Datei öffnen, zuletzt
+  geöffnet, Archiv, Mission noch einmal laden) legte einen zweiten Reiter mit
+  dem Stand von der Platte an – ohne Verlauf und ohne Änderungsrand. Schloss
+  man danach den älteren, war die Arbeit weg (gespeichert: „nur“ der Verlauf).
+  Jetzt wird zum offenen Reiter gewechselt („… ist schon offen“). Gegenprobe
+  alt: zweiter Reiter mit Wert 7.000 und 0 Schritten.
+* **Einen anderen, ungesicherten Reiter schließen.** Nach „Nein“ stand man im
+  NACHBARN des geschlossenen, während die Leiste den eigenen Reiter markierte
+  (ein Klick darauf tat nichts). Jetzt geht es zurück in den Arbeitsreiter, auch
+  nach „Abbrechen“.
+* **Die Reiterleiste wählte neue Reiter selbst** (`AutoSelectNewTabs`) und
+  zog das Programm im nächsten Bild dorthin – auch wenn es inzwischen woanders
+  stand. Abgeschaltet; behaved wählt neue Reiter selbst.
+* **„Gesichert“, obwohl es nicht stimmte.** `dirty()` verglich nur die Zahl
+  der Undo-Schritte: speichern, Strg+Z, etwas anderes ändern – gleiche Zahl,
+  also kein Stern und KEINE Nachfrage beim Schließen oder Beenden. Die
+  Änderung war still verloren. Jetzt wird der gespeicherte Stand unerreichbar,
+  sobald er im Wiederholen-Speicher verworfen wird oder aus dem Verlauf fällt.
+* **Beenden nach gescheitertem „Ja, speichern“** (schreibgeschützt und Schutz
+  nicht aufgehoben, Speichern unter abgebrochen): die Fragekette blieb hinter
+  dem Reiter stehen, und beim NÄCHSTEN Beenden schloss behaved ungefragt –
+  Änderungen weg. Jetzt zählt ein gescheitertes Speichern wie Abbrechen, und
+  man kehrt in den Arbeitsreiter zurück.
+* **Geteilte Ansicht:** wurde der fokussierte (fremde) Reiter geschlossen,
+  landete man im Nachbarn statt im Arbeitsreiter.
+* Verlaufsgrenze zur Frage „gibt es ein Limit?“: 200 Schritte je Reiter, als
+  gleitendes Fenster – der älteste fällt weg, der Verlauf wird nie auf einmal
+  gelöscht. Das war nicht die Ursache.
+* Neuer Selbsttest-Modus `reiter` (20 Prüfungen), neue Unit-Prüfungen in
+  `gegenproben`.
+
 ## rc578 — NPC-Größe aus der .npc (Jünglinge)
 
 Gemeldet: „In der einen Mission ist das Model Scaling nicht richtig“ – die

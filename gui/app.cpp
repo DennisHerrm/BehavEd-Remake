@@ -181,6 +181,7 @@ void handleTreeKeys();
 void* logoTextureId();
 extern const char* kScriptFilter;
 void loadPath(const std::string& p);
+void oeffneSkriptAusSpeicherI(const std::string& data, const std::string& name);
 std::string descFor(const Command& c);
 void doSaveAll();
 ImGuiKeyChord chordFor(keys::Action a);
@@ -3580,7 +3581,7 @@ void drawPk3Browser() {
                     const std::string nm = f.name;
                     withUnsaved([dat, nm] {
                         // .ibi kommt als Binaerdatei - erst zurueckuebersetzen.
-                        openScriptFromMemory(dat, nm);
+                        oeffneSkriptAusSpeicherI(dat, nm);
                     });
                 }
                 g_app->pk3Open = false;
@@ -4227,12 +4228,24 @@ void dropTab(int index) {
     if (andererReiter) {
         parkActive(false);
     }
+    // Wird der AKTIVE geschlossen, der nicht der Besitzer des Bands ist
+    // (geteilte Ansicht: der Fokus steht in einem anderen Feld als dem
+    // Arbeitsreiter), dann danach in den Besitzer - nicht in den Nachbarn.
+    // Sonst zeigte das Band den Arbeitsreiter, bearbeitet wurde aber der
+    // Nachbar (Code-Pruefung 03.10.).
+    int nachher = -1;
+    if (!andererReiter && g_app->homeTab != index && g_app->homeTab >= 0 && g_app->homeTab < n) {
+        nachher = (g_app->homeTab > index) ? g_app->homeTab - 1 : g_app->homeTab;
+    }
     g_app->tabs.erase(g_app->tabs.begin() + index);
     if (g_app->tabs.empty()) {
         g_app->tabs.push_back(App::Parked{});
     }
     if (andererReiter && index < g_app->activeTab) {
         --g_app->activeTab;
+    }
+    if (nachher >= 0) {
+        g_app->activeTab = nachher;
     }
     g_app->activeTab = std::clamp(g_app->activeTab, 0,
                                   static_cast<int>(g_app->tabs.size()) - 1);
@@ -4273,9 +4286,45 @@ void closeTab(int index) {
     if (index < 0 || index >= n) {
         return;
     }
+    // --- Ein ANDERER, ungesicherter Reiter -------------------------------
+    //
+    // Er wird nach vorn geholt, damit man sieht, worueber man entscheidet -
+    // und danach geht es ZURUECK in den Reiter, in dem man gearbeitet hat.
+    //
+    // shank, 03.10. (zum zweiten Mal): "I closed some scripts/tabs I was no
+    // longer using and went back to continue working on the script but it
+    // had reset." Hier stand nur switchTab(index): der Besitzer des Bands
+    // (homeTab) blieb auf dem Arbeitsreiter, das lebende Dokument aber nicht.
+    // Nach "Nein" holte dropTab den NACHBARN des geschlossenen hervor -
+    // waehrend das Band weiter den Arbeitsreiter markierte. Ein Klick darauf
+    // tat nichts (er war ja schon "gewaehlt"); man stand in einem fremden
+    // Skript unter dem Namen des eigenen.
     if (index != g_app->activeTab &&
         g_app->tabs[static_cast<std::size_t>(index)].doc.dirty()) {
+        const int zurueck = g_app->activeTab;
         switchTab(index);
+        g_app->homeTab = index;   // das Band zeigt, wonach gefragt wird
+        const int idx = index;
+        withUnsaved(
+            [idx, zurueck] {
+                dropTab(idx);
+                // Der Arbeitsreiter ist eins nach links gerueckt, wenn der
+                // geschlossene vor ihm lag.
+                const int ziel = (zurueck > idx) ? zurueck - 1 : zurueck;
+                if (ziel >= 0 && ziel < static_cast<int>(g_app->tabs.size())) {
+                    switchTab(ziel);
+                    g_app->homeTab = ziel;
+                }
+            },
+            [zurueck] {
+                // Abgebrochen: der gefragte Reiter bleibt offen, und man
+                // kehrt trotzdem in seinen Arbeitsreiter zurueck.
+                if (zurueck >= 0 && zurueck < static_cast<int>(g_app->tabs.size())) {
+                    switchTab(zurueck);
+                    g_app->homeTab = zurueck;
+                }
+            });
+        return;
     }
     if (index == g_app->activeTab) {
         const int idx = index;
@@ -4285,8 +4334,112 @@ void closeTab(int index) {
     dropTab(index);
 }
 
+// --- Ist dieses Skript schon offen? --------------------------------------
+//
+// shank, 03.10.: "All my changes were lost with no undo/redo history. It
+// was like I just opened the file again." Genau das konnte passieren: wer
+// ein Skript, das schon in einem Reiter steht, noch einmal oeffnete (Datei
+// oeffnen, zuletzt geoeffnet, Doppelklick im Explorer, die Mission noch
+// einmal laden), bekam einen ZWEITEN Reiter mit dem Stand von der Platte -
+// ohne Verlauf und ohne Aenderungsrand. Schloss man danach den aelteren,
+// war die Arbeit weg; hatte man gespeichert, "nur" der Verlauf.
+//
+// Wie jedes Programm mit Reitern (Notepad++, VS Code): ist es schon offen,
+// wird dorthin gewechselt.
+namespace {
+std::string pfadSchluessel(const std::string& p) {
+    std::error_code ec;
+    const std::filesystem::path c =
+        std::filesystem::weakly_canonical(std::filesystem::u8path(p), ec);
+    std::string s = p;
+    if (!ec) {
+        const auto u = c.u8string();
+        s.assign(u.begin(), u.end());
+    }
+    for (char& ch : s) {
+        if (ch == '\\') { ch = '/'; }
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return s;
+}
+
+// Der ICARUS-Pfad, wie openScriptFromMemory ihn aus dem Namen macht:
+// "md_ga/intro_jedi.txt" -> "md_ga/intro_jedi", klein geschrieben.
+std::string skriptSchluessel(const std::string& name) {
+    std::string sp = name;
+    for (char& ch : sp) {
+        if (ch == '\\') { ch = '/'; }
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    const auto punkt = sp.find_last_of('.');
+    const auto strich = sp.find_last_of('/');
+    if (punkt != std::string::npos && (strich == std::string::npos || punkt > strich)) {
+        sp.resize(punkt);
+    }
+    return sp;
+}
+}  // namespace
+
+int reiterMitPfadI(const std::string& p) {
+    if (p.empty()) {
+        return -1;
+    }
+    const std::string k = pfadSchluessel(p);
+    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+        const bool aktiv = (static_cast<int>(i) == g_app->activeTab);
+        const std::string& tp = aktiv ? g_app->path : g_app->tabs[i].path;
+        if (!tp.empty() && pfadSchluessel(tp) == k) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int reiterMitSkriptI(const std::string& name) {
+    const std::string k = skriptSchluessel(name);
+    if (k.empty()) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+        const bool aktiv = (static_cast<int>(i) == g_app->activeTab);
+        const std::string& tp = aktiv ? g_app->path : g_app->tabs[i].path;
+        const std::string& sp = aktiv ? g_app->skriptPfad : g_app->tabs[i].skriptPfad;
+        if (tp.empty() && !sp.empty() && skriptSchluessel(sp) == k) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+// Zum schon offenen Reiter wechseln und es in der Statuszeile sagen.
+void zumOffenenReiter(int index, const std::string& name) {
+    switchTab(index);
+    g_app->homeTab = index;
+    char buf[300];
+    std::snprintf(buf, sizeof(buf), tr(Str::MsgAlreadyOpen), name.c_str());
+    addStatus(buf);
+    diag::detail("Schon offen in Reiter " + std::to_string(index) + ": " + name);
+}
+
+// Ein Skript aus dem Speicher - aber nur, wenn es nicht schon offen ist.
+// Fuer die Wege, auf denen der BENUTZER oeffnet (Archiv, Mission); der
+// Selbsttest ruft openScriptFromMemory weiter direkt.
+void oeffneSkriptAusSpeicherI(const std::string& data, const std::string& name) {
+    const int offen = reiterMitSkriptI(name);
+    if (offen >= 0) {
+        zumOffenenReiter(offen, name);
+        return;
+    }
+    openScriptFromMemory(data, name);
+}
+
 void loadPath(const std::string& p) {
     diag::Step step("Skript oeffnen: " + p);
+    // Schon offen? Dann dorthin - siehe reiterMitPfad.
+    if (const int offen = reiterMitPfadI(p); offen >= 0) {
+        zumOffenenReiter(offen, fileName(p));
+        return;
+    }
     const std::string src = slurp(p);
     if (src.empty()) {
         platform::showError(p, tr(Str::AppTitle));
@@ -9671,6 +9824,13 @@ void activateTab(int index) {
 // die Ereignisliste bzw. wie "Open" nach dem Dateidialog.
 void fuegeBefehlEin(const Command& c) { insertCommand(c); }
 void ladeSkriptDatei(const std::string& pfad) { loadPath(pfad); }
+// Fuer app_view3d.cpp und den Selbsttest - die eigentlichen Funktionen
+// stehen im namenlosen Namensraum bei closeTab.
+int reiterMitPfad(const std::string& p) { return reiterMitPfadI(p); }
+int reiterMitSkript(const std::string& name) { return reiterMitSkriptI(name); }
+void oeffneSkriptAusSpeicher(const std::string& data, const std::string& name) {
+    oeffneSkriptAusSpeicherI(data, name);
+}
 // Ein neuer, leerer Reiter wie "New" - ohne die Rueckfrage und ohne das
 // Wiederverwenden eines leeren Reiters, die doNew() davorschaltet.
 void neuerReiter() { neuesSkript(); }
@@ -10638,7 +10798,16 @@ void drawAskSave() {
         g_app->askSaveCancel = nullptr;
         ImGui::EndPopup();
         if (antwort == 1) {
-            if (doSave() && then) { then(); }
+            // Ging das Speichern NICHT (Speichern unter abgebrochen,
+            // schreibgeschuetzt, Fehler), ist das wie Abbrechen - sonst blieb
+            // beim Beenden quitAskFrom hinter diesem Reiter stehen, und ein
+            // spaeteres Beenden uebersprang ihn ungefragt (Code-Pruefung
+            // 03.10.).
+            if (doSave()) {
+                if (then) { then(); }
+            } else if (beiAbbruch) {
+                beiAbbruch();
+            }
         } else if (antwort == 2) {
             if (then) { then(); }
         } else if (beiAbbruch) {
@@ -13218,8 +13387,13 @@ bool confirmQuit() {
         if (!schmutzig) {
             continue;
         }
+        if (g_app->quitAskFrom == 0) {
+            // Der Reiter, in dem man stand - dorthin nach "Abbrechen".
+            g_app->quitZurueck = g_app->activeTab;
+        }
         if (!aktiv) {
             switchTab(static_cast<int>(i));
+            g_app->homeTab = static_cast<int>(i);   // das Band zeigt, wonach gefragt wird
         }
         // Diesen Reiter als beantwortet vormerken, BEVOR gefragt wird.
         //
@@ -13241,6 +13415,14 @@ bool confirmQuit() {
             // Abgebrochen: die Kette faengt beim naechsten Versuch von
             // vorn an. Sonst uebersaehe sie die schon gefragten Reiter.
             g_app->quitAskFrom = 0;
+            // Und zurueck in den Reiter, in dem man gearbeitet hat - sonst
+            // stand man im gefragten, waehrend das Band den alten zeigte.
+            const int z = g_app->quitZurueck;
+            g_app->quitZurueck = -1;
+            if (z >= 0 && z < static_cast<int>(g_app->tabs.size())) {
+                switchTab(z);
+                g_app->homeTab = z;
+            }
         });
         return false;
     }
@@ -13393,9 +13575,15 @@ void draw() {
     //
     // Der Stern hinter dem Namen ist derselbe wie im Fenstertitel.
     if (!g_app->tabs.empty()) {
+        // KEIN ImGuiTabBarFlags_AutoSelectNewTabs: das Programm waehlt einen
+        // neuen Reiter selbst (addTab setzt homeTab), und die Nachfuehrung
+        // unten bringt ImGui dorthin. Mit der Fahne hielt die Leiste einen
+        // gerade angelegten Reiter fuer einen KLICK und wechselte im
+        // naechsten Bild dorthin - auch wenn das Programm inzwischen woanders
+        // stand (Selbsttest "Doppelt", 03.10.: Datei schon offen, behaved
+        // wechselt hin, die Leiste zieht zum neuen Reiter zurueck).
         if (ImGui::BeginTabBar("##skripte",
                                ImGuiTabBarFlags_Reorderable |
-                                   ImGuiTabBarFlags_AutoSelectNewTabs |
                                    ImGuiTabBarFlags_FittingPolicyScroll |
                                    ImGuiTabBarFlags_TabListPopupButton)) {
             int wechselZu = -1;

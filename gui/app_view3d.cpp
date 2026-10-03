@@ -6681,7 +6681,7 @@ void drawMapScriptList() {
         if (ImGui::Button(r.path.c_str()) && !found.empty()) {
             const std::string dat = data;
             const std::string nm = r.path + found;
-            withUnsaved([dat, nm] { openScriptFromMemory(dat, nm); });
+            withUnsaved([dat, nm] { oeffneSkriptAusSpeicher(dat, nm); });
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered()) {
@@ -6843,6 +6843,12 @@ void loadMission(const Mission& m) {
             continue;
         }
         if (readFromArchives(sc2.file, data)) {
+            // Schon offen (die Mission zum zweiten Mal geladen)? Dann bleibt
+            // der Reiter samt Aenderungen und Verlauf - siehe
+            // oeffneSkriptAusSpeicher.
+            if (reiterMitSkript(sc2.file) >= 0) {
+                continue;
+            }
             openScriptFromMemory(data, sc2.file);
             ++geladen;
         }

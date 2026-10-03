@@ -561,6 +561,9 @@ S = [
      "Jeden Reiter mit ungesicherten Änderungen speichern. Reiter aus einem "
      "Archiv haben keinen Pfad zum Zurückschreiben und werden übersprungen.",
      "保存所有有未保存更改的标签页。", "未保存の変更があるタブをすべて保存します。"),
+    ("MsgAlreadyOpen", "%s is already open - switched to its tab",
+     "%s ist schon offen - zu seinem Reiter gewechselt",
+     "%s 已打开 - 已切换到其标签页", "%s は既に開いています - そのタブに切り替えました"),
     ("MsgSavedAll", "%d saved, %d without a path",
      "%d gesichert, %d ohne Pfad", "已保存 %d 个，%d 个无路径",
      "%d 件を保存、%d 件はパスなし"),

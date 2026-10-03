@@ -467,6 +467,9 @@ private:
     std::vector<Step> undo_;
     std::vector<Step> redo_;
     std::size_t savedDepth_ = 0;
+    // Der gespeicherte Stand ist aus dem Verlauf gefallen (Wiederholen
+    // verworfen oder aelter als kMaxUndo): keine Tiefe ist mehr "gesichert".
+    static constexpr std::size_t kNieGesichert = static_cast<std::size_t>(-1);
     std::uint64_t stand_ = 0;
     std::vector<Node> clip_;
 };

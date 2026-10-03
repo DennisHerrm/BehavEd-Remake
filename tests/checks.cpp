@@ -1110,6 +1110,34 @@ int main(int argc, char** argv) {
             (void)doc.undo();
             expect("Zurueck hinter den Speicherpunkt ist ungesichert",
                    doc.dirty(), true);
+
+            // Speichern, zurueck, etwas ANDERES aendern: gleiche Tiefe wie
+            // beim Speichern, aber anderer Inhalt - das ist ungesichert
+            // (Code-Pruefung 03.10.: vorher "gesichert", keine Nachfrage
+            // beim Schliessen, Aenderung verloren).
+            (void)doc.redo();
+            doc.markSaved();
+            (void)doc.undo();
+            (void)doc.insertAfter(bhed::Path{}, bhed::makeNode(*ov.front(), g_db));
+            expect("Speichern, zurueck, andere Aenderung: ungesichert", doc.dirty(), true);
+            (void)doc.undo();
+            expect("... und auch eine Tiefe davor nicht faelschlich gesichert",
+                   doc.dirty(), true);
+            doc.markSaved();
+            expect("neu gespeichert: wieder gesichert", !doc.dirty(), true);
+
+            // Der gespeicherte Stand faellt aus dem Verlauf (kMaxUndo):
+            // auch ganz unten darf dann nicht "gesichert" stehen.
+            bhed::Document lang{bhed::Script{}};
+            lang.markSaved();
+            for (std::size_t k = 0; k < bhed::Document::kMaxUndo + 5; ++k) {
+                (void)lang.insertAfter(bhed::Path{}, bhed::makeNode(*ov.front(), g_db));
+            }
+            while (lang.undoDepth() > 0) {
+                (void)lang.undo();
+            }
+            expect("gespeicherter Stand aus dem Verlauf gefallen: unten ungesichert",
+                   lang.dirty(), true);
         }
     }
 

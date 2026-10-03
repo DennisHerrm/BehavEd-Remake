@@ -262,6 +262,7 @@ enum class Str {
     DescPlay,
     ActSaveAll,
     HintSaveAll,
+    MsgAlreadyOpen,
     MsgSavedAll,
     SplitOnlyScript,
     SplitTitle,

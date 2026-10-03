@@ -830,6 +830,9 @@ struct App {
     // Shadereintraege gelesen" dutzendfach; das Programm schien zu haengen,
     // rechnete aber dieselbe Tabelle immer wieder.
     ShaderMap shaderMap;
+    // Beim Beenden: der Reiter, in dem man vor der ersten Speichernfrage
+    // stand - dorthin bei "Abbrechen" (confirmQuit).
+    int quitZurueck = -1;
     // fogparms aller Nebelshader - mit shaderMap zusammen gelesen.
     NebelMap nebelMap;
     // --- Bilder nur EINMAL lesen und entpacken --------------------------
@@ -1699,6 +1702,10 @@ void rescanGamePaths();
 void refreshPk3List();
 void rebuildTree();
 void setStatus(const char* fmt, int a, int b);
+// Steht das Skript schon in einem Reiter? -1 = nein (gui/app.cpp).
+int reiterMitPfad(const std::string& p);
+int reiterMitSkript(const std::string& name);
+void oeffneSkriptAusSpeicher(const std::string& data, const std::string& name);
 void addStatus(const std::string& line);
 
 // Schreibt den Bericht INS PROTOKOLL - Grafikkarte, Zustaende, Zaehler,

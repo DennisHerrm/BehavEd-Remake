@@ -864,12 +864,29 @@ void Document::merkeBeitritt(const Path& weg, std::size_t anzahl, Kennung makro)
 void Document::snapshot(const char* what) {
     ++aenderungen_;
     ++stand_;
+    // --- Liegt der gespeicherte Stand im Wiederholen-Speicher? -------------
+    //
+    // Dann ist er gleich weg (redo_.clear unten), und KEINE Tiefe trifft ihn
+    // mehr. dirty() verglich nur die Zahl der Schritte: speichern bei 5,
+    // einmal zurueck, etwas ANDERES aendern - wieder 5, also "gesichert",
+    // obwohl der Inhalt ein anderer war. Kein Stern, keine Nachfrage beim
+    // Schliessen oder Beenden, und die Aenderung war verloren (Code-Pruefung
+    // zu shanks Datenverlust, 03.10.).
+    if (savedDepth_ != kNieGesichert && savedDepth_ > undo_.size()) {
+        savedDepth_ = kNieGesichert;
+    }
     undo_.push_back(Step{s_, what});
     if (undo_.size() > kMaxUndo) {
         undo_.erase(undo_.begin());
         // Der aelteste Stand ist weg; der gespeicherte Punkt wandert mit,
-        // sonst zeigt das Dokument dauerhaft "ungesichert".
-        if (savedDepth_ > 0) {
+        // sonst zeigt das Dokument dauerhaft "ungesichert". War der
+        // gespeicherte Stand GENAU der weggefallene, ist er nicht mehr
+        // erreichbar - dann gilt das Dokument als ungesichert, bis es wieder
+        // gespeichert wird (vorher blieb savedDepth_ auf 0, und ganz unten
+        // im Verlauf stand faelschlich "gesichert").
+        if (savedDepth_ == 0) {
+            savedDepth_ = kNieGesichert;
+        } else if (savedDepth_ != kNieGesichert) {
             --savedDepth_;
         }
     }
