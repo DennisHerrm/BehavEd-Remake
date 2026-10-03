@@ -1,5 +1,35 @@
 # Änderungen seit rc94
 
+## rc580 — Nur ein behaved: Doppelklick öffnet im laufenden Fenster
+
+Aus der Code-Prüfung zu rc579: ein Doppelklick auf ein Skript im Explorer
+startete ein ZWEITES behaved mit dem Stand von der Platte. Hatten beide dieselbe
+Datei offen, überschrieb das zuletzt gespeicherte still das andere – die
+Prüfung „schon offen?“ wirkt nur innerhalb eines Programms. Gewünscht: „ja
+bitte“.
+
+* Läuft behaved aus DIESEM Ordner schon, reicht ein zweiter Start (Doppelklick,
+  „Öffnen mit“, auf die .exe gezogen) die Datei per `WM_COPYDATA` an das
+  laufende Fenster weiter, holt es nach vorn und endet. Ist die Datei dort schon
+  offen, wird zu ihrem Reiter gewechselt (rc579). Ohne Datei kommt nur das
+  Fenster nach vorn.
+* Geprüft wird ganz am Anfang, noch vor dem Protokoll – sonst rotierte der
+  zweite Start das Protokoll des ersten weg.
+* Je Installationsordner (benannter Mutex aus dem Pfad der .exe, die Kennung
+  als Fenstereigenschaft): ein behaved aus einem anderen Ordner, etwa ein neuer
+  Bau zum Ausprobieren, startet weiterhin eigenständig.
+* Neustart nach einem Update (`--nach-update=<pid>`): erst auf die alte Instanz
+  warten, dann normal anmelden. Nachgestellt mit zwei eigenen Prozessen: die
+  neue wartet, läuft nach dem Ende der alten weiter, und ein dritter Start wird
+  an sie weitergereicht.
+* Selbsttests sind ausgenommen (kein Testlauf fängt Dateien eines echten behaved
+  ab, keiner holt sich den Fokus). Neuer Testmodus `einzel` mit eigenem Namen
+  (`BHED_EINZEL`): die Testinstanz startet ihre exe noch einmal wie ein
+  Doppelklick. Gegenprobe mit `BHED_EINZEL_AUS` (Funktion aus): der zweite
+  Start läuft weiter, 0/6. Mit der Funktion: weitergereicht in 0,07 s, Code 0,
+  Datei angekommen, kein doppelter Reiter, Änderungen erhalten – 6/6.
+* `gui/selbsttest.cpp` braucht jetzt `/bigobj` (zu viele Abschnitte, C1128).
+
 ## rc579 — Verlorene Änderungen: vier Wege geschlossen
 
 Gemeldet (zum zweiten Mal): „I closed some scripts/tabs … went back … but it

@@ -208,6 +208,9 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     # unten laufen ebenfalls ueber target_link_options und wuerden dabei
     # lautlos verschwinden.
     target_link_options(behaved PRIVATE /MANIFEST:NO)
+    # Der Selbsttest ist eine einzige grosse Datei voller Lambdas - mehr als
+    # die 65536 Abschnitte einer normalen Objektdatei (C1128).
+    set_source_files_properties(gui/selbsttest.cpp PROPERTIES COMPILE_OPTIONS /bigobj)
   endif()
 
   target_link_libraries(behaved PRIVATE bhed_core imgui opengl32 gdi32 imm32 dwmapi comdlg32 ole32 shell32 uuid version winmm winhttp)

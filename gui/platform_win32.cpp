@@ -12,6 +12,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -253,6 +254,64 @@ std::string settingsDirectory() {
 
 void openInExplorer(const std::string& folder) {
     ShellExecuteW(nullptr, L"open", toWide(folder).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+std::uintptr_t starteZweiteInstanz(const std::string& argument) {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring zeile = L"\"" + std::wstring(exe) + L"\"";
+    if (!argument.empty()) {
+        zeile += L" \"" + toWide(argument) + L"\"";
+    }
+    // Die Umgebung ohne BHED_EDITORTEST.
+    std::wstring umgebung;
+    if (wchar_t* alle = GetEnvironmentStringsW()) {
+        for (const wchar_t* e = alle; *e != L'\0'; e += std::wcslen(e) + 1) {
+            if (std::wcsncmp(e, L"BHED_EDITORTEST=", 16) == 0) {
+                continue;
+            }
+            umgebung.append(e);
+            umgebung.push_back(L'\0');
+        }
+        FreeEnvironmentStringsW(alle);
+    }
+    umgebung.push_back(L'\0');
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOWMINNOACTIVE;   // kein Fokusdiebstahl
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(nullptr, zeile.data(), nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT,
+                       umgebung.data(), nullptr, &si, &pi) == 0) {
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    return reinterpret_cast<std::uintptr_t>(pi.hProcess);
+}
+
+long zweiteInstanzStand(std::uintptr_t griff) {
+    if (griff == 0) {
+        return -2;
+    }
+    const HANDLE h = reinterpret_cast<HANDLE>(griff);
+    if (WaitForSingleObject(h, 0) != WAIT_OBJECT_0) {
+        return -1;
+    }
+    DWORD code = 0;
+    GetExitCodeProcess(h, &code);
+    return static_cast<long>(code);
+}
+
+void zweiteInstanzSchliessen(std::uintptr_t griff, bool beenden) {
+    if (griff == 0) {
+        return;
+    }
+    const HANDLE h = reinterpret_cast<HANDLE>(griff);
+    if (beenden && WaitForSingleObject(h, 0) != WAIT_OBJECT_0) {
+        TerminateProcess(h, 99);
+        WaitForSingleObject(h, 5000);
+    }
+    CloseHandle(h);
 }
 
 std::string executableDirectory() {

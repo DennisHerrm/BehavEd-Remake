@@ -31,6 +31,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cwchar>
+#include <cwctype>
+#include <filesystem>
+#include <functional>
 #include <vector>
 #include <string>
 
@@ -53,6 +57,9 @@ void loadSettings(App* a);
 void resetIconTexture();
 void setDpiScale(App* a, float s);
 void reopenLastIfWanted(App* a, const std::string& kommandozeile);
+// Eine Datei, die eine zweite Instanz weitergereicht hat (Doppelklick im
+// Explorer, waehrend behaved schon laeuft). Leer = nur nach vorn holen.
+void dateiVonAussen(const std::string& pfad);
 void defaultWindowSize(int* w, int* h);
 // Lage und Zustand des Programmfensters, als "showCmd l t r b".
 //
@@ -77,6 +84,104 @@ int g_width = 0;
 int g_height = 0;
 bool g_fontsDirty = true;
 
+// --- Nur EIN behaved je Installation --------------------------------------
+//
+// Code-Pruefung zu shanks Datenverlust, 03.10.: ein Doppelklick auf ein Skript
+// im Explorer startete ein ZWEITES behaved mit dem Stand von der Platte. Hatten
+// beide dieselbe Datei offen, ueberschrieb das zuletzt gespeicherte still das
+// andere - und die Pruefung "schon offen?" aus rc579 wirkt nur innerhalb eines
+// Programms.
+//
+// Jetzt: laeuft behaved aus DIESEM Ordner schon, reicht der zweite Start die
+// Datei per WM_COPYDATA an das laufende Fenster weiter, holt es nach vorn und
+// endet - noch bevor er das Protokoll anfasst (sonst rotierte er das des
+// ersten weg). Je INSTALLATIONSORDNER, damit eine zweite Fassung (etwa ein
+// neuer Bau zum Ausprobieren) weiter eigenstaendig startet.
+//
+// Der Selbsttest ist ausgenommen - ausser BHED_EINZEL nennt einen eigenen
+// Namen (Testmodus "einzel"); dann teilen sich nur Instanzen mit DIESEM
+// Namen eine Kennung, nie der Test und ein echtes behaved.
+// BHED_EINZEL_AUS schaltet es ab (Gegenprobe im Test, und als Notausgang).
+constexpr ULONG_PTR kEinzelKennung = 0x42454844UL;   // 'BEHD'
+constexpr const wchar_t* kEinzelEigenschaft = L"BehavEdEinzel";
+
+bool einzelAktiv() {
+    if (std::getenv("BHED_EINZEL_AUS") != nullptr) {
+        return false;
+    }
+    return std::getenv("BHED_EDITORTEST") == nullptr || std::getenv("BHED_EINZEL") != nullptr;
+}
+
+std::wstring einzelName() {
+    if (const wchar_t* t = _wgetenv(L"BHED_EINZEL")) {
+        return std::wstring(L"BehavEd-Remake-Test-") + t;
+    }
+    wchar_t pfad[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, pfad, MAX_PATH);
+    std::wstring ordner = pfad;
+    const auto strich = ordner.find_last_of(L"\\/");
+    if (strich != std::wstring::npos) {
+        ordner.resize(strich);
+    }
+    for (wchar_t& c : ordner) {
+        c = static_cast<wchar_t>(towlower(c));
+    }
+    return L"BehavEd-Remake-" + std::to_wstring(std::hash<std::wstring>{}(ordner));
+}
+
+struct EinzelSuche {
+    ATOM atom = 0;
+    HWND fenster = nullptr;
+};
+
+BOOL CALLBACK sucheEinzelFenster(HWND h, LPARAM lp) {
+    auto* s = reinterpret_cast<EinzelSuche*>(lp);
+    wchar_t klasse[32] = {};
+    if (GetClassNameW(h, klasse, 32) > 0 && std::wcscmp(klasse, L"behaved") == 0 &&
+        static_cast<ATOM>(reinterpret_cast<ULONG_PTR>(GetPropW(h, kEinzelEigenschaft))) == s->atom) {
+        s->fenster = h;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+// true: an die laufende Instanz weitergereicht - dieses Programm soll enden.
+// Das Fenster der anderen entsteht erst nach ihrer Kennung; ist es noch
+// nicht da (beide fast gleichzeitig gestartet), wird bis zu 5 s gewartet.
+// Findet sich keins (die andere haengt), startet diese hier normal.
+bool anLaufendeWeitergeben(const std::wstring& name, const std::string& datei) {
+    for (int versuch = 0; versuch < 50; ++versuch) {
+        EinzelSuche suche;
+        suche.atom = GlobalFindAtomW(name.c_str());
+        if (suche.atom != 0) {
+            EnumWindows(sucheEinzelFenster, reinterpret_cast<LPARAM>(&suche));
+        }
+        if (suche.fenster != nullptr) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(suche.fenster, &pid);
+            // Die andere darf sich nach vorn holen - sonst blinkt nur die
+            // Taskleiste (Windows laesst nur den Vordergrund das erlauben).
+            AllowSetForegroundWindow(pid);
+            COPYDATASTRUCT cds{};
+            cds.dwData = kEinzelKennung;
+            cds.cbData = static_cast<DWORD>(datei.size());
+            cds.lpData = datei.empty() ? nullptr : const_cast<char*>(datei.data());
+            DWORD_PTR antwort = 0;
+            if (SendMessageTimeoutW(suche.fenster, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&cds),
+                                    SMTO_ABORTIFHUNG, 5000, &antwort) != 0 &&
+                antwort == TRUE) {
+                return true;
+            }
+            return false;
+        }
+        Sleep(100);
+    }
+    return false;
+}
+
+HANDLE g_einzelMutex = nullptr;
+ATOM g_einzelAtom = 0;
+
 LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Im Selbsttest die Fokusmeldungen NICHT an ImGui: ein kurzer
     // Fokusaussetzer (Fenster im Hintergrund, Klick woanders) setzt dort die
@@ -90,6 +195,26 @@ LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 1;
     }
     switch (msg) {
+        case WM_COPYDATA: {
+            // Von einer zweiten Instanz: die Datei hier oeffnen.
+            const auto* cds = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
+            if (cds != nullptr && cds->dwData == kEinzelKennung) {
+                std::string pfad;
+                if (cds->lpData != nullptr && cds->cbData > 0) {
+                    pfad.assign(static_cast<const char*>(cds->lpData), cds->cbData);
+                }
+                bhed::gui::dateiVonAussen(pfad);
+                // Nach vorn - aber nie im Selbsttest (kein Fokusdiebstahl).
+                if (std::getenv("BHED_EDITORTEST") == nullptr) {
+                    if (IsIconic(hwnd)) {
+                        ShowWindow(hwnd, SW_RESTORE);
+                    }
+                    SetForegroundWindow(hwnd);
+                }
+                return TRUE;
+            }
+            break;
+        }
         case WM_SIZE:
             if (wParam != SIZE_MINIMIZED) {
                 g_width = LOWORD(lParam);
@@ -483,6 +608,39 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     // zu spaet und alles erscheint verwaschen.
     announceDpiAwareness();
 
+    // --- Laeuft behaved hier schon? Dann dorthin weiterreichen -------------
+    //
+    // VOR dem Protokoll (siehe einzelAktiv). Nach einem Update erst auf die
+    // alte Instanz warten: sie haelt die Kennung, bis sie zu ist.
+    const std::wstring einzelKennung = einzelAktiv() ? einzelName() : std::wstring();
+    if (!einzelKennung.empty()) {
+        std::string datei;
+        {
+            int argc = 0;
+            LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+            if (argv != nullptr) {
+                if (argc > 1) {
+                    // Absolut machen: die laufende Instanz hat ein anderes
+                    // Arbeitsverzeichnis.
+                    wchar_t voll[4096] = {};
+                    const DWORD n = GetFullPathNameW(argv[1], 4096, voll, nullptr);
+                    datei = toUtf8((n > 0 && n < 4096) ? voll : argv[1]);
+                    if (std::wstring(argv[1]).rfind(L"--nach-update=", 0) == 0) {
+                        (void)bhed::gui::updater::warteAufVorgaenger(toUtf8(argv[1]));
+                        datei.clear();
+                    }
+                }
+                LocalFree(argv);
+            }
+        }
+        g_einzelMutex = CreateMutexW(nullptr, FALSE, (L"Local\\" + einzelKennung).c_str());
+        if (g_einzelMutex != nullptr && GetLastError() == ERROR_ALREADY_EXISTS &&
+            anLaufendeWeitergeben(einzelKennung, datei)) {
+            CloseHandle(g_einzelMutex);
+            return 0;
+        }
+    }
+
     // COM anmelden, bevor irgendein Dateidialog aufgeht.
     //
     // Der Common Item Dialog ist ein COM-Objekt: ohne CoInitializeEx gibt
@@ -504,6 +662,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     // bleibt %APPDATA% als Rueckfall. Beides stumm scheitern zu lassen waere
     // schlecht: dann gaebe es bei einem Absturz gar nichts.
     std::string logDir = bhed::platform::executableDirectory();
+    // Eine ZWEITE Instanz aus dem Testmodus "einzel" (BHED_EINZEL ohne
+    // BHED_EDITORTEST) schreibt ihr Protokoll daneben - sonst rotierte sie das
+    // des laufenden Tests weg.
+    if (std::getenv("BHED_EINZEL") != nullptr && std::getenv("BHED_EDITORTEST") == nullptr) {
+        logDir += "\\zweite";
+        CreateDirectoryW(std::filesystem::u8path(logDir).wstring().c_str(), nullptr);
+    }
     bool logging = !logDir.empty() &&
                    bhed::diag::open(logDir + "\\behaved.log");
     if (!logging) {
@@ -585,6 +750,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                     MB_ICONERROR);
         return 1;
     }
+    // Die Kennung ans Fenster: so findet ein zweiter Start GENAU dieses (und
+    // nicht ein behaved aus einem anderen Ordner oder einen Testlauf).
+    if (!einzelKennung.empty()) {
+        g_einzelAtom = GlobalAddAtomW(einzelKennung.c_str());
+        SetPropW(hwnd, kEinzelEigenschaft,
+                 reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(g_einzelAtom)));
+        bhed::diag::detail("Einzelinstanz: angemeldet");
+    }
 
     bhed::diag::Step appStep("Programmzustand aufbauen");
     bhed::gui::App* app = bhed::gui::createApp();
@@ -643,7 +816,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     const std::string lage = bhed::gui::gemerkteFensterlage();
     // Im Selbsttest nicht: SetWindowPlacement mit "maximiert" aktiviert das
     // Fenster und holt es nach vorn (siehe unten).
-    const bool imSelbsttest = std::getenv("BHED_EDITORTEST") != nullptr;
+    // Eine zweite Instanz aus dem Testmodus "einzel" ebenso im Hintergrund.
+    const bool imSelbsttest = std::getenv("BHED_EDITORTEST") != nullptr ||
+                              std::getenv("BHED_EINZEL") != nullptr;
     if (!lage.empty() && !imSelbsttest) {
         WINDOWPLACEMENT wp{};
         wp.length = sizeof(wp);
@@ -720,8 +895,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
 
     bhed::gui::destroyApp(app);
+    if (g_einzelAtom != 0) {
+        RemovePropW(hwnd, kEinzelEigenschaft);
+        GlobalDeleteAtom(g_einzelAtom);
+    }
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, instance);
+    if (g_einzelMutex != nullptr) {
+        CloseHandle(g_einzelMutex);
+    }
     bhed::diag::closeDetail();
     bhed::diag::close();
     if (SUCCEEDED(comInit)) {

@@ -6,6 +6,7 @@
 #ifndef BHED_PLATFORM_H
 #define BHED_PLATFORM_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,16 @@ bool startBehavedWith(const std::string& datei);
 [[nodiscard]] std::string executableDirectory();
 // Einen Ordner im Explorer zeigen.
 void openInExplorer(const std::string& folder);
+
+// Fuer den Selbsttest "einzel": diese exe ein zweites Mal starten, wie ein
+// Doppelklick im Explorer - OHNE BHED_EDITORTEST in der Umgebung (die zweite
+// soll sich wie ein echter Start verhalten). `argument` leer = ohne Datei.
+// Rueckgabe: Griff auf den Prozess, 0 = nicht gestartet.
+std::uintptr_t starteZweiteInstanz(const std::string& argument);
+// -1 = laeuft noch, sonst der Rueckgabewert.
+long zweiteInstanzStand(std::uintptr_t griff);
+// Beenden (nur DIESEN eigenen Kindprozess) und den Griff freigeben.
+void zweiteInstanzSchliessen(std::uintptr_t griff, bool beenden);
 
 // Die Dateinamen eines Ordners, ohne Pfad und ohne Unterordner.
 //

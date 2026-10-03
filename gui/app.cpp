@@ -9824,6 +9824,30 @@ void activateTab(int index) {
 // die Ereignisliste bzw. wie "Open" nach dem Dateidialog.
 void fuegeBefehlEin(const Command& c) { insertCommand(c); }
 void ladeSkriptDatei(const std::string& pfad) { loadPath(pfad); }
+
+// Von einer zweiten Instanz weitergereicht (gui/main_win32.cpp,
+// WM_COPYDATA). Gemerkt und im naechsten Bild geoeffnet - nicht mitten in
+// der Nachrichtenverarbeitung, und nicht, solange eine Frage offen ist.
+std::vector<std::string>& dateienVonAussen() {
+    static std::vector<std::string> liste;
+    return liste;
+}
+void dateiVonAussen(const std::string& pfad) {
+    dateienVonAussen().push_back(pfad);
+    diag::info("Von einer zweiten Instanz: " + (pfad.empty() ? std::string("(nur nach vorn)") : pfad));
+}
+void dateienVonAussenOeffnen() {
+    if (g_app == nullptr || g_app->askSaveOpen || g_app->frageOffen || dateienVonAussen().empty()) {
+        return;
+    }
+    std::vector<std::string> liste;
+    liste.swap(dateienVonAussen());
+    for (const std::string& p : liste) {
+        if (!p.empty()) {
+            loadPath(p);   // schon offen? Dann dorthin (reiterMitPfad)
+        }
+    }
+}
 // Fuer app_view3d.cpp und den Selbsttest - die eigentlichen Funktionen
 // stehen im namenlosen Namensraum bei closeTab.
 int reiterMitPfad(const std::string& p) { return reiterMitPfadI(p); }
@@ -13478,6 +13502,7 @@ bool wantsQuit() {
 void draw() {
     if (g_app == nullptr) { return; }
     // Einmal: Reste eines Updates wegraeumen, und im Hintergrund nachsehen.
+    dateienVonAussenOeffnen();
     static bool updateGestartet = false;
     if (!updateGestartet) {
         updateGestartet = true;
