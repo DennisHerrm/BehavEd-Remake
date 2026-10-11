@@ -21,6 +21,7 @@
 //   - Einstellungen auf einem ref_tag (tag( "cam1", ORIGIN )) verschieben den
 //     ref_tag selbst - so arbeitet das Spiel damit
 #include "app_internal.h"
+#include "gpumap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -511,6 +512,12 @@ void kameraUeberlagerung(float rasterSkal) {
             g_app->throughCamera = !g_app->throughCamera;
             g_app->mapDirty = true;
         }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::CamPreview), UiIcon::Bildschirm, tr(Str::CamPreviewHint), g_app->kameraBildImBild, true,
+                      true)) {
+            g_app->kameraBildImBild = !g_app->kameraBildImBild;
+            g_app->mapDirty = true;
+        }
         ImGui::SameLine(0.0F, luecke);
         if (iconKnopf(tr(Str::CamNewShot), UiIcon::Plus, tr(Str::CamNewShotHint))) { kameraNeueEinstellung(); }
         ImGui::SameLine();
@@ -521,6 +528,59 @@ void kameraUeberlagerung(float rasterSkal) {
     ImGui::PopStyleColor();
     ImGui::SetCursorScreenPos(merk);
     ImGui::Dummy(ImVec2{0.0F, 0.0F});   // Anker: ImGui will nach dem Cursorsprung ein Element
+}
+
+// --- Bild-im-Bild (rc592) ------------------------------------------------------
+//
+// Unten rechts in der Ansicht, mit dem Rahmen in der Farbe der gewaehlten
+// Kamera. Ein Klick schaut durch die Kamera (wie der Knopf daneben).
+void kameraVorschauZeigen() {
+    if (!g_app->vorschauGezeigt || g_app->camViewActive) { return; }
+    void* tex = gpu::zielTexturSatz(1);
+    if (tex == nullptr || g_app->vorschauW <= 0 || g_app->vorschauH <= 0) { return; }
+    const float x0 = g_app->kartenAnsicht[0];
+    const float y0 = g_app->kartenAnsicht[1];
+    const float x1 = g_app->kartenAnsicht[2];
+    const float y1 = g_app->kartenAnsicht[3];
+    const float fs = ImGui::GetFontSize();
+    // Auf dem Schirm so breit wie ein Drittel der Ansicht - unabhaengig
+    // davon, wie fein gerastert wurde.
+    const float b = std::clamp((x1 - x0) / 3.0F, 120.0F, 640.0F);
+    const float h = b * static_cast<float>(g_app->vorschauH) / static_cast<float>(g_app->vorschauW);
+    if (b > (x1 - x0) * 0.6F || h > (y1 - y0) * 0.6F) { return; }   // zu wenig Platz
+    const ImVec2 p1{x1 - fs * 0.6F, y1 - fs * 0.6F};
+    const ImVec2 p0{p1.x - b, p1.y - h};
+    // Ein eigenes Kindfenster wie die Kameraleiste: solange die Maus darauf
+    // steht, gilt die Kartenansicht als nicht ueberfahren - ein Klick waehlt
+    // dann nicht zugleich etwas dahinter aus.
+    const ImVec2 merk = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(p0);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0F, 0.0F});
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0F);
+    if (ImGui::BeginChild("##kameravorschau", ImVec2{b, h}, ImGuiChildFlags_None,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImGui::Image(reinterpret_cast<ImTextureID>(tex), ImVec2{b, h});
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+            g_app->throughCamera = true;
+            g_app->mapDirty = true;
+        }
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::CamPreviewClick)); }
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRect(ImVec2{p0.x + 1.0F, p0.y + 1.0F}, ImVec2{p1.x - 1.0F, p1.y - 1.0F}, IM_COL32(255, 165, 40, 255), 3.0F,
+                    0, 2.0F);
+        const std::vector<KameraSchluessel> ks = schluessel();
+        const int k = gueltig(ks, g_app->selectedKey) ? g_app->selectedKey : schluesselFuerZeit(g_app->playMs);
+        const std::string titel = std::string(tr(Str::CamName)) + "  \xC2\xB7  " +
+                                  einstellungsName(std::max(k, 0), static_cast<int>(ks.size()));
+        const ImVec2 ts = ImGui::CalcTextSize(titel.c_str());
+        dl->AddRectFilled(ImVec2{p0.x + 2.0F, p0.y + 2.0F}, ImVec2{p0.x + ts.x + fs * 0.8F, p0.y + ts.y + fs * 0.4F},
+                          IM_COL32(12, 13, 16, 200));
+        dl->AddText(ImVec2{p0.x + fs * 0.4F, p0.y + fs * 0.2F}, IM_COL32(255, 200, 120, 255), titel.c_str());
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::SetCursorScreenPos(merk);
+    ImGui::Dummy(ImVec2{0.0F, 0.0F});   // Anker nach dem Cursorsprung
 }
 
 // --- Inspektor -----------------------------------------------------------------

@@ -1345,6 +1345,36 @@ struct ShotView {
     std::string label;
 };
 
+bool shotAtSelection(ShotView& out);
+
+bool vorschauKamera(Camera& vc, float aspekt) {
+    const bool spielt = g_app->playing && g_app->followCam && g_app->camTrackValid &&
+                        !g_app->camTrack.segments.empty();
+    if (!g_app->kameraBildImBild || !g_app->cameraSelected || g_app->camViewActive || spielt ||
+        g_app->kameraPilot || !g_app->camTrackValid || g_app->camTrack.segments.empty()) {
+        return false;
+    }
+    vc = g_app->cam;
+    ShotView shot;
+    if (shotAtSelection(shot)) {
+        // Wie der Durchblick: mit der Vorschau des Gizmos, damit das Bild
+        // beim Ziehen mitlaeuft.
+        for (int k = 0; k < 3; ++k) {
+            vc.pos[k] = shot.pos[k] + g_app->gizmoOffset[k];
+            vc.angles[k] = (shot.haveAng ? shot.ang[k] : 0.0F) + g_app->gizmoAngles[k];
+        }
+        vc.setFovX(shot.fovX, aspekt);
+        return true;
+    }
+    const CameraState st = camStateAt(g_app->playMs);
+    for (int k = 0; k < 3; ++k) {
+        vc.pos[k] = st.pos[k];
+        vc.angles[k] = st.angles[k];
+    }
+    vc.setFovX(st.fovX, aspekt);
+    return true;
+}
+
 bool shotAtSelection(ShotView& out) {
     const Path& sel = g_app->selectedPath;
     if (sel.empty()) {
@@ -10901,28 +10931,31 @@ void drawMapView() {
         //
         if (gpuBereit) {
             const auto tGpu0 = std::chrono::steady_clock::now();
-            const int gw = g_app->mapImage.width;
-            const int gh = g_app->mapImage.height;
-            gpu::setzeSchritt("Ziel anlegen");
-            if (gpu::bereiteZiel(gw, gh)) {
+            // --- Ein GPU-Bild aus einer Kamera (rc592) -----------------------
+            //
+            // Der ganze Durchgang als eine Funktion: einmal fuer die Ansicht,
+            // und - wenn eingeschaltet - ein zweites Mal klein fuer die
+            // Bild-im-Bild-Vorschau der Skriptkamera (nebenbild, Zielsatz 1).
+            // Das Nebenbild misst nicht, glueht nicht und zaehlt nicht mit.
+            auto gpuBild = [&](const Camera& bildCam, const int bildW, const int bildH, const bool nebenbild) {
                 float vp[16];
                 // Draufsicht: die vordere Ebene liegt auf der Schnitthoehe -
                 // alles darueber (Decken, Daecher) faellt weg.
                 const float nah = (g_app->draufsicht && !g_app->throughCamera)
-                                      ? std::max(4.0F, useCam.pos[2] - g_app->draufSchnitt)
+                                      ? std::max(4.0F, bildCam.pos[2] - g_app->draufSchnitt)
                                       : 4.0F;
-                gpu::baueViewProj(useCam, gw, gh, nah, kartenFern() + (nah > 4.0F ? nah : 0.0F), vp);
+                gpu::baueViewProj(bildCam, bildW, bildH, nah, kartenFern() + (nah > 4.0F ? nah : 0.0F), vp);
                 // Die Kameraachsen fuer den Himmel - aus derselben Quelle
                 // wie der Rasterer, sonst zeigt der Himmel woandershin.
                 float gvorn[3];
                 float grechts[3];
                 float ghoch[3];
-                Camera hc = useCam;
+                Camera hc = bildCam;
                 hc.forward(gvorn);
                 hc.right(grechts);
                 hc.up(ghoch);
                 const float gfokus =
-                    1.0F / std::tan(useCam.fovY * 3.14159265F / 180.0F * 0.5F);
+                    1.0F / std::tan(bildCam.fovY * 3.14159265F / 180.0F * 0.5F);
                 std::string f;
                 const float zeit = static_cast<float>(g_app->playMs) * 0.001F;
                 // Alle vier werden jetzt ADDIERT (zwei Durchgaenge),
@@ -10935,7 +10968,7 @@ void drawMapView() {
                 g_app->gpuUebersprungen = 0;
                 // Die Klammer um das ganze Bild. Sie muss VOR der ersten
                 // Abschnittsmarke stehen; ohne sie wird gar nicht gemessen.
-                gpu::bildBeginnt();
+                if (!nebenbild) { gpu::bildBeginnt(); }
 
                 // --- Das Bild laeuft ZWEIMAL ueber alle Quellen ---------
                 //
@@ -10975,7 +11008,7 @@ void drawMapView() {
                                              : gpu::Abschnitt::KarteGemischt);
                     const int nk = gpu::zeichneKarte(
                         g_app->mesh, &g_app->textures, &g_app->geo, vp,
-                        useCam.pos, zeit, g_app->mapBrightness,
+                        bildCam.pos, zeit, g_app->mapBrightness,
                         g_app->mapMinLight, 0, gvorn, grechts, ghoch, gfokus,
                         &f, &g_app->gpuUebersprungen, lage);
                     g_app->gpuAufrufe += nk;
@@ -10992,7 +11025,7 @@ void drawMapView() {
                         std::string f2;
                         const int ne = gpu::zeichneKarte(
                             g_app->effectMesh, &g_app->textures, &g_app->geo,
-                            vp, useCam.pos, zeit, g_app->mapBrightness,
+                            vp, bildCam.pos, zeit, g_app->mapBrightness,
                             g_app->mapMinLight, 1, gvorn, grechts, ghoch,
                             gfokus, &f2, &g_app->gpuUebersprungen, lage);
                         g_app->gpuAufrufe += ne;
@@ -11026,7 +11059,7 @@ void drawMapView() {
                         std::string fm;
                         const int nm = gpu::zeichneMover(
                             *mv.mesh, &g_app->textures, &g_app->geo, vp, mw,
-                            useCam.pos, gvorn, grechts, ghoch, gfokus, zeit,
+                            bildCam.pos, gvorn, grechts, ghoch, gfokus, zeit,
                             g_app->mapBrightness, g_app->mapMinLight, &fm,
                             &g_app->gpuUebersprungen, lage);
                         g_app->gpuAufrufe += nm;
@@ -11183,9 +11216,9 @@ void drawMapView() {
                         float schattenEbene = 0.0F;
                         if ((g_app->schattenArt == 2 || g_app->schattenArt == 3) &&
                             a.schattenRadius > 0.0F) {
-                            const float vorAus = (a.pos[0] - useCam.pos[0]) * gvorn[0] +
-                                                 (a.pos[1] - useCam.pos[1]) * gvorn[1] +
-                                                 (a.pos[2] - useCam.pos[2]) * gvorn[2];
+                            const float vorAus = (a.pos[0] - bildCam.pos[0]) * gvorn[0] +
+                                                 (a.pos[1] - bildCam.pos[1]) * gvorn[1] +
+                                                 (a.pos[2] - bildCam.pos[2]) * gvorn[2];
                             if (vorAus < 1000.0F) {
                                 gpu::BlobSchatten spur;
                                 const bool getroffen =
@@ -11319,7 +11352,7 @@ void drawMapView() {
                                     const float radien[2] = {kd.radius, kd.radius / 3.0F};
                                     for (int lage2 = 0; lage2 < 2; ++lage2) {
                                         gpu::KlingenQuad q;
-                                        gpu::baueKlingenband(wA, wB, useCam.pos, grechts,
+                                        gpu::baueKlingenband(wA, wB, bildCam.pos, grechts,
                                                              radien[lage2], q.ecke);
                                         for (int k = 0; k < 3; ++k) {
                                             q.farbe[k] = (lage2 == 0)
@@ -11399,9 +11432,9 @@ void drawMapView() {
                                 continue;
                             }
                             // cg_shadowCullDistance = r_shadowRange, 1000.
-                            const float dx = a.pos[0] - useCam.pos[0];
-                            const float dy = a.pos[1] - useCam.pos[1];
-                            const float dz = a.pos[2] - useCam.pos[2];
+                            const float dx = a.pos[0] - bildCam.pos[0];
+                            const float dy = a.pos[1] - bildCam.pos[1];
+                            const float dz = a.pos[2] - bildCam.pos[2];
                             if (dx * dx + dy * dy + dz * dz > 1000.0F * 1000.0F) {
                                 continue;
                             }
@@ -11464,7 +11497,7 @@ void drawMapView() {
                         std::string fn;
                         const int nn = gpu::zeichneNebel(
                             g_app->mesh, &g_app->textures, &g_app->geo, vp, zeit,
-                            useCam.pos, nebelListe(), figurSchatten, &fn);
+                            bildCam.pos, nebelListe(), figurSchatten, &fn);
                         g_app->nebelAufrufe = nn;
                         g_app->gpuAufrufe += nn;
                         g_app->gpuKarte += nn;
@@ -11483,7 +11516,7 @@ void drawMapView() {
                             std::string fm;
                             const int nm = gpu::zeichneNebel(
                                 *mv.mesh, &g_app->textures, &g_app->geo, vp, zeit,
-                                useCam.pos, nebel, kKeineFiguren, &fm, mw,
+                                bildCam.pos, nebel, kKeineFiguren, &fm, mw,
                                 nebelFuer(mv.offset));
                             g_app->nebelAufrufe += nm;
                             g_app->gpuAufrufe += nm;
@@ -11520,8 +11553,8 @@ void drawMapView() {
                 // den Movern und den Figuren, damit sie ueber allem liegen,
                 // das sie nicht verdeckt - wie im Rasterer.
                 // Das Wetter im selben Durchgang: additiv, tiefengetestet.
-                wetterTeilchen(klingen, useCam);
-                flareSchilde(klingen, useCam);
+                wetterTeilchen(klingen, bildCam);
+                flareSchilde(klingen, bildCam);
                 if (!klingen.empty()) {
                     std::string fk;
                     const int nk2 = gpu::zeichneKlingen(klingen, vp, &fk);
@@ -11530,7 +11563,7 @@ void drawMapView() {
                     if (nk2 == 0 && f.empty()) { f = fk; }
                 }
                 // --- Das Gluehen, ganz zuletzt -------------------------
-                if (g_app->gpuAufrufe > 0 && g_app->showGlow &&
+                if (!nebenbild && g_app->gpuAufrufe > 0 && g_app->showGlow &&
                     g_app->textures.found > 0) {
                     gpu::beginneMessung(gpu::Abschnitt::Gluehen);
                     std::string fg;
@@ -11545,8 +11578,10 @@ void drawMapView() {
                     }
                 }
                 // Schliesst das Bild. Danach darf keine Marke mehr kommen.
-                gpu::bildFertig();
-                gezeichnet = true;
+                if (!nebenbild) {
+                    gpu::bildFertig();
+                    gezeichnet = true;
+                }
                 // --- Die Debugschicht abfragen -------------------------
                 //
                 // Sie laeuft seit rc425 und schreibt an den
@@ -11565,6 +11600,65 @@ void drawMapView() {
                 g_app->gpuFehler = f;
                 if (g_app->gpuAufrufe <= 0 && g_app->gpuFehler.empty()) {
                     g_app->gpuFehler = "kein Zeichenaufruf abgesetzt";
+                }
+            };
+            const int gw = g_app->mapImage.width;
+            const int gh = g_app->mapImage.height;
+            gpu::setzeSchritt("Ziel anlegen");
+            if (gpu::bereiteZiel(gw, gh)) {
+                gpuBild(useCam, gw, gh, false);
+                // --- Bild-im-Bild der gewaehlten Kamera (rc592) --------------
+                //
+                // Ein Drittel der Breite, Seitenverhaeltnis der Ansicht, in
+                // Zielsatz 1. Was das Nebenbild an Zaehlern veraendert, wird
+                // zurueckgesetzt - Statuszeile und Selbsttests sehen nur die
+                // Ansicht.
+                g_app->vorschauGezeigt = false;
+                Camera vorschau;
+                const float aspekt = static_cast<float>(gw) / static_cast<float>(std::max(gh, 1));
+                if (vorschauKamera(vorschau, aspekt)) {
+                    const int pw = std::clamp(gw / 3, 160, 640);
+                    const int ph = std::max(90, static_cast<int>(static_cast<float>(pw) / aspekt));
+                    const int merkKarte = g_app->gpuKarte;
+                    const int merkMover = g_app->gpuMover;
+                    const int merkFiguren = g_app->gpuFiguren2;
+                    const int merkGluehen = g_app->gpuGluehen;
+                    const int merkEffekte = g_app->gpuEffekte;
+                    const int merkAufrufe = g_app->gpuAufrufe;
+                    const int merkUeber = g_app->gpuUebersprungen;
+                    const std::string merkFehler = g_app->gpuFehler;
+                    const int merkLicht = g_app->lichtAufrufe;
+                    const int merkNebel = g_app->nebelAufrufe;
+                    const int merkSchatten = g_app->schattenAnzahl;
+                    const std::map<std::string, int> merkArten = g_app->figurArten;
+                    const int merkFlares = g_app->flareZahl;
+                    const int merkWetter = g_app->wetterTeilchenZahl;
+                    const int merkSpur = g_app->spurBaender;
+                    gpu::waehleZiel(1);
+                    if (gpu::bereiteZiel(pw, ph)) {
+                        gpu::setzeSchritt("Kameravorschau");
+                        gpuBild(vorschau, pw, ph, true);
+                        g_app->vorschauGezeigt = g_app->gpuAufrufe > 0;
+                        g_app->vorschauW = pw;
+                        g_app->vorschauH = ph;
+                        ++g_app->vorschauBilder;
+                    }
+                    gpu::waehleZiel(0);
+                    g_app->gpuKarte = merkKarte;
+                    g_app->gpuMover = merkMover;
+                    g_app->gpuFiguren2 = merkFiguren;
+                    g_app->gpuGluehen = merkGluehen;
+                    g_app->gpuEffekte = merkEffekte;
+                    g_app->gpuAufrufe = merkAufrufe;
+                    g_app->gpuUebersprungen = merkUeber;
+                    g_app->gpuFehler = merkFehler;
+                    g_app->lichtAufrufe = merkLicht;
+                    g_app->nebelAufrufe = merkNebel;
+                    g_app->schattenAnzahl = merkSchatten;
+                    g_app->figurArten = merkArten;
+                    g_app->flareZahl = merkFlares;
+                    g_app->wetterTeilchenZahl = merkWetter;
+                    g_app->spurBaender = merkSpur;
                 }
             } else {
                 g_app->gpuFehler = "Renderziel nicht anlegbar";
@@ -12519,6 +12613,7 @@ g_app->gizmoAxis = g_app->gizmoHover;
     // Klick und Rechtsklick ins Leere (Kameratest: "Klick Move nicht gefunden").
     {
         const float bildB = g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0];
+        kameraVorschauZeigen();
         kameraUeberlagerung(bildB > 0.0F ? static_cast<float>(g_app->mapImage.width) / bildB : 1.0F);
     }
     platzierLeiste();

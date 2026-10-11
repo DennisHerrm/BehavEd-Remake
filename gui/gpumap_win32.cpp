@@ -32,6 +32,7 @@
 #ifdef BHED_WITH_D3D11
 
 #include <algorithm>
+#include <utility>
 #include <d3d11.h>
 #include <dxgi1_4.h>
 #include <psapi.h>
@@ -177,6 +178,19 @@ ID3D11Texture2D* g_tiefeLesen = nullptr;   // Kopie zum Zuruecklesen (leseTiefe)
 ID3D11DepthStencilView* g_tiefeDsv = nullptr;
 int g_zielW = 0;
 int g_zielH = 0;
+// Der ANDERE Zielsatz (rc592, siehe waehleZiel): solange Satz 0 gewaehlt
+// ist, liegt hier die Vorschau, sonst die Kartenansicht. Umgeschaltet wird
+// durch Tauschen - alle Stellen, die g_ziel*/g_tiefe* benutzen, zeichnen
+// damit unveraendert in den gewaehlten Satz.
+ID3D11Texture2D* g_zweitTex = nullptr;
+ID3D11RenderTargetView* g_zweitRtv = nullptr;
+ID3D11ShaderResourceView* g_zweitSrv = nullptr;
+ID3D11Texture2D* g_zweitTiefeTex = nullptr;
+ID3D11Texture2D* g_zweitTiefeLesen = nullptr;
+ID3D11DepthStencilView* g_zweitTiefeDsv = nullptr;
+int g_zweitW = 0;
+int g_zweitH = 0;
+int g_zielSatz = 0;
 
 // Hochgeladene Karten-Texturen, nach Platz im Texturensatz.
 //
@@ -1919,6 +1933,23 @@ bool bereiteZiel(int breite, int hoehe) {
 }
 
 void* zielTextur() { return g_zielSrv; }
+
+void waehleZiel(int satz) {
+    if (satz == g_zielSatz || (satz != 0 && satz != 1)) {
+        return;
+    }
+    std::swap(g_zielTex, g_zweitTex);
+    std::swap(g_zielRtv, g_zweitRtv);
+    std::swap(g_zielSrv, g_zweitSrv);
+    std::swap(g_tiefeTex, g_zweitTiefeTex);
+    std::swap(g_tiefeLesen, g_zweitTiefeLesen);
+    std::swap(g_tiefeDsv, g_zweitTiefeDsv);
+    std::swap(g_zielW, g_zweitW);
+    std::swap(g_zielH, g_zweitH);
+    g_zielSatz = satz;
+}
+
+void* zielTexturSatz(int satz) { return (satz == g_zielSatz) ? g_zielSrv : g_zweitSrv; }
 
 bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, float fern) {
     ID3D11Device* d = dev();
@@ -4060,6 +4091,15 @@ void shutdown() {
     if (g_tiefeLesen != nullptr) { g_tiefeLesen->Release(); g_tiefeLesen = nullptr; }
     g_zielW = 0;
     g_zielH = 0;
+    if (g_zweitSrv != nullptr) { g_zweitSrv->Release(); g_zweitSrv = nullptr; }
+    if (g_zweitRtv != nullptr) { g_zweitRtv->Release(); g_zweitRtv = nullptr; }
+    if (g_zweitTex != nullptr) { g_zweitTex->Release(); g_zweitTex = nullptr; }
+    if (g_zweitTiefeDsv != nullptr) { g_zweitTiefeDsv->Release(); g_zweitTiefeDsv = nullptr; }
+    if (g_zweitTiefeTex != nullptr) { g_zweitTiefeTex->Release(); g_zweitTiefeTex = nullptr; }
+    if (g_zweitTiefeLesen != nullptr) { g_zweitTiefeLesen->Release(); g_zweitTiefeLesen = nullptr; }
+    g_zweitW = 0;
+    g_zweitH = 0;
+    g_zielSatz = 0;
     for (Netzpuffer& n : g_netz) {
         if (n.vb != nullptr) { n.vb->Release(); n.vb = nullptr; }
         if (n.ib != nullptr) { n.ib->Release(); n.ib = nullptr; }
@@ -4968,6 +5008,8 @@ int zeichneModellAnsicht(const GlmModel&, const ModelTextures*, const std::vecto
 }
 bool bereiteZiel(int, int) { return false; }
 void* zielTextur() { return nullptr; }
+void waehleZiel(int) {}
+void* zielTexturSatz(int) { return nullptr; }
 bool leseTiefe(std::vector<float>&, int, int, float, float) { return false; }
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }
 const char* abschnittName(Abschnitt) { return "?"; }

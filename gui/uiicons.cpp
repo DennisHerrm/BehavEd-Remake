@@ -102,6 +102,7 @@ ImVec4 uiIconFarbe(UiIcon icon) {
         case UiIcon::Oben: c = ImVec4{0.55F, 0.80F, 1.00F, 1.0F}; break;
         case UiIcon::Erzeugen: c = ImVec4{1.00F, 0.80F, 0.30F, 1.0F}; break;
         case UiIcon::Raster: c = ImVec4{0.65F, 0.85F, 0.55F, 1.0F}; break;
+        case UiIcon::Bildschirm: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;   // wie die Kamera
         case UiIcon::Animieren: c = ImVec4{1.00F, 0.78F, 0.30F, 1.0F}; break;   // Schluessel: bernstein
         case UiIcon::ZumAnfang: c = ImVec4{0.80F, 0.82F, 0.86F, 1.0F}; break;
         case UiIcon::Schleife: c = ImVec4{0.45F, 0.75F, 1.00F, 1.0F}; break;
@@ -446,6 +447,10 @@ void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe)
         case UiIcon::Versteckt:   // geschlossenes Auge, durchgestrichen
             z.zug({ImVec2{1.0F, 8.0F}, ImVec2{4.5F, 10.8F}, ImVec2{8.0F, 11.8F}, ImVec2{11.5F, 10.8F}, ImVec2{15.0F, 8.0F}});
             z.linie(2.5F, 13.5F, 13.5F, 2.5F);
+            break;
+        case UiIcon::Bildschirm:   // Bild mit eingesetztem kleinem Bild unten rechts
+            z.rahmen(1.5F, 2.5F, 14.5F, 13.5F, 1.0F);
+            z.flaeche({ImVec2{8.5F, 8.0F}, ImVec2{13.0F, 8.0F}, ImVec2{13.0F, 12.0F}, ImVec2{8.5F, 12.0F}});
             break;
         case UiIcon::Bruch:   // Kiste mit Riss
             z.rahmen(2.0F, 3.0F, 14.0F, 14.0F, 0.8F);

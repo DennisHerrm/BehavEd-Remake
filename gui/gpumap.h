@@ -270,6 +270,16 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
 // (App::mapScale), und dann aendert sich die Groesse mehrfach je Sekunde.
 [[nodiscard]] bool bereiteZiel(int breite, int hoehe);
 
+// --- Zwei Zielsaetze (rc592) --------------------------------------------
+//
+// Satz 0 ist die Kartenansicht, Satz 1 die Bild-im-Bild-Vorschau der
+// Skriptkamera. waehleZiel schaltet um; bereiteZiel, zielTextur, leseTiefe,
+// leseFarbe und alles Zeichnen gelten danach fuer den gewaehlten Satz. Nach
+// der Vorschau zurueck auf 0 - der Rest des Programms kennt nur den einen.
+void waehleZiel(int satz);
+// Die Textur eines Satzes, unabhaengig davon, welcher gerade gewaehlt ist.
+[[nodiscard]] void* zielTexturSatz(int satz);
+
 // Die Textur des Renderziels, zum Anzeigen. nullptr, wenn keins da ist.
 //
 // Als void*, damit dieser Kopf ohne Direct3D auskommt - er wird auch unter

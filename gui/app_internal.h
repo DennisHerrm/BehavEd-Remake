@@ -383,6 +383,17 @@ struct App {
     int wetterTeilchenZahl = 0;  // im letzten Bild gezeichnet (Selbsttest)
     bool zeigeFlares = true;     // Lens-Flares (rc592), wie r_flares 1
     int flareZahl = 0;           // im letzten Bild gezeichnet
+    // --- Bild-im-Bild: was die gewaehlte Kamera sieht (rc592) -----------
+    //
+    // Solange eine Skriptkamera gewaehlt ist und die Ansicht NICHT durch sie
+    // schaut, steht unten rechts ein kleines Bild aus ihrer Sicht - beim
+    // Ziehen am Gizmo laeuft es mit. Kostet ein zweites, kleines GPU-Bild,
+    // aber nur in dieser Lage. Abschaltbar in der Kameraleiste.
+    bool kameraBildImBild = true;
+    bool vorschauGezeigt = false;   // im letzten Bild gezeichnet
+    int vorschauW = 0;
+    int vorschauH = 0;
+    int vorschauBilder = 0;         // wie oft gezeichnet (Selbsttest)
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand
@@ -1981,6 +1992,11 @@ void drawMapToolbar();
 void drawPickedEntity();
 void drawEntityLayers(float height);
 CameraState camStateAt(double ms);
+// Die Kamera der Bild-im-Bild-Vorschau, oder false, wenn keine gezeigt wird
+// (siehe App::kameraBildImBild). `aspekt` = Breite / Hoehe des Bildes.
+bool vorschauKamera(Camera& vc, float aspekt);
+// Die Vorschau ueber die Kartenansicht legen (nach dem Kartenbild).
+void kameraVorschauZeigen();
 // Die MOVE-Schluessel des Skripts, in der Reihenfolge, in der App::selectedKey
 // zaehlt: Ort, Winkel (erstes PAN danach, sonst das vorige) und Zeile.
 struct KameraSchluessel {
@@ -2029,6 +2045,8 @@ enum class UiIcon : int {
     Marke, Blitz, Tuer, Wegpunkt, Bruch,
     // Sichtbarkeit in der Entity-Liste (rc588, statt "O" und "-")
     Sichtbar, Versteckt,
+    // Bild-im-Bild der Kamera (rc592)
+    Bildschirm,
 };
 void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe);
 // Quadratischer Icon-Knopf; der Text ist Kennung und Tooltip-Titel.

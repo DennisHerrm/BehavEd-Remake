@@ -8859,6 +8859,50 @@ std::vector<Schritt> kameraSchritte() {
                      std::to_string(g_app->selectedKey) + ", keyMarks " + std::to_string(g_app->keyMarks.size()));
         return g_app->cameraSelected && g_app->selectedKey == 0 && g_app->keyMarks.size() == 3U;
     }));
+
+    // ---- Bild-im-Bild der gewaehlten Kamera (rc592) --------------------------
+    auto vorschauBilder = std::make_shared<int>(0);
+    add(tu("Vorschau: neu zeichnen", [=] {
+        *vorschauBilder = g_app->vorschauBilder;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    add(gezeichnet("mit Vorschau"));
+    add(pruefe("Vorschau: bei gewaehlter Kamera unten rechts, im eigenen Ziel, Zaehler der Ansicht unberuehrt", [=] {
+        diag::detail("Knopftest: Vorschau gezeigt " + std::to_string(g_app->vorschauGezeigt) + ", " +
+                     std::to_string(g_app->vorschauW) + "x" + std::to_string(g_app->vorschauH) + ", Bilder " +
+                     std::to_string(g_app->vorschauBilder - *vorschauBilder) + ", Karte " +
+                     std::to_string(g_app->gpuKarte) + " Aufrufe");
+        return g_app->vorschauGezeigt && g_app->vorschauBilder > *vorschauBilder && g_app->vorschauW >= 160 &&
+               gpu::zielTexturSatz(1) != nullptr && gpu::zielTexturSatz(1) != gpu::zielTexturSatz(0) &&
+               g_app->gpuKarte > 0 && g_app->gpuFehler.empty();
+    }));
+    add(foto("kamera_vorschau"));
+    add(klick(tr(Str::CamPreview), "##kameraleiste"));
+    add(pause(0.4));
+    add(gezeichnet("ohne Vorschau"));
+    add(pruefe("Vorschau: der Knopf in der Kameraleiste schaltet sie ab", [] {
+        return !g_app->kameraBildImBild && !g_app->vorschauGezeigt;
+    }));
+    add(klick(tr(Str::CamPreview), "##kameraleiste"));
+    add(pause(0.4));
+    add(gezeichnet("Vorschau wieder an"));
+    add(klickAn("auf die Vorschau", [] {
+        const float x1 = g_app->kartenAnsicht[2];
+        const float y1 = g_app->kartenAnsicht[3];
+        const float fs = ImGui::GetFontSize();
+        return ImVec2{x1 - fs * 0.6F - 30.0F, y1 - fs * 0.6F - 20.0F};
+    }));
+    add(pause(0.4));
+    add(pruefe("Vorschau: ein Klick schaut durch die Kamera, die Auswahl bleibt, die Vorschau geht weg", [] {
+        return g_app->throughCamera && g_app->cameraSelected && g_app->camViewActive && !g_app->vorschauGezeigt;
+    }));
+    add(tu("Durchblick wieder aus, Vorschau fuer den Rest der Pruefung aus", [] {
+        g_app->throughCamera = false;
+        g_app->kameraBildImBild = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
     add(klickAn("rechts kurz (Gizmomenue)", ansichtMitte, 1));
     add(klick(tr(Str::GizmoMove), "##Popup"));
     add(pause(0.3));
