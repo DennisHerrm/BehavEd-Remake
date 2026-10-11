@@ -1,5 +1,58 @@
 # Änderungen seit rc94
 
+## rc585 — Missionen komplett im Map-Tab bauen
+
+Gewünscht: „im Map Tab eine eigene Mission erstellen … dann sehen wir was
+falsch ist und was noch fehlt“, dann „ja mach das“ (Inspektor, Setzen, Save
+mission), „ich will halt das sich in maps alles intuitiv anfühlt“, „irgendwie
+muss es was geben mit new mission“ und „das man das spiel eigentlich nicht mehr
+braucht“. Anlass war meine eigene Mission md_tpa_jedi (Ahsoka gegen Maul,
+duel_mandalore), die nur mit Hilfsskripten fertig wurde.
+
+* **Fehler nachgestellt und behoben:** Reiter mit anderer Karte und zurück –
+  `loadMapFromArchive` las nur die .bsp, alle Entities der .ent (Figuren) waren
+  weg. Selbsttest `mission` (md_po_prologue_jedi: .ent 97, .bsp 135 → zurück
+  135) schlug fehl, jetzt grün. `entitiesJeKarte` merkt Entities, die nicht aus
+  der .bsp stammen; ausdrückliches Öffnen einer Karte vergisst sie.
+* **Entity-Beschreibungen:** aus den 207 QUAKED-Köpfen des MD-Quelltexts nur
+  FAKTEN (`tools/gen_entdefs.py --aus-quelle` → `tools/entdefs.txt`): Größe,
+  Spawnflags Bit für Bit, Felder – und nur Felder, die das Spiel beim Spawnen
+  wirklich einliest (g_spawn.cpp-Tabelle + G_Spawn*), sonst standen die
+  Verhaltensnamen „idle“, „roam“ … als Felder des NPC_spawner da. Flag-Namen mit
+  Bindestrich (target_speaker `looped-on`) gehen jetzt mit. Die ERKLÄRUNGEN sind
+  eigene, in vier Sprachen (`tools/entdefs_texte.txt`, 167 Texte) – shank:
+  „mach das was du empfiehlst“, damit die Lizenz von BehavEd-Remake frei bleibt.
+  `missionbau`-Probe prüft, dass kein Satz aus dem Quelltext drinsteht.
+* **Inspektor** unter der Entity-Liste (Aufteilung fest 38/62, nichts springt):
+  Name, wichtigstes Feld (NPC_type, usescript, mapname …) direkt darunter, Ort
+  (DragFloat3, ein Rückgängig-Schritt je Zug), Blickrichtung, „Auf den Boden“,
+  Fußhöhe über dem Boden (rot im Boden), Spawnflags in zwei Spalten, Felder mit
+  Erklärung, NPC-Auswahl, Open legt Skripte im Missionsordner an, Rohansicht.
+  Eigener Rückgängig-Verlauf je Karte; Strg+Z/Strg+Y/Entf über Karte/Liste.
+* **Setzen/Ziehen:** + Entity (Fadenkreuz), Rechtsklick > New entity here
+  (Umkehrung der Projektion + traceRay), an Wänden ein Stück davor und auf den
+  Boden. Gewählte Entity in der Ansicht über den Boden ziehen.
+* **New mission / Save mission** (`missionbau.h`, `writePk3` ohne Packung,
+  über .tmp): neue Mission bekommt eine EIGENE Kartenkennung maps/<name>.bsp
+  (`kartenQuelle` zeigt auf die Grundkarte) – sonst teilten sich zwei Missionen
+  auf derselben Karte ihre Entities. Missionsordner Dokumente\behaved\missions
+  (Test: BHED_MISSIONEN). Prüfcodes S001–S006, .str bekommt ENDMARKER.
+  Beenden/Neuladen mit ungespeicherten Entities fragt.
+* **entityOrt** lieferte bei verdorbenem origin („x y“) true mit Zufallswerten.
+* **Mission laden mit schon offenen Skripten aus dem Missionsordner** öffnete
+  sie ein zweites Mal (Selbsttest: intro.txt 2×, runner1.txt 2× → 1×).
+* **Schrift (shanks Kumpel nach rc583):** „text is slightly off centre … needs
+  to be lower“ – gemessen am Foto: Großbuchstaben/Ziffern lagen 4 px über der
+  Zeilenmitte; GlyphOffset −1,5 → −0,5. „Full stops are still a little small“ –
+  Komma, Minus, Punkt (U+002C..2E) aus Tahoma Bold (GlyphExcludeRanges bei
+  micross + gemischte Tahoma Bold nur für diese drei).
+* **Tests:** `missionbau` (ctest, 39 Proben), Selbsttest `missionsbau`
+  (32 Prüfungen: jeder Knopf, Rückfragen, Speichern/Laden, 400 zufällige
+  Handlungen mit Invarianten). Eine von behaved erzeugte Mission im Spiel
+  gestartet: Karte, .ent, Intro-Kamera, NPC – läuft.
+* Noch offen (nächste Stufen): Untertitel/Dialoge (.str, Platzhalter-Sounds),
+  NPC-Modell-Prüfung, print in der Kamerafahrt, „Im Spiel testen“, Levelshot.
+
 ## rc584 — Menü Hilfe
 
 Gewünscht: „mach einen neuen Reiter mit About und da Update und Changelog

@@ -2819,6 +2819,11 @@ void handleShortcuts() {
             case keys::Action::BookmarkNext:   lesezeichenSpringen(true); break;
             case keys::Action::BookmarkPrev:   lesezeichenSpringen(false); break;
             case keys::Action::Undo: {
+                // Ueber der Karte oder der Entity-Liste: die letzte
+                // Entity-Aenderung (eigener Verlauf, gui/app_mission.cpp).
+                if (entityFokus() && entityRueckgaengig()) {
+                    break;
+                }
                 // Erst die Gizmo-Vorschau, dann das Skript.
                 //
                 // Gemeldet als "undo geht nicht strg + z". Der Grund war,
@@ -2851,8 +2856,17 @@ void handleShortcuts() {
                 doUndo();
                 break;
             }
-            case keys::Action::Redo:     doRedo(); break;
+            case keys::Action::Redo:
+                if (entityFokus() && entityWiederholen()) {
+                    break;
+                }
+                doRedo();
+                break;
             case keys::Action::Delete: {
+                // Ueber der Karte mit gewaehlter Entity: die Entity.
+                if (entityFokus() && g_app->pickedEntity >= 0 && entityLoeschen(g_app->pickedEntity)) {
+                    break;
+                }
                 const std::vector<Path> m = selectionOrCurrent();
                 const bool ok = m.size() > 1 ? g_app->doc.removeAll(m)
                                              : g_app->doc.removeAt(sel);
@@ -6710,6 +6724,20 @@ void drawEventsList(const Layout& l) {
             g_app->mapDirty = true;
         }
         ImGui::EndDisabled();
+        // Eine neue Entity unter das Fadenkreuz (gui/app_mission.cpp).
+        ImGui::SameLine();
+        ImGui::BeginDisabled(g_app->geo.empty());
+        if (ImGui::SmallButton(tr(Str::EntNew))) {
+            ImGui::OpenPopup("##entneu");
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", tr(Str::EntNewHint));
+        }
+        if (ImGui::BeginPopup("##entneu")) {
+            entityNeuMenue(false);
+            ImGui::EndPopup();
+        }
         ImGui::SetCursorPosY(top + l.headerH);
         // Ein leeres Element als Anker: ImGui verlangt nach SetCursorPos ein
         // abgeschicktes Element, sonst bricht es ab. Was danach kommt, kann
@@ -10244,6 +10272,27 @@ void uebersetzen() { doCompile(); }
 void alleSpeichern() { doSaveAll(); }
 bool speichernUnterPfad(const std::string& p) { return speichernUnterPfadI(p); }
 
+bool reiterSpeichernUnter(int reiter, const std::string& pfad) {
+    if (reiter < 0 || reiter >= static_cast<int>(g_app->tabs.size())) {
+        return false;
+    }
+    const auto pfadVon = [reiter]() -> std::string& {
+        return reiter == g_app->activeTab ? g_app->path : g_app->tabs[static_cast<std::size_t>(reiter)].path;
+    };
+    const std::string vorher = pfadVon();
+    if (!pfad.empty()) {
+        pfadVon() = pfad;
+    }
+    if (pfadVon().empty()) {
+        return false;
+    }
+    const bool ok = speichereReiterI(reiter);
+    if (!ok && !g_app->frageOffen) {
+        pfadVon() = vorher;
+    }
+    return ok;
+}
+
 
 // Eine Zeile ueber ihren WEG auswaehlen und sichtbar machen.
 //
@@ -13106,9 +13155,27 @@ void vergissEntities(const std::string& kennung) {
     g_app->entitiesJeKarte.erase(kennung);
 }
 
+bool kartenBytes(const std::string& id, std::string& out) {
+    if (id.empty()) {
+        return false;
+    }
+    if (readFromArchives(id, out)) {
+        return true;
+    }
+    const auto q = g_app->kartenQuelle.find(id);
+    if (q == g_app->kartenQuelle.end() || q->second == id) {
+        return false;
+    }
+    if (q->second.find(':') != std::string::npos || q->second.find('\\') != std::string::npos) {
+        out = slurp(q->second);
+        return !out.empty();
+    }
+    return kartenBytes(q->second, out);
+}
+
 bool loadMapFromArchive(const std::string& id) {
     std::string data;
-    if (id.empty() || !readFromArchives(id, data)) {
+    if (id.empty() || !kartenBytes(id, data)) {
         return false;
     }
     loadMapFromBytes(data, id);
@@ -13790,6 +13857,11 @@ bool confirmQuit() {
     }
     // Ist gerade eine Frage offen, nicht noch eine anstossen.
     if (g_app->askSaveOpen) {
+        return false;
+    }
+    // Entities einer Mission, die noch nicht gespeichert sind - sie stehen in
+    // keinem Reiter, die Skriptfragen unten saehen sie nicht.
+    if (!missionBeendenFrage()) {
         return false;
     }
     // ALLE Reiter pruefen, nicht nur den aktiven.
@@ -15307,6 +15379,8 @@ void draw() {
         drawPrefs();
         drawPk3Browser();
         drawMissionPicker();
+        drawNeueMission();
+        drawMissionSpeichern();
         drawAbout();
     }
     selbsttest();   // nur mit BHED_EDITORTEST, siehe selbsttest.cpp

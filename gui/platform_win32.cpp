@@ -259,6 +259,16 @@ std::string settingsDirectory() {
 }
 
 
+std::string dokumenteOrdner() {
+    wchar_t* docs = nullptr;
+    std::string dir;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &docs))) {
+        dir = toUtf8(docs);
+        CoTaskMemFree(docs);
+    }
+    return dir;
+}
+
 void openInExplorer(const std::string& folder) {
     ShellExecuteW(nullptr, L"open", toWide(folder).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }

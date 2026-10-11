@@ -1,0 +1,200 @@
+# Eigene Erklaerungen fuer den Entity-Inspektor (BehavEd-Remake, 11.10.2026).
+# Selbst geschrieben - keine Saetze aus dem Spielquelltext.
+#
+# art | klasse | name | en | de | zh | ja
+#   art     class (name "-"), flag oder key
+#   klasse  * = gilt fuer jede Klasse, die das Feld hat (ein eigener Eintrag geht vor)
+# Getrennt wird mit " | " (Leerzeichen, Strich, Leerzeichen).
+
+# --- Felder, die viele Klassen haben ---
+key | * | targetname | Name of this entity. Other entities fire it with target, scripts with use ( "name" ). | Name dieser Entity. Andere lösen sie mit target aus, Skripte mit use ( "name" ). | 此实体的名称。其他实体用 target 触发它,脚本用 use ( "name" )。 | このエンティティの名前。他のエンティティは target で、スクリプトは use ( "name" ) で起動します。
+key | * | target | When this entity fires, every entity whose targetname is this name is triggered. | Löst diese Entity aus, werden alle Entities mit diesem targetname ausgelöst. | 此实体触发时,所有 targetname 为该名称的实体都会被触发。 | このエンティティが作動すると、この名前を targetname に持つすべてのエンティティが起動します。
+key | * | target2 | A second target, fired on a special event of this class. | Ein zweites Ziel, ausgelöst bei einem besonderen Ereignis dieser Klasse. | 第二个目标,在此类的特殊事件时触发。 | 2 番目のターゲット。このクラスの特別なイベントで起動します。
+key | * | script_targetname | Name scripts use for this entity (affect, kill, remove). | Name, unter dem Skripte diese Entity ansprechen (affect, kill, remove). | 脚本引用此实体时使用的名称 (affect、kill、remove)。 | スクリプトがこのエンティティを指す名前 (affect、kill、remove)。
+key | * | NPC_targetname | Name of the character - scripts control it with affect ( "name", ... ). | Name der Figur - Skripte steuern sie mit affect ( "name", ... ). | 角色的名称 - 脚本用 affect ( "name", ... ) 控制它。 | キャラクターの名前 - スクリプトは affect ( "name", ... ) で操作します。
+key | * | origin | Position x y z in map units. | Position x y z in Karteneinheiten. | 位置 x y z (地图单位)。 | 位置 x y z (マップ単位)。
+key | * | angle | Facing in degrees: 0 = +x (east), 90 = +y (north), 180 = west, 270 = south. | Blickrichtung in Grad: 0 = +x (Osten), 90 = +y (Norden), 180 = Westen, 270 = Süden. | 朝向 (度): 0 = +x (东), 90 = +y (北), 180 = 西, 270 = 南。 | 向き (度): 0 = +x (東)、90 = +y (北)、180 = 西、270 = 南。
+key | * | angles | Direction as pitch yaw roll in degrees. | Richtung als Neigung, Drehung, Rollen in Grad. | 方向:俯仰 偏航 翻滚 (度)。 | 向き:ピッチ ヨー ロール (度)。
+key | * | spawnflags | Sum of the checked flags - set them with the checkboxes. | Summe der gesetzten Flags - am besten mit den Häkchen setzen. | 已勾选标志的总和 - 用复选框设置即可。 | チェックしたフラグの合計 - チェックボックスで設定してください。
+key | * | model | Model: *1, *2 ... is a brush model of the map, otherwise a path to an .md3 or .glm. | Modell: *1, *2 ... ist ein Brush-Modell der Karte, sonst ein Pfad zu einer .md3 oder .glm. | 模型:*1、*2 ... 是地图中的笔刷模型,否则是 .md3 或 .glm 的路径。 | モデル:*1、*2 ... はマップのブラシモデル、それ以外は .md3 / .glm のパス。
+key | * | wait | Seconds before it can fire again. | Sekunden, bis es wieder auslösen kann. | 再次触发前的秒数。 | 再び作動できるまでの秒数。
+key | * | delay | Seconds between being triggered and acting. | Sekunden zwischen dem Auslösen und der Wirkung. | 被触发到生效之间的秒数。 | 起動されてから動作するまでの秒数。
+key | * | random | Random extra time in seconds, added to wait or delay. | Zufällige Zusatzzeit in Sekunden zu wait oder delay. | 加到 wait 或 delay 上的随机秒数。 | wait や delay に加わるランダムな秒数。
+key | * | count | How many times it can fire (-1 = unlimited). | Wie oft es auslösen kann (-1 = unbegrenzt). | 可触发的次数 (-1 = 无限)。 | 作動できる回数 (-1 = 無制限)。
+key | * | health | Hit points. | Lebenspunkte. | 生命值。 | 体力。
+key | * | team | Only this team counts: player, enemy or neutral. | Nur dieses Team zählt: player, enemy oder neutral. | 仅此阵营有效: player、enemy 或 neutral。 | このチームだけが対象: player、enemy、neutral。
+key | * | noise | Sound file, e.g. sound/movers/doors/door1.wav. | Klangdatei, z. B. sound/movers/doors/door1.wav. | 声音文件,例如 sound/movers/doors/door1.wav。 | サウンドファイル。例: sound/movers/doors/door1.wav。
+key | * | spawnscript | Script that runs once when it appears. | Skript, das einmal beim Erscheinen läuft. | 出现时运行一次的脚本。 | 出現時に一度実行されるスクリプト。
+key | * | usescript | Script that runs when it is used or triggered. | Skript, das beim Benutzen oder Auslösen läuft. | 被使用或触发时运行的脚本。 | 使用または起動されたときに実行されるスクリプト。
+key | * | awakescript | Script that runs when it first notices an enemy. | Skript, das läuft, wenn es zum ersten Mal einen Gegner bemerkt. | 首次发现敌人时运行的脚本。 | 初めて敵に気づいたときに実行されるスクリプト。
+key | * | angerscript | Script that runs when it gets an enemy and becomes angry. | Skript, das läuft, wenn es einen Gegner bekommt und wütend wird. | 获得敌人并被激怒时运行的脚本。 | 敵を得て怒ったときに実行されるスクリプト。
+key | * | attackscript | Script that runs when it attacks. | Skript, das beim Angreifen läuft. | 攻击时运行的脚本。 | 攻撃するときに実行されるスクリプト。
+key | * | victoryscript | Script that runs when it has killed its enemy. | Skript, das läuft, wenn es seinen Gegner getötet hat. | 杀死敌人后运行的脚本。 | 敵を倒したときに実行されるスクリプト。
+key | * | lostenemyscript | Script that runs when it loses track of its enemy. | Skript, das läuft, wenn es seinen Gegner aus den Augen verliert. | 失去敌人踪迹时运行的脚本。 | 敵を見失ったときに実行されるスクリプト。
+key | * | painscript | Script that runs when it is hurt. | Skript, das läuft, wenn es verletzt wird. | 受伤时运行的脚本。 | ダメージを受けたときに実行されるスクリプト。
+key | * | fleescript | Script that runs when it is hurt below half of its health. | Skript, das läuft, wenn es unter die Hälfte seiner Lebenspunkte fällt. | 生命值降到一半以下时运行的脚本。 | 体力が半分を下回ったときに実行されるスクリプト。
+key | * | deathscript | Script that runs when it dies - the usual way to start the next scene of a mission. | Skript, das beim Tod läuft - der übliche Weg zur nächsten Szene einer Mission. | 死亡时运行的脚本 - 通常用来开始任务的下一个场景。 | 死亡時に実行されるスクリプト - ミッションの次の場面へ進む定番の方法。
+key | * | delayscript | Script that runs delayscripttime milliseconds after it appears. | Skript, das delayscripttime Millisekunden nach dem Erscheinen läuft. | 出现 delayscripttime 毫秒后运行的脚本。 | 出現から delayscripttime ミリ秒後に実行されるスクリプト。
+key | * | blockedscript | Script that runs when its way is blocked. | Skript, das läuft, wenn sein Weg versperrt ist. | 道路被阻挡时运行的脚本。 | 進路がふさがれたときに実行されるスクリプト。
+key | * | ffirescript | Script that runs when the player shoots it (friendly fire). | Skript, das läuft, wenn der Spieler darauf schießt (Eigenbeschuss). | 被玩家射击时运行的脚本 (误伤)。 | プレイヤーに撃たれたときに実行されるスクリプト (同士討ち)。
+key | * | ffdeathscript | Script that runs when the player kills it. | Skript, das läuft, wenn der Spieler es tötet. | 被玩家杀死时运行的脚本。 | プレイヤーに倒されたときに実行されるスクリプト。
+key | * | mindtrickscript | Script that runs when a Jedi mind trick hits it. | Skript, das bei einem Jedi-Gedankentrick läuft. | 受到绝地精神控制时运行的脚本。 | ジェダイのマインドトリックを受けたときに実行されるスクリプト。
+key | * | splashDamage | Damage dealt around it. | Schaden in der Umgebung. | 对周围造成的伤害。 | 周囲へのダメージ。
+key | * | splashRadius | Radius of that damage in map units. | Radius dieses Schadens in Karteneinheiten. | 该伤害的半径 (地图单位)。 | そのダメージの半径 (マップ単位)。
+
+# --- NPC_spawner ---
+class | NPC_spawner | - | Spawns a character. Without a targetname it appears at map start; with one only when it is used, e.g. by a script with use ( "name" ). | Lässt eine Figur erscheinen. Ohne targetname zu Kartenbeginn, mit targetname erst, wenn sie benutzt wird - z. B. im Skript mit use ( "name" ). | 生成一个角色。没有 targetname 时在地图开始时出现;有 targetname 时只在被使用时出现,例如脚本中的 use ( "name" )。 | キャラクターを出現させます。targetname がなければマップ開始時に、あれば使用されたとき (例: スクリプトの use ( "name" )) に出現します。
+flag | NPC_spawner | DROPTOFLOOR | Puts the character on the floor below when it appears. | Stellt die Figur beim Erscheinen auf den Boden darunter. | 出现时把角色放到下方的地面上。 | 出現時にキャラクターを真下の床に置きます。
+flag | NPC_spawner | CINEMATIC | Starts without AI - the character only does what scripts tell it. Right for cutscenes. | Startet ohne KI - die Figur tut nur, was Skripte sagen. Richtig für Zwischensequenzen. | 开始时没有 AI - 角色只执行脚本的指令。适合过场动画。 | AI なしで開始 - キャラクターはスクリプトの指示だけに従います。カットシーン向け。
+flag | NPC_spawner | NOTSOLID | Starts not solid - others walk through it. | Startet nicht fest - andere laufen hindurch. | 开始时不是实体 - 其他人可以穿过。 | 当たり判定なしで開始 - 他者が通り抜けます。
+flag | NPC_spawner | STARTINSOLID | Appears even if the spot is blocked (no check). | Erscheint auch, wenn die Stelle versperrt ist (keine Prüfung). | 即使位置被挡住也会出现 (不检查)。 | 場所がふさがっていても出現します (チェックなし)。
+flag | NPC_spawner | SHY | Waits until the player cannot see the spot before spawning. | Wartet mit dem Erscheinen, bis der Spieler die Stelle nicht sieht. | 等到玩家看不见该位置时才生成。 | プレイヤーから見えなくなるまで出現を待ちます。
+flag | NPC_spawner | SAFE | Does not spawn while anyone is closer than 64 units. | Erscheint nicht, solange jemand näher als 64 Einheiten ist. | 有人在 64 单位以内时不生成。 | 64 ユニット以内に誰かいる間は出現しません。
+key | NPC_spawner | NPC_type | Character type from the .npc files, e.g. md_ahsoka_s7. Pick one with the ... button. | Figurentyp aus den .npc-Dateien, z. B. md_ahsoka_s7. Mit dem Knopf ... auswählen. | .npc 文件中的角色类型,例如 md_ahsoka_s7。用 ... 按钮选择。 | .npc ファイルのキャラクタータイプ。例: md_ahsoka_s7。... ボタンで選べます。
+key | NPC_spawner | targetname | Name of the spawner. use ( "name" ) makes the character appear; empty = it appears at map start. | Name des Spawners. use ( "name" ) lässt die Figur erscheinen; leer = sie erscheint zu Kartenbeginn. | 生成器的名称。use ( "name" ) 会让角色出现;留空 = 地图开始时出现。 | スポナーの名前。use ( "name" ) でキャラクターが出現します。空欄 = マップ開始時に出現。
+key | NPC_spawner | target | Fired when the spawner has spawned its last character. | Wird ausgelöst, wenn der Spawner seine letzte Figur erzeugt hat. | 生成器生成最后一个角色时触发。 | スポナーが最後のキャラクターを出現させたときに起動します。
+key | NPC_spawner | target2 | Special case for stasis spawners - normally not needed. | Sonderfall für Stasis-Spawner - normalerweise nicht nötig. | 静止生成器的特殊情况 - 通常不需要。 | ステーシス・スポナー用の特殊ケース - 通常は不要。
+key | NPC_spawner | target3 | Fired when spawning is blocked and wait is negative. | Wird ausgelöst, wenn das Erscheinen blockiert ist und wait negativ ist. | 生成被阻挡且 wait 为负数时触发。 | 出現がふさがれ、wait が負のときに起動します。
+key | NPC_spawner | count | How many characters it spawns when it is used (default 1). | Wie viele Figuren beim Benutzen erscheinen (Vorgabe 1). | 被使用时生成的角色数量 (默认 1)。 | 使用時に出現するキャラクター数 (既定 1)。
+key | NPC_spawner | delay | Seconds between being used and spawning. | Sekunden zwischen Benutzen und Erscheinen. | 从被使用到生成之间的秒数。 | 使用されてから出現するまでの秒数。
+key | NPC_spawner | wait | If the spot is blocked: seconds until the next try (negative = give up). | Ist die Stelle versperrt: Sekunden bis zum nächsten Versuch (negativ = aufgeben). | 位置被挡住时:下次尝试前的秒数 (负数 = 放弃)。 | 場所がふさがっているとき: 次に試すまでの秒数 (負 = あきらめる)。
+key | NPC_spawner | NPC_target | Fired when the character dies. | Wird ausgelöst, wenn die Figur stirbt. | 角色死亡时触发。 | キャラクターが死んだときに起動します。
+key | NPC_spawner | NPC_target2 | Fired when the character is knocked out. | Wird ausgelöst, wenn die Figur bewusstlos wird. | 角色被击昏时触发。 | キャラクターが気絶したときに起動します。
+key | NPC_spawner | NPC_target4 | Fired when the character is killed by friendly fire. | Wird ausgelöst, wenn die Figur durch Eigenbeschuss stirbt. | 角色被误伤致死时触发。 | キャラクターが同士討ちで死んだときに起動します。
+key | NPC_spawner | health | Starting health of the character (default 100). | Anfangs-Lebenspunkte der Figur (Vorgabe 100). | 角色的初始生命值 (默认 100)。 | キャラクターの初期体力 (既定 100)。
+key | NPC_spawner | noBasicSounds | 1 = no pain and death sounds. | 1 = keine Schmerz- und Todesklänge. | 1 = 没有受伤和死亡声音。 | 1 = 痛みと死亡の音なし。
+key | NPC_spawner | noCombatSounds | 1 = no combat sounds (anger, victory). | 1 = keine Kampfklänge (Wut, Sieg). | 1 = 没有战斗声音 (愤怒、胜利)。 | 1 = 戦闘の音なし (怒り、勝利)。
+key | NPC_spawner | noExtraSounds | 1 = no extra sounds (chasing, flanking, Jedi taunts). | 1 = keine zusätzlichen Klänge (Verfolgen, Flankieren, Jedi-Sprüche). | 1 = 没有额外声音 (追击、包抄、绝地嘲讽)。 | 1 = 追加の音なし (追跡、側面攻撃、ジェダイの挑発)。
+
+# --- waypoint_navgoal ---
+class | waypoint_navgoal | - | A walk target for scripts: set ( "SET_NAVGOAL", "name" ) sends a character here. Not part of the waypoint network. | Ein Laufziel für Skripte: set ( "SET_NAVGOAL", "name" ) schickt eine Figur hierher. Gehört nicht zum Wegpunktnetz. | 供脚本使用的行走目标: set ( "SET_NAVGOAL", "name" ) 让角色走到这里。不属于路点网络。 | スクリプト用の移動先: set ( "SET_NAVGOAL", "name" ) でキャラクターをここへ向かわせます。ウェイポイント網には含まれません。
+flag | waypoint_navgoal | SOLID_OK | May be inside solid - only if the spot is free during the game (e.g. under a lift). | Darf in fester Geometrie liegen - nur wenn die Stelle im Spiel frei ist (z. B. unter einem Aufzug). | 可以位于实体内 - 仅当游戏中该处是空的 (例如电梯下方)。 | ソリッド内でも可 - ゲーム中にその場所が空く場合のみ (例: エレベーターの下)。
+flag | waypoint_navgoal | DROP_TO_FLOOR | Puts it on the floor below. | Stellt es auf den Boden darunter. | 放到下方的地面上。 | 真下の床に置きます。
+flag | waypoint_navgoal | NO_AUTO_CONNECT | Not connected to other points automatically. | Wird nicht automatisch mit anderen Punkten verbunden. | 不会自动连接到其他点。 | 他のポイントと自動接続しません。
+key | waypoint_navgoal | targetname | The name used in SET_NAVGOAL. | Der Name für SET_NAVGOAL. | 用于 SET_NAVGOAL 的名称。 | SET_NAVGOAL で使う名前。
+key | waypoint_navgoal | radius | How close a character must get to count as arrived (0 = must touch it). | Wie nah eine Figur kommen muss, um als angekommen zu gelten (0 = berühren). | 角色需要多近才算到达 (0 = 必须碰到)。 | 到着とみなす距離 (0 = 触れる必要あり)。
+
+# --- ref_tag, target_position, info_notnull ---
+class | ref_tag | - | A named mark with position and direction. Cameras use it: camera ( MOVE, tag ( "name", ORIGIN ), ... ) and tag ( "name", ANGLES ). | Eine benannte Marke mit Ort und Richtung. Kameras nutzen sie: camera ( MOVE, tag ( "name", ORIGIN ), ... ) und tag ( "name", ANGLES ). | 带有位置和方向的命名标记。摄像机会用到: camera ( MOVE, tag ( "name", ORIGIN ), ... ) 和 tag ( "name", ANGLES )。 | 位置と向きを持つ名前付きマーク。カメラが使います: camera ( MOVE, tag ( "name", ORIGIN ), ... ) と tag ( "name", ANGLES )。
+key | ref_tag | targetname | Name of the mark, used in tag ( "name", ... ). | Name der Marke, benutzt in tag ( "name", ... ). | 标记名称,用于 tag ( "name", ... )。 | マークの名前。tag ( "name", ... ) で使います。
+key | ref_tag | ownername | Groups marks under an owner name. | Fasst Marken unter einem Besitzernamen zusammen. | 将标记归入一个所有者名称下。 | マークを所有者名でまとめます。
+key | ref_tag | target | Points the mark at another entity to set its direction. | Richtet die Marke auf eine andere Entity aus. | 让标记指向另一个实体以确定方向。 | マークを別のエンティティに向けて向きを決めます。
+class | target_position | - | A plain point in the map - a look target (SET_LOOK_TARGET) or a direction for other entities. | Ein einfacher Punkt in der Karte - ein Blickziel (SET_LOOK_TARGET) oder eine Richtung für andere Entities. | 地图中的普通点 - 注视目标 (SET_LOOK_TARGET) 或其他实体的方向。 | マップ上の単純な点 - 注視先 (SET_LOOK_TARGET) や他のエンティティの向きに使います。
+class | info_notnull | - | A plain point in the map - a look target or a direction for other entities. | Ein einfacher Punkt in der Karte - ein Blickziel oder eine Richtung für andere Entities. | 地图中的普通点 - 注视目标或其他实体的方向。 | マップ上の単純な点 - 注視先や他のエンティティの向きに使います。
+
+# --- target_scriptrunner ---
+class | target_scriptrunner | - | Runs a script when it is triggered. A new mission starts its intro this way: the player start fires the runner. | Startet ein Skript, wenn es ausgelöst wird. Eine neue Mission startet so ihr Intro: der Spielerstart löst den Runner aus. | 被触发时运行脚本。新任务就是这样开始开场的:玩家出生点触发运行器。 | 起動されるとスクリプトを実行します。新しいミッションはこの方法でイントロを開始します: プレイヤー開始位置がランナーを起動します。
+flag | target_scriptrunner | runonactivator | Runs the script on whoever triggered it, not on the runner. | Führt das Skript auf dem aus, der ausgelöst hat, nicht auf dem Runner. | 在触发者身上运行脚本,而不是在运行器上。 | ランナーではなく、起動した者に対してスクリプトを実行します。
+flag | target_scriptrunner | INACTIVE | Starts switched off until a script activates it. | Startet ausgeschaltet, bis ein Skript es einschaltet. | 开始时关闭,直到脚本将其启用。 | スクリプトで有効にするまでオフで開始します。
+key | target_scriptrunner | usescript | Script to run - path under scripts/ without extension, e.g. md_mission/intro. | Das Skript - Pfad unter scripts/ ohne Endung, z. B. md_mission/intro. | 要运行的脚本 - scripts/ 下的路径,不带扩展名,例如 md_mission/intro。 | 実行するスクリプト - scripts/ 以下のパス (拡張子なし)。例: md_mission/intro。
+key | target_scriptrunner | count | How often it can run (-1 = every time; default once). | Wie oft es laufen kann (-1 = jedes Mal; Vorgabe einmal). | 可运行的次数 (-1 = 每次;默认一次)。 | 実行できる回数 (-1 = 毎回、既定は 1 回)。
+
+# --- fx_runner ---
+class | fx_runner | - | Plays an effect file (.efx) at this spot. | Spielt eine Effektdatei (.efx) an dieser Stelle ab. | 在此处播放特效文件 (.efx)。 | この場所でエフェクトファイル (.efx) を再生します。
+flag | fx_runner | STARTOFF | Starts off - each use switches it on or off. | Startet aus - jedes Benutzen schaltet ein oder aus. | 开始时关闭 - 每次使用切换开/关。 | オフで開始 - 使用するたびにオン/オフが切り替わります。
+flag | fx_runner | ONESHOT | Plays once each time it is used. | Spielt bei jedem Benutzen einmal. | 每次使用时播放一次。 | 使用するたびに一度再生します。
+flag | fx_runner | DAMAGE | Also deals damage around it (splashDamage, splashRadius). | Macht zusätzlich Schaden in der Umgebung (splashDamage, splashRadius). | 同时对周围造成伤害 (splashDamage、splashRadius)。 | 周囲にもダメージを与えます (splashDamage、splashRadius)。
+key | fx_runner | fxFile | Effect file under effects/, e.g. env/fire. | Effektdatei unter effects/, z. B. env/fire. | effects/ 下的特效文件,例如 env/fire。 | effects/ 以下のエフェクトファイル。例: env/fire。
+key | fx_runner | target | Points the effect at this entity (otherwise it points up). | Richtet den Effekt auf diese Entity aus (sonst nach oben). | 让特效指向该实体 (否则朝上)。 | エフェクトをこのエンティティに向けます (指定なしなら上向き)。
+key | fx_runner | target2 | Fired each time the effect plays. | Wird bei jedem Abspielen ausgelöst. | 每次播放特效时触发。 | エフェクトが再生されるたびに起動します。
+key | fx_runner | delay | Milliseconds between repeats (default 200). | Millisekunden zwischen Wiederholungen (Vorgabe 200). | 重复间隔毫秒数 (默认 200)。 | 繰り返しの間隔 (ミリ秒、既定 200)。
+key | fx_runner | random | Random extra milliseconds per repeat. | Zufällige Zusatz-Millisekunden je Wiederholung. | 每次重复额外的随机毫秒数。 | 繰り返しごとのランダムな追加ミリ秒。
+key | fx_runner | soundset | Sound set for start, loop and stop sounds. | Klangsatz für Start-, Schleifen- und Stoppklang. | 开始、循环和停止声音的声音组。 | 開始・ループ・停止音のサウンドセット。
+
+# --- target_speaker ---
+class | target_speaker | - | Plays a sound file here - all the time, or when it is used. | Spielt hier eine Klangdatei - dauernd oder beim Benutzen. | 在此处播放声音文件 - 持续播放或在使用时播放。 | ここでサウンドファイルを再生します - 常時、または使用時に。
+flag | target_speaker | looped-on | Loops and starts switched on. | Läuft in Schleife, beginnt eingeschaltet. | 循环播放,开始时开启。 | ループ再生、オンで開始。
+flag | target_speaker | looped-off | Loops and starts switched off - using it switches it. | Läuft in Schleife, beginnt ausgeschaltet - Benutzen schaltet um. | 循环播放,开始时关闭 - 使用时切换。 | ループ再生、オフで開始 - 使用で切り替え。
+flag | target_speaker | global | Heard everywhere in the map. | Überall in der Karte zu hören. | 在整个地图都能听到。 | マップ全体で聞こえます。
+flag | target_speaker | activator | Played only for whoever triggered it. | Nur für den zu hören, der ausgelöst hat. | 仅对触发者播放。 | 起動した者にだけ聞こえます。
+key | target_speaker | noise | Sound file, e.g. sound/movers/doors/door1.wav. | Klangdatei, z. B. sound/movers/doors/door1.wav. | 声音文件,例如 sound/movers/doors/door1.wav。 | サウンドファイル。例: sound/movers/doors/door1.wav。
+key | target_speaker | wait | Seconds between plays when it is not looping (0 = only when used). | Sekunden zwischen den Wiedergaben ohne Schleife (0 = nur beim Benutzen). | 不循环时两次播放之间的秒数 (0 = 仅在使用时)。 | ループしないときの再生間隔 (秒、0 = 使用時のみ)。
+
+# --- target_play_music ---
+class | target_play_music | - | Changes the music when it is used. | Wechselt beim Benutzen die Musik. | 使用时切换音乐。 | 使用されると音楽を切り替えます。
+key | target_play_music | music | Music file, e.g. music/mp/MP_action4.mp3. | Musikdatei, z. B. music/mp/MP_action4.mp3. | 音乐文件,例如 music/mp/MP_action4.mp3。 | 音楽ファイル。例: music/mp/MP_action4.mp3。
+
+# --- target_level_change ---
+class | target_level_change | - | Ends the mission: loads the next map when it is used. | Beendet die Mission: lädt beim Benutzen die nächste Karte. | 结束任务:使用时加载下一张地图。 | ミッションを終了します: 使用されると次のマップを読み込みます。
+flag | target_level_change | HUB | Keeps the state of this map and loads the next map with its saved state. | Behält den Zustand dieser Karte und lädt die nächste mit ihrem gespeicherten Zustand. | 保留此地图的状态,并以保存的状态加载下一张地图。 | このマップの状態を保持し、次のマップを保存された状態で読み込みます。
+flag | target_level_change | NO_STORYSOUND | Does not play the story sound. | Spielt den Storyklang nicht. | 不播放剧情声音。 | ストーリー音を再生しません。
+key | target_level_change | mapname | Map to load next, or +menuname to open a menu instead. | Die nächste Karte, oder +menuname, um stattdessen ein Menü zu öffnen. | 下一张地图,或用 +menuname 改为打开菜单。 | 次に読み込むマップ。+menuname なら代わりにメニューを開きます。
+key | target_level_change | target | Spawn point to start at in the next map. | Startpunkt in der nächsten Karte. | 下一张地图中的出生点。 | 次のマップの開始地点。
+key | target_level_change | tier_storyinfo | Story value of the original campaign - usually not needed. | Story-Wert der Originalkampagne - meist nicht nötig. | 原版战役的剧情值 - 通常不需要。 | オリジナルキャンペーン用のストーリー値 - 通常は不要。
+key | target_level_change | storyhead | Head shown in the story menu of the original campaign. | Kopf im Storymenü der Originalkampagne. | 原版战役剧情菜单中显示的头像。 | オリジナルキャンペーンのストーリーメニューに表示される顔。
+key | target_level_change | saber_menu | Saber menu value of the original campaign. | Wert für das Schwertmenü der Originalkampagne. | 原版战役的光剑菜单值。 | オリジナルキャンペーンのセイバーメニュー値。
+key | target_level_change | weapon_menu | Weapon menu value of the original campaign. | Wert für das Waffenmenü der Originalkampagne. | 原版战役的武器菜单值。 | オリジナルキャンペーンの武器メニュー値。
+
+# --- info_player_start ---
+class | info_player_start | - | Where the player starts. Its target fires when the player appears - a new mission starts the intro this way. | Hier beginnt der Spieler. Sein target wird beim Erscheinen ausgelöst - so startet eine neue Mission ihr Intro. | 玩家的起点。玩家出现时触发其 target - 新任务就这样开始开场。 | プレイヤーの開始位置。出現時に target が起動します - 新しいミッションはこの方法でイントロを始めます。
+flag | info_player_start | KEEP_PREV | Keeps health and armor from the previous map. | Behält Lebenspunkte und Rüstung der vorigen Karte. | 保留上一张地图的生命值和护甲。 | 前のマップの体力とアーマーを引き継ぎます。
+flag | info_player_start | DROPTOFLOOR | Puts the player on the floor below. | Stellt den Spieler auf den Boden darunter. | 把玩家放到下方的地面上。 | プレイヤーを真下の床に置きます。
+flag | info_player_start | STUN_BATON | Starts with stun baton and pistol instead of the saber. | Beginnt mit Schockstab und Pistole statt Lichtschwert. | 以电击棒和手枪开始,而不是光剑。 | ライトセーバーの代わりにスタンバトンとピストルで開始します。
+flag | info_player_start | NOWEAPON | Starts without weapons. | Beginnt ohne Waffen. | 开始时没有武器。 | 武器なしで開始します。
+key | info_player_start | target | Fired when the player appears - e.g. the script runner of the intro. | Wird beim Erscheinen des Spielers ausgelöst - z. B. der Scriptrunner des Intros. | 玩家出现时触发 - 例如开场的脚本运行器。 | プレイヤー出現時に起動 - 例: イントロのスクリプトランナー。
+
+# --- trigger_once, trigger_multiple ---
+class | trigger_once | - | An area (brush of the map) that fires its target once when someone enters it. | Ein Bereich (Brush der Karte), der einmal sein target auslöst, wenn jemand hineingeht. | 一个区域 (地图笔刷),有人进入时触发一次其 target。 | 誰かが入ると target を一度だけ起動する領域 (マップのブラシ)。
+class | trigger_multiple | - | An area (brush of the map) that fires its target every time someone enters it (after wait). | Ein Bereich (Brush der Karte), der sein target jedes Mal auslöst, wenn jemand hineingeht (nach wait). | 一个区域 (地图笔刷),每次有人进入都会触发其 target (间隔 wait)。 | 誰かが入るたびに target を起動する領域 (マップのブラシ、wait の間隔で)。
+flag | trigger_once | PLAYERONLY | Only the player sets it off. | Nur der Spieler löst aus. | 只有玩家能触发。 | プレイヤーだけが作動させます。
+flag | trigger_once | FACING | Only when looking roughly in the trigger's angle direction. | Nur, wenn man ungefähr in Richtung von angle schaut. | 只有大致朝向触发器的 angle 方向时。 | トリガーの angle の方向をおおむね向いているときだけ。
+flag | trigger_once | USE_BUTTON | Only when the use key is pressed inside. | Nur, wenn darin die Benutzen-Taste gedrückt wird. | 只有在其中按下使用键时。 | 中で使用キーを押したときだけ。
+flag | trigger_once | FIRE_BUTTON | Only when attacking inside. | Nur, wenn darin angegriffen wird. | 只有在其中攻击时。 | 中で攻撃したときだけ。
+flag | trigger_once | NPCONLY | Only characters (not the player) set it off. | Nur Figuren (nicht der Spieler) lösen aus. | 只有角色 (不是玩家) 能触发。 | キャラクター (プレイヤー以外) だけが作動させます。
+flag | trigger_once | INACTIVE | Starts switched off until it is activated. | Startet ausgeschaltet, bis es eingeschaltet wird. | 开始时关闭,直到被启用。 | 有効にされるまでオフで開始します。
+flag | trigger_once | MULTIPLE | Several can touch it in the same moment. | Mehrere dürfen es im selben Augenblick berühren. | 多个实体可在同一时刻触碰它。 | 複数が同時に触れられます。
+flag | trigger_multiple | PLAYERONLY | Only the player sets it off. | Nur der Spieler löst aus. | 只有玩家能触发。 | プレイヤーだけが作動させます。
+flag | trigger_multiple | FACING | Only when looking roughly in the trigger's angle direction. | Nur, wenn man ungefähr in Richtung von angle schaut. | 只有大致朝向触发器的 angle 方向时。 | トリガーの angle の方向をおおむね向いているときだけ。
+flag | trigger_multiple | USE_BUTTON | Only when the use key is pressed inside. | Nur, wenn darin die Benutzen-Taste gedrückt wird. | 只有在其中按下使用键时。 | 中で使用キーを押したときだけ。
+flag | trigger_multiple | FIRE_BUTTON | Only when attacking inside. | Nur, wenn darin angegriffen wird. | 只有在其中攻击时。 | 中で攻撃したときだけ。
+flag | trigger_multiple | NPCONLY | Only characters (not the player) set it off. | Nur Figuren (nicht der Spieler) lösen aus. | 只有角色 (不是玩家) 能触发。 | キャラクター (プレイヤー以外) だけが作動させます。
+flag | trigger_multiple | LIMITED_PILOT | Only when a pilot slot is free (vehicles). | Nur, wenn ein Pilotenplatz frei ist (Fahrzeuge). | 只有在有空闲驾驶位时 (载具)。 | パイロット枠が空いているときだけ (乗り物)。
+flag | trigger_multiple | INACTIVE | Starts switched off until it is activated. | Startet ausgeschaltet, bis es eingeschaltet wird. | 开始时关闭,直到被启用。 | 有効にされるまでオフで開始します。
+flag | trigger_multiple | MULTIPLE | Several can touch it in the same moment. | Mehrere dürfen es im selben Augenblick berühren. | 多个实体可在同一时刻触碰它。 | 複数が同時に触れられます。
+key | trigger_once | NPC_targetname | Only the character with this name sets it off. | Nur die Figur mit diesem Namen löst aus. | 只有该名称的角色能触发。 | この名前のキャラクターだけが作動させます。
+key | trigger_multiple | NPC_targetname | Only the character with this name sets it off. | Nur die Figur mit diesem Namen löst aus. | 只有该名称的角色能触发。 | この名前のキャラクターだけが作動させます。
+
+# --- target_delay, target_relay ---
+class | target_delay | - | Fires its target after a delay. | Löst sein target nach einer Wartezeit aus. | 延迟后触发其 target。 | 一定時間後に target を起動します。
+key | target_delay | wait | Seconds to wait before firing. | Sekunden bis zum Auslösen. | 触发前等待的秒数。 | 起動するまでの秒数。
+key | target_delay | random | Random extra seconds (+/-). | Zufällige Zusatzsekunden (+/-). | 随机额外秒数 (+/-)。 | ランダムな追加秒数 (+/-)。
+class | target_relay | - | Passes a trigger on to its targets - delayed, or to one random target. | Gibt ein Auslösen an seine targets weiter - verzögert oder an ein zufälliges. | 把触发传递给其 target - 可延迟,或只传给一个随机目标。 | 起動を target に中継します - 遅延付き、またはランダムな 1 つへ。
+flag | target_relay | RED_ONLY | Only for team red (multiplayer). | Nur für Team Rot (Multiplayer). | 仅限红队 (多人游戏)。 | 赤チームのみ (マルチプレイ)。
+flag | target_relay | BLUE_ONLY | Only for team blue (multiplayer). | Nur für Team Blau (Multiplayer). | 仅限蓝队 (多人游戏)。 | 青チームのみ (マルチプレイ)。
+flag | target_relay | RANDOM | Fires only one of its targets, picked at random. | Löst nur eines seiner targets aus, zufällig gewählt. | 只随机触发其中一个 target。 | target のうちランダムに 1 つだけを起動します。
+flag | target_relay | INACTIVE | Starts switched off until it is activated. | Startet ausgeschaltet, bis es eingeschaltet wird. | 开始时关闭,直到被启用。 | 有効にされるまでオフで開始します。
+
+# --- func_door, func_static, misc_model_breakable ---
+class | func_door | - | A door made from a brush of the map. | Eine Tür aus einem Brush der Karte. | 由地图笔刷制成的门。 | マップのブラシで作られたドア。
+flag | func_door | START_OPEN | Starts open and closes when triggered. | Beginnt offen und schließt beim Auslösen. | 开始时打开,触发时关闭。 | 開いた状態で始まり、起動すると閉まります。
+flag | func_door | FORCE_ACTIVATE | Opens only with Force push or pull. | Öffnet nur mit Machtstoß oder Machtziehen. | 只能用原力推或拉打开。 | フォースプッシュかプルでのみ開きます。
+flag | func_door | CRUSHER | Does not turn back when blocked - it crushes. | Weicht nicht zurück, wenn etwas im Weg ist - es zerquetscht. | 被阻挡时不会退回 - 会挤压。 | ふさがれても戻らず、押しつぶします。
+flag | func_door | TOGGLE | Stays open until it is used again. | Bleibt offen, bis es wieder benutzt wird. | 保持打开,直到再次使用。 | 再び使用されるまで開いたままです。
+flag | func_door | LOCKED | Locked until it is used once. | Verschlossen, bis es einmal benutzt wird. | 锁住,直到被使用一次。 | 一度使用されるまでロックされています。
+flag | func_door | GOODIE | Opens only for a player who carries a key item. | Öffnet nur für einen Spieler mit Schlüssel-Gegenstand. | 只为携带钥匙物品的玩家打开。 | 鍵アイテムを持つプレイヤーにだけ開きます。
+flag | func_door | PLAYER_USE | The player opens it with the use key. | Der Spieler öffnet sie mit der Benutzen-Taste. | 玩家用使用键打开。 | プレイヤーが使用キーで開けます。
+flag | func_door | INACTIVE | Starts switched off until it is activated. | Startet ausgeschaltet, bis es eingeschaltet wird. | 开始时关闭,直到被启用。 | 有効にされるまでオフで開始します。
+key | func_door | speed | How fast it moves (units per second). | Wie schnell sie sich bewegt (Einheiten pro Sekunde). | 移动速度 (单位/秒)。 | 移動速度 (ユニット/秒)。
+key | func_door | lip | How much of the door stays visible when open (units). | Wie viel der Tür offen noch sichtbar bleibt (Einheiten). | 打开时门仍露出的部分 (单位)。 | 開いたときに見えたまま残る部分 (ユニット)。
+key | func_door | sounds | Which set of door sounds to use. | Welcher Satz Türklänge benutzt wird. | 使用哪组门声音。 | 使うドア音のセット。
+class | func_static | - | A brush model of the map that does nothing on its own - scripts can move or switch it. | Ein Brush-Modell der Karte, das selbst nichts tut - Skripte können es bewegen oder umschalten. | 本身不做任何事的地图笔刷模型 - 脚本可以移动或切换它。 | それ自体は何もしないマップのブラシモデル - スクリプトで動かしたり切り替えたりできます。
+flag | func_static | F_PUSH | Is used when the player Force-pushes it. | Wird benutzt, wenn der Spieler es mit Machtstoß trifft. | 玩家用原力推时被使用。 | プレイヤーがフォースプッシュすると使用されます。
+flag | func_static | F_PULL | Is used when the player Force-pulls it. | Wird benutzt, wenn der Spieler es mit Machtziehen trifft. | 玩家用原力拉时被使用。 | プレイヤーがフォースプルすると使用されます。
+flag | func_static | SWITChShader | Switches the shader frame between 1 and 2 when used. | Wechselt beim Benutzen das Shaderbild zwischen 1 und 2. | 使用时在着色器帧 1 和 2 之间切换。 | 使用するとシェーダーのフレームを 1 と 2 で切り替えます。
+flag | func_static | CRUSHER | Hurts what blocks it while moving. | Verletzt, was es beim Bewegen blockiert. | 移动时伤害阻挡它的物体。 | 動いているときにふさぐものにダメージを与えます。
+flag | func_static | IMPACT | Hurts what it hits while moving. | Verletzt, was es beim Bewegen trifft. | 移动时伤害撞到的物体。 | 動いているときに当たったものにダメージを与えます。
+flag | func_static | PLAYER_USE | The player can use it with the use key. | Der Spieler kann es mit der Benutzen-Taste benutzen. | 玩家可以用使用键使用它。 | プレイヤーが使用キーで使えます。
+flag | func_static | INACTIVE | Starts switched off until it is activated. | Startet ausgeschaltet, bis es eingeschaltet wird. | 开始时关闭,直到被启用。 | 有効にされるまでオフで開始します。
+class | misc_model_breakable | - | A model that can be destroyed. | Ein Modell, das sich zerstören lässt. | 可以被摧毁的模型。 | 破壊できるモデル。
+flag | misc_model_breakable | SOLID | Blocks movement. | Blockiert Bewegung. | 阻挡移动。 | 移動をさえぎります。
+flag | misc_model_breakable | AUTOANIMATE | Plays its animation in a loop. | Spielt seine Animation in Schleife. | 循环播放其动画。 | アニメーションをループ再生します。
+flag | misc_model_breakable | DEADSOLID | Stays solid after it is destroyed. | Bleibt nach dem Zerstören fest. | 被摧毁后仍是实体。 | 破壊後もソリッドのままです。
+flag | misc_model_breakable | NO_DMODEL | Shows no damaged model when destroyed. | Zeigt zerstört kein beschädigtes Modell. | 被摧毁时不显示损坏模型。 | 破壊時に損傷モデルを表示しません。
+flag | misc_model_breakable | NO_SMOKE | No smoke when destroyed. | Kein Rauch beim Zerstören. | 被摧毁时不冒烟。 | 破壊時に煙を出しません。
+flag | misc_model_breakable | USE_MODEL | Switches to its use model (_u1) when used. | Wechselt beim Benutzen auf sein Benutzt-Modell (_u1). | 使用时切换到其使用模型 (_u1)。 | 使用すると使用モデル (_u1) に切り替わります。
+flag | misc_model_breakable | USE_NOT_BREAK | Using it does not break it (damage still can). | Benutzen zerstört es nicht (Schaden schon). | 使用不会使其损坏 (伤害仍会)。 | 使用しても壊れません (ダメージでは壊れます)。
+flag | misc_model_breakable | PLAYER_USE | The player can use it with the use key. | Der Spieler kann es mit der Benutzen-Taste benutzen. | 玩家可以用使用键使用它。 | プレイヤーが使用キーで使えます。
+flag | misc_model_breakable | NO_EXPLOSION | Does not explode when destroyed. | Explodiert beim Zerstören nicht. | 被摧毁时不爆炸。 | 破壊時に爆発しません。
+flag | misc_model_breakable | START_OFF | Invisible until it is used. | Unsichtbar, bis es benutzt wird. | 在被使用前不可见。 | 使用されるまで見えません。
+key | misc_model_breakable | material | Material for the pieces and sounds when it breaks. | Material für Trümmer und Klänge beim Zerbrechen. | 破碎时碎片和声音的材质。 | 壊れたときの破片と音の素材。
+key | misc_model_breakable | modelscale | Size factor of the model (1 = normal). | Größenfaktor des Modells (1 = normal). | 模型的大小倍数 (1 = 正常)。 | モデルの拡大率 (1 = 通常)。

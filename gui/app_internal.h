@@ -150,6 +150,44 @@ struct App {
     // setzt sie von hier wieder ein; wer eine Karte ausdruecklich oeffnet,
     // bekommt sie frisch (vergissEntities).
     std::map<std::string, std::vector<MapEntity>> entitiesJeKarte;
+    // --- Missionsbau (gui/app_mission.cpp) ---------------------------------
+    struct MissionsProjekt {
+        std::string name;           // "md_tpa_jedi" -> maps/md_tpa_jedi.bsp/.ent
+        std::string ordner;         // "md_tpa" -> scripts/md_tpa/
+        std::string karte;          // Kennung der Karte (MapData::path), bei neuen "maps/<name>.bsp"
+        std::string archiv;         // .pk3 einer geladenen Mission (Klaenge, .str ...)
+        std::string projektOrdner;  // Missionsordner auf der Platte
+        std::string zielPk3;        // wohin "Save mission" packt
+    };
+    MissionsProjekt mission;
+    // Woher die Geometrie einer Karte kommt, die es unter ihrer Kennung (noch)
+    // nicht gibt: eine neue Mission heisst "maps/<name>.bsp", ihre .bsp ist
+    // die der Grundkarte - ein Archivname oder ein Plattenpfad. So teilen sich
+    // zwei Missionen auf derselben Grundkarte nie ihre Entities.
+    std::map<std::string, std::string> kartenQuelle;
+    bool missionAktiv = false;
+    bool neueMissionOffen = false;
+    bool missionSpeichernOffen = false;
+    // Karten (Kennung), deren Entities geaendert und nicht gespeichert sind.
+    std::set<std::string> entitiesUngespeichert;
+    bool entFrageBeantwortet = false;   // beim Beenden schon gefragt
+    // Rueckgaengig fuer Entities - eigener Verlauf, gilt fuer EINE Karte.
+    std::vector<std::vector<MapEntity>> entUndo;
+    std::vector<std::vector<MapEntity>> entRedo;
+    std::string entUndoKarte;
+    bool entRawAnsicht = false;         // alle Schluessel roh (wie SmartEdit aus)
+    // Maus ueber der Kartenansicht / der Entity-Spalte (letztes Bild) - dann
+    // wirken Strg+Z, Strg+Y und Entf auf Entities.
+    bool entFokusBild = false;
+    bool entFokusListe = false;
+    struct EntZug {
+        bool kandidat = false;          // auf die gewaehlte Entity gedrueckt
+        bool aktiv = false;             // und gezogen
+        int index = -1;
+        std::vector<MapEntity> vorher;
+    };
+    EntZug entZug;
+    float rechtsklickBild[2] = {-1.0F, -1.0F};   // Bildschirmstelle des kurzen Rechtsklicks
     // Kartenansicht
     BspGeometry geo;
     BspMesh mesh;
@@ -1800,11 +1838,40 @@ std::vector<KameraSchluessel> kameraSchluessel(const Script& script);
 int schluesselFuerZeit(double ms);
 // Eine Karte ueber ihre Kennung aus den Archiven holen (Mission aus .pk3).
 bool loadMapFromArchive(const std::string& id);
+// Die Bytes einer Karte ueber ihre Kennung: aus den Archiven, sonst ueber
+// kartenQuelle (neue Mission).
+bool kartenBytes(const std::string& id, std::string& out);
 // Die jetzigen Entities der Karte merken (entitiesJeKarte) - nach .ent und
 // nach jeder Bearbeitung.
 void merkeEntities();
 // Vor dem ausdruecklichen Oeffnen einer Karte: die gemerkten vergessen.
 void vergissEntities(const std::string& kennung);
+// --- Missionsbau (gui/app_mission.cpp) -----------------------------------
+void drawEntityInspector(float hoehe);
+void drawNeueMission();
+void drawMissionSpeichern();
+void entityNeuMenue(bool amMauspunkt);
+void entityZiehen(float rasterSkal);
+int neueEntityAn(const std::string& klasse, const float ort[3]);
+int neueEntityHier(const std::string& klasse, bool amMauspunkt);
+bool entityLoeschen(int i);
+int entityDuplizieren(int i);
+bool entityAufBoden(int i);
+bool entityKeySetzen(int i, const std::string& key, const std::string& wert);
+bool entityRueckgaengig();
+bool entityWiederholen();
+bool entityUndoMoeglich();
+bool entityRedoMoeglich();
+bool neueMissionAnlegen(const std::string& karte, const std::string& name, const std::string& ordner,
+                        std::string* fehler);
+void missionAusGeladener(const Mission& m);
+bool missionSpeichernNach(const std::string& pk3, std::string* fehler);
+std::string missionStandardOrdner(const std::string& name);
+bool missionBeendenFrage();
+bool entityFokus();
+int reiterFuerSkriptRef(const std::string& ref);
+// Einen Reiter speichern, auf Wunsch unter einem neuen Pfad (ohne Dialog).
+bool reiterSpeichernUnter(int reiter, const std::string& pfad);
 void selectByPath(const Path& p);
 void drawMapPanel();
 void drawMapSidebar();

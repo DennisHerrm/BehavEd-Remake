@@ -27,6 +27,9 @@ add_library(bhed_core STATIC
   src/bsp.cpp
   src/inflate.cpp
   src/pk3.cpp
+  src/pk3write.cpp
+  src/entdefs.cpp
+  src/missionbau.cpp
   src/sound.cpp
   src/timeline.cpp
   src/bspgeo.cpp
@@ -181,6 +184,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
   add_executable(behaved WIN32
     gui/app.cpp
     gui/app_view3d.cpp
+    gui/app_mission.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp
@@ -312,6 +316,11 @@ if(BEHAVED_TESTS)
     target_link_libraries(pruefung PRIVATE psapi)
   endif()
   add_test(NAME pruefung COMMAND pruefung ${BEHAVED_BHC} ${BEHAVED_DATA} ${BEHAVED_SUPP})
+  # Eine Mission anlegen und packen (missionbau.h, entdefs.h, writePk3).
+  add_executable(missionbautest tests/missionbautest.cpp)
+  target_link_libraries(missionbautest PRIVATE bhed_core)
+  add_test(NAME missionbau COMMAND missionbautest ${BEHAVED_BHC} ${BEHAVED_DATA} ${BEHAVED_SUPP}
+           ${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/md_twj_jedi.ent)
   add_executable(ablauftest tests/ablauftest.cpp)
   target_link_libraries(ablauftest PRIVATE bhed_core)
   add_test(NAME ablauf COMMAND ablauftest)

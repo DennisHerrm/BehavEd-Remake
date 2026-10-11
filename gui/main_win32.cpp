@@ -415,14 +415,39 @@ void buildFonts() {
     // gleicher Groesse ein Fuenftel breiter als Segoe UI (kuerzere Ober- und
     // Unterlaengen), und die Reihen liefen ueber.
     bool original = false;
+    // Komma, Minus, Punkt (U+002C..U+002E) - siehe unten.
+    static const ImWchar kSatzzeichen[] = {0x002C, 0x002E, 0};
     if (GetFileAttributesA("C:\\Windows\\Fonts\\micross.ttf") != INVALID_FILE_ATTRIBUTES) {
         ImFontConfig config;
         config.ExtraSizeScale = 13.0F / 16.0F;
         // Ober- und Unterlaenge bleiben die der vollen Groesse (imgui_draw.cpp,
         // FontBakedInit teilt durch ExtraSizeScale) - die kleineren Buchstaben
         // stuenden sonst auf der alten Grundlinie, also zu tief.
-        config.GlyphOffset.y = -(size - 13.0F) * 0.5F;
+        //
+        // Wie weit nach oben, ist GEMESSEN (11.10., Foto schrift_100 gegen das
+        // Symbol jeder Baumzeile, das mittig sitzt): mit -1,5 lag die Mitte der
+        // Grossbuchstaben und Ziffern 4 Bildpunkte UEBER der Zeilenmitte, die der
+        // Kleinbuchstaben 1,5 darunter - "the text is slightly off centre, like
+        // it needs to be lower" (shanks Kumpel). Mit -0,5 liegen beide gleich
+        // weit um die Mitte.
+        config.GlyphOffset.y = -0.5F;
+        // Komma, Minus und Punkt kommen aus Tahoma Bold (unten) - "Full stops
+        // are still a little small" (shanks Kumpel, nach rc583).
+        if (GetFileAttributesA("C:\\Windows\\Fonts\\tahomabd.ttf") != INVALID_FILE_ATTRIBUTES) {
+            config.GlyphExcludeRanges = kSatzzeichen;
+        }
         original = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\micross.ttf", size, &config) != nullptr;
+        // Tahoma ist die Schwester von MS Sans Serif (derselbe Entwurf von
+        // Matthew Carter); ihr fetter Schnitt hat deutlich kraeftigere Punkte
+        // und Striche, passt aber in Form und Breite dazu.
+        if (original && config.GlyphExcludeRanges != nullptr) {
+            ImFontConfig fett;
+            fett.MergeMode = true;
+            fett.ExtraSizeScale = config.ExtraSizeScale;
+            fett.GlyphOffset = config.GlyphOffset;
+            fett.GlyphRanges = kSatzzeichen;
+            io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\tahomabd.ttf", size, &fett);
+        }
     }
     if (!original && !addFontIfPresent(io, "C:\\Windows\\Fonts\\segoeui.ttf", size, false)) {
         io.Fonts->AddFontDefault();

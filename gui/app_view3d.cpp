@@ -6777,6 +6777,19 @@ void loadMission(const Mission& m) {
     // zurueckgeben. Sauberer waere, den Reiter vor der Karte anzulegen -
     // dazu muesste aber das Anlegen aus dem Skriptoeffnen heraus, und das
     // ist ein eigener Umbau.
+    // Geaenderte, nicht gespeicherte Entities derselben Karte gingen beim
+    // Neuladen verloren - erst fragen.
+    if (g_app->entitiesUngespeichert.count(m.mapFile) != 0U) {
+        if (!g_app->frageOffen) {
+            char t[600];
+            std::snprintf(t, sizeof(t), tr(Str::MissionUnsavedReload), m.name.c_str());
+            frage(t, [m] {
+                g_app->entitiesUngespeichert.erase(m.mapFile);
+                loadMission(m);
+            }, [] {});
+        }
+        return;
+    }
     const int vorherTab = g_app->activeTab;
     const std::string vorherMapId = g_app->map.path;
     const std::string vorherMapPath = g_app->settings.mapPath;
@@ -6860,7 +6873,12 @@ void loadMission(const Mission& m) {
             // Schon offen (die Mission zum zweiten Mal geladen)? Dann bleibt
             // der Reiter samt Aenderungen und Verlauf - siehe
             // oeffneSkriptAusSpeicher.
-            if (const int offen = reiterMitSkript(sc2.file); offen >= 0) {
+            //
+            // Auch, wenn es aus dem Missionsordner auf der Platte offen ist
+            // (nach Save mission): sonst stand es zweimal da (11.10.).
+            int offen = reiterMitSkript(sc2.file);
+            if (offen < 0) { offen = reiterFuerSkriptRef(sc2.ref); }
+            if (offen >= 0) {
                 if (erstesReiter < 0) { erstesReiter = offen; }
                 continue;
             }
@@ -6903,6 +6921,7 @@ void loadMission(const Mission& m) {
     }
     g_app->leftMode = 1;
     g_app->missionPickOpen = false;
+    missionAusGeladener(m);
     char msg[256];
     std::snprintf(msg, sizeof(msg), tr(Str::MissionLoaded), m.name.c_str(),
                   static_cast<int>(g_app->map.entities.size()),
@@ -7044,8 +7063,16 @@ void drawEntityLayers(float height) {
     // - "Kamera auf diese Marke" (MOVE + PAN mit $tag$), "Laufziel",
     // "Blickziel", "affect-Block", "use". So entsteht eine Szene aus der
     // Karte heraus, ohne Namen abzutippen.
-    ImGui::BeginChild("entlayers", ImVec2{ImGui::GetFontSize() * 15.0F, height},
+    // Darunter der Inspektor (gui/app_mission.cpp). Die Aufteilung steht
+    // immer gleich - auch ohne Auswahl -, damit beim Anklicken nichts springt.
+    // `height` ist wie ueberall in der Anordnung meist NEGATIV: "bis unten,
+    // abzueglich Fusszeile" (l.frameH). Erst die wirkliche Hoehe ausrechnen.
+    const float gesamt = height > 0.0F ? height : ImGui::GetContentRegionAvail().y + height;
+    const float listenH = std::max(gesamt * 0.38F, ImGui::GetFontSize() * 7.0F);
+    g_app->entFokusListe = false;
+    ImGui::BeginChild("entlayers", ImVec2{ImGui::GetFontSize() * 15.0F, listenH},
                       ImGuiChildFlags_Borders);
+    g_app->entFokusListe = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
     static char suche[64] = "";
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::InputTextWithHint("##entsuche", tr(Str::EntitySearch), suche, sizeof(suche));
@@ -7149,6 +7176,12 @@ void drawEntityLayers(float height) {
         ImGui::PopID();
     }
     ImGui::EndChild();
+    const float rest = gesamt - listenH - ImGui::GetStyle().ItemSpacing.y;
+    if (rest > ImGui::GetFontSize() * 3.0F) {
+        // Negativ weitergeben, wie es kam: dann endet der Inspektor genau
+        // dort, wo die Kartenansicht daneben endet.
+        drawEntityInspector(height > 0.0F ? rest : height);
+    }
 }
 
 // --- Gruppen der Entity-Liste und der Marken in der Ansicht ---------------
@@ -7202,8 +7235,16 @@ std::string entitySkriptName(const MapEntity& e) {
 // Wo steht die Entity? origin, sonst die Mitte ihres Brush-Modells.
 bool entityOrt(const MapEntity& e, float out[3]) {
     if (!e.origin.empty()) {
+        // Nur drei lesbare Zahlen gelten. Ein von Hand verdorbenes "x y"
+        // lieferte vorher true mit Zufallswerten (Missionsbau-Test 11.10.).
+        float p[3] = {0.0F, 0.0F, 0.0F};
         std::istringstream is(e.origin);
-        is >> out[0] >> out[1] >> out[2];
+        if (!(is >> p[0] >> p[1] >> p[2]) || !std::isfinite(p[0]) || !std::isfinite(p[1]) || !std::isfinite(p[2])) {
+            return false;
+        }
+        out[0] = p[0];
+        out[1] = p[1];
+        out[2] = p[2];
         return true;
     }
     return false;
@@ -7386,9 +7427,22 @@ void drawPickedEntity() {
 }
 
 void drawMapToolbar() {
+    // Eine Mission von Anfang bis Ende: neu anlegen, laden, speichern.
+    if (ImGui::Button(tr(Str::MissionNew))) { g_app->neueMissionOffen = true; }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tr(Str::MissionNewHint));
+    }
+    ImGui::SameLine();
     if (ImGui::Button(tr(Str::LoadMission))) { loadMissionArchive(); }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", tr(Str::LoadMissionHint));
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!g_app->missionAktiv);
+    if (ImGui::Button(tr(Str::MissionSave))) { g_app->missionSpeichernOffen = true; }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", tr(g_app->missionAktiv ? Str::MissionSaveHint : Str::MissionKeine));
     }
     ImGui::SameLine();
     if (ImGui::Button(tr(Str::OpenMapFile))) { doLoadMap(); }
@@ -11255,6 +11309,8 @@ void drawMapView() {
             g_app->kartenAnsicht[2] = b.x;
             g_app->kartenAnsicht[3] = b.y;
         }
+        // Eine gewaehlte Entity ueber den Boden ziehen (gui/app_mission.cpp).
+        entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         // --- Namen an Entities und Figuren -------------------------------
         if (g_app->zeigeNamen) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -11677,9 +11733,21 @@ g_app->gizmoAxis = g_app->gizmoHover;
                 ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
                 io2.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= grenze) {
                 ImGui::OpenPopup("gizmomodus");
+                // Fuer "Neue Entity hier": wo geklickt wurde.
+                g_app->rechtsklickBild[0] = io2.MousePos.x;
+                g_app->rechtsklickBild[1] = io2.MousePos.y;
             }
         }
         if (ImGui::BeginPopup("gizmomodus")) {
+            // Eine Entity an die Stelle setzen, auf die man geklickt hat -
+            // der schnellste Weg, eine Figur oder ein Laufziel hinzustellen.
+            ImGui::BeginDisabled(g_app->geo.empty() || g_app->camViewActive);
+            if (ImGui::BeginMenu(tr(Str::EntNewHere))) {
+                entityNeuMenue(true);
+                ImGui::EndMenu();
+            }
+            ImGui::EndDisabled();
+            ImGui::Separator();
             if (ImGui::MenuItem(tr(Str::GizmoSelect), nullptr,
                                 g_app->gizmoMode == App::GizmoMode::Select)) {
                 g_app->gizmoMode = App::GizmoMode::Select;
@@ -11740,7 +11808,9 @@ g_app->gizmoAxis = g_app->gizmoHover;
             ImGui::EndPopup();
         }
 
-        if (g_app->gizmoAxis < 0 && ImGui::IsItemHovered() &&
+        // Angefasst zum Ziehen (entityZiehen)? Dann bleibt die Auswahl, wie
+        // sie ist - ein Klick auf das Gewaehlte waehlt nicht ab.
+        if (g_app->gizmoAxis < 0 && !g_app->entZug.kandidat && ImGui::IsItemHovered() &&
             ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             const ImVec2 m = ImGui::GetIO().MousePos;
             // Siehe die Notiz weiter oben zur Rastergroesse.

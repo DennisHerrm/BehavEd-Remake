@@ -73,5 +73,18 @@ struct FoundFile {
 [[nodiscard]] std::vector<FoundFile> findByExtension(
     const GamePath& path, const std::vector<std::string>& extensions);
 
+// --- Schreiben ("Save mission...") ----------------------------------------
+struct Pk3Datei {
+    std::string name;     // Pfad im Archiv, mit /
+    std::string inhalt;
+};
+
+// Ein Zip-Archiv ohne Packung ("stored", Methode 0) - die Engine liest es wie
+// jedes andere. Erst nach "<path>.tmp", dann umbenennen: ein vorhandenes
+// Archiv wird nie halb ueberschrieben, und ist es gesperrt (das Spiel laeuft),
+// bleibt es unberuehrt und die Meldung sagt es.
+[[nodiscard]] bool writePk3(const std::string& path, const std::vector<Pk3Datei>& files,
+                            std::string* error = nullptr);
+
 }  // namespace bhed
 #endif

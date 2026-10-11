@@ -45,6 +45,9 @@ bool startBehavedWith(const std::string& datei);
 [[nodiscard]] std::string executableDirectory();
 // Einen Ordner im Explorer zeigen.
 void openInExplorer(const std::string& folder);
+// "Dokumente" des Anwenders (auch wenn OneDrive ihn umgeleitet hat). Dort
+// legt "New mission..." den Missionsordner an. Leer, wenn unbekannt.
+[[nodiscard]] std::string dokumenteOrdner();
 
 // Fuer den Selbsttest "einzel": diese exe ein zweites Mal starten, wie ein
 // Doppelklick im Explorer - OHNE BHED_EDITORTEST in der Umgebung (die zweite

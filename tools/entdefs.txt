@@ -1,0 +1,2401 @@
+# Erzeugt von tools/gen_entdefs.py --aus-quelle aus den QUAKED-Koepfen des
+# Movie-Duels-Quelltexts (code/game/*.cpp). NUR Fakten: Name, Farbe, Groesse,
+# Spawnflags (Bit, Name), Felder, die das Spiel einliest. Die Erklaerungen
+# stehen in tools/entdefs_texte.txt (eigene Texte).
+# class / from / color / size (mins maxs) oder brush / flag <bit> <NAME> / key <name> / end
+
+class emplaced_eweb
+from g_emplaced.cpp
+color 0 0 1
+size -12 -12 -24 12 12 24
+flag 1 INACTIVE
+flag 2 FACING
+flag 4 INVULNERABLE
+flag 8 PLAYERUSE
+key count
+key health
+key delay
+key wait
+key splashdamage
+key splashradius
+end
+
+class emplaced_gun
+from g_emplaced.cpp
+color 0 0 1
+size -24 -24 0 24 24 64
+flag 1 INACTIVE
+flag 4 VULNERABLE
+flag 8 PLAYERUSE
+key count
+key health
+key delay
+key wait
+key splashdamage
+key splashradius
+end
+
+class func_bobbing
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 X_AXIS
+flag 2 Y_AXIS
+flag 4 START_OFF
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key height
+key speed
+key phase
+key dmg
+key color
+key light
+end
+
+class func_breakable
+from g_breakable.cpp
+color 0 0.8 0.5
+brush
+flag 1 INVINCIBLE
+flag 2 IMPACT
+flag 4 CRUSHER
+flag 8 THIN
+flag 16 SABERONLY
+flag 32 HEAVY_WEAP
+flag 64 USE_NOT_BREAK
+flag 128 PLAYER_USE
+flag 256 NO_EXPLOSION
+key wait
+key delay
+key model2
+key target
+key health
+key NPC_targetname
+key forcevisible
+key redCrosshair
+key Damage
+key splashDamage
+key splashRadius
+key team
+key color
+key light
+key material
+end
+
+class func_button
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key angle
+key target
+key speed
+key wait
+key lip
+key health
+key color
+key light
+end
+
+class func_door
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 START_OPEN
+flag 2 FORCE_ACTIVATE
+flag 4 CRUSHER
+flag 8 TOGGLE
+flag 16 LOCKED
+flag 32 GOODIE
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key angle
+key speed
+key wait
+key delay
+key lip
+key dmg
+key color
+key light
+key health
+key sounds
+key linear
+end
+
+class func_glass
+from g_breakable.cpp
+color 0 0.8 0.5
+brush
+flag 1 INVINCIBLE
+key target
+key health
+end
+
+class func_group
+from g_misc.cpp
+color 0 0 0
+brush
+end
+
+class func_pendulum
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key speed
+key phase
+key dmg
+key color
+key light
+end
+
+class func_plat
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key lip
+key height
+key speed
+key dmg
+key model2
+key color
+key light
+end
+
+class func_rotating
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 START_ON
+flag 2 TOUCH_KILL
+flag 4 X_AXIS
+flag 8 Y_AXIS
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key speed
+key dmg
+key color
+key light
+key spinangles
+key health
+end
+
+class func_static
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 F_PUSH
+flag 2 F_PULL
+flag 4 SWITChShader
+flag 8 CRUSHER
+flag 16 IMPACT
+flag 32 SOLITARY
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+flag 256 BROADCAST
+key model2
+key color
+key light
+key dmg
+end
+
+class func_timer
+from g_trigger.cpp
+color 0.3 0.1 0.6
+size -8 -8 -8 8 8 8
+flag 1 START_ON
+key wait
+key random
+end
+
+class func_train
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 START_ON
+flag 2 TOGGLE
+flag 4 BLOCK_STOPS
+flag 32 LOOP
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+flag 256 TIE
+key model2
+key speed
+key dmg
+key health
+key noise
+key target
+key color
+key light
+end
+
+class func_usable
+from g_usable.cpp
+color 0 0.5 0.8
+brush
+flag 1 STARTOFF
+flag 2 AUTOANIMATE
+flag 4 ANIM_ONCE
+flag 8 ALWAYS_ON
+flag 16 BLOCKCHECK
+flag 32 NPC_USE
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key targetname
+key target
+key target2
+key model2
+key color
+key light
+key wait
+key health
+key endframe
+key forcevisible
+end
+
+class func_wall
+from g_mover.cpp
+color 0 0.5 0.8
+brush
+flag 1 START_OFF
+flag 2 AUTOANIMATE
+flag 64 PLAYER_USE
+flag 128 INACTIVE
+key model2
+key color
+key light
+end
+
+class fx_cloudlayer
+from g_fx.cpp
+color 1 0.3 0.5
+size -8 -8 -8 8 8 8
+flag 1 TUBE
+flag 2 ALT
+key radius
+key random
+key wait
+end
+
+class fx_explosion_trail
+from g_fx.cpp
+color 0 0 1
+size -8 -8 -8 8 8 8
+flag 1 GRAVITY
+key fxFile
+key fxFile2
+key model
+key target
+key targetname
+key speed
+key radius
+key damage
+key splashDamage
+key splashRadius
+key soundset
+end
+
+class fx_puff
+from g_fx.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+key count
+key whichsystem
+end
+
+class fx_rain
+from g_fx.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 1 LIGHT
+flag 2 MEDIUM
+flag 4 HEAVY
+flag 8 ACID
+flag 16 OUTSIDE_SHAKE
+flag 32 MISTY_FOG
+end
+
+class fx_runner
+from g_fx.cpp
+color 0 0 1
+size -8 -8 -8 8 8 8
+flag 1 STARTOFF
+flag 2 ONESHOT
+flag 4 DAMAGE
+key fxFile
+key target
+key target2
+key delay
+key random
+key splashRadius
+key splashDamage
+key soundset
+end
+
+class fx_snow
+from g_fx.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 1 LIGHT
+flag 2 MEDIUM
+flag 4 HEAVY
+flag 8 MISTY_FOG
+end
+
+class fx_target_beam
+from g_fx.cpp
+color 1 0.5 0.5
+size -8 -8 -8 8 8 8
+flag 1 STARTOFF
+flag 2 OPEN
+flag 4 NO_KNOCKBACK
+flag 8 ONE_SHOT
+flag 16 NO_IMPACT
+key fxFile
+key fxFile2
+key targetname
+key duration
+key wait
+key random
+key damage
+key target
+end
+
+class fx_wind
+from g_fx.cpp
+color 0 0.5 0.8
+size -16 -16 -16 16 16 16
+flag 1 NORMAL
+flag 2 CONSTANT
+flag 4 GUSTING
+flag 8 SWIRLING
+flag 32 FOG
+flag 64 LIGHT_FOG
+end
+
+class fx_wind_zone
+from g_fx.cpp
+color 0 0.5 0.8
+brush
+flag 1 Creates
+flag 2 a
+flag 4 constant
+flag 8 wind
+flag 16 in
+flag 32 a
+flag 64 local
+flag 128 area
+end
+
+class info_notnull
+from g_misc.cpp
+color 0 0.5 0
+size -4 -4 -4 4 4 4
+end
+
+class info_null
+from g_misc.cpp
+color 0 0.5 0
+size -4 -4 -4 4 4 4
+flag 1 LIGHT
+end
+
+class info_player_duel
+from g_client.cpp
+color 1 0 1
+size -16 -16 -24 16 16 32
+flag 1 initial
+end
+
+class info_player_duel1
+from g_client.cpp
+color 1 0 1
+size -16 -16 -24 16 16 32
+flag 1 initial
+end
+
+class info_player_duel2
+from g_client.cpp
+color 1 0 1
+size -16 -16 -24 16 16 32
+flag 1 initial
+end
+
+class info_player_intermission_blue
+from g_client.cpp
+color 1 0 1
+size -16 -16 -24 16 16 32
+key target
+key target2
+end
+
+class info_player_intermission_red
+from g_client.cpp
+color 1 0 1
+size -16 -16 -24 16 16 32
+key target
+key target2
+end
+
+class info_player_siegeteam1
+from g_client.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+end
+
+class info_player_siegeteam2
+from g_client.cpp
+color 0 0 1
+size -16 -16 -24 16 16 32
+end
+
+class info_player_start
+from g_client.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 KEEP_PREV
+flag 2 DROPTOFLOOR
+flag 32 STUN_BATON
+flag 64 NOWEAPON
+end
+
+class info_player_start_blue
+from g_client.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 INITIAL
+end
+
+class info_player_start_red
+from g_client.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 INITIAL
+end
+
+class light
+from g_misc.cpp
+color 0 1 0
+size -8 -8 -8 8 8 8
+flag 1 linear
+flag 2 noIncidence
+flag 4 START_OFF
+end
+
+class lightJunior
+from g_misc.cpp
+color 0 0.7 0.3
+size -8 -8 -8 8 8 8
+flag 1 nonlinear
+flag 2 angle
+flag 4 negative_spot
+flag 8 negative_point
+end
+
+class misc_ammo_floor_unit
+from g_misc.cpp
+color 1 0 0
+size -16 -16 0 16 16 32
+flag 8 USETARGET
+key health
+key targetname
+key target
+key paintarget
+key count
+end
+
+class misc_atst_drivable
+from g_misc.cpp
+color 1 0 0.25
+size -40 -40 -24 40 40 248
+key health
+key target
+end
+
+class misc_bsp
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+key bspmodel
+end
+
+class misc_camera
+from g_misc.cpp
+color 0 0 1
+size -8 -8 -12 8 8 16
+flag 1 VULNERABLE
+key target
+key target2
+key target3
+key target4
+key closetarget
+key wait
+end
+
+class misc_dlight
+from g_misc.cpp
+color 0.2 0.8 0.2
+size -4 -4 -4 4 4 4
+flag 1 STARTOFF
+flag 2 FADEON
+flag 4 FADEOFF
+flag 8 PULSE
+key ownername
+key startRGBA
+key finalRGBA
+key speed
+key finaltime
+key starttime
+end
+
+class misc_exploding_crate
+from g_misc.cpp
+color 1 0 0.25
+size -24 -24 0 24 24 64
+key health
+key splashRadius
+key splashDamage
+key targetname
+key target
+end
+
+class misc_gas_tank
+from g_misc.cpp
+color 1 0 0.25
+size -4 -4 0 4 4 40
+key health
+key splashRadius
+key splashDamage
+key targetname
+key target
+end
+
+class misc_ion_cannon
+from g_turret.cpp
+color 1 0 0
+size -280 -280 0 280 280 640
+flag 1 START_OFF
+flag 2 BURSTS
+flag 4 SHIELDED
+key wait
+key random
+key delay
+key health
+key splashDamage
+key splashRadius
+key targetname
+key target
+key target2
+end
+
+class misc_laser_arm
+from g_turret.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+key count
+key speed
+key dmg
+key wait
+key targetname
+key target
+key startRGBA
+end
+
+class misc_maglock
+from g_misc.cpp
+color 0 0.5 0.8
+size -8 -8 -8 8 8 8
+key target
+key health
+end
+
+class misc_model
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 1 RMG
+flag 2 SOLID
+key model
+key modelscale
+end
+
+class misc_model_ammo_power_converter
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 8 USETARGET
+key health
+key targetname
+key target
+key paintarget
+key count
+end
+
+class misc_model_ammo_rack
+from g_misc_model.cpp
+color 1 0 0.25
+size -14 -14 -4 14 14 30
+flag 1 BLASTER
+flag 2 METAL_BOLTS
+flag 4 ROCKETS
+flag 8 WEAPON
+flag 16 HEALTH
+flag 32 PWR_CELL
+flag 64 NO_FILL
+end
+
+class misc_model_beacon
+from g_misc.cpp
+color 1 0 0
+size -16 -16 0 16 16 24
+key forcevisible
+end
+
+class misc_model_bomb_planted
+from g_misc.cpp
+color 1 0 0
+size -16 -16 0 16 16 70
+flag 8 USETARGET
+key health
+key forcevisible
+end
+
+class misc_model_breakable
+from g_breakable.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 1 SOLID
+flag 2 AUTOANIMATE
+flag 4 DEADSOLID
+flag 8 NO_DMODEL
+flag 16 NO_SMOKE
+flag 32 USE_MODEL
+flag 64 USE_NOT_BREAK
+flag 128 PLAYER_USE
+flag 256 NO_EXPLOSION
+flag 512 START_OFF
+key model
+key modelscale
+key health
+key NPC_targetname
+key forcevisible
+key redCrosshair
+key gravity
+key mass
+key Damage
+key splashDamage
+key splashRadius
+key team
+key material
+end
+
+class misc_model_cargo_small
+from g_misc_model.cpp
+color 1 0 0.25
+size -14 -14 -4 14 14 30
+flag 1 MEDPACK
+flag 2 SHIELDS
+flag 4 BACTA
+flag 8 BATTERIES
+key health
+key splashRadius
+key splashDamage
+end
+
+class misc_model_ghoul
+from g_misc_model.cpp
+color 1 0 0
+size -16 -16 -37 16 16 32
+key model
+key health
+end
+
+class misc_model_gun_rack
+from g_misc_model.cpp
+color 1 0 0.25
+size -14 -14 -4 14 14 30
+flag 1 BLASTER
+flag 2 REPEATER
+flag 4 ROCKET
+end
+
+class misc_model_jabba_cam
+from g_misc.cpp
+color 1 0 0
+size 0 -8 0 60 8 16
+flag 1 EXTENDED
+key targetname
+end
+
+class misc_model_shield_power_converter
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 8 USETARGET
+key health
+key targetname
+key target
+key paintarget
+key count
+end
+
+class misc_model_static
+from g_misc.cpp
+color 1 0 0
+size -16 -16 0 16 16 16
+key model
+key modelscale
+key zoffset
+end
+
+class misc_model_welder
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 16
+flag 1 START_OFF
+end
+
+class misc_ns_turret
+from g_turret.cpp
+color 1 0 0
+size -8 -8 -32 8 8 29
+flag 1 START_OFF
+key radius
+key wait
+key dmg
+key health
+key splashDamage
+key splashRadius
+key targetname
+key target
+key team
+end
+
+class misc_panel_turret
+from g_turret.cpp
+color 0 0 1
+size -8 -8 -12 8 8 16
+flag 1 HEALTH
+key target
+key target2
+key target3
+key radius
+key random
+key delay
+key damage
+key speed
+end
+
+class misc_portal_camera
+from g_misc.cpp
+color 0 0 1
+size -8 -8 -8 8 8 8
+flag 1 slowrotate
+flag 2 fastrotate
+end
+
+class misc_portal_surface
+from g_misc.cpp
+color 0 0 1
+size -8 -8 -8 8 8 8
+key targetname
+key wait
+end
+
+class misc_radar_icon
+from g_misc.cpp
+color 0 0.5 0
+size -4 -4 -4 4 4 4
+flag 1 STARTOFF
+key icon
+end
+
+class misc_security_panel
+from g_mover.cpp
+color 0 0.5 0.8
+size -8 -8 -8 8 8 8
+flag 128 INACTIVE
+key message
+key target
+key target2
+end
+
+class misc_sentry_turret
+from g_turret.cpp
+color 1 0 0
+size -16 -16 0 16 16 24
+flag 1 START_OFF
+flag 2 RESERVED
+key radius
+key count
+key health
+key splashDamage
+key splashRadius
+key target
+key target2
+key team
+end
+
+class misc_shield_floor_unit
+from g_misc.cpp
+color 1 0 0
+size -16 -16 0 16 16 32
+flag 8 USETARGET
+key health
+key targetname
+key target
+key paintarget
+key count
+end
+
+class misc_skyportal
+from g_misc.cpp
+color 0.6 0.7 0.7
+size -8 -8 0 8 8 16
+end
+
+class misc_spotlight
+from g_turret.cpp
+color 1 0 0
+size -10 -10 0 10 10 10
+flag 1 START_OFF
+key targetname
+key target
+key target2
+end
+
+class misc_trip_mine
+from g_misc.cpp
+color 0.2 0.8 0.2
+size -4 -4 -4 4 4 4
+flag 1 START_ON
+flag 2 BROADCAST
+flag 4 START_OFF
+key targetname
+end
+
+class misc_turret
+from g_turret.cpp
+color 1 0 0
+size -8 -8 -22 8 8 0
+flag 1 START_OFF
+flag 2 UPSIDE_DOWN
+flag 4 TURBO
+key radius
+key wait
+key dmg
+key health
+key splashDamage
+key splashRadius
+key targetname
+key target
+key target2
+key team
+end
+
+class misc_turretG2
+from g_turret.cpp
+color 1 0 0
+size -8 -8 -22 8 8 0
+flag 1 START_OFF
+flag 2 UPSIDE_DOWN
+flag 4 CANRESPAWN
+flag 8 TURBO
+flag 16 LEAD
+flag 32 SHOWRADAR
+key radius
+key wait
+key dmg
+key health
+key count
+key random
+key shotspeed
+key splashDamage
+key splashRadius
+key targetname
+key target
+key target2
+key alliedTeam
+key customscale
+key icon
+end
+
+class misc_weather_zone
+from g_misc.cpp
+color 0 0.5 0.8
+brush
+end
+
+class NPC_Alora
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 DUAL
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Bartender
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_BespinCop
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_BobaFett
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Chewbacca
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Cultist
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 SABER
+flag 2 GRIP
+flag 4 LIGHTNING
+flag 8 DRAIN
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Cultist_Commando
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Cultist_Destroyer
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Cultist_Saber
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 MED
+flag 2 STRONG
+flag 4 ALL
+flag 8 THROW
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Cultist_Saber_Powers
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 MED
+flag 2 STRONG
+flag 4 ALL
+flag 8 THROW
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Desann
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Assassin
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_ATST
+from NPC_spawn.cpp
+color 1 0 0
+size -40 -40 -24 40 40 248
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Gonk
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Interrogator
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 0
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Mark1
+from NPC_spawn.cpp
+color 1 0 0
+size -36 -36 -24 36 36 80
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Mark2
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Mouse
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Probe
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Protocol
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 1 IMPERIAL
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_R2D2
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 1 IMPERIAL
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_R5D2
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 1 IMPERIAL
+flag 2 ALWAYSDIE
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Remote
+from NPC_spawn.cpp
+color 1 0 0
+size -4 -4 -24 4 4 8
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Saber
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 1 TRAINING
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Seeker
+from NPC_spawn.cpp
+color 1 0 0
+size -4 -4 -24 4 4 8
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Droid_Sentry
+from NPC_spawn.cpp
+color 1 0 0
+size -24 -24 -24 24 24 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Galak
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 MECH
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Gran
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 SHOOTER
+flag 2 BOXER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_HazardTrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 OFFICER
+flag 2 CONCUSSION
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Human_Merc
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 BOWCASTER
+flag 2 REPEATER
+flag 4 FLECHETTE
+flag 8 CONCUSSION
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key message
+end
+
+class NPC_Imperial
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 OFFICER
+flag 2 COMMANDER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key message
+end
+
+class NPC_ImpWorker
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Jan
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Jawa
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 ARMED
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Jedi
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 TRAINER
+flag 2 MASTER
+flag 4 RANDOM
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Kothos
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 VIL
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Kyle
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 BOSS
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Lando
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Lannik_Racto
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Luke
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Merchant
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_MineMonster
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_MonMothma
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Claw
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Fish
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Flier2
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Glider
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Howler
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 8
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Lizard
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Murjj
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Mutant_Rancor
+from NPC_spawn.cpp
+color 1 0 0
+size -60 -60 -24 60 60 360
+flag 2 FASTKILL
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Rancor
+from NPC_spawn.cpp
+color 1 0 0
+size -30 -30 -24 30 30 136
+flag 1 MUTANT
+flag 2 FASTKILL
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Sand_Creature
+from NPC_spawn.cpp
+color 1 0 0
+size -24 -24 -24 24 24 0
+flag 1 FAST
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key turfrange
+end
+
+class NPC_Monster_Swamp
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Monster_Wampa
+from NPC_spawn.cpp
+color 1 0 0
+size -12 -12 -24 12 12 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_MorganKatarn
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Noghri
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Player
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 2 RIFLEMAN
+flag 4 PHASER
+flag 8 TRICORDER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Prisoner
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 ELDER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Ragnos
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Rax
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 FUN
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Rebel
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Reborn
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 FORCE
+flag 2 FENCER
+flag 4 ACROBAT
+flag 8 BOSS
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Reborn_New
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 DUAL
+flag 2 STAFF
+flag 4 WEAK
+flag 8 MASTER
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Reelo
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_RocketTrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 OFFICER
+flag 2 SPOTLIGHT
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Rodian
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 BLASTER
+flag 2 NO_HIDE
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Rosh_Penin
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 DARKSIDE
+flag 2 NOFORCE
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Saboteur
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 SNIPER
+flag 2 PISTOL
+flag 16 CLOAKED
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_ShadowTrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+key nodelay
+end
+
+class NPC_Snowtrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_spawner
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+flag 512 SAFE
+key NPC_type
+key targetname
+key target
+key target2
+key target3
+key count
+key delay
+key wait
+key NPC_targetname
+key NPC_target
+key NPC_target2
+key NPC_target4
+key health
+key noBasicSounds
+key noCombatSounds
+key noExtraSounds
+key spawnscript
+key usescript
+key awakescript
+key angerscript
+key painscript
+key fleescript
+key deathscript
+end
+
+class NPC_Stormtrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 OFFICER
+flag 2 COMMANDER
+flag 4 ALTOFFICER
+flag 8 ROCKET
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+flag 512 COMMANDO
+end
+
+class NPC_SwampTrooper
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 REPEATER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Tavion
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Tavion_New
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 SCEPTER
+flag 2 SITH_SWORD
+flag 16 CEILING
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Tie_Pilot
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Trandoshan
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Tusken
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 1 SNIPER
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Ugnaught
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class NPC_Vehicle
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 32
+flag 1 NO_VIS_DIE
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+flag 512 SAFE
+key noVisTime
+key skin
+end
+
+class NPC_Weequay
+from NPC_spawn.cpp
+color 1 0 0
+size -16 -16 -24 16 16 40
+flag 16 DROPTOFLOOR
+flag 32 CINEMATIC
+flag 64 NOTSOLID
+flag 128 STARTINSOLID
+flag 256 SHY
+end
+
+class object_cargo_barrel1
+from g_misc.cpp
+color 1 0 0
+size -16 -16 -16 16 16 29
+flag 1 SMALLER
+flag 2 KLINGON
+flag 4 NO_SMOKE
+flag 8 POWDERKEG
+key health
+end
+
+class path_corner
+from g_mover.cpp
+color 0.5 0.3 0
+size -8 -8 -8 8 8 8
+flag 1 TURN_TRAIN
+flag 2 INVISIBLE
+flag 4 YAW_TRAIN
+flag 8 ROLL_TRAIN
+key Target
+end
+
+class point_combat
+from NPC_combat.cpp
+color 0.7 0 0.7
+size -20 -20 -24 20 20 45
+flag 1 DUCK
+flag 2 FLEE
+flag 4 INVESTIGATE
+flag 8 SQUAD
+flag 16 LEAN
+flag 32 SNIPE
+end
+
+class rail_lane
+from g_rail.cpp
+color 0 0.5 0.8
+brush
+key delay
+end
+
+class rail_mover
+from g_rail.cpp
+color 0 0.5 0.8
+brush
+flag 1 CENTER
+end
+
+class rail_track
+from g_rail.cpp
+color 0 0.5 0.8
+brush
+key count
+key delay
+end
+
+class ref_tag
+from g_ref.cpp
+color 0.5 0.5 1
+size -8 -8 -8 8 8 8
+key targetname
+key ownername
+key target
+end
+
+class target_activate
+from g_utils.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+end
+
+class target_autosave
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+end
+
+class target_change_parm
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+end
+
+class target_counter
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+flag 128 INACTIVE
+key target2
+key bounceCount
+end
+
+class target_deactivate
+from g_utils.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+end
+
+class target_delay
+from g_target.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+end
+
+class target_friction_change
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+end
+
+class target_give
+from g_target.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+end
+
+class target_gravity_change
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+flag 1 GLOBAL
+key gravity
+end
+
+class target_interest
+from NPC_senses.cpp
+color 1 0.8 0.5
+size -4 -4 -4 4 4 4
+key target
+end
+
+class target_kill
+from g_target.cpp
+color 0.5 0.5 0.5
+size -8 -8 -8 8 8 8
+flag 1 FALLING
+flag 2 ELECTRICAL
+end
+
+class target_laser
+from g_target.cpp
+color 0 0.5 0.8
+size -8 -8 -8 8 8 8
+flag 1 START_ON
+end
+
+class target_level_change
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+flag 1 HUB
+flag 2 NO_STORYSOUND
+key mapname
+key target
+key tier_storyinfo
+key storyhead
+key saber_menu
+key weapon_menu
+end
+
+class target_location
+from g_target.cpp
+color 0 0.5 0
+size -8 -8 -8 8 8 8
+end
+
+class target_play_music
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+key music
+end
+
+class target_position
+from g_target.cpp
+color 0 0.5 0
+size -4 -4 -4 4 4 4
+end
+
+class target_print
+from g_target.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+key message
+end
+
+class target_push
+from g_trigger.cpp
+color 0.5 0.5 0.5
+size -8 -8 -8 8 8 8
+flag 1 ENERGYNOISE
+flag 2 CONSTANT
+flag 4 NO_DAMAGE
+key speed
+end
+
+class target_random
+from g_target.cpp
+color 0.5 0.5 0.5
+size -4 -4 -4 4 4 4
+flag 1 USEONCE
+end
+
+class target_relay
+from g_target.cpp
+color 0.5 0.5 0.5
+size -8 -8 -8 8 8 8
+flag 1 RED_ONLY
+flag 2 BLUE_ONLY
+flag 4 RANDOM
+flag 128 INACTIVE
+key delay
+key wait
+end
+
+class target_score
+from g_target.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+end
+
+class target_scriptrunner
+from g_target.cpp
+color 1 0 0
+size -4 -4 -4 4 4 4
+flag 1 runonactivator
+flag 128 INACTIVE
+key Usescript
+key count
+key wait
+key delay
+end
+
+class target_secret
+from g_target.cpp
+color 1 0 1
+size -4 -4 -4 4 4 4
+key count
+end
+
+class target_speaker
+from g_target.cpp
+color 1 0 0
+size -8 -8 -8 8 8 8
+flag 1 looped-on
+flag 2 looped-off
+flag 4 global
+flag 8 activator
+key noise
+key wait
+key random
+end
+
+class terrain
+from g_misc.cpp
+color 1 1 1
+brush
+flag 1 NOVEHDMG
+end
+
+class trigger_always
+from g_trigger.cpp
+color 0.1 0.5 0.1
+size -8 -8 -8 8 8 8
+end
+
+class trigger_asteroid_field
+from g_trigger.cpp
+color 0.5 0.5 0.5
+brush
+key speed
+key count
+key target
+end
+
+class trigger_bidirectional
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+flag 1 PLAYER_ONLY
+flag 128 INACTIVE
+key NPC_targetname
+key wait
+end
+
+class trigger_entdist
+from g_trigger.cpp
+color 0.1 0.5 0.1
+size -8 -8 -8 8 8 8
+flag 1 PLAYER
+flag 2 NPC
+key distance
+key target
+key target2
+key NPC_target
+key ownername
+end
+
+class trigger_hurt
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+flag 1 START_OFF
+flag 2 PLAYERONLY
+flag 4 SILENT
+flag 8 NO_PROTECTION
+flag 16 LOCKCAM
+flag 32 FALLING
+flag 64 ELECTRICAL
+flag 128 INACTIVE
+flag 256 MULTIPLE
+key dmg
+key delay
+key wait
+key count
+key NPC_targetname
+end
+
+class trigger_location
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+key message
+end
+
+class trigger_multiple
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+flag 1 PLAYERONLY
+flag 2 FACING
+flag 4 USE_BUTTON
+flag 8 FIRE_BUTTON
+flag 16 NPCONLY
+flag 32 LIMITED_PILOT
+flag 128 INACTIVE
+flag 256 MULTIPLE
+key wait
+key random
+key delay
+key target2
+key speed
+key noise
+key max_pilots
+key NPC_targetname
+key team
+key soundSet
+end
+
+class trigger_once
+from g_trigger.cpp
+color 0.5 1 0.5
+brush
+flag 1 PLAYERONLY
+flag 2 FACING
+flag 4 USE_BUTTON
+flag 8 FIRE_BUTTON
+flag 16 NPCONLY
+flag 128 INACTIVE
+flag 256 MULTIPLE
+key random
+key delay
+key noise
+key NPC_targetname
+key team
+key soundSet
+end
+
+class trigger_push
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+flag 1 PLAYERONLY
+flag 2 CHECKCLEAR
+flag 4 LINEAR
+flag 8 NPCONLY
+flag 16 RELATIVE
+flag 32 CONVEYOR
+flag 128 INACTIVE
+flag 256 MULTIPLE
+key wait
+key speed
+end
+
+class trigger_shipboundary
+from g_trigger.cpp
+color 0.5 0.5 0.5
+brush
+key target
+key traveltime
+end
+
+class trigger_space
+from g_trigger.cpp
+color 0.5 0.5 0.5
+brush
+end
+
+class trigger_teleport
+from g_trigger.cpp
+color 0.1 0.5 0.1
+brush
+flag 1 SNAP_ANGLES
+flag 2 NO_MISSILES
+flag 4 NO_NPCS
+flag 8 STASIS
+flag 16 DEAD_OK
+flag 128 INACTIVE
+end
+
+class trigger_visible
+from g_trigger.cpp
+color 0.1 0.5 0.1
+size -8 -8 -8 8 8 8
+flag 1 NOTRACE
+flag 2 FORCESIGHT
+flag 128 INACTIVE
+key radius
+key FOV
+key target
+end
+
+class waypoint
+from g_nav.cpp
+color 0.7 0.7 0
+size -20 -20 -24 20 20 45
+flag 1 SOLID_OK
+flag 2 DROP_TO_FLOOR
+end
+
+class waypoint_navgoal
+from g_nav.cpp
+color 0.3 1 0.3
+size -20 -20 -24 20 20 40
+flag 1 SOLID_OK
+flag 2 DROP_TO_FLOOR
+flag 4 NO_AUTO_CONNECT
+key targetname
+key radius
+end
+
+class waypoint_small
+from g_nav.cpp
+color 0.7 0.7 0
+size -2 -2 -24 2 2 32
+flag 1 SOLID_OK
+end
+
+class worldspawn
+from g_spawn.cpp
+color 0 0 0
+brush
+key breath
+end
+

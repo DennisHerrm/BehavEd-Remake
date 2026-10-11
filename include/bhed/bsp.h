@@ -77,5 +77,18 @@ void collectNames(MapData& out);
 // Datei pruefbar ist.
 void parseEntities(const std::string& text, std::vector<MapEntity>& out);
 
+// --- Entities bearbeiten und als .ent schreiben (Entity-Inspektor) --------
+//
+// Einen Schluessel setzen - ohne Gross/Klein wie die Engine (find). Ein
+// leerer Wert entfernt ihn. Anfuehrungszeichen und Zeilenumbrueche kann das
+// Format nicht tragen (der Leser der Engine kennt kein Escape); sie werden
+// weggelassen. classname, targetname, cameraGroup und origin bleiben in Takt.
+void setKey(MapEntity& e, const std::string& key, const std::string& value);
+
+// Als .ent-Text. parseEntities liest daraus genau dieselben Entities zurueck.
+// Eine .ent ERSETZT alle Entities der Karte (cm_load.cpp) - also gehoert die
+// ganze Liste hinein, auch worldspawn.
+[[nodiscard]] std::string writeEntities(const std::vector<MapEntity>& ents);
+
 }  // namespace bhed
 #endif

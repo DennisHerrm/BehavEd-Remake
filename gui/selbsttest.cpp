@@ -34,6 +34,7 @@
 #include "backend.h"
 #include "gpumap.h"
 #include "bhed/changelog.h"
+#include "bhed/entdefs.h"
 
 #include <algorithm>
 #include <array>
@@ -6373,6 +6374,703 @@ std::vector<Schritt> missionFotoSchritte() {
     return s;
 }
 
+// --- Missionsbau im Map-Tab (BHED_EDITORTEST=missionsbau) -------------------
+//
+// Gewuenscht (11.10.): "alle kombinationen testen die es gibt jeder knopf wo
+// man was affecten kann miteinander" - eine Fehleranalyse fuer Bugs und
+// Abstuerze. Drei Teile:
+//
+//   1. Der Weg eines Anwenders, Knopf fuer Knopf: New mission (Fenster),
+//      + Entity, Rechtsklick "New entity here", Spawnflags, NPC-Auswahl,
+//      Auf den Boden, Ziehen in der Ansicht, Strg+Z/Strg+Y/Entf ueber der
+//      Karte, Duplizieren, Loeschen, Skript oeffnen, Save mission (Fenster),
+//      Reiterwechsel, Mission aus der gespeicherten pk3 wieder laden,
+//      Rueckfragen bei Ungespeichertem.
+//   2. Zufaellige Kombinationen (feste Saat, 400 Schritte) aller Handlungen,
+//      nach jedem Bild Invarianten - und zwischendurch speichern und laden.
+//   3. Was gespeichert ist, kommt genau so wieder.
+//
+// Schreibt nur in den Laufordner (BHED_MISSIONEN, Spielordner "spiel").
+namespace mb {
+
+std::string laufOrdner() { return platform::executableDirectory(); }
+
+// Wie der Reiter heisst: aus dem Archiv shownName, von der Platte der Dateiname.
+std::string reiterName(std::size_t i) {
+    const bool aktiv = static_cast<int>(i) == g_app->activeTab;
+    const std::string& n = aktiv ? g_app->shownName : g_app->tabs[i].shownName;
+    const std::string& p = aktiv ? g_app->path : g_app->tabs[i].path;
+    return !n.empty() ? n : fileName(p);
+}
+
+// Den Inspektor rollen (0 = oben, 1 = unten) - Knoepfe weiter unten sind
+// sonst abgeschnitten und nicht anklickbar.
+void rolleInspektor(float anteil) {
+    for (ImGuiWindow* w : GImGui->Windows) {
+        if (w != nullptr && std::strstr(w->Name, "entinspektor") != nullptr) {
+            ImGui::SetScrollY(w, w->ScrollMax.y * anteil);
+        }
+    }
+}
+
+void zumReiter(const std::string& name) {
+    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+        if (reiterName(i) == name) {
+            activateTab(static_cast<int>(i));
+            return;
+        }
+    }
+}
+
+std::string verbinde(const std::string& a, const std::string& b) {
+    std::string r = a;
+    if (!r.empty() && r.back() != '\\' && r.back() != '/') { r += '\\'; }
+    return r + b;
+}
+
+ImVec2 ansichtMitte() {
+    return ImVec2{(g_app->kartenAnsicht[0] + g_app->kartenAnsicht[2]) * 0.5F,
+                  (g_app->kartenAnsicht[1] + g_app->kartenAnsicht[3]) * 0.5F};
+}
+
+int zaehle(const char* klasse) {
+    int n = 0;
+    for (const MapEntity& e : g_app->map.entities) { n += e.classname == klasse ? 1 : 0; }
+    return n;
+}
+
+const MapEntity* gewaehlt() {
+    if (g_app->pickedEntity < 0 || static_cast<std::size_t>(g_app->pickedEntity) >= g_app->map.entities.size()) {
+        return nullptr;
+    }
+    return &g_app->map.entities[static_cast<std::size_t>(g_app->pickedEntity)];
+}
+
+std::string wert(const MapEntity* e, const char* k) {
+    if (e == nullptr) { return "<keine>"; }
+    const std::string* v = e->find(k);
+    return v != nullptr ? *v : std::string();
+}
+
+// Fuesse ueber dem Boden (wie der Inspektor), 9999 ohne Boden.
+float fuesse(const MapEntity& e) {
+    float o[3];
+    if (!entityOrt(e, o) || g_app->geo.empty()) { return 9999.0F; }
+    const ent::Def* d = ent::def(e.classname);
+    const float unten = (d != nullptr && !d->brush) ? d->mins[2] : 0.0F;
+    const float oben = (d != nullptr && !d->brush) ? d->maxs[2] : 8.0F;
+    const float a[3] = {o[0], o[1], o[2] + std::max(oben, 1.0F)};
+    const float b[3] = {o[0], o[1], o[2] - 8192.0F};
+    const TraceTreffer t = traceRay(g_app->geo, a, b);
+    return t.hit ? (o[2] + unten) - t.point[2] : 9999.0F;
+}
+
+// Die Invarianten nach jeder Handlung.
+std::string invariantenFehler() {
+    const int n = static_cast<int>(g_app->map.entities.size());
+    if (g_app->pickedEntity < -1 || g_app->pickedEntity >= n) {
+        return "pickedEntity " + std::to_string(g_app->pickedEntity) + " bei " + std::to_string(n);
+    }
+    if (g_app->entUndo.size() > 200) { return "Verlauf zu lang"; }
+    for (const std::size_t h : g_app->hiddenEntities) {
+        if (h >= static_cast<std::size_t>(n)) { return "hiddenEntities zeigt hinaus"; }
+    }
+    // Die gemerkten Entities muessen dem Stand entsprechen - sonst bringt der
+    // naechste Reiterwechsel einen alten Stand zurueck.
+    if (const auto it = g_app->entitiesJeKarte.find(g_app->map.path); it != g_app->entitiesJeKarte.end()) {
+        if (it->second.size() != g_app->map.entities.size()) {
+            return "Merkliste " + std::to_string(it->second.size()) + " != " + std::to_string(n);
+        }
+        for (std::size_t i = 0; i < it->second.size(); ++i) {
+            if (it->second[i].keys != g_app->map.entities[i].keys) { return "Merkliste weicht ab bei " + std::to_string(i); }
+        }
+    }
+    for (const MapEntity& e : g_app->map.entities) {
+        // Abkuerzungen in Takt mit den Schluesseln.
+        const std::string* c = e.find("classname");
+        if ((c == nullptr ? std::string() : *c) != e.classname) { return "classname nicht in Takt"; }
+    }
+    return {};
+}
+
+std::vector<std::pair<std::string, std::string>> pk3Inhalt(const std::string& pfad) {
+    std::vector<std::pair<std::string, std::string>> r;
+    Pk3 arc;
+    if (!readPk3Directory(pfad, arc)) { return r; }
+    for (const Pk3Entry& e : arc.entries) {
+        std::string t;
+        if (readPk3File(arc, e, t)) { r.emplace_back(e.name, t); }
+    }
+    return r;
+}
+
+const std::string* datei(const std::vector<std::pair<std::string, std::string>>& v, const std::string& n) {
+    for (const auto& [k, t] : v) {
+        if (k == n) { return &t; }
+    }
+    return nullptr;
+}
+
+struct Zustand {
+    std::string karte;          // Grundkarte
+    std::string pk3;            // gespeicherte Mission
+    std::string spiel;          // Spielordner im Laufordner
+    int vorher = 0;
+    int npc = -1;
+    std::size_t undoTiefe = 0;
+    std::size_t skriptUndo = 0;
+    float ortVorher[3] = {0, 0, 0};
+    std::vector<MapEntity> gespeichert;
+    std::uint32_t saat = 20261011U;
+    int fehlerZufall = 0;
+    std::map<std::string, int> handlungen;
+};
+
+std::uint32_t zufall(Zustand& z) {
+    z.saat = z.saat * 1664525U + 1013904223U;
+    return z.saat >> 8U;
+}
+
+}  // namespace mb
+
+std::vector<Schritt> missionsbauSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto z = std::make_shared<mb::Zustand>();
+
+    // ---------------- Vorbereitung ----------------
+    add(tu("Missionsbau: Laufordner als Missionswurzel, Grundkarte suchen", [=] {
+        const std::string wurzel = mb::verbinde(mb::laufOrdner(), "missionen");
+        _putenv_s("BHED_MISSIONEN", wurzel.c_str());
+        z->spiel = mb::verbinde(mb::laufOrdner(), "spiel");
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::u8path(z->spiel), ec);
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const Pk3& arc : gp.archives) {
+                if (arc.find("maps/duel_mandalore.bsp") != nullptr) { z->karte = "maps/duel_mandalore.bsp"; }
+                for (const Pk3Entry& e : arc.entries) {
+                    if (z->karte.empty() && e.name.rfind("maps/", 0) == 0 && e.name.size() > 9 &&
+                        e.name.compare(e.name.size() - 4, 4, ".bsp") == 0 && e.name.find("/mp/") == std::string::npos) {
+                        z->karte = e.name;
+                    }
+                }
+            }
+        }
+        diag::detail("Knopftest: Missionsbau - Wurzel " + wurzel + ", Grundkarte " + z->karte);
+        g_app->leftMode = 1;
+    }));
+    add(pruefe("Missionsbau: Grundkarte gefunden", [=] { return !z->karte.empty(); }));
+    add(pause(0.5));
+
+    // ---------------- New mission ueber das Fenster ----------------
+    add(klick(tr(Str::MissionNew)));
+    add(pause(0.4));
+    add(pruefe("New mission: Fenster offen", [] { return g_app->neueMissionOffen; }));
+    add(klick("##kartensuche", "##neuemission"));
+    add(tu("Kartensuche: Namen der Grundkarte tippen", [=] {
+        schritteEinfuegen({tippe(fileName(z->karte).substr(0, 10))});
+    }));
+    add(pause(0.3));
+    add(tu("Karte in der Liste waehlen", [=] {
+        schritteEinfuegen({klick(z->karte, "##neuemission")});
+    }));
+    add(pause(0.3));
+    add(klick(tr(Str::MissionCreate), "##neuemission"));
+    add(warteBis("Mission angelegt", [] { return g_app->missionAktiv && !g_app->neueMissionOffen; }, 600));
+    add(warteBis("Szene der neuen Mission", [] { return g_app->camTrackValid; }, 1500));
+    add(pruefe("New mission: Karte, Ordner, Intro-Reiter, Scriptrunner", [=] {
+        const App::MissionsProjekt& m = g_app->mission;
+        const std::string intro = mb::verbinde(m.projektOrdner, "scripts\\" + m.ordner + "\\intro.txt");
+        const std::string ent = mb::verbinde(m.projektOrdner, "maps\\" + m.name + ".ent");
+        bool runner = false;
+        bool start = false;
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.classname == "target_scriptrunner" && mb::wert(&e, "usescript") == m.ordner + "/intro") { runner = true; }
+            if (e.classname == "info_player_start" && !mb::wert(&e, "target").empty()) { start = true; }
+        }
+        std::error_code ec;
+        diag::detail("Knopftest: Missionsbau - " + m.name + " / " + m.ordner + ", Karte " + g_app->map.path +
+                     ", Reiter " + mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) + ", Ordner " + m.projektOrdner + ", Ziel " + m.zielPk3);
+        return g_app->map.path == "maps/" + m.name + ".bsp" && !g_app->geo.empty() &&
+               std::filesystem::exists(std::filesystem::u8path(intro), ec) &&
+               std::filesystem::exists(std::filesystem::u8path(ent), ec) && mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "intro.txt" &&
+               runner && start && g_app->entitiesUngespeichert.empty();
+    }));
+    add(pruefe("New mission: das Intro hat eine Kamerafahrt", [] {
+        return g_app->camTrackValid && !g_app->camTrack.segments.empty();
+    }));
+    add(tu("New mission: derselbe Name noch einmal, ein ungueltiger", [=] {
+        std::string f1;
+        std::string f2;
+        const std::size_t reiter = g_app->tabs.size();
+        const bool a = neueMissionAnlegen(z->karte, g_app->mission.name, g_app->mission.ordner, &f1);
+        const bool b = neueMissionAnlegen(z->karte, "md bad", "md_bad", &f2);
+        diag::detail("Knopftest: Missionsbau - doppelt: " + std::string(a ? "angelegt" : "abgewiesen") + " (" + f1 +
+                     "), ungueltig: " + (b ? "angelegt" : "abgewiesen") + " (" + f2 + "), Reiter " +
+                     std::to_string(reiter) + " -> " + std::to_string(g_app->tabs.size()));
+        z->vorher = (!a && !b && !f1.empty() && !f2.empty() && reiter == g_app->tabs.size()) ? 1 : 0;
+    }));
+    add(pruefe("New mission: doppelter und ungueltiger Name abgewiesen, kein neuer Reiter", [=] { return z->vorher == 1; }));
+
+    // ---------------- + Entity ----------------
+    add(tu("+ Entity: Anzahl merken", [=] { z->vorher = mb::zaehle("NPC_spawner"); }));
+    add(klick(tr(Str::EntNew)));
+    add(pause(0.3));
+    add(klick(tr(Str::EntKindNpc)));
+    add(pause(0.5));
+    add(foto("mb_inspektor"));
+    add(pruefe("+ Entity: Figur gesetzt, gewaehlt, mit Namen, auf dem Boden", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        const float f = e != nullptr ? mb::fuesse(*e) : 9999.0F;
+        diag::detail("Knopftest: Missionsbau - neue Figur " + mb::wert(e, "NPC_targetname") + " bei " +
+                     mb::wert(e, "origin") + ", Fuesse " + std::to_string(f));
+        z->npc = g_app->pickedEntity;
+        return e != nullptr && e->classname == "NPC_spawner" && mb::zaehle("NPC_spawner") == z->vorher + 1 &&
+               !mb::wert(e, "NPC_targetname").empty() && f > -0.5F && f < 3.0F &&
+               g_app->entitiesUngespeichert.count(g_app->map.path) == 1U;
+    }));
+    // Spawnflags als Haekchen
+    add(klick("CINEMATIC", "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("Haekchen CINEMATIC: spawnflags 32", [] { return mb::wert(mb::gewaehlt(), "spawnflags") == "32"; }));
+    add(klick("DROPTOFLOOR", "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("Haekchen DROPTOFLOOR dazu: 48", [] { return mb::wert(mb::gewaehlt(), "spawnflags") == "48"; }));
+    add(klick("CINEMATIC", "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("CINEMATIC wieder aus: 16", [] { return mb::wert(mb::gewaehlt(), "spawnflags") == "16"; }));
+    // NPC-Auswahl
+    add(klick(tr(Str::EntPickNpc), "entinspektor"));
+    add(pause(0.4));
+    add(tu("NPC-Auswahl: einen Typ aus der Liste waehlen", [=] {
+        // Ein Typ, den es sicher gibt und der in der Liste sichtbar ist.
+        std::string typ;
+        for (const auto& [t2, d] : g_app->npcMap) {
+            (void)d;
+            if (finde(t2, "", 0, false) != nullptr) { typ = t2; break; }
+        }
+        diag::detail("Knopftest: Missionsbau - NPC-Auswahl klickt \"" + typ + "\"");
+        if (!typ.empty()) { schritteEinfuegen({klick(typ)}); }
+        else { meldeFehler("NPC-Auswahl: kein Eintrag sichtbar"); }
+    }));
+    add(pause(0.4));
+    add(pruefe("NPC_type gesetzt", [] {
+        diag::detail("Knopftest: Missionsbau - NPC_type " + mb::wert(mb::gewaehlt(), "NPC_type"));
+        return !mb::wert(mb::gewaehlt(), "NPC_type").empty();
+    }));
+    // Rueckgaengig ueber die Knoepfe
+    add(tu("Inspektor nach unten rollen", [] { mb::rolleInspektor(1.0F); }));
+    add(pause(0.2));
+    add(klick(tr(Str::EditUndo), "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("Undo (Knopf): NPC_type wieder leer", [] { return mb::wert(mb::gewaehlt(), "NPC_type").empty(); }));
+    add(klick(tr(Str::EditRedo), "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("Redo (Knopf): NPC_type wieder da", [] { return !mb::wert(mb::gewaehlt(), "NPC_type").empty(); }));
+    // Auf den Boden
+    add(tu("Figur 120 hoch heben", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        float o[3];
+        if (e != nullptr && entityOrt(*e, o)) {
+            o[2] += 120.0F;
+            char t[96];
+            std::snprintf(t, sizeof(t), "%d %d %d", static_cast<int>(o[0]), static_cast<int>(o[1]), static_cast<int>(o[2]));
+            entityKeySetzen(g_app->pickedEntity, "origin", t);
+        }
+    }));
+    add(pause(0.2));
+    add(tu("Inspektor nach oben rollen", [] { mb::rolleInspektor(0.0F); }));
+    add(pause(0.2));
+    add(klick(tr(Str::EntDropFloor), "entinspektor"));
+    add(pause(0.2));
+    add(pruefe("Auf den Boden: Fuesse 1 ueber dem Boden", [] {
+        const MapEntity* e = mb::gewaehlt();
+        const float f = e != nullptr ? mb::fuesse(*e) : 9999.0F;
+        diag::detail("Knopftest: Missionsbau - nach Auf den Boden: Fuesse " + std::to_string(f));
+        return f > 0.0F && f < 2.0F;
+    }));
+    // Ziehen in der Ansicht
+    add(tu("Zur Figur fliegen (freie Kamera)", [] {
+        g_app->throughCamera = false;
+        g_app->playing = false;
+        zurEntityFliegen(static_cast<std::size_t>(g_app->pickedEntity));
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(tu("Ort vor dem Ziehen merken", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        if (e != nullptr) { (void)entityOrt(*e, z->ortVorher); }
+        z->undoTiefe = g_app->entUndo.size();
+    }));
+    add(ziehenAn("die gewaehlte Figur in der Ansicht", [] {
+        // Ihre Marke (Rasterpunkte -> Bildschirm).
+        const float skal = g_app->mapImage.width > 0 && g_app->kartenAnsicht[2] > g_app->kartenAnsicht[0]
+                               ? static_cast<float>(g_app->mapImage.width) / (g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0])
+                               : 1.0F;
+        for (const App::PickedMarker& mk : g_app->markers) {
+            if (static_cast<int>(mk.entity) == g_app->pickedEntity) {
+                return ImVec2{g_app->kartenAnsicht[0] + mk.sx / skal, g_app->kartenAnsicht[1] + mk.sy / skal};
+            }
+        }
+        return mb::ansichtMitte();
+    }, 90.0F, 30.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Ziehen: verschoben, auf dem Boden, ein Rueckgaengig-Schritt", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        float o[3] = {0, 0, 0};
+        if (e != nullptr) { (void)entityOrt(*e, o); }
+        const float weg = std::hypot(o[0] - z->ortVorher[0], o[1] - z->ortVorher[1]);
+        const float f = e != nullptr ? mb::fuesse(*e) : 9999.0F;
+        diag::detail("Knopftest: Missionsbau - gezogen um " + std::to_string(weg) + ", Fuesse " + std::to_string(f) +
+                     ", Verlauf " + std::to_string(z->undoTiefe) + " -> " + std::to_string(g_app->entUndo.size()));
+        return e != nullptr && weg > 8.0F && f > -0.5F && f < 3.0F && g_app->entUndo.size() == z->undoTiefe + 1;
+    }));
+    // Strg+Z / Strg+Y / Entf ueber der Karte - das Skript bleibt unberuehrt
+    add(tu("Maus ueber die Ansicht, Stand merken", [=] {
+        setzeMaus(mb::ansichtMitte());
+        z->skriptUndo = g_app->doc.undoDepth();
+        z->undoTiefe = g_app->entUndo.size();
+    }));
+    add(pause(0.2));
+    add(tasteKombi(ImGuiMod_Ctrl | ImGuiKey_Z, "Strg+Z ueber der Karte"));
+    add(pause(0.2));
+    add(pruefe("Strg+Z ueber der Karte: Entity zurueck, Skript unberuehrt", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        float o[3] = {0, 0, 0};
+        if (e != nullptr) { (void)entityOrt(*e, o); }
+        return g_app->entUndo.size() + 1 == z->undoTiefe && g_app->doc.undoDepth() == z->skriptUndo &&
+               std::hypot(o[0] - z->ortVorher[0], o[1] - z->ortVorher[1]) < 2.0F;
+    }));
+    add(tasteKombi(ImGuiMod_Ctrl | ImGuiKey_Y, "Strg+Y ueber der Karte"));
+    add(pause(0.2));
+    add(pruefe("Strg+Y ueber der Karte: wieder verschoben", [=] { return g_app->entUndo.size() == z->undoTiefe; }));
+    // Duplizieren und Entf
+    add(tu("Duplizieren", [=] {
+        z->vorher = static_cast<int>(g_app->map.entities.size());
+        entityDuplizieren(g_app->pickedEntity);
+    }));
+    add(pause(0.2));
+    add(pruefe("Duplikat: eigener Name", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        const MapEntity& o = g_app->map.entities[static_cast<std::size_t>(z->npc)];
+        return static_cast<int>(g_app->map.entities.size()) == z->vorher + 1 && e != nullptr &&
+               mb::wert(e, "NPC_targetname") != mb::wert(&o, "NPC_targetname");
+    }));
+    add(tu("Maus ueber die Ansicht", [] { setzeMaus(mb::ansichtMitte()); }));
+    add(pause(0.2));
+    add(taste(ImGuiKey_Delete, "Entf ueber der Karte"));
+    add(pause(0.2));
+    add(pruefe("Entf ueber der Karte: Duplikat geloescht, Skript unberuehrt", [=] {
+        return static_cast<int>(g_app->map.entities.size()) == z->vorher && g_app->pickedEntity == -1 &&
+               g_app->doc.undoDepth() == z->skriptUndo;
+    }));
+    // Rechtsklick "New entity here"
+    add(tu("Laufziele zaehlen", [=] { z->vorher = mb::zaehle("waypoint_navgoal"); }));
+    add(klickAn("rechts in die Ansicht", [] { return mb::ansichtMitte(); }, 1));
+    add(pause(0.3));
+    add(klick(tr(Str::EntNewHere)));
+    add(pause(0.3));
+    add(klick(tr(Str::EntKindNav)));
+    add(pause(0.3));
+    add(pruefe("Rechtsklick > New entity here > Laufziel", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        return mb::zaehle("waypoint_navgoal") == z->vorher + 1 && e != nullptr && e->classname == "waypoint_navgoal" &&
+               !e->targetname.empty();
+    }));
+    // Alle Schluessel roh, Schluessel dazu und weg
+    add(tu("Inspektor nach unten rollen", [] { mb::rolleInspektor(1.0F); }));
+    add(pause(0.2));
+    add(klick(tr(Str::EntRaw), "entinspektor"));
+    add(pause(0.2));
+    add(tu("Schluessel radius setzen und wieder entfernen", [=] {
+        entityKeySetzen(g_app->pickedEntity, "radius", "24");
+        z->vorher = mb::wert(mb::gewaehlt(), "radius") == "24" ? 1 : 0;
+        entityKeySetzen(g_app->pickedEntity, "radius", "");
+    }));
+    add(pause(0.2));
+    add(pruefe("Rohansicht: Schluessel gesetzt und entfernt", [=] {
+        return z->vorher == 1 && mb::gewaehlt() != nullptr && mb::gewaehlt()->find("radius") == nullptr;
+    }));
+    add(tu("Inspektor nach unten rollen", [] { mb::rolleInspektor(1.0F); }));
+    add(pause(0.2));
+    add(klick(tr(Str::EntRaw), "entinspektor"));
+    // Ein Scriptrunner mit eigenem Skript: Open legt es im Missionsordner an
+    add(tu("Scriptrunner unter das Fadenkreuz", [] { neueEntityHier("target_scriptrunner", false); }));
+    add(pause(0.3));
+    add(tu("usescript des Runners oeffnen (legt das Skript an)", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        z->vorher = static_cast<int>(g_app->tabs.size());
+        diag::detail("Knopftest: Missionsbau - Runner usescript " + mb::wert(e, "usescript"));
+        schritteEinfuegen({klick(tr(Str::EntOpenScript), "entinspektor")});
+    }));
+    add(pause(0.5));
+    add(pruefe("Open: neuer Reiter mit dem Skript, Datei im Missionsordner", [=] {
+        std::error_code ec;
+        const std::string datei = mb::verbinde(g_app->mission.projektOrdner,
+                                               "scripts\\" + g_app->mission.ordner + "\\runner1.txt");
+        diag::detail("Knopftest: Missionsbau - Reiter " + std::to_string(z->vorher) + " -> " +
+                     std::to_string(g_app->tabs.size()) + ", aktiv " + mb::reiterName(static_cast<std::size_t>(g_app->activeTab)));
+        return static_cast<int>(g_app->tabs.size()) == z->vorher + 1 && mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "runner1.txt" &&
+               std::filesystem::exists(std::filesystem::u8path(datei), ec);
+    }));
+    add(tu("zurueck in den Intro-Reiter", [] { mb::zumReiter("intro.txt"); }));
+    add(pause(0.3));
+
+    // ---------------- Reiterwechsel mit anderer Karte ----------------
+    add(tu("Entities merken, Reiter mit anderer Karte", [=] {
+        z->gespeichert = g_app->map.entities;
+        z->vorher = g_app->activeTab;
+        neuerReiter();
+        (void)loadMapFromArchive(z->karte == "maps/duel_mandalore.bsp" ? std::string("maps/academy1.bsp") : std::string("maps/duel_mandalore.bsp"));
+    }));
+    add(pause(0.5));
+    add(tu("zurueck", [=] { activateTab(z->vorher); }));
+    add(pause(0.5));
+    add(pruefe("Reiterwechsel: bearbeitete Entities der neuen Mission sind noch da", [=] {
+        bool gleich = g_app->map.entities.size() == z->gespeichert.size();
+        for (std::size_t i = 0; gleich && i < z->gespeichert.size(); ++i) { gleich = g_app->map.entities[i].keys == z->gespeichert[i].keys; }
+        diag::detail("Knopftest: Missionsbau - zurueck: " + std::to_string(g_app->map.entities.size()) + " Entities, Karte " +
+                     g_app->map.path + ", Geometrie " + (g_app->geo.empty() ? "leer" : "da"));
+        return gleich && !g_app->geo.empty();
+    }));
+
+    // ---------------- Save mission ----------------
+    add(klick(tr(Str::MissionSave)));
+    add(pause(0.4));
+    add(pruefe("Save mission: Fenster mit Dateiliste", [] {
+        return g_app->missionSpeichernOffen && finde(tr(Str::MissionSaveNow), "##missionspeichern", 0, false) != nullptr;
+    }));
+    add(klick(tr(Str::MissionCancel), "##missionspeichern"));
+    add(pause(0.3));
+    add(tu("Speichern in den Spielordner des Laufs", [=] {
+        z->pk3 = mb::verbinde(z->spiel, "zz_" + g_app->mission.name + ".pk3");
+        std::string f;
+        z->gespeichert = g_app->map.entities;
+        z->vorher = missionSpeichernNach(z->pk3, &f) ? 1 : 0;
+        diag::detail("Knopftest: Missionsbau - gespeichert nach " + z->pk3 + ": " + (z->vorher != 0 ? "ja" : "nein " + f));
+        // Eine Kopie dieses sauberen Stands fuer den Spieltest (vor dem Zufall;
+        // andere Endung, damit sie kein Spielarchiv ist).
+        std::error_code ec;
+        std::filesystem::copy_file(std::filesystem::u8path(z->pk3), std::filesystem::u8path(z->pk3 + ".erste"),
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+    }));
+    add(pruefe("Save mission: pk3 mit Karte, .ent, Skripten und .IBI; nichts mehr ungespeichert", [=] {
+        const auto inhalt = mb::pk3Inhalt(z->pk3);
+        const App::MissionsProjekt& m = g_app->mission;
+        const std::string* ent = mb::datei(inhalt, "maps/" + m.name + ".ent");
+        const std::string* ibi = mb::datei(inhalt, "scripts/" + m.ordner + "/intro.IBI");
+        const std::string* ibi2 = mb::datei(inhalt, "scripts/" + m.ordner + "/runner1.IBI");
+        std::vector<MapEntity> gelesen;
+        if (ent != nullptr) { parseEntities(*ent, gelesen); }
+        bool gleich = gelesen.size() == z->gespeichert.size();
+        for (std::size_t i = 0; gleich && i < gelesen.size(); ++i) { gleich = gelesen[i].keys == z->gespeichert[i].keys; }
+        bool sauber = true;
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const bool aktiv = static_cast<int>(i) == g_app->activeTab;
+            const std::string n = mb::reiterName(i);
+            const bool schmutzig = aktiv ? g_app->doc.dirty() : g_app->tabs[i].doc.dirty();
+            if ((n == "intro.txt" || n == "runner1.txt") && schmutzig) { sauber = false; }
+        }
+        diag::detail("Knopftest: Missionsbau - pk3 " + std::to_string(inhalt.size()) + " Dateien, .ent " +
+                     std::to_string(gelesen.size()) + " Entities");
+        return z->vorher == 1 && mb::datei(inhalt, "maps/" + m.name + ".bsp") != nullptr && gleich && ibi != nullptr &&
+               ibi->compare(0, 3, "IBI") == 0 && ibi2 != nullptr && sauber && g_app->entitiesUngespeichert.empty();
+    }));
+    // Ein kaputtes Skript: Speichern verweigert, das Archiv bleibt
+    add(tu("runner1 kaputt machen und speichern", [=] {
+        mb::zumReiter("runner1.txt");
+        Script kaputt;
+        std::vector<Diag> d;
+        // Eine Zeile, die sich nicht lesen laesst - sie bleibt wortgetreu
+        // stehen, und das Uebersetzen verweigert (C005). Ein fehlendes '}'
+        // dagegen ergaenzt das Speichern, wie bei jedem Skript.
+        (void)readScript("//Generated by BehavEd\n\nwait ( 1.000\n", kaputt, d);
+        g_app->doc = Document{kaputt};
+        g_app->doc.markSaved();
+        std::error_code ec;
+        const auto vorher = std::filesystem::last_write_time(std::filesystem::u8path(z->pk3), ec);
+        std::string f;
+        const bool ok = missionSpeichernNach(z->pk3, &f);
+        const auto nachher = std::filesystem::last_write_time(std::filesystem::u8path(z->pk3), ec);
+        diag::detail("Knopftest: Missionsbau - kaputtes Skript: " + std::string(ok ? "gespeichert" : "verweigert") + " (" + f + ")");
+        z->vorher = (!ok && vorher == nachher && !f.empty()) ? 1 : 0;
+        // Wieder heil machen.
+        Script heil;
+        (void)readScript("//Generated by BehavEd\n\nwait ( 500.000 );\n", heil, d);
+        g_app->doc = Document{heil};
+    }));
+    add(pruefe("Kaputtes Skript: Speichern verweigert, pk3 unveraendert", [=] { return z->vorher == 1; }));
+
+    // ---------------- Laden aus der gespeicherten pk3 ----------------
+    add(tu("Spielordner des Laufs eintragen, Mission laden", [=] {
+        addGamePathDirectory(z->spiel);
+        z->gespeichert.clear();
+        for (const auto& [n, t] : mb::pk3Inhalt(z->pk3)) {
+            if (n.size() > 4 && n.compare(n.size() - 4, 4, ".ent") == 0) { parseEntities(t, z->gespeichert); }
+        }
+        missionenAusArchiv(z->pk3);
+    }));
+    add(warteBis("gespeicherte Mission geladen", [] { return g_app->camTrackValid && g_app->missionAktiv; }, 1500));
+    add(pruefe("Geladen: genau die gespeicherten Entities", [=] {
+        bool gleich = g_app->map.entities.size() == z->gespeichert.size() && !z->gespeichert.empty();
+        for (std::size_t i = 0; gleich && i < z->gespeichert.size(); ++i) { gleich = g_app->map.entities[i].keys == z->gespeichert[i].keys; }
+        diag::detail("Knopftest: Missionsbau - geladen " + std::to_string(g_app->map.entities.size()) + ", gespeichert " +
+                     std::to_string(z->gespeichert.size()) + ", Karte " + g_app->map.path);
+        return gleich;
+    }));
+    // Die Skripte der Mission waren schon offen (aus dem Missionsordner) -
+    // das Laden darf sie nicht ein zweites Mal oeffnen (11.10.).
+    add(pruefe("Geladen: kein Skript doppelt offen", [=] {
+        int intro = 0;
+        int runner = 0;
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            intro += mb::reiterName(i) == "intro.txt" ? 1 : 0;
+            runner += mb::reiterName(i) == "runner1.txt" ? 1 : 0;
+        }
+        diag::detail("Knopftest: Missionsbau - nach dem Laden intro.txt " + std::to_string(intro) + " mal, runner1.txt " +
+                     std::to_string(runner) + " mal offen");
+        return intro == 1 && runner == 1;
+    }));
+    // Ungespeichert + noch einmal laden: Rueckfrage, Nein laesst alles stehen
+    add(tu("Aendern, dann dieselbe Mission noch einmal laden", [=] {
+        neueEntityHier("waypoint_navgoal", false);
+        z->vorher = static_cast<int>(g_app->map.entities.size());
+        missionenAusArchiv(z->pk3);
+    }));
+    add(pause(0.3));
+    add(pruefe("Rueckfrage vor dem Verwerfen", [] { return g_app->frageOffen; }));
+    add(klick(tr(Str::AnswerNo), "###frage"));
+    add(pause(0.3));
+    add(pruefe("Nein: Aenderung bleibt", [=] {
+        return static_cast<int>(g_app->map.entities.size()) == z->vorher && !g_app->entitiesUngespeichert.empty();
+    }));
+
+    // ---------------- Zufaellige Kombinationen ----------------
+    add(tu("Zufall: 400 Handlungen", [=] {
+        std::vector<Schritt> folge;
+        static const char* kKlassen[] = {"NPC_spawner", "waypoint_navgoal", "ref_tag", "target_position",
+                                         "target_scriptrunner", "fx_runner", "target_speaker", "info_player_start"};
+        for (int k = 0; k < 400; ++k) {
+            folge.push_back(tu("Zufall " + std::to_string(k), [=] {
+                const std::uint32_t r = mb::zufall(*z);
+                const int n = static_cast<int>(g_app->map.entities.size());
+                const int beliebig = n > 0 ? static_cast<int>(mb::zufall(*z) % static_cast<std::uint32_t>(n)) : -1;
+                std::string was;
+                switch (r % 16U) {
+                    case 0: case 1:
+                        was = "neu";
+                        neueEntityHier(kKlassen[mb::zufall(*z) % 8U], (mb::zufall(*z) & 1U) != 0U);
+                        break;
+                    case 2: was = "loeschen"; entityLoeschen(beliebig); break;
+                    case 3: was = "duplizieren"; entityDuplizieren(beliebig); break;
+                    case 4: {
+                        was = "feld";
+                        static const char* kKeys[] = {"targetname", "NPC_type", "spawnflags", "angle", "usescript", "radius",
+                                                      "origin", "target", "count"};
+                        static const char* kWerte[] = {"", "a", "x y", "0", "-1", "99999", "1 2 3", "md_test/x", "\"q\""};
+                        entityKeySetzen(beliebig, kKeys[mb::zufall(*z) % 9U], kWerte[mb::zufall(*z) % 9U]);
+                        break;
+                    }
+                    case 5: {
+                        was = "flag";
+                        if (beliebig >= 0) {
+                            const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(beliebig)];
+                            const int alt = e.find("spawnflags") != nullptr ? std::atoi(e.find("spawnflags")->c_str()) : 0;
+                            entityKeySetzen(beliebig, "spawnflags", std::to_string(alt ^ (1 << (mb::zufall(*z) % 10U))));
+                        }
+                        break;
+                    }
+                    case 6: case 7: was = "undo"; entityRueckgaengig(); break;
+                    case 8: was = "redo"; entityWiederholen(); break;
+                    case 9: was = "boden"; entityAufBoden(beliebig); break;
+                    case 10: was = "waehlen"; g_app->pickedEntity = beliebig; g_app->selectedActor = -1; break;
+                    case 11: {
+                        was = "reiter";
+                        if (!g_app->tabs.empty()) { activateTab(static_cast<int>(mb::zufall(*z) % g_app->tabs.size())); }
+                        break;
+                    }
+                    case 12: was = "roh"; g_app->entRawAnsicht = !g_app->entRawAnsicht; break;
+                    case 13: {
+                        was = "figur";
+                        g_app->selectedActor = g_app->scene.actors.empty()
+                                                   ? -1
+                                                   : static_cast<int>(mb::zufall(*z) % g_app->scene.actors.size());
+                        g_app->pickedEntity = -1;
+                        break;
+                    }
+                    case 14: {
+                        was = "speichern";
+                        if ((mb::zufall(*z) % 4U) == 0U && g_app->missionAktiv) {
+                            std::string f;
+                            (void)missionSpeichernNach(z->pk3, &f);
+                        }
+                        break;
+                    }
+                    default: was = "szene"; g_app->camTrackValid = false; break;
+                }
+                ++z->handlungen[was];
+                const std::string fehl = mb::invariantenFehler();
+                if (!fehl.empty() && z->fehlerZufall < 10) {
+                    ++z->fehlerZufall;
+                    meldeFehler("Zufall " + std::to_string(k) + " (" + was + "): " + fehl);
+                }
+            }));
+            if (k % 8 == 7) { folge.push_back(pause(0.05)); }
+        }
+        schritteEinfuegen(std::move(folge));
+    }));
+    add(pause(0.5));
+    add(tu("Zufall: Zusammenfassung", [=] {
+        std::string t;
+        for (const auto& [k, v] : z->handlungen) { t += k + " " + std::to_string(v) + ", "; }
+        diag::detail("Knopftest: Missionsbau - Zufall: " + t + "Fehler " + std::to_string(z->fehlerZufall) +
+                     ", Entities " + std::to_string(g_app->map.entities.size()) + ", Reiter " + std::to_string(g_app->tabs.size()));
+    }));
+    add(pruefe("Zufall: alle Invarianten gehalten", [=] { return z->fehlerZufall == 0 && mb::invariantenFehler().empty(); }));
+
+    // ---------------- Zum Schluss: speichern, laden, vergleichen ----------------
+    add(tu("Missionsreiter vor, speichern", [=] { mb::zumReiter("intro.txt"); }));
+    add(pause(0.5));
+    add(tu("Endstand speichern", [=] {
+        if (g_app->map.path != g_app->mission.karte) {
+            diag::detail("Knopftest: Missionsbau - Missionskarte nicht vorn (" + g_app->map.path + ")");
+        }
+        z->gespeichert = g_app->entitiesJeKarte.count(g_app->mission.karte) != 0U
+                             ? g_app->entitiesJeKarte[g_app->mission.karte]
+                             : g_app->map.entities;
+        std::string f;
+        z->vorher = missionSpeichernNach(z->pk3, &f) ? 1 : 0;
+        diag::detail("Knopftest: Missionsbau - Endstand gespeichert: " + std::string(z->vorher != 0 ? "ja" : "nein " + f));
+    }));
+    add(pruefe("Endstand: .ent im Archiv = Entities im Programm", [=] {
+        std::vector<MapEntity> gelesen;
+        for (const auto& [n, t] : mb::pk3Inhalt(z->pk3)) {
+            if (n.size() > 4 && n.compare(n.size() - 4, 4, ".ent") == 0) { parseEntities(t, gelesen); }
+        }
+        bool gleich = gelesen.size() == z->gespeichert.size();
+        for (std::size_t i = 0; gleich && i < gelesen.size(); ++i) { gleich = gelesen[i].keys == z->gespeichert[i].keys; }
+        return z->vorher == 1 && gleich;
+    }));
+    // Beenden mit Ungespeichertem: Rueckfrage, Nein = zurueck mit Speicherfenster
+    add(tu("Noch eine Aenderung, dann beenden", [] {
+        neueEntityHier("ref_tag", false);
+        g_app->entFrageBeantwortet = false;
+        g_app->wantQuit = true;
+    }));
+    add(pause(0.4));
+    add(pruefe("Beenden: Rueckfrage wegen der Entities", [] {
+        diag::detail("Knopftest: Missionsbau - Frage: " + g_app->frageText);
+        return g_app->frageOffen && !g_app->entitiesUngespeichert.empty() &&
+               g_app->frageText.find(*g_app->entitiesUngespeichert.begin()) != std::string::npos;
+    }));
+    add(klick(tr(Str::AnswerNo), "###frage"));
+    add(pause(0.4));
+    add(pruefe("Nein: laeuft weiter, Save mission offen", [] { return !g_app->quitConfirmed && g_app->missionSpeichernOffen; }));
+    add(klick(tr(Str::MissionCancel), "##missionspeichern"));
+    add(pause(0.3));
+    return s;
+}
+
 std::vector<Schritt> missionReiterSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
@@ -9650,6 +10348,8 @@ void selbsttest() {
     static const bool nurPruefung = std::strcmp(modus, "pruefung") == 0;
     // Eine eigene Mission aus einer pk3 laden und fotografieren (BHED_MISSION_ARCHIV, ..._NAME, BHED_ZEIT).
     static const bool nurMissionFoto = std::strcmp(modus, "missionfoto") == 0;
+    // Missionsbau im Map-Tab: jeder Knopf, Kombinationen, Zufall (11.10.).
+    static const bool nurMissionsbau = std::strcmp(modus, "missionsbau") == 0;
     ImGuiContext& g = *ImGui::GetCurrentContext();
     g.TestEngineHookItems = true;
     Ablauf& a = g_ablauf;
@@ -9686,6 +10386,10 @@ void selbsttest() {
                 a.teil = 2;
             } else if (nurAblauf) {
                 a.schritte = ablaufSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurMissionsbau) {
+                a.schritte = missionsbauSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurMissionFoto) {

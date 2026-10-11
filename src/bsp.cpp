@@ -73,6 +73,66 @@ const std::string* MapEntity::find(const std::string& key) const {
     return nullptr;
 }
 
+void setKey(MapEntity& e, const std::string& key, const std::string& value) {
+    const auto sauber = [](const std::string& t) {
+        std::string r;
+        r.reserve(t.size());
+        for (const char c : t) {
+            if (c != '"' && c != '\n' && c != '\r') { r += c; }
+        }
+        return r;
+    };
+    const std::string k = sauber(key);
+    const std::string v = sauber(value);
+    if (k.empty()) {
+        return;
+    }
+    const auto gleich = [&k](const std::string& a) {
+        if (a.size() != k.size()) { return false; }
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(k[i]))) {
+                return false;
+            }
+        }
+        return true;
+    };
+    auto it = std::find_if(e.keys.begin(), e.keys.end(), [&](const auto& kv) { return gleich(kv.first); });
+    if (v.empty()) {
+        if (it != e.keys.end()) { e.keys.erase(it); }
+    } else if (it != e.keys.end()) {
+        it->second = v;
+    } else {
+        e.keys.emplace_back(k, v);
+    }
+    // Die Abkuerzungen wie beim Lesen - genau dieselben Schluessel.
+    e.classname.clear();
+    e.targetname.clear();
+    e.cameraGroup.clear();
+    e.origin.clear();
+    for (const auto& [kk, vv] : e.keys) {
+        if (kk == "classname") { e.classname = vv; }
+        else if (kk == "targetname") { e.targetname = vv; }
+        else if (kk == "cameraGroup") { e.cameraGroup = vv; }
+        else if (kk == "origin") { e.origin = vv; }
+    }
+}
+
+std::string writeEntities(const std::vector<MapEntity>& ents) {
+    std::string out;
+    for (const MapEntity& e : ents) {
+        out += "{\n";
+        for (const auto& [k, v] : e.keys) {
+            out += '"';
+            out += k;
+            out += "\" \"";
+            out += v;
+            out += "\"\n";
+        }
+        out += "}\n";
+    }
+    return out;
+}
+
 void parseEntities(const std::string& text, std::vector<MapEntity>& out) {
     out.clear();
     std::size_t i = 0;

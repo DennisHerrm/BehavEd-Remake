@@ -6,6 +6,52 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc585 2026-10-11
+[en]
+- Build a whole mission in the Map tab. New mission...: pick any map and a name – a player start, a script runner, the intro script and a mission folder are created, and the intro plays in the preview right away.
+- Entity inspector under the entity list: name, position, facing, spawnflags as checkboxes with their names (DROPTOFLOOR, CINEMATIC … taken from the game code), every field explained in your language, a picker for the NPC type, Open creates the script of a script runner or deathscript. "All keys (raw)" shows everything as text.
+- Place entities: + Entity puts a character, walk target, camera mark, script runner, effect, sound, music, level change or player start under the crosshair; right-click in the view > New entity here puts it where you clicked – standing on the floor. Drag a selected entity in the view to move it over the floor.
+- Onto floor, and the inspector tells how high the feet are above the floor – in red when they are inside the floor (then the character may be invisible in the game).
+- Ctrl+Z, Ctrl+Y and Del work on entities while the mouse is over the map or the entity list. Duplicate and Delete in the inspector.
+- Save mission...: saves the scripts, writes the complete .ent (an .ent replaces all entities of the map), compiles every script and packs a .pk3 for the game. It warns about missing scripts, a missing player start and targets that point nowhere, and adds the ENDMARKER to .str files (without it Movie Duels crashes at start). It refuses when a script does not compile.
+- Also for existing missions: Load mission..., change entities or scripts, Save mission....
+- Fixed: switching to a tab with another map and back lost all entities that came from a mission's .ent (all its characters).
+- Unsaved entity changes are asked about before quitting or loading the mission again.
+- Text sits a little lower in the rows (it was slightly above the middle), and full stops, commas and minus signs are bolder. Thanks for the feedback!
+[de]
+- Eine ganze Mission im Map-Tab bauen. New mission...: eine beliebige Karte und einen Namen wählen – Spielerstart, Scriptrunner, Intro-Skript und ein Missionsordner entstehen, und das Intro läuft sofort in der Vorschau.
+- Entity-Inspektor unter der Entity-Liste: Name, Position, Blickrichtung, Spawnflags als Häkchen mit Namen (DROPTOFLOOR, CINEMATIC … aus dem Spielcode), jedes Feld in deiner Sprache erklärt, eine Auswahl für den NPC-Typ, Open legt das Skript eines Scriptrunners oder deathscripts an. „All keys (raw)“ zeigt alles als Text.
+- Entities setzen: + Entity setzt Figur, Laufziel, Kameramarke, Scriptrunner, Effekt, Klang, Musik, Kartenwechsel oder Spielerstart unter das Fadenkreuz; Rechtsklick in die Ansicht > New entity here setzt sie dorthin, wo man geklickt hat – auf den Boden. Eine gewählte Entity lässt sich in der Ansicht über den Boden ziehen.
+- Auf den Boden, und der Inspektor sagt, wie hoch die Füße über dem Boden stehen – rot, wenn sie im Boden stecken (dann ist die Figur im Spiel womöglich unsichtbar).
+- Strg+Z, Strg+Y und Entf wirken auf Entities, solange die Maus über der Karte oder der Entity-Liste ist. Duplizieren und Löschen im Inspektor.
+- Save mission...: speichert die Skripte, schreibt die vollständige .ent (eine .ent ersetzt alle Entities der Karte), übersetzt jedes Skript und packt eine .pk3 für das Spiel. Es warnt vor fehlenden Skripten, fehlendem Spielerstart und Zielen, die ins Leere zeigen, und ergänzt ENDMARKER in .str-Dateien (ohne stürzt Movie Duels beim Start ab). Lässt sich ein Skript nicht übersetzen, wird nicht gespeichert.
+- Auch für vorhandene Missionen: Load mission..., Entities oder Skripte ändern, Save mission....
+- Behoben: ein Reiter mit einer anderen Karte und zurück – alle Entities aus der .ent einer Mission (alle Figuren) waren weg.
+- Ungespeicherte Entity-Änderungen werden vor dem Beenden und vor dem erneuten Laden der Mission abgefragt.
+- Der Text sitzt etwas tiefer in den Zeilen (er lag leicht über der Mitte), und Punkte, Kommas und Minuszeichen sind kräftiger. Danke für die Rückmeldung!
+[zh]
+- 在地图标签页中制作完整的任务。New mission...：选择任意地图并输入名称——自动创建玩家出生点、脚本运行器、开场脚本和任务文件夹，开场动画立即在预览中播放。
+- 实体列表下方的实体检查器：名称、位置、朝向、带名称的生成标志复选框（DROPTOFLOOR、CINEMATIC……取自游戏代码），每个字段都有当前语言的说明，NPC 类型选择器，Open 可为脚本运行器或 deathscript 创建脚本。“All keys (raw)”以文本显示全部内容。
+- 放置实体：+ 实体 会在准星下放置角色、行走目标、摄像机标记、脚本运行器、特效、声音、音乐、关卡切换或玩家出生点；在视图中右键 > New entity here 会放在点击的位置——站在地面上。可在视图中拖动所选实体沿地面移动。
+- 放到地面；检查器会显示脚离地面的高度——陷入地面时显示为红色（此时角色在游戏中可能看不见）。
+- 鼠标位于地图或实体列表上方时，Ctrl+Z、Ctrl+Y 和 Del 作用于实体。检查器中可复制和删除。
+- Save mission...：保存脚本，写入完整的 .ent（.ent 会替换地图的全部实体），编译每个脚本并为游戏打包 .pk3。会提示缺少的脚本、缺少玩家出生点以及指向不存在目标的实体，并为 .str 文件补上 ENDMARKER（缺少它 Movie Duels 启动时会崩溃）。如有脚本无法编译则不保存。
+- 也适用于已有任务：Load mission...，修改实体或脚本，Save mission...。
+- 修复：切换到另一张地图的标签页再切回来时，任务 .ent 中的全部实体（所有角色）会丢失。
+- 退出或重新加载任务前，会询问未保存的实体更改。
+- 文字在行中的位置稍微下移了（之前略高于中线），句号、逗号和减号更粗更清楚。感谢反馈！
+[ja]
+- マップタブでミッションを丸ごと作成できます。New mission...：任意のマップと名前を選ぶと、プレイヤー開始位置、スクリプトランナー、イントロスクリプト、ミッションフォルダーが作られ、イントロがすぐにプレビューで再生されます。
+- エンティティ一覧の下にエンティティインスペクター：名前、位置、向き、名前付きチェックボックスのスポーンフラグ（DROPTOFLOOR、CINEMATIC など、ゲームコードから取得）、各フィールドの説明（表示言語で）、NPC タイプの選択、Open でスクリプトランナーや deathscript のスクリプトを作成。「All keys (raw)」ですべてをテキスト表示。
+- エンティティの配置：+ エンティティ で照準の下にキャラクター、移動先、カメラマーク、スクリプトランナー、エフェクト、サウンド、音楽、レベル切り替え、プレイヤー開始位置を置けます。ビューを右クリック > New entity here でクリックした場所に床に立った状態で置けます。選択したエンティティはビューでドラッグして床の上を動かせます。
+- 床に置く。インスペクターは足元が床からどれだけ上にあるかを表示します――床にめり込んでいると赤色（ゲームでキャラクターが見えない可能性）。
+- マウスがマップかエンティティ一覧の上にある間、Ctrl+Z、Ctrl+Y、Del はエンティティに作用します。インスペクターで複製と削除。
+- Save mission...：スクリプトを保存し、完全な .ent（.ent はマップの全エンティティを置き換えます）を書き出し、すべてのスクリプトをコンパイルしてゲーム用の .pk3 にまとめます。足りないスクリプト、プレイヤー開始位置の欠落、存在しないものを指すターゲットを警告し、.str ファイルに ENDMARKER を追加します（ないと Movie Duels が起動時に落ちます）。コンパイルできないスクリプトがあると保存しません。
+- 既存のミッションにも使えます：Load mission...、エンティティやスクリプトを変更、Save mission...。
+- 修正：別のマップのタブに切り替えて戻ると、ミッションの .ent のエンティティ（すべてのキャラクター）が消えていました。
+- 終了前やミッションの再読み込み前に、未保存のエンティティ変更を確認します。
+- 行の中の文字を少し下げました（中央より少し上にありました）。ピリオド、カンマ、マイナス記号を太くしました。フィードバックありがとうございます！
+
 ## rc584 2026-10-11
 [en]
 - New Help menu next to View: About BehavEd, Changelog, Check for updates and Check for updates at startup – all in one place (they were in the File menu before).
