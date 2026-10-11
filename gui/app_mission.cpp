@@ -1572,13 +1572,14 @@ bool neueMissionAnlegen(const std::string& karte, const std::string& name, const
     g_app->mission.zielPk3 = standardZielPk3(name);
     g_app->missionAktiv = true;
 
+    missionsDateiSchreiben();
     ladeSkriptDatei(intro);
     g_app->camTrackValid = false;
     g_app->mapDirty = true;
     g_app->leftMode = 1;
     char t[300];
     std::snprintf(t, sizeof(t), tr(Str::MissionCreated), name.c_str());
-    addStatus(t);
+    meldung(t, projekt);
     return true;
 }
 
@@ -1754,7 +1755,7 @@ bool missionSpeichernNach(const std::string& pk3, std::string* fehler) {
         if (fehler != nullptr) { *fehler = t; }
         char m[700];
         std::snprintf(m, sizeof(m), tr(Str::MissionSaveFailed), t.c_str());
-        addStatus(m);
+        meldung(m, std::string(), true);
         return false;
     };
     if (!g_app->missionAktiv) { return nein(tr(Str::MissionKeine)); }
@@ -1792,11 +1793,310 @@ bool missionSpeichernNach(const std::string& pk3, std::string* fehler) {
     if (!writePk3(pk3, z.dateien, &err)) { return nein(err); }
     g_app->mission.zielPk3 = pk3;
     g_app->entitiesUngespeichert.erase(mp.karte);
+    missionsDateiSchreiben();
     char m[700];
     std::snprintf(m, sizeof(m), tr(Str::MissionSaved), pk3.c_str());
-    addStatus(m);
+    meldung(m, directoryOf(pk3));
     diag::info(std::string("Mission gespeichert: ") + pk3 + " (" + std::to_string(z.dateien.size()) + " Dateien)");
     return true;
+}
+
+// --- Missionsordner: mission.txt, wieder oeffnen, zuletzt benutzt (rc586) -----
+//
+// Eine neue Mission lebt bis zum ersten "Save mission" nur im Missionsordner -
+// nach einem Neustart kam man bisher nicht mehr an sie heran (Load mission
+// liest .pk3). mission.txt merkt sich, woraus sie besteht; "Open mission
+// folder..." und die Liste auf der Startflaeche lesen sie.
+namespace {
+std::string missionsDatei(const std::string& ordner) { return pfadVerbinden(ordner, "mission.txt"); }
+}  // namespace
+
+void missionsDateiSchreiben() {
+    if (!g_app->missionAktiv || g_app->mission.projektOrdner.empty()) {
+        return;
+    }
+    const App::MissionsProjekt& m = g_app->mission;
+    std::string quelle = m.karte;
+    if (const auto q = g_app->kartenQuelle.find(m.karte); q != g_app->kartenQuelle.end()) { quelle = q->second; }
+    const std::string text = "# BehavEd-Remake mission\nname=" + m.name + "\nordner=" + m.ordner + "\nkarte=" + quelle +
+                             "\narchiv=" + m.archiv + "\n";
+    (void)schreibe(missionsDatei(m.projektOrdner), text);
+}
+
+std::vector<std::pair<std::string, std::string>> letzteMissionen() {
+    std::vector<std::tuple<std::filesystem::file_time_type, std::string, std::string>> gefunden;
+    const std::string wurzel = missionenWurzel();
+    std::error_code ec;
+    if (wurzel.empty() || !std::filesystem::is_directory(std::filesystem::u8path(wurzel), ec)) {
+        return {};
+    }
+    for (const auto& d : std::filesystem::directory_iterator(std::filesystem::u8path(wurzel), ec)) {
+        if (!d.is_directory(ec)) { continue; }
+        const std::filesystem::path m = d.path() / "mission.txt";
+        if (!std::filesystem::exists(m, ec)) { continue; }
+        gefunden.emplace_back(std::filesystem::last_write_time(m, ec), utf8(d.path().filename()), utf8(d.path()));
+    }
+    std::sort(gefunden.begin(), gefunden.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+    std::vector<std::pair<std::string, std::string>> aus;
+    for (const auto& g : gefunden) {
+        if (aus.size() >= 8) { break; }
+        aus.emplace_back(std::get<1>(g), std::get<2>(g));
+    }
+    return aus;
+}
+
+bool missionAusOrdnerLaden(const std::string& ordner, std::string* fehler) {
+    const auto nein = [fehler](const std::string& t) {
+        if (fehler != nullptr) { *fehler = t; }
+        meldung(t, std::string(), true);
+        return false;
+    };
+    std::map<std::string, std::string> werte;
+    {
+        std::istringstream is(slurp(missionsDatei(ordner)));
+        std::string z;
+        while (std::getline(is, z)) {
+            if (!z.empty() && z.back() == '\r') { z.pop_back(); }
+            const auto gleich = z.find('=');
+            if (z.empty() || z[0] == '#' || gleich == std::string::npos) { continue; }
+            werte[z.substr(0, gleich)] = z.substr(gleich + 1);
+        }
+    }
+    const std::string name = werte["name"];
+    if (!gueltigerMissionsName(name)) {
+        return nein(missionsDatei(ordner));
+    }
+    const std::string id = "maps/" + name + ".bsp";
+    if (g_app->entitiesUngespeichert.count(id) != 0U) {
+        if (!g_app->frageOffen) {
+            char t[600];
+            std::snprintf(t, sizeof(t), tr(Str::MissionUnsavedReload), name.c_str());
+            frage(t, [ordner, id] {
+                g_app->entitiesUngespeichert.erase(id);
+                (void)missionAusOrdnerLaden(ordner, nullptr);
+            }, [] {});
+        }
+        return false;
+    }
+    std::string pruefe;
+    if (!readFromArchives(id, pruefe) && !werte["karte"].empty() && werte["karte"] != id) {
+        g_app->kartenQuelle[id] = werte["karte"];
+    }
+    std::string bytes;
+    if (!kartenBytes(id, bytes)) {
+        return nein(werte["karte"].empty() ? id : werte["karte"]);
+    }
+    neuerReiter();
+    vergissEntities(id);
+    loadMapFromBytes(bytes, id);
+    g_app->settings.mapPath.clear();
+    std::vector<MapEntity> ents;
+    parseEntities(slurp(pfadVerbinden(ordner, "maps/" + name + ".ent")), ents);
+    if (!ents.empty()) {
+        g_app->map.entities = std::move(ents);
+        collectNames(g_app->map);
+    }
+    merkeEntities();
+    g_app->mission = App::MissionsProjekt{};
+    g_app->mission.name = name;
+    g_app->mission.ordner = werte["ordner"].empty() ? ordnerAusName(name) : werte["ordner"];
+    g_app->mission.karte = id;
+    g_app->mission.archiv = werte["archiv"];
+    g_app->mission.projektOrdner = ordner;
+    g_app->mission.zielPk3 = standardZielPk3(name);
+    g_app->missionAktiv = true;
+    g_app->entUndo.clear();
+    g_app->entRedo.clear();
+    g_app->entitiesUngespeichert.erase(id);
+    g_app->pickedEntity = -1;
+    g_app->hiddenEntities.clear();
+    // Die Skripte des Ordners, das Intro zuerst.
+    std::vector<std::string> skripte;
+    std::error_code ec;
+    const std::filesystem::path sw = std::filesystem::u8path(pfadVerbinden(ordner, "scripts"));
+    for (auto it = std::filesystem::recursive_directory_iterator(sw, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+        if (it->is_regular_file(ec) && endetAuf(utf8(it->path()), ".txt")) { skripte.push_back(utf8(it->path())); }
+    }
+    std::sort(skripte.begin(), skripte.end(), [](const std::string& a, const std::string& b) {
+        const bool ia = klein(fileName(a)).find("intro") != std::string::npos;
+        const bool ib = klein(fileName(b)).find("intro") != std::string::npos;
+        return ia != ib ? ia : a < b;
+    });
+    int erstes = -1;
+    for (const std::string& s : skripte) {
+        ladeSkriptDatei(s);
+        if (erstes < 0) { erstes = g_app->activeTab; }
+    }
+    if (erstes >= 0) { activateTab(erstes); }
+    g_app->camTrackValid = false;
+    g_app->mapDirty = true;
+    g_app->leftMode = 1;
+    char t[300];
+    std::snprintf(t, sizeof(t), tr(Str::MissionOpened), name.c_str());
+    meldung(t, ordner);
+    return true;
+}
+
+void missionsOrdnerWaehlen() {
+    const std::string p = platform::pickFolder(tr(Str::MissionOpenFolder), missionenWurzel());
+    if (!p.empty()) { (void)missionAusOrdnerLaden(p, nullptr); }
+}
+
+// --- Die Startflaeche: ohne Karte ----------------------------------------------
+//
+// Vorher stand im leeren Map-Tab nur "No map loaded". Wie Unreals
+// Projektbrowser: drei grosse Wege hinein und die zuletzt bearbeiteten
+// Missionen.
+void drawStartflaeche(float breite, float hoehe) {
+    ImGui::BeginChild("##startflaeche", ImVec2{breite, hoehe}, ImGuiChildFlags_Borders);
+    const float fs = ImGui::GetFontSize();
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float spalte = std::min(ImGui::GetContentRegionAvail().x - fs * 2.0F, fs * 46.0F);
+    const float links = std::max(fs, (ImGui::GetContentRegionAvail().x - spalte) * 0.5F);
+    ImGui::SetCursorPosY(std::max(fs, hoehe * 0.10F));
+    ImGui::SetCursorPosX(links);
+    ImGui::PushFont(nullptr, fs * 1.6F);
+    ImGui::TextUnformatted(tr(Str::StartTitle));
+    ImGui::PopFont();
+    ImGui::SetCursorPosX(links);
+    ImGui::PushTextWrapPos(links + spalte);
+    ImGui::TextDisabled("%s", tr(Str::StartSub));
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy(ImVec2{0.0F, fs * 0.8F});
+
+    // Drei Karten
+    struct Karte {
+        Str titel;
+        Str unter;
+        UiIcon icon;
+        int wer;
+    };
+    const Karte karten[] = {
+        {Str::StartCardNew, Str::StartCardNewSub, UiIcon::Neu, 0},
+        {Str::StartCardLoad, Str::StartCardLoadSub, UiIcon::Paket, 1},
+        {Str::StartCardMap, Str::StartCardMapSub, UiIcon::Karte, 2},
+    };
+    const float kb = (spalte - st.ItemSpacing.x * 2.0F) / 3.0F;
+    const float kh = fs * 8.0F;
+    ImGui::SetCursorPosX(links);
+    for (int k = 0; k < 3; ++k) {
+        if (k > 0) { ImGui::SameLine(); }
+        const Karte& c = karten[k];
+        const bool geklickt = ImGui::InvisibleButton(tr(c.titel), ImVec2{kb, kh});
+        const bool ueber = ImGui::IsItemHovered();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 a = ImGui::GetItemRectMin();
+        const ImVec2 b = ImGui::GetItemRectMax();
+        dl->AddRectFilled(a, b, ImGui::GetColorU32(ueber ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), fs * 0.5F);
+        const ImVec4 farbe = uiIconFarbe(c.icon);
+        if (ueber) { dl->AddRect(a, b, ImGui::GetColorU32(farbe), fs * 0.5F, 0, 2.0F); }
+        const float ig = fs * 2.4F;
+        uiIcon(dl, c.icon, ImVec2{std::floor(a.x + fs), std::floor(a.y + fs)}, ig, ImGui::GetColorU32(farbe));
+        dl->AddText(ImVec2{a.x + fs, a.y + fs * 1.6F + ig}, ImGui::GetColorU32(ImGuiCol_Text), tr(c.titel));
+        dl->AddText(nullptr, 0.0F, ImVec2{a.x + fs, a.y + fs * 2.9F + ig}, ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                    tr(c.unter), nullptr, kb - fs * 2.0F);
+        if (geklickt) {
+            if (c.wer == 0) { g_app->neueMissionOffen = true; }
+            if (c.wer == 1) { loadMissionArchive(); }
+            if (c.wer == 2) { doLoadMap(); }
+        }
+    }
+    ImGui::Dummy(ImVec2{0.0F, fs * 1.0F});
+
+    // Zuletzt bearbeitet
+    ImGui::SetCursorPosX(links);
+    ImGui::TextUnformatted(tr(Str::StartRecent));
+    ImGui::SameLine();
+    if (iconKnopf(tr(Str::MissionOpenFolder), UiIcon::Oeffnen, tr(Str::MissionOpenFolderHint))) {
+        missionsOrdnerWaehlen();
+    }
+    static std::vector<std::pair<std::string, std::string>> liste;
+    static double gelesen = -100.0;
+    if (ImGui::GetTime() - gelesen > 2.0) {   // nicht in jedem Bild die Platte fragen
+        liste = letzteMissionen();
+        gelesen = ImGui::GetTime();
+    }
+    if (liste.empty()) {
+        ImGui::SetCursorPosX(links);
+        ImGui::TextDisabled("%s", tr(Str::StartNoRecent));
+    }
+    for (const auto& [name, pfad] : liste) {
+        ImGui::SetCursorPosX(links);
+        ImGui::PushID(pfad.c_str());
+        const ImVec2 q = ImGui::GetCursorScreenPos();
+        if (ImGui::Selectable("##letzte", false, ImGuiSelectableFlags_None, ImVec2{spalte, ImGui::GetFrameHeight()})) {
+            (void)missionAusOrdnerLaden(pfad, nullptr);
+        }
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const float y = q.y + (ImGui::GetFrameHeight() - fs) * 0.5F;
+        uiIcon(dl, UiIcon::Mission, ImVec2{std::floor(q.x + 4.0F), std::floor(y)}, fs, ImGui::GetColorU32(uiIconFarbe(UiIcon::Mission)));
+        dl->AddText(ImVec2{q.x + fs * 1.8F, y}, ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
+        dl->AddText(ImVec2{q.x + fs * 1.8F + ImGui::CalcTextSize(name.c_str()).x + fs, y},
+                    ImGui::GetColorU32(ImGuiCol_TextDisabled), pfad.c_str());
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+}
+
+// --- Kurze Einblendungen unten rechts -------------------------------------------
+void meldung(const std::string& text, const std::string& ordner, bool warnung) {
+    App::Einblendung e;
+    e.text = text;
+    e.ordner = ordner;
+    e.warnung = warnung;
+    e.bis = ImGui::GetTime() + (warnung ? 8.0 : 5.0);
+    g_app->einblendungen.push_back(e);
+    if (g_app->einblendungen.size() > 3) { g_app->einblendungen.erase(g_app->einblendungen.begin()); }
+    addStatus(text);
+}
+
+void drawEinblendungen() {
+    const double jetzt = ImGui::GetTime();
+    auto& v = g_app->einblendungen;
+    v.erase(std::remove_if(v.begin(), v.end(), [jetzt](const App::Einblendung& e) { return e.bis < jetzt; }), v.end());
+    if (v.empty()) { return; }
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float fs = ImGui::GetFontSize();
+    float unten = vp->WorkPos.y + vp->WorkSize.y - fs * 2.6F;
+    for (std::size_t k = v.size(); k-- > 0;) {
+        App::Einblendung& e = v[k];
+        const float alpha = static_cast<float>(std::clamp((e.bis - jetzt) / 0.6, 0.0, 1.0));
+        ImGui::SetNextWindowPos(ImVec2{vp->WorkPos.x + vp->WorkSize.x - fs, unten}, ImGuiCond_Always, ImVec2{1.0F, 1.0F});
+        ImGui::SetNextWindowBgAlpha(0.95F * alpha);
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, fs * 0.5F);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{fs * 0.8F, fs * 0.6F});
+        char id[32];
+        std::snprintf(id, sizeof(id), "##einblendung%zu", k);
+        ImGui::Begin(id, nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
+        const UiIcon icon = e.warnung ? UiIcon::Warnung : UiIcon::Haken;
+        const ImVec2 q = ImGui::GetCursorScreenPos();
+        uiIcon(ImGui::GetWindowDrawList(), icon, ImVec2{std::floor(q.x), std::floor(q.y)}, fs,
+               ImGui::GetColorU32(uiIconFarbe(icon)));
+        ImGui::Dummy(ImVec2{fs, fs});
+        ImGui::SameLine();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + fs * 26.0F);
+        ImGui::TextUnformatted(e.text.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::ToastClose), UiIcon::Schliessen, nullptr)) { e.bis = 0.0; }
+        if (!e.ordner.empty()) {
+            if (iconTextKnopf(tr(Str::ToastExplorer), UiIcon::Explorer, nullptr)) {
+                // Im Selbsttest kein Explorer-Fenster auf dem Bildschirm des Anwenders.
+                if (std::getenv("BHED_EDITORTEST") != nullptr) {
+                    diag::detail("Einblendung: Explorer fuer " + e.ordner + " (Selbsttest, nicht geoeffnet)");
+                } else {
+                    platform::openInExplorer(e.ordner);
+                }
+            }
+        }
+        unten = ImGui::GetWindowPos().y - fs * 0.5F;
+        ImGui::End();
+        ImGui::PopStyleVar(3);
+    }
 }
 
 // --- Die beiden Fenster ---------------------------------------------------------

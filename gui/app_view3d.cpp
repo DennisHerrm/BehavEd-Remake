@@ -7497,6 +7497,9 @@ void drawMapToolbar() {
         ImGui::OpenPopup("##kartenmehr");
     }
     if (ImGui::BeginPopup("##kartenmehr")) {
+        if (ImGui::MenuItem(tr(Str::MissionOpenFolder))) { missionsOrdnerWaehlen(); }
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::MissionOpenFolderHint)); }
+        ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::OpenMapFile))) { doLoadMap(); }
         if (ImGui::MenuItem(tr(Str::OpenMapPk3))) {
             if (g_app->gamePaths.empty()) { rescanGamePaths(); }
@@ -9421,19 +9424,9 @@ void drawMapView() {
         const float bildW = std::max(64.0F, leer.x - leisteW0);
         g_app->dbgBildW = bildW;
         const float bildH = std::max(64.0F, leer.y - 2.0F);
-        const ImVec2 p0 = ImGui::GetCursorScreenPos();
-        ImDrawList* dl0 = ImGui::GetWindowDrawList();
-        dl0->AddRectFilled(p0, ImVec2{p0.x + bildW, p0.y + bildH},
-                           IM_COL32(18, 20, 26, 255));
-        dl0->AddRect(p0, ImVec2{p0.x + bildW, p0.y + bildH},
-                     ImGui::GetColorU32(ImGuiCol_Border));
-        // Der Hinweis in die MITTE des Feldes - dort sucht man ihn.
-        const ImVec2 ts = ImGui::CalcTextSize(tr(Str::MapEmpty));
-        dl0->AddText(ImVec2{p0.x + (bildW - ts.x) * 0.5F,
-                            p0.y + (bildH - ts.y) * 0.5F},
-                     ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                     tr(Str::MapEmpty));
-        ImGui::Dummy(ImVec2{bildW, bildH});
+        // Statt "No map loaded" die Startflaeche (gui/app_mission.cpp): drei
+        // Wege hinein und die zuletzt bearbeiteten Missionen.
+        drawStartflaeche(bildW, bildH);
         return;
     }
 

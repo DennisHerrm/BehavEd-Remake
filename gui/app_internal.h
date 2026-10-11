@@ -160,6 +160,14 @@ struct App {
         std::string zielPk3;        // wohin "Save mission" packt
     };
     MissionsProjekt mission;
+    // Kurze Einblendungen unten rechts (meldung / drawEinblendungen).
+    struct Einblendung {
+        std::string text;
+        std::string ordner;   // nicht leer: Knopf "Im Explorer zeigen"
+        bool warnung = false;
+        double bis = 0.0;     // ImGui::GetTime(), bis wann sichtbar
+    };
+    std::vector<Einblendung> einblendungen;
     // Woher die Geometrie einer Karte kommt, die es unter ihrer Kennung (noch)
     // nicht gibt: eine neue Mission heisst "maps/<name>.bsp", ihre .bsp ist
     // die der Grundkarte - ein Archivname oder ein Plattenpfad. So teilen sich
@@ -1908,6 +1916,14 @@ void missionAusGeladener(const Mission& m);
 bool missionSpeichernNach(const std::string& pk3, std::string* fehler);
 std::string missionStandardOrdner(const std::string& name);
 bool missionBeendenFrage();
+// Missionsordner (mission.txt), Startflaeche, Einblendungen (rc586)
+void missionsDateiSchreiben();
+std::vector<std::pair<std::string, std::string>> letzteMissionen();
+bool missionAusOrdnerLaden(const std::string& ordner, std::string* fehler);
+void missionsOrdnerWaehlen();
+void drawStartflaeche(float breite, float hoehe);
+void meldung(const std::string& text, const std::string& ordner, bool warnung = false);
+void drawEinblendungen();
 // Gibt es an der Mission Ungespeichertes (Entities oder Skripte)?
 bool missionUngespeichert();
 // Kopfzeile der Kartenansicht (gui/app_view3d.cpp)

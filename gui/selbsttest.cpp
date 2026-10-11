@@ -6579,6 +6579,12 @@ std::vector<Schritt> missionsbauSchritte() {
     }));
     add(pruefe("Missionsbau: Grundkarte gefunden", [=] { return !z->karte.empty(); }));
     add(pause(0.5));
+    // Ohne Karte: die Startflaeche statt "No map loaded" (rc586).
+    add(foto("mb_start"));
+    add(pruefe("Startflaeche: drei Wege hinein sichtbar", [] {
+        return g_app->geo.empty() && finde(tr(Str::StartCardNew), "", 0, false) != nullptr &&
+               finde(tr(Str::StartCardLoad), "", 0, false) != nullptr && finde(tr(Str::StartCardMap), "", 0, false) != nullptr;
+    }));
 
     // ---------------- New mission ueber das Fenster ----------------
     add(klick(tr(Str::MissionNew)));
@@ -6969,8 +6975,12 @@ std::vector<Schritt> missionsbauSchritte() {
             if ((n == "intro.txt" || n == "runner1.txt") && schmutzig) { sauber = false; }
         }
         diag::detail("Knopftest: Missionsbau - pk3 " + std::to_string(inhalt.size()) + " Dateien, .ent " +
-                     std::to_string(gelesen.size()) + " Entities");
-        return z->vorher == 1 && mb::datei(inhalt, "maps/" + m.name + ".bsp") != nullptr && gleich && ibi != nullptr &&
+                     std::to_string(gelesen.size()) + " Entities, Einblendung \"" +
+                     (g_app->einblendungen.empty() ? std::string() : g_app->einblendungen.back().text) + "\"");
+        const bool eingeblendet = !g_app->einblendungen.empty() &&
+                                  g_app->einblendungen.back().text.find("zz_" + m.name) != std::string::npos &&
+                                  !g_app->einblendungen.back().ordner.empty();
+        return z->vorher == 1 && eingeblendet && mb::datei(inhalt, "maps/" + m.name + ".bsp") != nullptr && gleich && ibi != nullptr &&
                ibi->compare(0, 3, "IBI") == 0 && ibi2 != nullptr && sauber && g_app->entitiesUngespeichert.empty();
     }));
     // Ein kaputtes Skript: Speichern verweigert, das Archiv bleibt
@@ -7027,6 +7037,23 @@ std::vector<Schritt> missionsbauSchritte() {
         diag::detail("Knopftest: Missionsbau - nach dem Laden intro.txt " + std::to_string(intro) + " mal, runner1.txt " +
                      std::to_string(runner) + " mal offen");
         return intro == 1 && runner == 1;
+    }));
+    // Aus dem Missionsordner wieder oeffnen (mission.txt) - wie nach einem
+    // Neustart, wenn die Mission noch nicht gepackt war.
+    add(tu("Mission aus ihrem Ordner oeffnen", [=] {
+        std::string f;
+        z->vorher = missionAusOrdnerLaden(g_app->mission.projektOrdner, &f) ? 1 : 0;
+        diag::detail("Knopftest: Missionsbau - aus dem Ordner: " + std::string(z->vorher != 0 ? "ja" : "nein " + f));
+    }));
+    add(warteBis("Mission aus dem Ordner geladen", [] { return g_app->camTrackValid; }, 1500));
+    add(pruefe("Aus dem Ordner: dieselben Entities, kein Skript doppelt", [=] {
+        bool gleich = g_app->map.entities.size() == z->gespeichert.size();
+        for (std::size_t i = 0; gleich && i < z->gespeichert.size(); ++i) { gleich = g_app->map.entities[i].keys == z->gespeichert[i].keys; }
+        int intro = 0;
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) { intro += mb::reiterName(i) == "intro.txt" ? 1 : 0; }
+        diag::detail("Knopftest: Missionsbau - Ordner: " + std::to_string(g_app->map.entities.size()) + " Entities (" +
+                     std::to_string(z->gespeichert.size()) + "), intro.txt " + std::to_string(intro) + " mal");
+        return z->vorher == 1 && gleich && intro == 1 && g_app->missionAktiv;
     }));
     // Ungespeichert + noch einmal laden: Rueckfrage, Nein laesst alles stehen
     add(tu("Aendern, dann dieselbe Mission noch einmal laden", [=] {

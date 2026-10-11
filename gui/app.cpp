@@ -15382,6 +15382,7 @@ void draw() {
         drawNeueMission();
         drawMissionSpeichern();
         drawKartenStatistik();
+        drawEinblendungen();
         drawAbout();
     }
     selbsttest();   // nur mit BHED_EDITORTEST, siehe selbsttest.cpp
