@@ -9,6 +9,14 @@ Artifact „BehavEd Missionsgraph Vorschau“).
 * **Umschalter** in der Kopfzeile von Script Flow (`ansichtsUmschalter`,
   Einstellung `flussAnsicht`). Graph/Spuren nehmen den ganzen Bereich ein
   (`drawFlowArea` → `drawFlussAnsicht`), Classic bleibt der Baum mit Feldern.
+* **Geteilte Ansicht** („und können die 2 neuen ansichten auch in split view
+  funktionieren?“): jedes Feld hat seine Ansicht (`feldAnsicht`, Feld 0 in
+  `flussAnsicht`, die übrigen in `SplitPane::ansicht`), je Feld ein eigener
+  Graph-Zustand (`graphe[]`). Graph und Spuren folgen dem lebenden Dokument
+  und nehmen den Fokus nicht. Selbsttest missionsbau: 4 neue Prüfungen, am
+  alten Verhalten nachgestellt (6 Fehler), jetzt 54/54.
+* Das Zeitleisten-Häkchen „Tracks“ heißt jetzt „Character rows“ – zwei Knöpfe
+  „Tracks“ verwechselte auch der Kartentest (Zeitleiste: Tracks schaltet um).
 * **Graph** (`missionsgraph.h/.cpp`, ctest `missionbau` +10 Proben): Knoten =
   Spielerstart, Starter, Figuren, Kartenwechsel, Auslöser (immer), andere
   Entities nur verbunden, Skripte; Kanten target*, *script, use, affect

@@ -6945,7 +6945,7 @@ std::vector<Schritt> missionsbauSchritte() {
     {
         auto schl = std::make_shared<std::map<std::string, std::string>>();
         const auto knotenPunkt = [](const std::string& sch, bool ausgang) {
-            const App::GraphZustand& gz = g_app->graph;
+            const App::GraphZustand& gz = g_app->graph();
             const float s = ImGui::GetFontSize() / 13.0F;
             for (const GraphKnoten& k : gz.g.knoten) {
                 if (k.schluessel != sch) { continue; }
@@ -6957,7 +6957,7 @@ std::vector<Schritt> missionsbauSchritte() {
             return ImVec2{-1.0F, -1.0F};
         };
         const auto kanteDa = [](const std::string& von, const std::string& nach, const std::string& label) {
-            const auto& g = g_app->graph.g;
+            const auto& g = g_app->graph().g;
             for (const GraphKante& k : g.kanten) {
                 if (g.knoten[static_cast<std::size_t>(k.von)].schluessel == von &&
                     g.knoten[static_cast<std::size_t>(k.nach)].schluessel == nach && k.label == label) {
@@ -6988,8 +6988,8 @@ std::vector<Schritt> missionsbauSchritte() {
         add(pause(0.8));
         add(foto("ans_graph"));
         add(pruefe("Graph: Ansicht aktiv; Start -target-> Starter -usescript-> intro; npc1 als Knoten", [=] {
-            diag::detail("Knopftest: Ansichten - Graph " + std::to_string(g_app->graph.g.knoten.size()) + " Knoten, " +
-                         std::to_string(g_app->graph.g.kanten.size()) + " Kanten");
+            diag::detail("Knopftest: Ansichten - Graph " + std::to_string(g_app->graph().g.knoten.size()) + " Knoten, " +
+                         std::to_string(g_app->graph().g.kanten.size()) + " Kanten");
             return g_app->settings.flussAnsicht == 1 && kanteDa((*schl)["start"], (*schl)["introStarter"], "target") &&
                    kanteDa((*schl)["introStarter"], (*schl)["intro"], "usescript") &&
                    knotenPunkt((*schl)["npc1"], false).x >= 0.0F;
@@ -7043,7 +7043,7 @@ std::vector<Schritt> missionsbauSchritte() {
         }));
         // Doppelklick auf das Skript runner1 oeffnet seinen Reiter.
         add(tu("Graph: den Knoten runner1 (Skript) in die Mitte holen", [=] {
-            App::GraphZustand& gz = g_app->graph;
+            App::GraphZustand& gz = g_app->graph();
             for (const GraphKnoten& k : gz.g.knoten) {
                 if (k.schluessel == (*schl)["runner1Skript"]) {
                     const float s = ImGui::GetFontSize() / 13.0F;
@@ -7152,6 +7152,79 @@ std::vector<Schritt> missionsbauSchritte() {
             return !kanteDa((*schl)["runner1"], (*schl)["npc1"], "target");
         }));
         add(tu("zurueck zu Classic", [] { g_app->settings.flussAnsicht = 0; }));
+        add(pause(0.3));
+        // --- Geteilte Ansicht: jedes Feld seine eigene Ansicht ---
+        //
+        // "und koennen die 2 neuen ansichten auch in split view funktionieren?"
+        // Links intro in Classic (Fokus), rechts runner1 - dort Spuren, dann
+        // Graph. Graph und Spuren folgen dem Skript mit dem Fokus.
+        auto teilX = std::make_shared<float>(0.0F);
+        add(tu("Zwei Felder: links intro, rechts runner1", [=] {
+            mb::zumReiter("intro.txt");
+            g_app->leftMode = 0;   // geteilt wird im Events-Modus
+            g_app->splitCount = 2;
+            g_app->focusPane = 0;
+            g_app->splitPanes[0].tab = g_app->activeTab;
+            for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+                if (mb::reiterName(i) == "runner1.txt") { g_app->splitPanes[1].tab = static_cast<int>(i); }
+            }
+            for (auto& pn : g_app->splitPanes) { pn.dirty = true; }
+        }));
+        add(pause(0.5));
+        add(klick(tr(Str::FlowTracks), "", 1));
+        add(pause(0.6));
+        add(foto("ans_geteilt_spuren"));
+        add(pruefe("Geteilt: rechts Spuren, links weiter Classic, Fokus und Reiter unveraendert", [=] {
+            // Die linke Kante des rechten Feldes: vor seinem Classic-Knopf steht
+            // nur die Ueberschrift.
+            const Element* e = finde(tr(Str::FlowClassic), "", 1, false, "");
+            *teilX = e != nullptr ? e->rect.Min.x - ImGui::GetFontSize() * 7.0F : 1.0e9F;
+            bool rechts = !g_app->spurenBloecke.empty();
+            for (const auto& [p, r] : g_app->spurenBloecke) { rechts = rechts && r.Min.x > *teilX; }
+            diag::detail("Knopftest: Ansichten - geteilt, Feld 0 " + std::to_string(feldAnsicht(0)) + ", Feld 1 " +
+                         std::to_string(feldAnsicht(1)) + ", " + std::to_string(g_app->spurenBloecke.size()) + " Bloecke rechts von " +
+                         std::to_string(*teilX));
+            return feldAnsicht(0) == 0 && feldAnsicht(1) == 2 && rechts && g_app->focusPane == 0 &&
+                   mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "intro.txt";
+        }));
+        add(tu("Geteilt: den Block des wait rechts suchen", [=] {
+            for (const auto& [p, r] : g_app->spurenBloecke) {
+                if (p == *waitPfad) { *waitRect = r; }
+            }
+            g_app->selectedPath.clear();
+        }));
+        add(klickAn("Geteilt: auf den wait-Block rechts", [=] { return waitRect->GetCenter(); }));
+        add(pause(0.3));
+        add(pruefe("Geteilt: Klick rechts waehlt die Zeile im intro links, ohne Fokuswechsel", [=] {
+            return g_app->selectedPath == *waitPfad && g_app->focusPane == 0 &&
+                   mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "intro.txt";
+        }));
+        add(klick(tr(Str::FlowGraph), "", 1));
+        add(pause(0.6));
+        add(klick(tr(Str::FlowGraph), "", 0));
+        add(pause(0.6));
+        add(foto("ans_geteilt_graph"));
+        add(pruefe("Geteilt: zwei Graphen nebeneinander, jeder mit eigener Flaeche", [=] {
+            const App::GraphZustand& a = g_app->graphe[0];
+            const App::GraphZustand& b = g_app->graphe[1];
+            diag::detail("Knopftest: Ansichten - Graph links bei " + std::to_string(a.ursprung.x) + " (" +
+                         std::to_string(a.g.knoten.size()) + " Knoten), rechts bei " + std::to_string(b.ursprung.x) + " (" +
+                         std::to_string(b.g.knoten.size()) + " Knoten)");
+            return feldAnsicht(0) == 1 && feldAnsicht(1) == 1 && !a.g.knoten.empty() &&
+                   a.g.knoten.size() == b.g.knoten.size() && b.ursprung.x > a.ursprung.x + a.groesse.x - 1.0F;
+        }));
+        add(klick(tr(Str::FlowClassic), "", 0));
+        add(pause(0.4));
+        add(pruefe("Geteilt: links wieder Classic mit dem intro, rechts weiter Graph", [=] {
+            return feldAnsicht(0) == 0 && feldAnsicht(1) == 1 && finde("##splitpick0", "", 0, false, "") != nullptr;
+        }));
+        add(tu("wieder ein Feld, zurueck in die Karte", [] {
+            g_app->leftMode = 1;
+            g_app->splitPanes[1].ansicht = 0;
+            g_app->splitCount = 1;
+            g_app->focusPane = 0;
+            for (auto& pn : g_app->splitPanes) { pn.dirty = true; }
+        }));
         add(pause(0.3));
     }
     // ---------------- Save mission ----------------

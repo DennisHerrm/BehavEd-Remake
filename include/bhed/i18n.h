@@ -580,6 +580,7 @@ enum class Str {
     FlowGraph,
     FlowTracks,
     FlowViewHint,
+    FlowFollowsHint,
     GraphFit,
     GraphRelayout,
     GraphHint,

@@ -7426,7 +7426,7 @@ void drawSplitTree(const Layout& l, int pane, float breite, float hoehe) {
     };
     if (beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
                       kennung.c_str(), ImVec2{breite, hoehe}, l.headerH, kopf,
-                      pane == 0 ? std::function<void()>(ansichtsUmschalter) : std::function<void()>())) {
+                      [pane] { ansichtsUmschalter(pane); })) {
 
         // Den Baum bauen, wenn noetig.
         //
@@ -7863,11 +7863,6 @@ void drawFlowArea(const Layout& l) {
     // Graph oder Spuren (gui/app_ansichten.cpp): eine Ansicht ueber den ganzen
     // Bereich, ohne Felder. Classic bleibt der Baum unten - alle drei arbeiten
     // auf demselben Dokument.
-    if (g_app->settings.flussAnsicht != 0) {
-        drawFlussAnsicht(wIst, hIst, l.headerH);
-        ImGui::EndChild();
-        return;
-    }
     // Die Trennlinien liegen dort, wo der Anwender sie hingezogen hat.
     // Grenzen, damit kein Feld auf null schrumpft und unerreichbar wird.
     const float hw =
@@ -7926,7 +7921,9 @@ void drawFlowArea(const Layout& l) {
     for (int i = 0; i < felder; ++i) {
         const Feld& f = felderPos[i];
         ImGui::SetCursorScreenPos(ImVec2{ursprung.x + f.x, ursprung.y + f.y});
-        if (i == fokus) {
+        if (feldAnsicht(i) != 0) {
+            drawFlussAnsicht(f.w, f.h, l.headerH, i);
+        } else if (i == fokus) {
             drawTree(l, i, f.w, f.h - l.headerH);
         } else if (!g_app->tabs.empty()) {
             drawSplitTree(l, i, f.w, f.h - l.headerH);
@@ -8140,7 +8137,7 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
         beginGroupBox(tr(pane == 0 ? Str::GroupScriptFlow : Str::SplitTitle),
                       kennung.c_str(), ImVec2{breite, hoehe}, l.headerH,
                       mehrere ? std::function<void()>(kopf) : std::function<void()>(),
-                      pane == 0 ? std::function<void()>(ansichtsUmschalter) : std::function<void()>());
+                      [pane] { ansichtsUmschalter(pane); });
     if (mehrere) {
         ImGui::PopStyleColor();
     }

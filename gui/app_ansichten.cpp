@@ -39,24 +39,32 @@ std::string klein(std::string s) {
 }  // namespace
 
 // --- Der Umschalter (Kopfzeile von Script Flow) --------------------------------
-void ansichtsUmschalter() {
+int& feldAnsicht(int pane) {
+    if (pane <= 0 || pane >= App::kMaxSplit) { return g_app->settings.flussAnsicht; }
+    return g_app->splitPanes[pane].ansicht;
+}
+
+void ansichtsUmschalter(int pane) {
     const Str namen[3] = {Str::FlowClassic, Str::FlowGraph, Str::FlowTracks};
+    int& ansicht = feldAnsicht(pane);
+    ImGui::PushID(pane);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{ImGui::GetFontSize() * 0.55F, 0.0F});
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{2.0F, 0.0F});
     for (int k = 0; k < 3; ++k) {
         if (k > 0) { ImGui::SameLine(); }
-        const bool an = g_app->settings.flussAnsicht == k;
+        const bool an = ansicht == k;
         if (an) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         }
         if (ImGui::Button(tr(namen[k])) && !an) {
-            g_app->settings.flussAnsicht = k;
-            diag::detail(std::string("Ansicht: ") + tr(namen[k]));
+            ansicht = k;
+            diag::detail("Ansicht Feld " + std::to_string(pane) + ": " + tr(namen[k]));
         }
         if (an) { ImGui::PopStyleColor(); }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::FlowViewHint)); }
     }
     ImGui::PopStyleVar(2);
+    ImGui::PopID();
 }
 
 // ============================================================================
@@ -112,7 +120,7 @@ const Script* skriptFuerGraph(const std::string& ref) {
     if (const int r = reiterFuerSkriptRef(ref); r >= 0) {
         return r == g_app->activeTab ? &g_app->doc.script() : &g_app->tabs[static_cast<std::size_t>(r)].doc.script();
     }
-    App::GraphZustand& z = g_app->graph;
+    App::GraphZustand& z = g_app->graph();
     const std::string k = klein(ref);
     if (const auto it = z.skriptCache.find(k); it != z.skriptCache.end()) {
         return it->second.get();
@@ -131,7 +139,7 @@ const Script* skriptFuerGraph(const std::string& ref) {
 }
 
 void graphNeuBauen() {
-    App::GraphZustand& z = g_app->graph;
+    App::GraphZustand& z = g_app->graph();
     if (z.cacheKarte != g_app->map.path) {
         z.skriptCache.clear();
         z.pos.clear();
@@ -152,7 +160,7 @@ void graphNeuBauen() {
 }
 
 int knotenIndex(const std::string& schluessel) {
-    const auto& v = g_app->graph.g.knoten;
+    const auto& v = g_app->graph().g.knoten;
     for (std::size_t i = 0; i < v.size(); ++i) {
         if (v[i].schluessel == schluessel) { return static_cast<int>(i); }
     }
@@ -163,7 +171,7 @@ int knotenIndex(const std::string& schluessel) {
 
 // Alles in den Blick nehmen.
 void graphEinpassen(float breite, float hoehe) {
-    App::GraphZustand& z = g_app->graph;
+    App::GraphZustand& z = g_app->graph();
     if (z.g.knoten.empty()) { return; }
     const float s = ImGui::GetFontSize() / 13.0F;
     float x0 = 1e9F;
@@ -189,8 +197,8 @@ std::string graphVerbinden(const std::string& vonSchluessel, const std::string& 
     const int a = knotenIndex(vonSchluessel);
     const int b = knotenIndex(nachSchluessel);
     if (a < 0 || b < 0 || a == b) { return {}; }
-    const GraphKnoten von = g_app->graph.g.knoten[static_cast<std::size_t>(a)];
-    const GraphKnoten nach = g_app->graph.g.knoten[static_cast<std::size_t>(b)];
+    const GraphKnoten von = g_app->graph().g.knoten[static_cast<std::size_t>(a)];
+    const GraphKnoten nach = g_app->graph().g.knoten[static_cast<std::size_t>(b)];
     char t[400];
     if (von.entity >= 0 && nach.entity >= 0) {
         // Entity -> Entity: target. Das Ziel braucht einen targetname.
@@ -246,7 +254,7 @@ std::string graphVerbinden(const std::string& vonSchluessel, const std::string& 
 }
 
 void drawGraphAnsicht() {
-    App::GraphZustand& z = g_app->graph;
+    App::GraphZustand& z = g_app->graph();
     const std::string sig = graphSignatur();
     if (sig != z.signatur) {
         z.signatur = sig;
@@ -672,7 +680,10 @@ void drawSpurenAnsicht() {
     const double laenge = std::max(1000.0, g_app->timeline.practicalEndMs > 0.0 ? g_app->timeline.practicalEndMs
                                                                                 : g_app->timeline.durationMs);
     // Abspielen auch ohne Kartenansicht (dort laeuft die Zeit in drawTimeline).
-    if (g_app->playing && g_app->leftMode != 1) {
+    // Einmal je Bild, auch wenn zwei Felder die Spuren zeigen.
+    static int letztesBild = -1;
+    if (g_app->playing && g_app->leftMode != 1 && letztesBild != ImGui::GetFrameCount()) {
+        letztesBild = ImGui::GetFrameCount();
         g_app->playMs += static_cast<double>(ImGui::GetIO().DeltaTime) * 1000.0;
         if (g_app->playMs >= laenge) {
             g_app->playMs = laenge;
@@ -843,17 +854,37 @@ void drawSpurenAnsicht() {
 }
 
 // --- Rahmen: Kopfzeile + gewaehlte Ansicht --------------------------------------
-void drawFlussAnsicht(float breite, float hoehe, float kopfH) {
+//
+// In der geteilten Ansicht hat jedes Feld seine eigene Ansicht. Graph und
+// Spuren folgen dabei dem Skript, an dem man gerade arbeitet (dem lebenden
+// Dokument): links Classic bearbeiten, rechts laufen die Spuren mit, und ein
+// Klick auf einen Block waehlt die Zeile links. Den Fokus nehmen sie nicht -
+// sonst wechselte mit jedem Klick das Skript.
+void drawFlussAnsicht(float breite, float hoehe, float kopfH, int pane) {
+    ImGui::PushID(pane);
     ImGui::BeginGroup();
     const float top = ImGui::GetCursorPosY();
+    const bool geteilt = g_app->leftMode == 0 && g_app->splitCount > 1;
+    // "Compare" (Vergleich) passt hier nicht - Graph und Spuren vergleichen
+    // nichts, sie zeigen das Skript mit dem Fokus.
     ImGui::TextUnformatted(tr(Str::GroupScriptFlow));
     ImGui::SameLine();
-    ansichtsUmschalter();
+    ansichtsUmschalter(pane);
+    if (geteilt && feldAnsicht(pane) == 2) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        const std::string name = !g_app->path.empty()        ? fileName(g_app->path)
+                                 : !g_app->shownName.empty() ? g_app->shownName
+                                                             : std::string("unnamed.txt");
+        ImGui::TextDisabled("%s", name.c_str());
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::FlowFollowsHint)); }
+    }
     ImGui::SetCursorPosY(top + kopfH);
     ImGui::Dummy(ImVec2{0.0F, 0.0F});
     if (ImGui::BeginChild("##flussansicht", ImVec2{breite, std::max(1.0F, hoehe - kopfH)}, ImGuiChildFlags_Borders,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        if (g_app->settings.flussAnsicht == 1) {
+        if (feldAnsicht(pane) == 1) {
+            g_app->graphFeld = std::clamp(pane, 0, App::kMaxSplit - 1);
             drawGraphAnsicht();
         } else {
             drawSpurenAnsicht();
@@ -861,6 +892,7 @@ void drawFlussAnsicht(float breite, float hoehe, float kopfH) {
     }
     ImGui::EndChild();
     ImGui::EndGroup();
+    ImGui::PopID();
 }
 
 }  // namespace bhed::gui

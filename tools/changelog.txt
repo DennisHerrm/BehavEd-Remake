@@ -11,18 +11,26 @@
 - Script Flow has three views, switched at the top: Classic (the list as before), Graph and Tracks. All three work on the same script and mission - switch any time, edits, selection and undo carry over.
 - Graph: the mission as nodes - player start, script runners, scripts, characters, level changes and triggers - joined by what triggers what (target, usescript, deathscript, use, run; affect dashed). Drag from the dot on the right of a node to another node to connect them: behaved sets target, usescript or deathscript, or adds use / run to the script. Double-click opens a script or shows the entity in the map. Wheel zooms, middle or right mouse moves, nodes can be dragged; Fit and Arrange.
 - Tracks: the open script over time - camera shots, one track per character, dialogue and the script itself. Click a block to select its line, drag its right edge to change the duration, drag in the ruler to move through time, Play.
+- Split view (Events tab): every pane has its own view. For example Classic on the left and Tracks on the right - Graph and Tracks follow the script you are working on, a click on a block selects the line on the left.
+- The timeline checkbox "Tracks" is now called "Character rows", so it is no longer confused with the Tracks view.
 [de]
 - Script Flow hat drei Ansichten, oben umschaltbar: Classic (die Liste wie bisher), Graph und Spuren. Alle drei arbeiten auf demselben Skript und derselben Mission - jederzeit umschalten, Änderungen, Auswahl und Rückgängig gehen mit.
 - Graph: die Mission als Knoten - Spielerstart, Skriptstarter, Skripte, Figuren, Kartenwechsel und Auslöser - verbunden durch das, was was auslöst (target, usescript, deathscript, use, run; affect gestrichelt). Vom Punkt rechts an einem Knoten zu einem anderen ziehen verbindet sie: behaved setzt target, usescript oder deathscript oder fügt use / run ins Skript. Doppelklick öffnet ein Skript oder zeigt die Entity in der Karte. Mausrad zoomt, mittlere oder rechte Maustaste verschiebt, Knoten lassen sich ziehen; Einpassen und Anordnen.
 - Spuren: das offene Skript über die Zeit - Kamera-Einstellungen, je Figur eine Spur, Dialog und das Skript selbst. Block anklicken wählt seine Zeile, rechte Kante ziehen ändert die Dauer, im Lineal ziehen bewegt durch die Zeit, Abspielen.
+- Geteilte Ansicht (Events-Tab): jedes Feld hat seine eigene Ansicht. Zum Beispiel links Classic und rechts Spuren - Graph und Spuren folgen dem Skript, an dem du arbeitest, ein Klick auf einen Block wählt die Zeile links.
+- Das Häkchen "Spuren" der Zeitleiste heißt jetzt "Figurenzeilen" und wird nicht mehr mit der Ansicht Spuren verwechselt.
 [zh]
 - Script Flow 有三种视图,可在顶部切换:经典(与以前相同的列表)、图表和轨道。三者作用于同一个脚本和任务 - 随时切换,修改、选择和撤销都会保留。
 - 图表:以节点显示任务 - 玩家出生点、脚本运行器、脚本、角色、关卡切换和触发器 - 按触发关系连接(target、usescript、deathscript、use、run;affect 为虚线)。从节点右侧的圆点拖到另一个节点即可连接:behaved 会设置 target、usescript 或 deathscript,或在脚本中加入 use / run。双击打开脚本或在地图中显示实体。滚轮缩放,鼠标中键或右键平移,节点可拖动;适应和排列。
 - 轨道:随时间展示当前脚本 - 镜头、每个角色一条轨道、对白以及脚本本身。单击块选中对应行,拖动右边缘修改时长,在标尺上拖动移动时间,播放。
+- 分屏视图(事件标签):每个窗格都有自己的视图。例如左边经典、右边轨道 - 图表和轨道会跟随你正在编辑的脚本,单击块会选中左边的对应行。
+- 时间轴的“轨道”复选框现在叫“角色行”,不再与轨道视图混淆。
 [ja]
 - Script Flow に 3 つの表示ができ、上部で切り替えられます: クラシック(これまで通りのリスト)、グラフ、トラック。3 つとも同じスクリプトとミッションを扱います - いつでも切り替えられ、変更・選択・元に戻すも引き継がれます。
 - グラフ: ミッションをノードで表示 - プレイヤー開始位置、スクリプトランナー、スクリプト、キャラクター、レベル切り替え、トリガー - 何が何を起動するかで接続(target、usescript、deathscript、use、run、affect は破線)。ノード右の点から別のノードへドラッグで接続: behaved が target・usescript・deathscript を設定するか、スクリプトに use / run を追加します。ダブルクリックでスクリプトを開く/エンティティをマップで表示。ホイールでズーム、中/右ボタンで移動、ノードはドラッグ可能。全体表示と整列。
 - トラック: 開いているスクリプトを時間軸で表示 - カメラショット、キャラクターごとのトラック、セリフ、スクリプト自体。ブロックをクリックで行を選択、右端をドラッグで長さを変更、ルーラーをドラッグで時間を移動、再生。
+- 分割表示(イベントタブ): 各ペインに独自の表示。例えば左にクラシック、右にトラック - グラフとトラックは作業中のスクリプトに追従し、ブロックをクリックすると左の行が選択されます。
+- タイムラインのチェックボックス「トラック」は「キャラクター行」になり、トラック表示と混同しなくなりました。
 
 ## rc586 2026-10-11
 [en]

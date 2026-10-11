@@ -180,7 +180,12 @@ struct App {
         ImVec2 ursprung{0.0F, 0.0F};          // linke obere Ecke der Flaeche (Bildschirm)
         ImVec2 groesse{0.0F, 0.0F};           // Groesse der Flaeche
     };
-    GraphZustand graph;
+    // Je Feld der geteilten Ansicht ein eigener Graph-Zustand (Zoom, Lage,
+    // Auswahl) - zwei Graphen nebeneinander sollen sich nicht gegenseitig
+    // verschieben. graphFeld: das Feld, das gerade gezeichnet wird.
+    GraphZustand graphe[4];
+    int graphFeld = 0;
+    GraphZustand& graph() { return graphe[graphFeld]; }
     float spurenZoom = 1.0F;                  // Spuren-Ansicht: Zoom der Zeitachse
     // Wo die Bloecke im letzten Bild standen (Pfad, Rechteck) - fuer den Selbsttest.
     std::vector<std::pair<Path, ImRect>> spurenBloecke;
@@ -1094,6 +1099,7 @@ struct App {
     std::string shownName;
 
     static constexpr int kMaxSplit = 4;
+    static_assert(sizeof(graphe) / sizeof(graphe[0]) == kMaxSplit, "ein Graph-Zustand je Feld");
 
     struct Parked {
         // Document hat keinen Standardkonstruktor - ein leeres Skript ist
@@ -1205,6 +1211,7 @@ struct App {
     // Spalte der Hauptbaum ist.
     struct SplitPane {
         int tab = 0;                 // welcher Reiter darin steht
+        int ansicht = 0;             // Classic / Graph / Spuren (Feld 0: settings.flussAnsicht)
         std::vector<Row> rows;       // sein Baum
         int selected = -1;           // dort angeklickte Zeile
         Path path;                   // ihr Weg
@@ -1941,8 +1948,11 @@ bool missionSpeichernNach(const std::string& pk3, std::string* fehler);
 std::string missionStandardOrdner(const std::string& name);
 bool missionBeendenFrage();
 // Script Flow: Classic / Graph / Spuren (gui/app_ansichten.cpp)
-void ansichtsUmschalter();
-void drawFlussAnsicht(float breite, float hoehe, float kopfH);
+// Die Ansicht eines Feldes (0 Classic, 1 Graph, 2 Spuren). Feld 0 merkt sie
+// sich in den Einstellungen.
+int& feldAnsicht(int pane);
+void ansichtsUmschalter(int pane = 0);
+void drawFlussAnsicht(float breite, float hoehe, float kopfH, int pane = 0);
 void drawGraphAnsicht();
 void drawSpurenAnsicht();
 void graphEinpassen(float breite, float hoehe);
