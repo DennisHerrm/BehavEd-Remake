@@ -279,6 +279,10 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
 void waehleZiel(int satz);
 // Die Textur eines Satzes, unabhaengig davon, welcher gerade gewaehlt ist.
 [[nodiscard]] void* zielTexturSatz(int satz);
+// Himmelsportal (rc593, misc_skyportal): ab jetzt zeigen Himmelsflaechen das
+// Bild von Satz `satz` (gleiche Groesse wie das Ziel, Pixel fuer Pixel), die
+// Wolkenschichten fallen weg. -1 schaltet zurueck auf die Himmelsbox.
+void setzeHimmelPortal(int satz);
 
 // Die Textur des Renderziels, zum Anzeigen. nullptr, wenn keins da ist.
 //

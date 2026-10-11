@@ -183,15 +183,25 @@ int g_zielH = 0;
 // ist, liegt hier die Vorschau, sonst die Kartenansicht. Umgeschaltet wird
 // durch Tauschen - alle Stellen, die g_ziel*/g_tiefe* benutzen, zeichnen
 // damit unveraendert in den gewaehlten Satz.
-ID3D11Texture2D* g_zweitTex = nullptr;
-ID3D11RenderTargetView* g_zweitRtv = nullptr;
-ID3D11ShaderResourceView* g_zweitSrv = nullptr;
-ID3D11Texture2D* g_zweitTiefeTex = nullptr;
-ID3D11Texture2D* g_zweitTiefeLesen = nullptr;
-ID3D11DepthStencilView* g_zweitTiefeDsv = nullptr;
-int g_zweitW = 0;
-int g_zweitH = 0;
+//
+// Seit rc593 drei Saetze: 0 Ansicht, 1 Kameravorschau, 2 Himmelsportal. Was
+// gerade NICHT gewaehlt ist, liegt hier je Satz geparkt.
+struct ZielFelder {
+    ID3D11Texture2D* tex = nullptr;
+    ID3D11RenderTargetView* rtv = nullptr;
+    ID3D11ShaderResourceView* srv = nullptr;
+    ID3D11Texture2D* tiefeTex = nullptr;
+    ID3D11Texture2D* tiefeLesen = nullptr;
+    ID3D11DepthStencilView* dsv = nullptr;
+    int w = 0;
+    int h = 0;
+};
+constexpr int kZielSaetze = 3;
+ZielFelder g_geparkt[kZielSaetze];
 int g_zielSatz = 0;
+// Himmelsportal (rc593): >= 0 heisst, Himmelsflaechen zeigen das Bild dieses
+// Satzes statt der Himmelsbox, und die Wolkenschichten fallen weg.
+int g_himmelPortalSatz = -1;
 
 // Hochgeladene Karten-Texturen, nach Platz im Texturensatz.
 //
@@ -1652,8 +1662,16 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
                 }
             }
         }
+        // Himmelsportal (rc593): der Himmel kommt aus dem Portalbild, die
+        // Wolkenschichten gehoeren dort hinein und fallen hier weg - wie
+        // RDF_SKYBOXPORTAL im Spiel, wo die Hauptszene keinen Himmel zeichnet.
+        std::uint32_t merkmale = call.state.features;
+        if (g_himmelPortalSatz >= 0) {
+            if ((merkmale & kWolke) != 0U) { continue; }
+            if ((merkmale & kSky) != 0U) { merkmale = (merkmale & ~kSky) | kSkyPortal; }
+        }
         std::string sfehler;
-        ShaderPaar* sp = holeShader(call.state.features, call.state.numTexMods,
+        ShaderPaar* sp = holeShader(merkmale, call.state.numTexMods,
                                     &sfehler);
         if (sp == nullptr) {
             if (fehler != nullptr && fehler->empty()) { *fehler = sfehler; }
@@ -1726,11 +1744,14 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         ID3D11ShaderResourceView* lm =
             (call.lightmap >= 0) ? holeLightmap(geo, call.lightmap) : nullptr;
         ID3D11ShaderResourceView* himmel = nullptr;
-        if ((call.state.features & kSky) != 0U) {
+        ID3D11ShaderResourceView* portal = nullptr;
+        if ((merkmale & kSkyPortal) != 0U) {
+            portal = static_cast<ID3D11ShaderResourceView*>(zielTexturSatz(g_himmelPortalSatz));
+        } else if ((call.state.features & kSky) != 0U) {
             himmel = holeHimmel(textures, bs2.skyFaces);
         }
-        ID3D11ShaderResourceView* srvs[3] = {bild, lm, himmel};
-        c->PSSetShaderResources(0, 3, srvs);
+        ID3D11ShaderResourceView* srvs[4] = {bild, lm, himmel, portal};
+        c->PSSetShaderResources(0, (portal != nullptr) ? 4U : 3U, srvs);
         c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
         ++abgesetzt;
     }
@@ -1960,21 +1981,48 @@ bool bereiteZiel(int breite, int hoehe) {
 void* zielTextur() { return g_zielSrv; }
 
 void waehleZiel(int satz) {
-    if (satz == g_zielSatz || (satz != 0 && satz != 1)) {
+    if (satz == g_zielSatz || satz < 0 || satz >= kZielSaetze) {
         return;
     }
-    std::swap(g_zielTex, g_zweitTex);
-    std::swap(g_zielRtv, g_zweitRtv);
-    std::swap(g_zielSrv, g_zweitSrv);
-    std::swap(g_tiefeTex, g_zweitTiefeTex);
-    std::swap(g_tiefeLesen, g_zweitTiefeLesen);
-    std::swap(g_tiefeDsv, g_zweitTiefeDsv);
-    std::swap(g_zielW, g_zweitW);
-    std::swap(g_zielH, g_zweitH);
+    ZielFelder& alt = g_geparkt[g_zielSatz];
+    alt.tex = g_zielTex;
+    alt.rtv = g_zielRtv;
+    alt.srv = g_zielSrv;
+    alt.tiefeTex = g_tiefeTex;
+    alt.tiefeLesen = g_tiefeLesen;
+    alt.dsv = g_tiefeDsv;
+    alt.w = g_zielW;
+    alt.h = g_zielH;
+    ZielFelder& neu = g_geparkt[satz];
+    g_zielTex = neu.tex;
+    g_zielRtv = neu.rtv;
+    g_zielSrv = neu.srv;
+    g_tiefeTex = neu.tiefeTex;
+    g_tiefeLesen = neu.tiefeLesen;
+    g_tiefeDsv = neu.dsv;
+    g_zielW = neu.w;
+    g_zielH = neu.h;
+    neu = ZielFelder{};
     g_zielSatz = satz;
 }
 
-void* zielTexturSatz(int satz) { return (satz == g_zielSatz) ? g_zielSrv : g_zweitSrv; }
+void* zielTexturSatz(int satz) {
+    if (satz == g_zielSatz) { return g_zielSrv; }
+    return (satz >= 0 && satz < kZielSaetze) ? g_geparkt[satz].srv : nullptr;
+}
+
+void setzeHimmelPortal(int satz) {
+    g_himmelPortalSatz = (satz >= 0 && satz < kZielSaetze) ? satz : -1;
+    if (g_himmelPortalSatz < 0) {
+        // Das Portalbild nicht gebunden lassen - der Satz wird im naechsten
+        // Bild wieder Ziel, und ein Ziel, das zugleich Eingang ist, meldet
+        // die Debugschicht.
+        if (ID3D11DeviceContext* c = ctx()) {
+            ID3D11ShaderResourceView* nichts = nullptr;
+            c->PSSetShaderResources(3, 1, &nichts);
+        }
+    }
+}
 
 bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, float fern) {
     ID3D11Device* d = dev();
@@ -4138,15 +4186,17 @@ void shutdown() {
     if (g_tiefeLesen != nullptr) { g_tiefeLesen->Release(); g_tiefeLesen = nullptr; }
     g_zielW = 0;
     g_zielH = 0;
-    if (g_zweitSrv != nullptr) { g_zweitSrv->Release(); g_zweitSrv = nullptr; }
-    if (g_zweitRtv != nullptr) { g_zweitRtv->Release(); g_zweitRtv = nullptr; }
-    if (g_zweitTex != nullptr) { g_zweitTex->Release(); g_zweitTex = nullptr; }
-    if (g_zweitTiefeDsv != nullptr) { g_zweitTiefeDsv->Release(); g_zweitTiefeDsv = nullptr; }
-    if (g_zweitTiefeTex != nullptr) { g_zweitTiefeTex->Release(); g_zweitTiefeTex = nullptr; }
-    if (g_zweitTiefeLesen != nullptr) { g_zweitTiefeLesen->Release(); g_zweitTiefeLesen = nullptr; }
-    g_zweitW = 0;
-    g_zweitH = 0;
+    for (ZielFelder& z : g_geparkt) {
+        if (z.srv != nullptr) { z.srv->Release(); }
+        if (z.rtv != nullptr) { z.rtv->Release(); }
+        if (z.tex != nullptr) { z.tex->Release(); }
+        if (z.dsv != nullptr) { z.dsv->Release(); }
+        if (z.tiefeTex != nullptr) { z.tiefeTex->Release(); }
+        if (z.tiefeLesen != nullptr) { z.tiefeLesen->Release(); }
+        z = ZielFelder{};
+    }
     g_zielSatz = 0;
+    g_himmelPortalSatz = -1;
     for (Netzpuffer& n : g_netz) {
         if (n.vb != nullptr) { n.vb->Release(); n.vb = nullptr; }
         if (n.ib != nullptr) { n.ib->Release(); n.ib = nullptr; }
@@ -5065,6 +5115,7 @@ int zeichneModellAnsicht(const GlmModel&, const ModelTextures*, const std::vecto
 bool bereiteZiel(int, int) { return false; }
 void* zielTextur() { return nullptr; }
 void waehleZiel(int) {}
+void setzeHimmelPortal(int) {}
 void* zielTexturSatz(int) { return nullptr; }
 bool leseTiefe(std::vector<float>&, int, int, float, float) { return false; }
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }

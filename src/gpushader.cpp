@@ -1160,6 +1160,8 @@ Texture2D    gLightmap : register(t1);
 // Die sechs Himmelsseiten als Feld - die Seitennummern sind die aus
 // skyFace(), damit die Zuordnung nicht zweimal erfunden wird.
 Texture2DArray gHimmel : register(t2);
+// Das Bild eines misc_skyportal, so gross wie das Ziel (rc593).
+Texture2D    gPortal   : register(t3);
 SamplerState gSampler  : register(s0);
 struct VSOut {
     float4 pos    : SV_POSITION;
@@ -1212,6 +1214,11 @@ float4 main(VSOut ein) : SV_TARGET {
     // fuer Zeile aus mapview.cpp:55 uebernommen. Wer hier eine Achse
     // vertauscht, bekommt einen Himmel, der beim Drehen springt - und das
     // faellt erst auf, wenn man sich umsieht.
+    // Himmel durch ein misc_skyportal: Pixel fuer Pixel aus dem Portalbild
+    // (gleich gross wie das Ziel), ohne Abtaster.
+    if ((features & kSkyPortal) != 0U) {
+        s += "    { return float4(gPortal.Load(int3(int2(ein.pos.xy), 0)).rgb, 1.0); }\n";
+    }
     if ((features & kSky) != 0U) {
         s += R"(    {
         float2 sp = ein.pos.xy;
@@ -1376,7 +1383,7 @@ std::string shaderName(std::uint32_t features, int numTexMods) {
         {kSky, "_sky"},
         {kAutosprite2, "_a2"},   {kBulge, "_bu"},
         {kDeformMove, "_mv"},    {kDeformNormal, "_dn"},
-        {kWolke, "_wk"},
+        {kWolke, "_wk"},         {kSkyPortal, "_sp2"},
         // kRohEcke MUSS ein Kuerzel bekommen: es aendert den erzeugten
         // Quelltext (kein Helligkeitsfaktor auf der Eckenfarbe). Ohne
         // Kuerzel bekaemen zwei verschiedene Shader denselben Namen und

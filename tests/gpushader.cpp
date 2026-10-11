@@ -74,6 +74,7 @@ int main() {
     beideRichtungen("deformVertexes normal", kDeformNormal, "rausch4(", true);
     // Wolkenschicht (R_InitSkyTexCoords): Kuppel mit Radius 4096.
     beideRichtungen("Wolkenschicht", kWolke, "float h = gWolkenHoehe;", false);
+    beideRichtungen("Himmelsportal", kSkyPortal, "gPortal.Load(", false);
     // NICHT auf "gTexMatrix" pruefen: der Name steht ohnehin in der
     // Erklaerung des Konstantenpuffers, also auch ohne das Bit. `st2` gibt
     // es nur im erzeugten Block.

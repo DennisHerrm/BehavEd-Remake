@@ -398,6 +398,10 @@ struct App {
     int vorschauW = 0;
     int vorschauH = 0;
     int vorschauBilder = 0;         // wie oft gezeichnet (Selbsttest)
+    // Himmelsportal (rc593): gerade im Durchgang vom Portalort aus (dort kein
+    // Wetter), und ob die Ansicht zuletzt mit Portalhimmel gezeichnet wurde.
+    bool imPortalDurchgang = false;
+    bool himmelPortalGezeichnet = false;
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand
@@ -2005,6 +2009,8 @@ void kameraVorschauZeigen();
 // Schaltbare und flackernde Lichter zur Zeit der Zeitleiste in die Lightmaps
 // mischen (rc593). Billig, wenn sich nichts geaendert hat.
 void lichtStileZuZeit();
+// Der Ort des misc_skyportal der Karte (rc593), false ohne eines.
+bool himmelPortalOrt(float ort[3]);
 // Die MOVE-Schluessel des Skripts, in der Reihenfolge, in der App::selectedKey
 // zaehlt: Ort, Winkel (erstes PAN danach, sonst das vorige) und Zeile.
 struct KameraSchluessel {

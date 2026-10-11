@@ -1349,6 +1349,14 @@ struct ShotView {
 
 bool shotAtSelection(ShotView& out);
 
+bool himmelPortalOrt(float ort[3]) {
+    for (const MapEntity& e : g_app->map.entities) {
+        if (e.classname != "misc_skyportal" || e.origin.empty()) { continue; }
+        return std::sscanf(e.origin.c_str(), "%f %f %f", &ort[0], &ort[1], &ort[2]) == 3;
+    }
+    return false;
+}
+
 void lichtStileZuZeit() {
     if (g_app->geo.stilSchichten.empty()) { return; }
     // Die Schaltungen kommen aus dem Nachbau des Skripts (use auf ein light,
@@ -11573,7 +11581,7 @@ void drawMapView() {
                 // den Movern und den Figuren, damit sie ueber allem liegen,
                 // das sie nicht verdeckt - wie im Rasterer.
                 // Das Wetter im selben Durchgang: additiv, tiefengetestet.
-                wetterTeilchen(klingen, bildCam);
+                if (!g_app->imPortalDurchgang) { wetterTeilchen(klingen, bildCam); }
                 flareSchilde(klingen, bildCam, static_cast<float>(bildW) / static_cast<float>(std::max(bildH, 1)));
                 if (!klingen.empty()) {
                     std::string fk;
@@ -11625,60 +11633,98 @@ void drawMapView() {
             const int gw = g_app->mapImage.width;
             const int gh = g_app->mapImage.height;
             gpu::setzeSchritt("Ziel anlegen");
+            // --- Ein Nebenbild in einen anderen Zielsatz (rc592/rc593) ---------
+            //
+            // Kameravorschau und Himmelsportal zeichnen mit derselben Funktion
+            // in ihren eigenen Satz. Was ein Nebenbild an Zaehlern veraendert,
+            // wird zurueckgesetzt - Statuszeile und Selbsttests sehen nur die
+            // Ansicht.
+            auto nebenBild = [&](const Camera& kam, int nw, int nh, int satz, const char* schritt) {
+                const int merkKarte = g_app->gpuKarte;
+                const int merkMover = g_app->gpuMover;
+                const int merkFiguren = g_app->gpuFiguren2;
+                const int merkGluehen = g_app->gpuGluehen;
+                const int merkEffekte = g_app->gpuEffekte;
+                const int merkAufrufe = g_app->gpuAufrufe;
+                const int merkUeber = g_app->gpuUebersprungen;
+                const std::string merkFehler = g_app->gpuFehler;
+                const int merkLicht = g_app->lichtAufrufe;
+                const int merkNebel = g_app->nebelAufrufe;
+                const int merkSchatten = g_app->schattenAnzahl;
+                std::map<std::string, int> merkArten;
+                std::swap(merkArten, g_app->figurArten);
+                const int merkFlares = g_app->flareZahl;
+                const int merkWetter = g_app->wetterTeilchenZahl;
+                const int merkSpur = g_app->spurBaender;
+                bool gezeichnetNeben = false;
+                gpu::waehleZiel(satz);
+                if (gpu::bereiteZiel(nw, nh)) {
+                    gpu::setzeSchritt(schritt);
+                    gpuBild(kam, nw, nh, true);
+                    gezeichnetNeben = g_app->gpuAufrufe > 0;
+                }
+                gpu::waehleZiel(0);
+                g_app->gpuKarte = merkKarte;
+                g_app->gpuMover = merkMover;
+                g_app->gpuFiguren2 = merkFiguren;
+                g_app->gpuGluehen = merkGluehen;
+                g_app->gpuEffekte = merkEffekte;
+                g_app->gpuAufrufe = merkAufrufe;
+                g_app->gpuUebersprungen = merkUeber;
+                g_app->gpuFehler = merkFehler;
+                g_app->lichtAufrufe = merkLicht;
+                g_app->nebelAufrufe = merkNebel;
+                g_app->schattenAnzahl = merkSchatten;
+                std::swap(merkArten, g_app->figurArten);
+                g_app->flareZahl = merkFlares;
+                g_app->wetterTeilchenZahl = merkWetter;
+                g_app->spurBaender = merkSpur;
+                return gezeichnetNeben;
+            };
+            // --- Himmelsportal (rc593, misc_skyportal) -----------------------
+            //
+            // CG_DrawSkyBoxPortal: erst die Szene vom Ort des Portals aus, mit
+            // demselben Blick und Bildwinkel, samt Himmelsbox; die Hauptszene
+            // zeichnet dann keinen Himmel (RDF_SKYBOXPORTAL) - dort sieht man
+            // das Portalbild. Ohne Himmel (Schalter) oder in der Draufsicht
+            // nicht.
+            float portalOrt[3];
+            const bool mitPortal = g_app->showSky && !g_app->draufsicht && himmelPortalOrt(portalOrt);
+            auto portalFuer = [&](const Camera& kam, int nw, int nh) {
+                if (!mitPortal) { return false; }
+                Camera pk = kam;
+                for (int k = 0; k < 3; ++k) { pk.pos[k] = portalOrt[k]; }
+                g_app->imPortalDurchgang = true;
+                const bool ok = nebenBild(pk, nw, nh, 2, "Himmelsportal");
+                g_app->imPortalDurchgang = false;
+                return ok;
+            };
+            g_app->himmelPortalGezeichnet = false;
             if (gpu::bereiteZiel(gw, gh)) {
+                if (portalFuer(useCam, gw, gh)) {
+                    g_app->himmelPortalGezeichnet = true;
+                    gpu::setzeHimmelPortal(2);
+                }
                 gpuBild(useCam, gw, gh, false);
+                gpu::setzeHimmelPortal(-1);
                 // --- Bild-im-Bild der gewaehlten Kamera (rc592) --------------
                 //
                 // Ein Drittel der Breite, Seitenverhaeltnis der Ansicht, in
-                // Zielsatz 1. Was das Nebenbild an Zaehlern veraendert, wird
-                // zurueckgesetzt - Statuszeile und Selbsttests sehen nur die
-                // Ansicht.
+                // Zielsatz 1 - mit eigenem Himmelsportal aus ihrer Sicht.
                 g_app->vorschauGezeigt = false;
                 Camera vorschau;
                 const float aspekt = static_cast<float>(gw) / static_cast<float>(std::max(gh, 1));
                 if (vorschauKamera(vorschau, aspekt)) {
                     const int pw = std::clamp(gw / 3, 160, 640);
                     const int ph = std::max(90, static_cast<int>(static_cast<float>(pw) / aspekt));
-                    const int merkKarte = g_app->gpuKarte;
-                    const int merkMover = g_app->gpuMover;
-                    const int merkFiguren = g_app->gpuFiguren2;
-                    const int merkGluehen = g_app->gpuGluehen;
-                    const int merkEffekte = g_app->gpuEffekte;
-                    const int merkAufrufe = g_app->gpuAufrufe;
-                    const int merkUeber = g_app->gpuUebersprungen;
-                    const std::string merkFehler = g_app->gpuFehler;
-                    const int merkLicht = g_app->lichtAufrufe;
-                    const int merkNebel = g_app->nebelAufrufe;
-                    const int merkSchatten = g_app->schattenAnzahl;
-                    const std::map<std::string, int> merkArten = g_app->figurArten;
-                    const int merkFlares = g_app->flareZahl;
-                    const int merkWetter = g_app->wetterTeilchenZahl;
-                    const int merkSpur = g_app->spurBaender;
-                    gpu::waehleZiel(1);
-                    if (gpu::bereiteZiel(pw, ph)) {
-                        gpu::setzeSchritt("Kameravorschau");
-                        gpuBild(vorschau, pw, ph, true);
-                        g_app->vorschauGezeigt = g_app->gpuAufrufe > 0;
+                    if (portalFuer(vorschau, pw, ph)) { gpu::setzeHimmelPortal(2); }
+                    if (nebenBild(vorschau, pw, ph, 1, "Kameravorschau")) {
+                        g_app->vorschauGezeigt = true;
                         g_app->vorschauW = pw;
                         g_app->vorschauH = ph;
                         ++g_app->vorschauBilder;
                     }
-                    gpu::waehleZiel(0);
-                    g_app->gpuKarte = merkKarte;
-                    g_app->gpuMover = merkMover;
-                    g_app->gpuFiguren2 = merkFiguren;
-                    g_app->gpuGluehen = merkGluehen;
-                    g_app->gpuEffekte = merkEffekte;
-                    g_app->gpuAufrufe = merkAufrufe;
-                    g_app->gpuUebersprungen = merkUeber;
-                    g_app->gpuFehler = merkFehler;
-                    g_app->lichtAufrufe = merkLicht;
-                    g_app->nebelAufrufe = merkNebel;
-                    g_app->schattenAnzahl = merkSchatten;
-                    g_app->figurArten = merkArten;
-                    g_app->flareZahl = merkFlares;
-                    g_app->wetterTeilchenZahl = merkWetter;
-                    g_app->spurBaender = merkSpur;
+                    gpu::setzeHimmelPortal(-1);
                 }
             } else {
                 g_app->gpuFehler = "Renderziel nicht anlegbar";

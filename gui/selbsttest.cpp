@@ -11647,6 +11647,23 @@ std::vector<Schritt> lichtSchritte() {
     add(pruefe("Licht: vor dem use wieder hell", [=] {
         return *seite >= 0 && g_app->geo.lightmaps[static_cast<std::size_t>(*seite)] == *vorher;
     }));
+    // --- Himmelsportal (rc593): md_am_sith hat eines, duel_kamino nicht ------
+    add(pruefe("Portal: duel_kamino hat kein misc_skyportal - Himmelsbox wie bisher", [] {
+        float o[3];
+        return !himmelPortalOrt(o) && !g_app->himmelPortalGezeichnet;
+    }));
+    add(tu("Portal: md_am_sith laden", [] { (void)loadMapFromArchive("maps/md_am_sith.bsp"); }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(tu("Portal: neu zeichnen", [] { g_app->mapDirty = true; }));
+    add(pause(0.5));
+    add(pruefe("Portal: md_am_sith zeichnet den Himmel aus dem misc_skyportal, ohne D3D-Meldung", [] {
+        float o[3];
+        const bool da = himmelPortalOrt(o);
+        diag::detail("Knopftest: Portal - " + std::string(da ? "da" : "fehlt") + ", gezeichnet " +
+                     std::to_string(g_app->himmelPortalGezeichnet) + ", D3D-Meldungen " +
+                     std::to_string(g_app->d3dMeldungen.size()) + ", Fehler \"" + g_app->gpuFehler + "\"");
+        return da && g_app->himmelPortalGezeichnet && g_app->gpuFehler.empty() && g_app->d3dMeldungen.empty();
+    }));
     return s;
 }
 

@@ -128,6 +128,9 @@ enum Feature : std::uint32_t {
     kDeformNormal  = 1U << 20,  //   11 - die Normalen wackeln
     // Wolkenschicht des Himmels (rc592): st aus der Blickrichtung.
     kWolke         = 1U << 21,
+    // Himmel durch ein misc_skyportal (rc593): das Portalbild Pixel fuer
+    // Pixel statt der Himmelsbox. Gesetzt beim Zeichnen, nicht von pipelineFor.
+    kSkyPortal     = 1U << 22,
 
     // Alles, was Ecken woanders hinlegt als die Datei - Licht- und
     // Nebeldurchgang zeichnen die Flaeche ohne diese Rechnung und lassen
