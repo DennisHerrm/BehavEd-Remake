@@ -357,6 +357,33 @@ enum class AlphaGen : std::uint8_t {
     Unsupported,
 };
 
+// --- Die uebrigen deformVertexes-Formen (rc592) -------------------------
+//
+// RB_DeformTessGeometry (tr_shade_calc.cpp) kennt neben wave und autosprite:
+//
+//   autosprite2  das Viereck dreht sich um seine LANGE Achse zur Kamera
+//                (Autosprite2Deform) - Lichtkegel, Flammenzungen, Saeulen
+//                aus Licht. 98 Vorkommen in den pk3.
+//   bulge        Beulen laufen entlang der Texturkoordinate s
+//                (RB_CalcBulgeVertexes):
+//                    xyz += normal * sin(s * breite + t * tempo) * hoehe
+//   move         die ganze Flaeche verschiebt sich um vektor * Welle
+//                (RB_CalcMoveVertexes)
+//   normal       nur die Normalen wackeln (RB_CalcDeformNormals) - sichtbar
+//                an tcGen environment. Die Engine nimmt Wertrauschen aus
+//                einer Zufallstabelle; der Shader nimmt Wertrauschen aus
+//                einer Streufunktion - dieselbe Art, andere Zufallszahlen.
+struct DeformZusatz {
+    bool autosprite2 = false;
+    float bulge[3]{};      // breite, hoehe, tempo - hoehe 0 heisst keine
+    float move[3]{};       // Richtung, die Laenge zaehlt mit
+    Wave moveWave;
+    float normal[2]{};     // amplitude, frequenz - amplitude 0 heisst keins
+
+    [[nodiscard]] bool bulgeAn() const noexcept { return bulge[1] != 0.0F; }
+    [[nodiscard]] bool normalAn() const noexcept { return normal[0] != 0.0F; }
+};
+
 struct ShaderInfo {
     std::string image;            // erstes brauchbares Bild
     // Die tcMod-Kette der Stufe, aus der auch das Bild kommt - siehe TexMod.
@@ -635,6 +662,8 @@ struct ShaderInfo {
     //     ds->deformationSpread = 1.0f / atof( token );   (tr_shader.cpp)
     Wave deformWave;
     float deformSpread = 0.0F;
+    // autosprite2, bulge, move, normal - siehe DeformZusatz.
+    DeformZusatz deform2;
 
     // polygonOffset - die Flaeche klebt auf einer anderen.
     //

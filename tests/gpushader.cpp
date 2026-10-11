@@ -67,6 +67,11 @@ int main() {
     // aus der Normalen (baueAutosprites beim Hochladen).
     beideRichtungen("autosprite", kAutosprite, "links * ein.normal.x + gHoch * ein.normal.y", true);
     beideRichtungen("tcGen environment", kTexGenEnv, "reflect", true);
+    // rc592: die uebrigen deformVertexes-Formen (RB_DeformTessGeometry).
+    beideRichtungen("autosprite2", kAutosprite2, "cross(ein.normal, gVorn)", true);
+    beideRichtungen("deformVertexes bulge", kBulge, "sin(ein.uv.x * gBulge.x", true);
+    beideRichtungen("deformVertexes move", kDeformMove, "welt += gDeformMove.xyz", true);
+    beideRichtungen("deformVertexes normal", kDeformNormal, "rausch4(", true);
     // NICHT auf "gTexMatrix" pruefen: der Name steht ohnehin in der
     // Erklaerung des Konstantenpuffers, also auch ohne das Bit. `st2` gibt
     // es nur im erzeugten Block.

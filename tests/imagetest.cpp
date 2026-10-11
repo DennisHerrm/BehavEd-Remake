@@ -785,6 +785,29 @@ int main() {
                        smr["textures/p/pt"].alphaGen ==
                            bhed::AlphaGen::Unsupported);
             }
+            // deformVertexes autosprite2/bulge/move/normal (rc592) - Werte
+            // wie ParseDeform in tr_shader.cpp.
+            {
+                const char* df =
+                    "textures/d/a2\n{\ndeformVertexes autoSprite2\n{\nmap x\n}\n}\n"
+                    "textures/d/bu\n{\ndeformVertexes bulge 3 0.75 2\n{\nmap x\n}\n}\n"
+                    "textures/d/mv\n{\ndeformVertexes move 0 0 4 sin 0 1 0 0.5\n{\nmap x\n}\n}\n"
+                    "textures/d/no\n{\ndeformVertexes normal 0.1 1.85\n{\nmap x\n}\n}\n";
+                bhed::ShaderMap smd;
+                bhed::parseShaderScript(df, smd);
+                expect("autosprite2 wird gemerkt, autosprite nicht",
+                       smd["textures/d/a2"].deform2.autosprite2 && !smd["textures/d/a2"].autosprite);
+                const bhed::DeformZusatz& bu = smd["textures/d/bu"].deform2;
+                expect("bulge: Breite, Hoehe, Tempo",
+                       bu.bulge[0] == 3.0F && bu.bulge[1] == 0.75F && bu.bulge[2] == 2.0F && bu.bulgeAn());
+                const bhed::DeformZusatz& mv = smd["textures/d/mv"].deform2;
+                expect("move: Richtung und Welle",
+                       mv.move[2] == 4.0F && mv.moveWave.active() && mv.moveWave.amplitude == 1.0F &&
+                           mv.moveWave.frequency == 0.5F);
+                const bhed::DeformZusatz& no = smd["textures/d/no"].deform2;
+                expect("normal: Amplitude und Frequenz",
+                       no.normal[0] == 0.1F && no.normal[1] == 1.85F && no.normalAn());
+            }
             expect("clampmap wird als geklemmt gemerkt",
                    sm["textures/p/geklemmt"].clamp);
             expect("map bleibt gekachelt",

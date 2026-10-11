@@ -415,7 +415,9 @@ void pruefeStapelLagen(ID3DBlob* vsBlob) {
         struct Soll { const char* name; std::size_t at; };
         const Soll soll[] = {{"gTexMatrix", kTexMatrixAt}, {"gTexOffTurb", kTexOffTurbAt},
                              {"gRgb", kRgbAt}, {"gAlphaSchwelle", kAlphaAt},
-                             {"gDeform", kDeformAt}, {"gDeformSpread", kDeformSpreadAt}};
+                             {"gDeform", kDeformAt}, {"gDeformSpread", kDeformSpreadAt},
+                             {"gDeformMove", kDeformMoveAt}, {"gBulge", kBulgeAt},
+                             {"gDeformNormal", kDeformNormalAt}};
         std::string z = "GPU-Stapelpuffer (aus dem Shader gelesen):";
         bool gut = true;
         for (const Soll& s : soll) {
@@ -2557,7 +2559,7 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
         // Engine. Bewegte Ecken (deformVertexes, autosprite) lagen im
         // ersten Durchgang woanders, als dieser Shader sie hinlegen wuerde.
         if (call.zusatzstufe || call.state.blend != Blend::Opaque ||
-            (call.state.features & (kSky | kDeform | kAutosprite)) != 0U ||
+            (call.state.features & (kSky | kBewegteEcken)) != 0U ||
             call.batch >= mesh.batches.size() || call.batch >= kaesten.size()) {
             continue;
         }
@@ -3402,7 +3404,7 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
             // bleibt in der Engine ungenebelt - ausser den Nebelflaechen
             // selbst, die hier gar nicht gezeichnet werden.
             if (call.zusatzstufe || call.state.blend != Blend::Opaque ||
-                (call.state.features & (kSky | kDeform | kAutosprite)) != 0U ||
+                (call.state.features & (kSky | kBewegteEcken)) != 0U ||
                 call.batch >= mesh.batches.size()) {
                 continue;
             }
@@ -4502,9 +4504,13 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     std::size_t spriteZeichen = 0;
     if (textures != nullptr) {
         for (std::size_t b = 0; b < mesh.batches.size(); ++b) {
-            if (batchStateFor(textures, mesh.batches[b].shader, 0.0F).autosprite) {
+            const BatchState sb = batchStateFor(textures, mesh.batches[b].shader, 0.0F);
+            if (sb.autosprite) {
                 istSprite[b] = 1;
                 spriteZeichen += (b + 1U) * 7919U + 1U;
+            } else if (sb.deform2.autosprite2) {
+                istSprite[b] = 2;
+                spriteZeichen += (b + 1U) * 104729U + 2U;
             }
         }
     }
@@ -4599,6 +4605,15 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
             e.normal[2] = s.radius;
             e.uv[0] = s.st[0];
             e.uv[1] = s.st[1];
+        }
+        // autosprite2: Ort und Achse, Wicklung und st bleiben.
+        for (const SpriteEcke2& s : baueAutosprites2(mesh, istSprite)) {
+            if (s.ecke >= ecken.size()) { continue; }
+            Ecke& e = ecken[s.ecke];
+            for (int k = 0; k < 3; ++k) {
+                e.pos[k] = s.mitte[k];
+                e.normal[k] = s.achse[k];
+            }
         }
     }
     const std::uint32_t* idxDaten =

@@ -133,6 +133,26 @@ struct SpriteEcke {
     const BspMesh& mesh, const std::vector<char>& istSprite,
     std::vector<std::uint32_t>& indizes);
 
+// --- deformVertexes autosprite2 (rc592) ----------------------------------
+//
+// Autosprite2Deform (tr_shade_calc.cpp): je Viereck die beiden kuerzesten
+// Kanten, ihre Mitten, die lange Achse dazwischen. Jede Ecke der kurzen
+// Kante wird zu Mitte +- halbe Kantenlaenge x Nebenachse, die Nebenachse
+// ist normalize(cross(Achse, Blickrichtung)). Das Vorzeichen haengt daran,
+// ob die Kante in dieser Richtung in der Indexliste steht.
+//
+// Fuer den Vertexshader: Ort = Mitte der kurzen Kante, Normale = Richtung
+// der langen Achse x halbe Kantenlaenge x Vorzeichen. Texturkoordinaten und
+// Wicklung bleiben. `art[b] == 2` heisst: Stapel b hat einen
+// autosprite2-Shader (1 ist autosprite, siehe baueAutosprites).
+struct SpriteEcke2 {
+    std::uint32_t ecke = 0;   // Nummer in mesh.verts
+    float mitte[3]{};
+    float achse[3]{};
+};
+[[nodiscard]] std::vector<SpriteEcke2> baueAutosprites2(
+    const BspMesh& mesh, const std::vector<char>& art);
+
 // --- Die Lage: deckend oder gemischt -----------------------------------
 //
 // `buildDrawCalls` sortiert deckend vor gemischt - aber nur INNERHALB EINES

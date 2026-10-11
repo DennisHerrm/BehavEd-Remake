@@ -390,6 +390,7 @@ void batchStateAus(const TextureSet::Tex& t, float zeitSekunden,
     bs.numTexMods = std::min(t.numTexMods, kMaxTexMods);
     bs.deformWave = t.deformWave;
     bs.deformSpread = t.deformSpread;
+    bs.deform2 = t.deform2;
     if (!t.empty()) {
         bs.tex = &t;
     }

@@ -12276,6 +12276,7 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                     t.alphaWave = it->second.alphaWave;
                     t.deformWave = it->second.deformWave;
                     t.deformSpread = it->second.deformSpread;
+                    t.deform2 = it->second.deform2;
                     t.polygonOffset = it->second.polygonOffset;
                     // glow der Stufe, aus der auch das Bild kommt.
                     t.glow = it->second.glow;
@@ -12399,6 +12400,7 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                 t.alphaWave = it->second.alphaWave;
                 t.deformWave = it->second.deformWave;
                 t.deformSpread = it->second.deformSpread;
+                t.deform2 = it->second.deform2;
                 t.polygonOffset = it->second.polygonOffset;
                 t.glow = it->second.glow;
                 t.clamp = it->second.clamp;
@@ -12845,6 +12847,7 @@ void loadMapTextures() {
                     // Stufe wurde schlicht nie sichtbar.
                     zusatz.deformWave = si->second.deformWave;
                     zusatz.deformSpread = si->second.deformSpread;
+                    zusatz.deform2 = si->second.deform2;
                     zusatz.srcFactor = st.srcFactor;
                     zusatz.dstFactor = st.dstFactor;
                     // --- animMap: die uebrigen Bilder dazuladen ---------
@@ -12949,6 +12952,7 @@ void loadMapTextures() {
                         bild.alphaWave = t.alphaWave;
                         bild.deformWave = t.deformWave;
                         bild.deformSpread = t.deformSpread;
+                        bild.deform2 = t.deform2;
                         bild.polygonOffset = t.polygonOffset;
                         bild.glow = t.glow;
                         bild.clamp = t.clamp;

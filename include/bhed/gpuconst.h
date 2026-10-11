@@ -79,7 +79,12 @@ inline constexpr std::size_t kDeformSpreadAt = kDeformAt + 4U;  // 20
 // die Kameramatrix multipliziert (siehe gpushader.cpp). Eine eigene Matrix
 // im Stapelpuffer hatte 16 Felder gekostet und ein Bild erzeugt, in dem alle
 // Ecken in einen Punkt liefen.
-inline constexpr std::size_t kKonstFloats = kDeformSpreadAt + 4U;  // 24
+// rc592: deformVertexes move (Versatz, auf der CPU aus der Welle), bulge
+// (breite, hoehe, tempo) und normal (amplitude, frequenz) - je ein float4.
+inline constexpr std::size_t kDeformMoveAt = kDeformSpreadAt + 4U;    // 24
+inline constexpr std::size_t kBulgeAt = kDeformMoveAt + 4U;           // 28
+inline constexpr std::size_t kDeformNormalAt = kBulgeAt + 4U;         // 32
+inline constexpr std::size_t kKonstFloats = kDeformNormalAt + 4U;     // 36
 
 // Die Art eines tcMod-Schritts stand hier als Aufzaehlung, weil der Shader
 // sie in .w des jeweiligen Viererblocks las. Seit rc443 wird die Kette auf

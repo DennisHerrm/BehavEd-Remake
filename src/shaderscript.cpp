@@ -217,6 +217,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     Wave stageAlphaWave;
     Wave deformWave;
     float deformSpread = 0.0F;
+    DeformZusatz deform2;
     bool polygonOffset = false;
     std::string skyBox;
     // `glow` dieser Stufe, und ob irgendeine Stufe des Shaders es traegt.
@@ -431,6 +432,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     info.alphaWave = alphaWave;
                     info.deformWave = deformWave;
                     info.deformSpread = deformSpread;
+                    info.deform2 = deform2;
                     info.polygonOffset = polygonOffset;
                     info.glow = glow;
                     info.hasGlow = hasGlow;
@@ -511,11 +513,47 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 // sollen zur Laufzeit zu Sprites zusammenklappen.
                 //
                 // `autosprite2` ist NICHT dasselbe - es dreht das Viereck
-                // um seine lange Achse - und wird bewusst nicht
-                // mitgefangen. Der Vergleich ist deshalb auf Gleichheit,
-                // nicht auf einen Praefix.
+                // um seine lange Achse (siehe DeformZusatz). Der Vergleich
+                // ist deshalb auf Gleichheit, nicht auf einen Praefix.
                 if (lower(firstWord(rest)) == "autosprite") {
                     autosprite = true;
+                    continue;
+                }
+                // Die Werte wie ParseDeform (tr_shader.cpp).
+                const std::string art = lower(firstWord(rest));
+                if (art == "autosprite2") {
+                    deform2.autosprite2 = true;
+                    continue;
+                }
+                if (art == "bulge") {
+                    for (float& v : deform2.bulge) {
+                        rest = secondWord(rest);
+                        v = readNum(firstWord(rest));
+                    }
+                    continue;
+                }
+                if (art == "move") {
+                    for (float& v : deform2.move) {
+                        rest = secondWord(rest);
+                        v = readNum(firstWord(rest));
+                    }
+                    rest = secondWord(rest);
+                    deform2.moveWave.func = waveFuncFromName(lower(firstWord(rest)));
+                    rest = secondWord(rest);
+                    deform2.moveWave.base = readNum(firstWord(rest));
+                    rest = secondWord(rest);
+                    deform2.moveWave.amplitude = readNum(firstWord(rest));
+                    rest = secondWord(rest);
+                    deform2.moveWave.phase = readNum(firstWord(rest));
+                    rest = secondWord(rest);
+                    deform2.moveWave.frequency = readNum(firstWord(rest));
+                    continue;
+                }
+                if (art == "normal") {
+                    for (float& v : deform2.normal) {
+                        rest = secondWord(rest);
+                        v = readNum(firstWord(rest));
+                    }
                     continue;
                 }
                 if (lower(firstWord(rest)) == "wave") {
@@ -644,6 +682,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             stageRgbVertex = false;
             deformWave = Wave{};
             deformSpread = 0.0F;
+            deform2 = DeformZusatz{};
             polygonOffset = false;
             inImageStage = false;
             continue;

@@ -219,6 +219,18 @@ PipelineState pipelineFor(const BatchState& bs, bool hatLightmap,
     if (bs.deformWave.active()) {
         f |= kDeform;
     }
+    if (bs.deform2.autosprite2) {
+        f |= kAutosprite2;
+    }
+    if (bs.deform2.bulgeAn()) {
+        f |= kBulge;
+    }
+    if (bs.deform2.moveWave.active()) {
+        f |= kDeformMove;
+    }
+    if (bs.deform2.normalAn()) {
+        f |= kDeformNormal;
+    }
     switch (bs.cull) {
         // "Two" heisst zweiseitig - die Engine nennt es cull disable oder
         // cull twosided, gemeint ist dasselbe: nichts weglassen.

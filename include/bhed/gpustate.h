@@ -120,6 +120,17 @@ enum Feature : std::uint32_t {
     // Beide zusammen (rc592): alphaGen oneMinusVertex -> 1 - Eckenwert.
     kAlphaKonst    = 1U << 15,  //        alphaGen const <x>  -> gRgb.a
     kAlphaEins     = 1U << 16,  //        alphaGen identity   -> 1.0
+
+    // --- Die uebrigen deformVertexes (rc592), siehe DeformZusatz --------
+    kAutosprite2   = 1U << 17,  //   98 - um die lange Achse zur Kamera
+    kBulge         = 1U << 18,  //   17 - Beulen entlang s
+    kDeformMove    = 1U << 19,  //    8 - die Flaeche verschiebt sich
+    kDeformNormal  = 1U << 20,  //   11 - die Normalen wackeln
+
+    // Alles, was Ecken woanders hinlegt als die Datei - Licht- und
+    // Nebeldurchgang zeichnen die Flaeche ohne diese Rechnung und lassen
+    // sie deshalb aus.
+    kBewegteEcken  = kDeform | kAutosprite | kAutosprite2 | kBulge | kDeformMove,
 };
 
 struct PipelineState {

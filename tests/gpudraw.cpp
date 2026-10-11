@@ -433,6 +433,67 @@ int main() {
         std::vector<std::uint32_t> idx3 = ungerade.indexes;
         erwarte("ein Abschnitt, der nicht in Vierecke passt, bleibt stehen",
                 baueAutosprites(ungerade, {1}, idx3).empty() && idx3 == ungerade.indexes);
+
+        erwarte("autosprite2: andere Stapel bleiben unberuehrt", baueAutosprites2(m, {1}).empty() &&
+                                                                       baueAutosprites2(m, {0}).empty());
+    }
+
+    // --- autosprite2 (rc592): Drehung um die LANGE Achse -------------------
+    //
+    // Eine Kette aus kor1 (textures/korriban/chain), genau so in der .bsp:
+    // 8 breit, 32 hoch, Indizes 3,0,2 / 2,0,1 - die Reihenfolge von q3map2.
+    // Mit einer anderen Indexfolge (etwa 0,1,2 / 0,2,3) verdreht die Rechnung
+    // der Engine das Viereck - sie verlaesst sich auf diese.
+    //
+    // Autosprite2Deform: die kuerzesten Kanten 0-1 (unten) und 2-3 (oben),
+    // ihre Mitten (640,-32,-800) und (640,-32,-768). Jede Ecke bekommt die
+    // Mitte ihrer Kante als Ort und die Achse mal halbe Kantenlaenge (4) mit
+    // Vorzeichen als Normale.
+    {
+        BspMesh m;
+        const float ecken[4][3] = {{644, -32, -800}, {636, -32, -800}, {636, -32, -768}, {644, -32, -768}};
+        for (const auto& e : ecken) {
+            BspVertex v;
+            for (int k = 0; k < 3; ++k) { v.xyz[k] = e[k]; }
+            m.verts.push_back(v);
+        }
+        m.indexes = {3, 0, 2, 2, 0, 1};
+        BspMesh::Batch b;
+        b.firstIndex = 0;
+        b.numIndexes = 6;
+        m.batches.push_back(b);
+        const std::vector<SpriteEcke2> s2 = baueAutosprites2(m, {2});
+        erwarte("autosprite2: vier Ecken", s2.size() == 4U);
+        bool mitten = s2.size() == 4U;
+        for (const SpriteEcke2& e : s2) {
+            const float zSoll = (e.ecke < 2U) ? -800.0F : -768.0F;
+            const float l = std::sqrt(e.achse[0] * e.achse[0] + e.achse[1] * e.achse[1] +
+                                      e.achse[2] * e.achse[2]);
+            mitten = mitten && e.mitte[0] == 640.0F && e.mitte[1] == -32.0F && e.mitte[2] == zSoll &&
+                     std::fabs(l - 4.0F) < 1e-3F && std::fabs(e.achse[0]) < 1e-4F &&
+                     std::fabs(e.achse[1]) < 1e-4F;
+        }
+        erwarte("autosprite2: Mitte der kurzen Kante, Achse x halbe Laenge", mitten);
+        // Gezeichnet ergibt sich (Ecke - Mitte) = normalize(cross(achse,
+        // vorn)) * |achse|. Quake 3 zeigt Dreiecke, die im Uhrzeigersinn
+        // erscheinen; 3,0,2 tut das von -y aus gesehen. Mit dem Blick von
+        // dort (vorn = 0,1,0) muessen die Ecken wieder liegen wie gebaut.
+        auto gezeichnetX = [](const SpriteEcke2& e) {
+            const float vorn[3] = {0.0F, 1.0F, 0.0F};
+            const float c[3] = {e.achse[1] * vorn[2] - e.achse[2] * vorn[1],
+                                e.achse[2] * vorn[0] - e.achse[0] * vorn[2],
+                                e.achse[0] * vorn[1] - e.achse[1] * vorn[0]};
+            const float cl = std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+            const float l = std::sqrt(e.achse[0] * e.achse[0] + e.achse[1] * e.achse[1] +
+                                      e.achse[2] * e.achse[2]);
+            return e.mitte[0] + c[0] / cl * l;
+        };
+        bool lage = s2.size() == 4U;
+        for (const SpriteEcke2& e : s2) {
+            const float soll = m.verts[e.ecke].xyz[0];
+            lage = lage && std::fabs(gezeichnetX(e) - soll) < 1e-3F;
+        }
+        erwarte("autosprite2: von vorn gesehen liegen die Ecken wie gebaut", lage);
     }
 
     if (fehler != 0) {

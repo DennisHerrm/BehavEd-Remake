@@ -78,6 +78,10 @@ cbuffer JeStapel : register(b1) {
     // Mit float4 gibt es keine Packregel zu erraten: 16..19, dann 20.
     float4 gDeform;        // base, amplitude, phase, frequency
     float  gDeformSpread;
+    // rc592, siehe gpuconst.h: jedes ein eigener Viererblock (24, 28, 32).
+    float4 gDeformMove;    // xyz Versatz
+    float4 gBulge;         // breite, hoehe, tempo
+    float4 gDeformNormal;  // amplitude, frequenz
 };
 )";
 
@@ -907,9 +911,40 @@ struct VSOut {
     float2 uvLm   : TEXCOORD1;
     float4 farbe  : COLOR0;
 };
-VSOut main(VSIn ein) {
+)";
+    // deformVertexes normal: Wertrauschen in vier Dimensionen, linear
+    // zwischen den Gitterpunkten - wie R_NoiseGet4f. Die Werte an den
+    // Gitterpunkten kommen aus einer Streufunktion statt aus der
+    // Zufallstabelle der Engine.
+    wenn(s, features, kDeformNormal, R"(float rauschWert(int4 p) {
+    uint h = asuint(p.x) * 73856093u ^ asuint(p.y) * 19349663u ^
+             asuint(p.z) * 83492791u ^ asuint(p.w) * 2654435761u;
+    h ^= h >> 13;
+    h *= 1274126177u;
+    h ^= h >> 16;
+    return (float)(h & 65535u) / 32767.5 - 1.0;
+}
+float rausch4(float4 q) {
+    float4 f = floor(q);
+    float4 t = q - f;
+    int4 i = (int4)f;
+    float wert[2];
+    [unroll] for (int w = 0; w < 2; ++w) {
+        float v[2];
+        [unroll] for (int z = 0; z < 2; ++z) {
+            float a = lerp(rauschWert(i + int4(0, 0, z, w)), rauschWert(i + int4(1, 0, z, w)), t.x);
+            float b = lerp(rauschWert(i + int4(0, 1, z, w)), rauschWert(i + int4(1, 1, z, w)), t.x);
+            v[z] = lerp(a, b, t.y);
+        }
+        wert[w] = lerp(v[0], v[1], t.z);
+    }
+    return lerp(wert[0], wert[1], t.w);
+}
+)");
+    s += R"(VSOut main(VSIn ein) {
     VSOut aus;
     float3 welt = ein.pos;
+    float3 nrm = ein.normal;
 )";
 
     // deformVertexes wave - RB_CalcDeformVertexes: die Ecke wandert entlang
@@ -947,6 +982,28 @@ VSOut main(VSIn ein) {
     }
 )");
 
+    // deformVertexes normal - RB_CalcDeformNormals: drei Rauschwerte, je
+    // um 100 Einheiten versetzt, auf die Normale, dann normiert.
+    wenn(s, features, kDeformNormal, R"(    {
+        float3 p = welt * 0.98;
+        float zt = gZeit * gDeformNormal.y;
+        nrm.x += gDeformNormal.x * rausch4(float4(p, zt));
+        nrm.y += gDeformNormal.x * rausch4(float4(100.0 + p.x, p.yz, zt));
+        nrm.z += gDeformNormal.x * rausch4(float4(200.0 + p.x, p.yz, zt));
+        nrm = normalize(nrm);
+    }
+)");
+
+    // deformVertexes bulge - RB_CalcBulgeVertexes: der Winkel ist
+    // s * breite + zeit * tempo (die Tabelle der Engine laeuft ueber 2 pi).
+    wenn(s, features, kBulge, R"(    {
+        welt += ein.normal * (sin(ein.uv.x * gBulge.x + gZeit * gBulge.z) * gBulge.y);
+    }
+)");
+
+    // deformVertexes move - der Versatz kommt fertig aus gpuconst.cpp.
+    wenn(s, features, kDeformMove, "    welt += gDeformMove.xyz;\n");
+
     // autosprite: die Ecke zur Kamera drehen. Nur 34 Vorkommen in allen 43
     // Karten, aber ohne sie stehen Flammen und Rauchfahnen quer.
     //
@@ -964,6 +1021,23 @@ VSOut main(VSIn ein) {
     wenn(s, features, kAutosprite, R"(    {
         float3 links = -gRechts;
         welt += (links * ein.normal.x + gHoch * ein.normal.y) * ein.normal.z;
+    }
+)");
+
+    // autosprite2 - Autosprite2Deform: die Ecke steht beim Hochladen auf der
+    // Mitte ihrer kurzen Kante, in der Normalen die lange Achse mal halbe
+    // Kantenlaenge, mit dem Vorzeichen der Seite (baueAutosprites2). Die
+    // Nebenachse ist normalize(cross(achse, vorn)) - wie in der Engine mit
+    // der Blickrichtung, nicht der Richtung zur Ecke. Steht die Achse genau
+    // in Blickrichtung, laesst VectorNormalize die Null stehen: dann
+    // klappt das Viereck zur Linie, hier ebenso.
+    wenn(s, features, kAutosprite2, R"(    {
+        float l = length(ein.normal);
+        float3 q = cross(ein.normal, gVorn);
+        float ql = length(q);
+        if (ql > 1e-6) {
+            welt += q * (l / ql);
+        }
     }
 )");
 
@@ -985,7 +1059,7 @@ VSOut main(VSIn ein) {
     if ((features & kTexGenEnv) != 0U) {
         s += R"(    {
         float3 zur = normalize(gKamera - welt);
-        float3 sp = reflect(-zur, normalize(ein.normal));
+        float3 sp = reflect(-zur, normalize(nrm));
         aus.uv = sp.yz * 0.5 + 0.5;
     }
 )";
@@ -1270,6 +1344,8 @@ std::string shaderName(std::uint32_t features, int numTexMods) {
         // alphaGen: DREI verschiedene Quelltexte, also drei Kuerzel.
         {kAlphaKonst, "_ak"},    {kAlphaEins, "_a1"},
         {kSky, "_sky"},
+        {kAutosprite2, "_a2"},   {kBulge, "_bu"},
+        {kDeformMove, "_mv"},    {kDeformNormal, "_dn"},
         // kRohEcke MUSS ein Kuerzel bekommen: es aendert den erzeugten
         // Quelltext (kein Helligkeitsfaktor auf der Eckenfarbe). Ohne
         // Kuerzel bekaemen zwei verschiedene Shader denselben Namen und

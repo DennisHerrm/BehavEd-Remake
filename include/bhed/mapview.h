@@ -225,6 +225,8 @@ struct TextureSet {
         // deformVertexes wave: die Flaeche wogt entlang ihrer Normalen.
         Wave deformWave;
         float deformSpread = 0.0F;
+        // autosprite2, bulge, move, normal (rc592) - siehe DeformZusatz.
+        DeformZusatz deform2;
         // polygonOffset: die Flaeche klebt auf einer anderen und bekommt
         // Vorrang, damit es nicht flimmert.
         bool polygonOffset = false;
@@ -664,6 +666,7 @@ struct BatchState {
     // rc383. Steht deshalb hier und nicht bei den Stufen.
     Wave deformWave;
     float deformSpread = 0.0F;
+    DeformZusatz deform2;
 };
 
 // Leitet den Zustand eines Stapels ab. `zeitSekunden` ist die Zeit, mit der

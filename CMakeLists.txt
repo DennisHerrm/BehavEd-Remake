@@ -297,6 +297,12 @@ if(BEHAVED_TESTS)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)
   endforeach()
+  # Uebersetzt jeder erzeugte Shader wirklich? Braucht d3dcompiler (MSVC).
+  if(MSVC)
+    add_executable(hlslprobe tests/hlslprobe.cpp)
+    target_link_libraries(hlslprobe PRIVATE bhed_core d3dcompiler)
+    add_test(NAME hlsl COMMAND hlslprobe)
+  endif()
   # Alle Modelle und Karten der Spielordner laden und pruefen (lange Probe).
   # Ohne Ordner meldet sie "uebersprungen". Setzen mit:
   #   cmake -DBEHAVED_GAMEDIRS="C:/.../base;C:/.../MD"

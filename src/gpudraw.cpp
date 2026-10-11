@@ -227,7 +227,102 @@ std::vector<SpriteEcke> baueAutosprites(const BspMesh& mesh,
         }
     };
     for (std::size_t b = 0; b < mesh.batches.size() && b < istSprite.size(); ++b) {
-        if (istSprite[b] == 0) {
+        if (istSprite[b] != 1) {
+            continue;
+        }
+        const BspMesh::Batch& bt = mesh.batches[b];
+        if (bt.numRuns > 0U && !mesh.runs.empty()) {
+            for (std::uint32_t k = 0; k < bt.numRuns; ++k) {
+                const std::size_t at = static_cast<std::size_t>(bt.firstRun) + k;
+                if (at >= mesh.runs.size()) { break; }
+                abschnitt(mesh.runs[at].firstIndex, mesh.runs[at].numIndexes);
+            }
+        } else {
+            abschnitt(bt.firstIndex, bt.numIndexes);
+        }
+    }
+    return aus;
+}
+
+std::vector<SpriteEcke2> baueAutosprites2(const BspMesh& mesh,
+                                          const std::vector<char>& art) {
+    std::vector<SpriteEcke2> aus;
+    // edgeVerts der Engine: die sechs Kanten eines Vierecks.
+    static const int kKanten[6][2] = {{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}};
+    auto abschnitt = [&](std::uint32_t first, std::uint32_t count) {
+        if (count < 6U || (count % 6U) != 0U ||
+            static_cast<std::size_t>(first) + count > mesh.indexes.size()) {
+            return;
+        }
+        // Die Engine nimmt die Ecken i..i+3 und die Indizes 6q..6q+5 - die
+        // Ecken einer Flaeche liegen hintereinander, also aufsteigend.
+        std::vector<std::uint32_t> ids(mesh.indexes.begin() + first,
+                                       mesh.indexes.begin() + first + count);
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        if (ids.size() != (count / 6U) * 4U || ids.back() >= mesh.verts.size()) {
+            return;
+        }
+        for (std::size_t q = 0; q + 3 < ids.size(); q += 4) {
+            const float* xyz[4];
+            for (int w = 0; w < 4; ++w) { xyz[w] = mesh.verts[ids[q + static_cast<std::size_t>(w)]].xyz; }
+            int nums[2] = {0, 0};
+            float laengen[2] = {999999.0F, 999999.0F};
+            for (int j = 0; j < 6; ++j) {
+                const float* v1 = xyz[kKanten[j][0]];
+                const float* v2 = xyz[kKanten[j][1]];
+                const float d[3] = {v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]};
+                const float l = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                if (l < laengen[0]) {
+                    nums[1] = nums[0];
+                    laengen[1] = laengen[0];
+                    nums[0] = j;
+                    laengen[0] = l;
+                } else if (l < laengen[1]) {
+                    nums[1] = j;
+                    laengen[1] = l;
+                }
+            }
+            float mitte[2][3];
+            for (int j = 0; j < 2; ++j) {
+                const float* v1 = xyz[kKanten[nums[j]][0]];
+                const float* v2 = xyz[kKanten[nums[j]][1]];
+                for (int k = 0; k < 3; ++k) { mitte[j][k] = 0.5F * (v1[k] + v2[k]); }
+            }
+            float achse[3] = {mitte[1][0] - mitte[0][0], mitte[1][1] - mitte[0][1],
+                              mitte[1][2] - mitte[0][2]};
+            const float al = std::sqrt(achse[0] * achse[0] + achse[1] * achse[1] + achse[2] * achse[2]);
+            if (al <= 0.0F) {
+                continue;
+            }
+            for (float& a : achse) { a /= al; }
+            const std::uint32_t* idx = &mesh.indexes[first + (q / 4U) * 6U];
+            for (int j = 0; j < 2; ++j) {
+                const std::uint32_t e1 = ids[q + static_cast<std::size_t>(kKanten[nums[j]][0])];
+                const std::uint32_t e2 = ids[q + static_cast<std::size_t>(kKanten[nums[j]][1])];
+                const float l = 0.5F * std::sqrt(laengen[j]);
+                int k = 0;
+                for (; k < 5; ++k) {
+                    if (idx[k] == e1 && idx[k + 1] == e2) { break; }
+                }
+                // k == 5: v1 = Mitte + l * Nebenachse, sonst umgekehrt.
+                const float v1Seite = (k == 5) ? 1.0F : -1.0F;
+                const std::uint32_t ecken[2] = {e1, e2};
+                const float seite[2] = {v1Seite, -v1Seite};
+                for (int w = 0; w < 2; ++w) {
+                    SpriteEcke2 e;
+                    e.ecke = ecken[w];
+                    for (int c = 0; c < 3; ++c) {
+                        e.mitte[c] = mitte[j][c];
+                        e.achse[c] = achse[c] * l * seite[w];
+                    }
+                    aus.push_back(e);
+                }
+            }
+        }
+    };
+    for (std::size_t b = 0; b < mesh.batches.size() && b < art.size(); ++b) {
+        if (art[b] != 2) {
             continue;
         }
         const BspMesh::Batch& bt = mesh.batches[b];

@@ -193,6 +193,23 @@ void packeKonstanten(const BatchState& bs, float* ziel,
         ziel[kDeformAt + 3] = bs.deformWave.frequency;
         ziel[kDeformSpreadAt] = bs.deformSpread;
     }
+    // move: RB_CalcMoveVertexes - der Versatz ist fuer alle Ecken gleich,
+    // also hier einmal gerechnet statt in jeder Ecke.
+    if (bs.deform2.moveWave.active()) {
+        const float w = waveValue(bs.deform2.moveWave, zeitSekunden);
+        for (int k = 0; k < 3; ++k) {
+            ziel[kDeformMoveAt + static_cast<std::size_t>(k)] = bs.deform2.move[k] * w;
+        }
+    }
+    if (bs.deform2.bulgeAn()) {
+        for (int k = 0; k < 3; ++k) {
+            ziel[kBulgeAt + static_cast<std::size_t>(k)] = bs.deform2.bulge[k];
+        }
+    }
+    if (bs.deform2.normalAn()) {
+        ziel[kDeformNormalAt + 0] = bs.deform2.normal[0];
+        ziel[kDeformNormalAt + 1] = bs.deform2.normal[1];
+    }
 }
 
 }  // namespace bhed::gpu

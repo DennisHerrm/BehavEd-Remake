@@ -54,7 +54,7 @@ int main() {
     // float4 gDeform: Spread gleich dahinter. Mit `float gDeform[4]` lag er
     // bei 29 (D3DReflect), gerechnet war 32 - der Lavafall pulsierte nur.
     erwarte("gDeformSpread steht bei 20", kDeformSpreadAt == 20U);
-    erwarte("der Block ist 24 float gross", kKonstFloats == 24U);
+    erwarte("der Block ist 36 float gross", kKonstFloats == 36U);
     erwarte("der Shader hat gDeform als float4",
             vertexShaderHlsl(kDeform, 0).find("float4 gDeform;") != std::string::npos);
     erwarte("und der Shader kennt keine eigene Modellmatrix",
