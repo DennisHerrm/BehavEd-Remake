@@ -387,6 +387,28 @@ void probeSzene() {
                "Szene: Klang bei 300 ms (200 + Bild 1 bei 100)");
         pruefe(nah(e.ort[0], 100.0F), "Szene: Klang am Mover-Stand vor Bild 0 (trBase)");
     }
+    pruefe(roffEffektStarts(s2).empty(), "Effektstarts: ein Klang ist kein Effekt");
+
+    // Eine Effekt-Notiz wird ein Effektstart (rc592): G_PlayEffect mit
+    // G_EffectIndex(name) - der Zeitplaner setzt "effects/" davor und ".efx"
+    // dahinter -, am Ort plus Versatz, gerichtet nach vorn.
+    auto mitEffekt = std::make_shared<Roff>();
+    const std::string d3 = fassung2(50, {Bild{{8, 0, 0}, {0, 0, 0}}, Bild{{8, 0, 0}, {0, 0, 0}, 0, 1}, Bild{{8, 0, 0}, {0, 0, 0}}},
+                                    {"effect /effects/env/fire 10+0+0"});
+    pruefe(leseRoff(d3, *mitEffekt, &grund), "Szene: Bahn mit Effekt-Notiz gelesen");
+    SzenenHilfe h3;
+    h3.roff = [mitEffekt](const std::string&) -> std::shared_ptr<const Roff> { return mitEffekt; };
+    const Scene s3 = buildScene(lies("affect ( \"schiff\", FLUSH )\n{\n\twait ( 200.000 );\n\tplay ( \"PLAY_ROFF\", \"x\" );\n}\n"),
+                                karte, &h3);
+    const std::vector<RoffEffektStart> fx = roffEffektStarts(s3);
+    pruefe(fx.size() == 1, "Effektstarts: eine Effekt-Notiz, ein Start");
+    if (fx.size() == 1) {
+        pruefe(fx[0].pfad == "effects/env/fire.efx" && fx[0].name == "env/fire",
+               "Effektstarts: Pfad wie RegisterEffect (effects/<name>.efx)");
+        pruefe(fx[0].ms == 300.0, "Effektstarts: zur Zeit der Notiz");
+        pruefe(nah(fx[0].ort[0], 110.0F) && nah(fx[0].richtung[0], 1.0F) && nah(fx[0].richtung[2], 0.0F),
+               "Effektstarts: Ort plus 10 nach vorn, Richtung nach vorn");
+    }
 }
 
 // --- 6. Nachbau: dowait wartet auf die Bahn ---------------------------------

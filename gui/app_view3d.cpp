@@ -4831,6 +4831,31 @@ void loadMapEffects() {
     if (g_app->bruchFxZahl != 0U) {
         diag::info(std::to_string(g_app->bruchFxZahl) + " Brucheffekte (func_breakable, misc_model_breakable)");
     }
+    // --- Was die Notizen einer ROFF-Bahn starten (rc592) ------------------
+    //
+    // "effect <name> [versatz [winkel]]" in einer .rof: G_PlayEffect am Ort
+    // der Entity in dem Bild, das die Notiz traegt (G_RoffNotetrackCallback).
+    // Wann und wo rechnet die Szene; hier nur Datei und Instanz.
+    g_app->roffFxZahl = 0;
+    for (const RoffEffektStart& rf : roffEffektStarts(g_app->scene)) {
+        if (!ladeEffektDatei(rf.pfad, rf.name)) {
+            continue;
+        }
+        EffectInstance inst;
+        inst.effect = &g_app->effects[rf.pfad];
+        for (int k = 0; k < 3; ++k) {
+            inst.origin[k] = rf.ort[k];
+            inst.normal[k] = rf.richtung[k];
+        }
+        inst.startMs = rf.ms;
+        inst.loops = false;
+        inst.seed = static_cast<unsigned>(g_app->roffFxZahl * 2246822519U + 977U) | 1U;
+        g_app->effectRunners.push_back(inst);
+        ++g_app->roffFxZahl;
+    }
+    if (g_app->roffFxZahl != 0U) {
+        diag::info(std::to_string(g_app->roffFxZahl) + " Effekte aus ROFF-Notizen");
+    }
     diag::info(std::to_string(gefunden) + " fx_runner laufen, " +
                std::to_string(wartend) + " warten auf ein use (STARTOFF/ONESHOT), " +
                std::to_string(fehlt) + " ohne Datei, " +
@@ -8332,6 +8357,25 @@ void drawTimeline() {
                 } else {
                     playSound(datei, 0.0, false, r.links, r.rechts, 0);
                 }
+            }
+            // --- Die Klaenge aus ROFF-Notizen (rc592) -------------------
+            //
+            // "sound <datei>": cgi_S_StartSound am Ort der Entity auf
+            // CHAN_BODY (G_RoffNotetrackCallback) - gedaempft nach
+            // Entfernung wie die Moverklaenge.
+            for (const RoffEreignis& re : g_app->scene.roffEreignisse) {
+                if (re.ms > g_app->playMs) {
+                    break;   // nach Zeit geordnet (buildScene)
+                }
+                if (re.ms <= g_app->audioUpTo || re.befehl.art != RoffNotizBefehl::Art::Klang ||
+                    re.befehl.datei.empty()) {
+                    continue;
+                }
+                float ohr[3];
+                float rechts[3];
+                hoerer(ohr, rechts);
+                const sound::Raumlaut r = sound::raumlaut(re.ort, ohr, rechts, sound::Kanal::Auto);
+                playSound(re.befehl.datei, 0.0, false, r.links, r.rechts, 0);
             }
             // --- Die Klaenge beim ZERBRECHEN ---------------------------
             //

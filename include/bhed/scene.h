@@ -719,6 +719,22 @@ struct SzenenHilfe {
 [[nodiscard]] Scene buildScene(const Script& s, const MapData& map,
                                const SzenenHilfe* hilfe = nullptr);
 
+// Die Effekt-Notizen der ROFF-Bahnen als Effektstarts (rc592).
+//
+// G_RoffNotetrackCallback -> G_PlayEffect(G_EffectIndex(name), ort, winkel):
+// der Zeitplaner sucht "effects/<name>.efx" (RegisterEffect haengt die
+// Endung an, wenn sie fehlt) und richtet den Effekt nach dem Vorwaerts-
+// vektor der Winkel aus. Die Oberflaeche spielt sie wie jeden anderen
+// Effekt der Karte.
+struct RoffEffektStart {
+    std::string name;        // wie G_EffectIndex ihn bekommt, ohne .efx
+    std::string pfad;        // effects/<name>.efx
+    double ms = 0.0;
+    float ort[3]{};
+    float richtung[3]{1.0F, 0.0F, 0.0F};
+};
+[[nodiscard]] std::vector<RoffEffektStart> roffEffektStarts(const Scene& s);
+
 // NPC-Beschreibungen: welcher NPC_type benutzt welches Modell?
 //
 // In JKA stehen sie unter ext_data/npcs/*.npc:

@@ -2645,4 +2645,32 @@ void muzzlePoint(const float origin[3], float yawDeg,
     }
 }
 
+std::vector<RoffEffektStart> roffEffektStarts(const Scene& s) {
+    std::vector<RoffEffektStart> aus;
+    for (const RoffEreignis& e : s.roffEreignisse) {
+        if (e.befehl.art != RoffNotizBefehl::Art::Effekt || e.befehl.datei.empty()) {
+            continue;
+        }
+        RoffEffektStart r;
+        r.name = e.befehl.datei;
+        std::replace(r.name.begin(), r.name.end(), '\\', '/');
+        if (r.name.size() > 4) {
+            std::string ende = r.name.substr(r.name.size() - 4);
+            for (char& c : ende) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+            if (ende == ".efx") { r.name.resize(r.name.size() - 4); }
+        }
+        r.pfad = "effects/" + r.name + ".efx";
+        r.ms = e.ms;
+        // AngleVectors: vorn aus Nicken und Gieren.
+        const double nick = e.winkel[0] * std::numbers::pi / 180.0;
+        const double gier = e.winkel[1] * std::numbers::pi / 180.0;
+        r.richtung[0] = static_cast<float>(std::cos(nick) * std::cos(gier));
+        r.richtung[1] = static_cast<float>(std::cos(nick) * std::sin(gier));
+        r.richtung[2] = static_cast<float>(-std::sin(nick));
+        for (int k = 0; k < 3; ++k) { r.ort[k] = e.ort[k]; }
+        aus.push_back(std::move(r));
+    }
+    return aus;
+}
+
 }  // namespace bhed

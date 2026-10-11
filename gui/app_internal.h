@@ -730,6 +730,8 @@ struct App {
     // Wie viele davon beim Zerbrechen spielen (MoverSim::bruchEffekte) -
     // sie haengen wie die per use gestarteten fx_runner am Skript.
     std::size_t bruchFxZahl = 0;
+    // Ebenso die Effekt-Notizen der ROFF-Bahnen (roffEffektStarts, rc592).
+    std::size_t roffFxZahl = 0;
     // Tueren, Plattformen, func_wall & Co. - siehe bhed/mover.h. Wird in
     // prepareScene aus den use-Ereignissen und den Figurenwegen gebaut.
     MoverSim moverSim;

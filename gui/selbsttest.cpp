@@ -3899,7 +3899,8 @@ std::vector<Schritt> kartenBreitSchritte() {
         // (START_OFF/ONESHOT, MoverSim::fxStarts) und ohne die Brucheffekte
         // (bruchFxZahl) - die haengen am Skript und fehlen in einem anderen
         // Reiter zu Recht.
-        *effekteMit = g_app->effectRunners.size() - g_app->moverSim.fxStarts().size() - g_app->bruchFxZahl;
+        *effekteMit = g_app->effectRunners.size() - g_app->moverSim.fxStarts().size() - g_app->bruchFxZahl -
+                      g_app->roffFxZahl;
         *reiterMit = g_app->activeTab;
         diag::detail("Knopftest: Effekte mit Figuren " + std::to_string(*effekteMit) + ", Figuren " +
                      std::to_string(g_app->scene.actors.size()));
@@ -3918,7 +3919,9 @@ std::vector<Schritt> kartenBreitSchritte() {
                      std::to_string(g_app->scene.actors.size()) + ", Effekte " +
                      std::to_string(g_app->effectRunners.size()));
         return g_app->activeTab == *reiterMit ||
-               g_app->effectRunners.size() - g_app->moverSim.fxStarts().size() - g_app->bruchFxZahl == *effekteMit;
+               g_app->effectRunners.size() - g_app->moverSim.fxStarts().size() - g_app->bruchFxZahl -
+                   g_app->roffFxZahl ==
+               *effekteMit;
     }));
     add(tu("Zurueck zum Reiter mit Figuren", [=] { g_app->tabRequest = *reiterMit; }));
     add(pause(0.5));
