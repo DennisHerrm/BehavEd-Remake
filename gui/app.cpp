@@ -12424,6 +12424,57 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
         return got;
 }
 
+// --- Die Wolkenschichten eines Himmelsshaders (rc592) -------------------
+//
+// RB_StageIteratorSky zeichnet erst die Box, dann ALLE Bildstufen des
+// Shaders als Wolken auf der Kuppel (R_BuildCloudData). Bis rc591 fielen sie
+// weg - der Himmel von duel_jedi_battleground stand ohne seine zwei
+// ziehenden Schichten da. Jede Stufe wird ein eigener Eintrag hinter der
+// Box, mit ihrer Mischart, ihrer tcMod-Kette und der Wolkenhoehe.
+void wolkenLaden(const ShaderInfo& info, const std::string& name, TextureSet::Tex& himmel) {
+    int zahl = 0;
+    for (const ShaderInfo::Stage& st : info.stages) {
+        if (st.lightmap || st.image.empty() || st.alphaGen == AlphaGen::Unsupported) {
+            continue;
+        }
+        TextureSet::Tex wolke;
+        if (!loadTextureFor(st.image, wolke)) {
+            diag::detail("Wolkenschicht \"" + st.image + "\" von " + name + " nicht ladbar");
+            continue;
+        }
+        wolke.blend = st.blend;
+        wolke.srcFactor = st.srcFactor;
+        wolke.dstFactor = st.dstFactor;
+        wolke.alphaTest = st.alphaTest;
+        wolke.alphaConst = st.alphaConst;
+        wolke.alphaWave = st.alphaWave;
+        wolke.alphaGen = st.alphaGen;
+        for (int k = 0; k < st.numTexMods; ++k) {
+            wolke.texMods[k] = st.texMods[k];
+        }
+        wolke.numTexMods = st.numTexMods;
+        wolke.rgbWave = st.rgbWave;
+        for (int k = 0; k < 3; ++k) {
+            wolke.rgbConst[k] = st.rgbConst[k];
+        }
+        wolke.rgbVertex = st.rgbVertex;
+        wolke.glow = st.glow;
+        wolke.clamp = st.clamp;
+        wolke.depthWrite = st.depthWrite;
+        wolke.depthFunc = st.depthFunc;
+        wolke.ausSkript = true;
+        wolke.lightmapStufe = false;
+        wolke.wolkenHoehe = info.wolkenHoehe;
+        himmel.extraStages.push_back(static_cast<int>(g_app->textures.byShader.size()));
+        g_app->textures.byShader.push_back(std::move(wolke));
+        ++zahl;
+    }
+    if (zahl > 0) {
+        diag::detail("Shader \"" + name + "\": " + std::to_string(zahl) + " Wolkenschicht(en), Hoehe " +
+                     std::to_string(static_cast<int>(info.wolkenHoehe)));
+    }
+}
+
 void loadMapTextures() {
     diag::Step step("Texturen suchen");
     // Was die vorige Karte benutzt hat - aufgeraeumt wird am Ende, wenn
@@ -12644,6 +12695,7 @@ void loadMapTextures() {
                     t.height = ersteSeite.height;
                     t.rgba = ersteSeite.rgba;
                     t.mips = ersteSeite.mips;
+                    wolkenLaden(sk->second, sh.name, t);
                     g_app->textures.byShader[i] = std::move(t);
                     ++g_app->textures.found;
                     continue;

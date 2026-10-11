@@ -785,6 +785,19 @@ int main() {
                        smr["textures/p/pt"].alphaGen ==
                            bhed::AlphaGen::Unsupported);
             }
+            // skyParms <box> <wolkenhoehe> (rc592): die Hoehe der
+            // Wolkenkuppel; 0 nimmt die Engine als 512 (ParseSkyParms).
+            {
+                const char* hs =
+                    "textures/h/a\n{\nskyParms textures/skies/x 2048 -\n{\nmap wolke\n}\n}\n"
+                    "textures/h/b\n{\nskyParms - 0 -\n{\nmap wolke\n}\n}\n"
+                    "textures/h/c\n{\n{\nmap wolke\n}\n}\n";
+                bhed::ShaderMap smh;
+                bhed::parseShaderScript(hs, smh);
+                expect("skyParms: Wolkenhoehe 2048", smh["textures/h/a"].wolkenHoehe == 2048.0F);
+                expect("skyParms: Hoehe 0 wird 512, auch ohne Box", smh["textures/h/b"].wolkenHoehe == 512.0F);
+                expect("ohne skyParms keine Wolken", smh["textures/h/c"].wolkenHoehe == 0.0F);
+            }
             // deformVertexes autosprite2/bulge/move/normal (rc592) - Werte
             // wie ParseDeform in tr_shader.cpp.
             {

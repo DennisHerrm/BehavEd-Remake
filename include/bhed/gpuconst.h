@@ -75,6 +75,9 @@ inline constexpr std::size_t kAlphaAt = kRgbAt + 4U;          // 12
 // (12) waere 13 frei, HLSL schiebt auf 16.
 inline constexpr std::size_t kDeformAt = 16U;
 inline constexpr std::size_t kDeformSpreadAt = kDeformAt + 4U;  // 20
+// Die Hoehe der Wolkenkuppel (rc592) - ein float gleich hinter dem Spread,
+// im selben Viererblock (HLSL packt float hinter float).
+inline constexpr std::size_t kWolkenAt = kDeformSpreadAt + 1U;  // 21
 // Die Stellung eines Movers steht NICHT hier: sie wird vor dem Zeichnen in
 // die Kameramatrix multipliziert (siehe gpushader.cpp). Eine eigene Matrix
 // im Stapelpuffer hatte 16 Felder gekostet und ein Bild erzeugt, in dem alle

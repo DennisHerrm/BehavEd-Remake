@@ -210,6 +210,8 @@ PipelineState pipelineFor(const BatchState& bs, bool hatLightmap,
     // das prueft batchStateFor. Hier reicht der Zeiger als Frage.
     if (bs.skyFaces != nullptr) {
         f |= kSky;
+    } else if (bs.wolkenHoehe > 0.0F) {
+        f |= kWolke;
     }
     if (bs.autosprite) {
         f |= kAutosprite;

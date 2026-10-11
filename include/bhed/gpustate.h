@@ -126,6 +126,8 @@ enum Feature : std::uint32_t {
     kBulge         = 1U << 18,  //   17 - Beulen entlang s
     kDeformMove    = 1U << 19,  //    8 - die Flaeche verschiebt sich
     kDeformNormal  = 1U << 20,  //   11 - die Normalen wackeln
+    // Wolkenschicht des Himmels (rc592): st aus der Blickrichtung.
+    kWolke         = 1U << 21,
 
     // Alles, was Ecken woanders hinlegt als die Datei - Licht- und
     // Nebeldurchgang zeichnen die Flaeche ohne diese Rechnung und lassen

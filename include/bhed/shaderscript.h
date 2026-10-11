@@ -613,6 +613,11 @@ struct ShaderInfo {
     // Gemessen: 130 skyParms-Zeilen in den neun pk3, davon 23 mit `-`;
     // 56 verschiedene Boxen.
     std::string skyBox;
+    // Die Wolkenhoehe aus skyParms (rc592). Die Bildstufen eines
+    // Himmelsshaders sind Wolkenschichten auf einer Kuppel dieser Hoehe
+    // (R_InitSkyTexCoords, tr_sky.cpp). 0 nimmt die Engine als 512 - hier
+    // heisst 0 deshalb: gar kein skyParms.
+    float wolkenHoehe = 0.0F;
 
     // depthWrite und depthFunc der Stufe, aus der auch das Bild kommt.
     bool depthWrite = false;

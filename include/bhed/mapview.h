@@ -218,6 +218,10 @@ struct TextureSet {
         // sondern aus der BLICKRICHTUNG des Bildpunktes - siehe
         // skySample in src/mapview.cpp.
         std::vector<int> skyFaces;
+        // Eine Wolkenschicht des Himmels (rc592): > 0 ist die Hoehe der
+        // Kuppel, und die Texturkoordinaten kommen aus der Blickrichtung
+        // wie in R_InitSkyTexCoords. Siehe ShaderInfo::wolkenHoehe.
+        float wolkenHoehe = 0.0F;
         // Woher der Alphawert kommt - siehe AlphaGen. Nur LightingSpecular
         // aendert hier etwas; Const steckt in alphaConst, FromImage ist die
         // Vorgabe, und Unsupported kommt gar nicht erst bis hierher.
@@ -628,6 +632,8 @@ struct BatchState {
     // Ein Himmelswuerfel liegt nur vor, wenn genau sechs Seiten da sind.
     const TextureSet* skySet = nullptr;
     const std::vector<int>* skyFaces = nullptr;
+    // Wolkenschicht, siehe TextureSet::Tex::wolkenHoehe.
+    float wolkenHoehe = 0.0F;
 
     // --- Ab hier: uebernommen, damit ein Verbraucher OHNE Tex auskommt ---
     //

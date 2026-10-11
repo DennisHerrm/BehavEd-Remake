@@ -50,7 +50,7 @@ void uebersetze(const std::string& was, const std::string& src, const char* prof
 int main() {
     std::printf("hlslprobe\n");
     // Jedes Merkmal einzeln - bis zum hoechsten vergebenen Bit.
-    for (int b = 0; b <= 20; ++b) {
+    for (int b = 0; b <= 21; ++b) {
         const std::uint32_t f = 1U << b;
         const std::string n = "bit" + std::to_string(b);
         uebersetze(n + " vs", vertexShaderHlsl(f, 1), "vs_4_0");

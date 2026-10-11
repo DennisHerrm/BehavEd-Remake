@@ -78,6 +78,7 @@ cbuffer JeStapel : register(b1) {
     // Mit float4 gibt es keine Packregel zu erraten: 16..19, dann 20.
     float4 gDeform;        // base, amplitude, phase, frequency
     float  gDeformSpread;
+    float  gWolkenHoehe;   // Wolkenkuppel, siehe gpuconst.h (21)
     // rc592, siehe gpuconst.h: jedes ein eigener Viererblock (24, 28, 32).
     float4 gDeformMove;    // xyz Versatz
     float4 gBulge;         // breite, hoehe, tempo
@@ -1167,8 +1168,37 @@ struct VSOut {
     float4 farbe  : COLOR0;
 };
 float4 main(VSOut ein) : SV_TARGET {
-    float4 c = gBild.Sample(gSampler, ein.uv);
 )";
+    // --- Wolkenschicht (rc592) - R_InitSkyTexCoords ------------------------
+    //
+    // Die Richtung des Bildpunktes wie beim Himmel unten. Die Engine
+    // schneidet sie mit einer Kugel vom Radius 4096 + Hoehe, deren Mitte
+    // 4096 unter dem Auge liegt, und nimmt vom Schnittpunkt (normiert, von
+    // der Kugelmitte aus) st = (acos x, acos y). Darauf kommt die
+    // tcMod-Kette der Stufe - hier im Pixelshader, weil st erst hier
+    // entsteht. Unter dem Horizont gibt es keine Wolken (FillCloudBox
+    // nimmt von den Seiten nur die obere Haelfte).
+    if ((features & kWolke) != 0U) {
+        s += R"(    float2 wuv;
+    {
+        float2 sp = ein.pos.xy;
+        float a = (sp.x - gHalb.x) / (gFokus * gHalb.y);
+        float b = (gHalb.y - sp.y) / (gFokus * gHalb.y);
+        float3 d = normalize(gVorn + gRechts * a + gHoch * b);
+        clip(d.z);
+        float R = 4096.0;
+        float h = gWolkenHoehe;
+        float p = -R * d.z + sqrt(R * R * d.z * d.z + 2.0 * R * h + h * h);
+        float3 v = normalize(d * p + float3(0.0, 0.0, R));
+        float2 st = float2(acos(clamp(v.x, -1.0, 1.0)), acos(clamp(v.y, -1.0, 1.0)));
+        wuv.x = st.x * gTexMatrix.x + (st.y * gTexMatrix.z + gTexOffTurb.x);
+        wuv.y = st.x * gTexMatrix.y + (st.y * gTexMatrix.w + gTexOffTurb.y);
+    }
+    float4 c = gBild.Sample(gSampler, wuv);
+)";
+    } else {
+        s += "    float4 c = gBild.Sample(gSampler, ein.uv);\n";
+    }
 
     // --- Der Himmel, woertlich wie skyFace() ------------------------------
     //
@@ -1346,6 +1376,7 @@ std::string shaderName(std::uint32_t features, int numTexMods) {
         {kSky, "_sky"},
         {kAutosprite2, "_a2"},   {kBulge, "_bu"},
         {kDeformMove, "_mv"},    {kDeformNormal, "_dn"},
+        {kWolke, "_wk"},
         // kRohEcke MUSS ein Kuerzel bekommen: es aendert den erzeugten
         // Quelltext (kein Helligkeitsfaktor auf der Eckenfarbe). Ohne
         // Kuerzel bekaemen zwei verschiedene Shader denselben Namen und

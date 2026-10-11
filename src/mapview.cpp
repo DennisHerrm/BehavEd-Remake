@@ -367,6 +367,7 @@ void batchStateAus(const TextureSet::Tex& t, float zeitSekunden,
         bs.skySet = textures;
         bs.skyFaces = &t.skyFaces;
     }
+    bs.wolkenHoehe = t.wolkenHoehe;
     bs.blend = t.blend;
     bs.srcFactor = t.srcFactor;
     bs.dstFactor = t.dstFactor;

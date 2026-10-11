@@ -416,6 +416,7 @@ void pruefeStapelLagen(ID3DBlob* vsBlob) {
         const Soll soll[] = {{"gTexMatrix", kTexMatrixAt}, {"gTexOffTurb", kTexOffTurbAt},
                              {"gRgb", kRgbAt}, {"gAlphaSchwelle", kAlphaAt},
                              {"gDeform", kDeformAt}, {"gDeformSpread", kDeformSpreadAt},
+                             {"gWolkenHoehe", kWolkenAt},
                              {"gDeformMove", kDeformMoveAt}, {"gBulge", kBulgeAt},
                              {"gDeformNormal", kDeformNormalAt}};
         std::string z = "GPU-Stapelpuffer (aus dem Shader gelesen):";

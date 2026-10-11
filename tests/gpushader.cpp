@@ -72,6 +72,8 @@ int main() {
     beideRichtungen("deformVertexes bulge", kBulge, "sin(ein.uv.x * gBulge.x", true);
     beideRichtungen("deformVertexes move", kDeformMove, "welt += gDeformMove.xyz", true);
     beideRichtungen("deformVertexes normal", kDeformNormal, "rausch4(", true);
+    // Wolkenschicht (R_InitSkyTexCoords): Kuppel mit Radius 4096.
+    beideRichtungen("Wolkenschicht", kWolke, "float h = gWolkenHoehe;", false);
     // NICHT auf "gTexMatrix" pruefen: der Name steht ohnehin in der
     // Erklaerung des Konstantenpuffers, also auch ohne das Bit. `st2` gibt
     // es nur im erzeugten Block.

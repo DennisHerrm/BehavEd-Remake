@@ -220,6 +220,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     DeformZusatz deform2;
     bool polygonOffset = false;
     std::string skyBox;
+    float wolkenHoehe = 0.0F;
     // `glow` dieser Stufe, und ob irgendeine Stufe des Shaders es traegt.
     bool stageGlow = false;
     bool glow = false;
@@ -421,6 +422,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     info.animFreq = animFreq;
                     info.animOneShot = animOneShot;
                     info.skyBox = skyBox;
+                    info.wolkenHoehe = wolkenHoehe;
                     info.blend = blend;
                 info.imageStages = stufen;
                 info.alphaConst = alphaConst;
@@ -460,6 +462,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 animFreq = 0.0F;
                 animOneShot = false;
                 skyBox.clear();
+                wolkenHoehe = 0.0F;
                 // Auch die Stufenzahl - sonst zaehlt sie ueber alle Shader
                 // der Datei hinweg weiter, und die Zahl im Protokoll waere
                 // schlimmer als keine.
@@ -646,6 +649,12 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 const std::string box = firstWord(secondWord(line));
                 if (!box.empty() && box != "-") {
                     skyBox = box;
+                }
+                // Die Wolkenhoehe (rc592): `if (!cloudHeight) cloudHeight
+                // = 512` - auch bei "-" oder fehlender Zahl.
+                wolkenHoehe = readNum(firstWord(secondWord(secondWord(line))));
+                if (!(wolkenHoehe > 0.0F)) {
+                    wolkenHoehe = 512.0F;
                 }
                 continue;
             }
