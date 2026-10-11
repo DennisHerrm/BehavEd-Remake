@@ -29,6 +29,7 @@
 #include "bhed/scene.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -690,11 +691,19 @@ void entityZiehen(float rasterSkal) {
 
 // --- Der Inspektor -------------------------------------------------------------
 void drawEntityInspector(float hoehe) {
-    ImGui::BeginChild("entinspektor", ImVec2{-1.0F, hoehe}, ImGuiChildFlags_Borders);
+    // Aufbau wie Unreals "Details" (rc586): oben fest der Kopf mit Klasse und
+    // einer Icon-Leiste, darunter ein Suchfeld, dann - nur dieser Teil rollt -
+    // die Gruppen Allgemein, Spawnflags, Felder. In jeder Gruppe steht die
+    // Beschriftung links und der Wert rechts; vorher stand die Beschriftung
+    // ueber jedem Feld, und man rollte doppelt so weit.
+    ImGui::BeginChild("entinspektor", ImVec2{-1.0F, hoehe}, ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     g_app->entFokusListe = g_app->entFokusListe || ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
     const int i = inspektorZiel();
     if (i < 0) {
-        ImGui::TextWrapped("%s", tr(g_app->map.entities.empty() ? Str::MissionKeine : Str::EntPickHint));
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextDisabled("%s", tr(g_app->map.entities.empty() ? Str::MissionKeine : Str::EntPickHint));
+        ImGui::PopTextWrapPos();
         ImGui::EndChild();
         return;
     }
@@ -704,10 +713,17 @@ void drawEntityInspector(float hoehe) {
     const ent::Def* d = ent::def(e.classname);
     ImGui::PushID(i);
 
-    // Kopf: Klasse in ihrer Farbe, Erklaerung als Hinweis.
+    // --- Kopf: Klasse in ihrer Farbe, Erklaerung als Hinweis ----------------
     const ImVec4 farbe = d != nullptr ? ImVec4{0.45F + d->farbe[0] * 0.55F, 0.45F + d->farbe[1] * 0.55F,
                                               0.45F + d->farbe[2] * 0.55F, 1.0F}
                                       : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    {
+        const float g = ImGui::GetFontSize();
+        const ImVec2 q = ImGui::GetCursorScreenPos();
+        uiIcon(ImGui::GetWindowDrawList(), UiIcon::Entity, q, g, ImGui::GetColorU32(farbe));
+        ImGui::Dummy(ImVec2{g, g});
+        ImGui::SameLine(0.0F, ImGui::GetStyle().ItemInnerSpacing.x);
+    }
     ImGui::TextColored(farbe, "%s", e.classname.c_str());
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::BeginTooltip();
@@ -722,39 +738,96 @@ void drawEntityInspector(float hoehe) {
         ImGui::TextDisabled("%s", tr(Str::EntUnsavedMark));
     }
 
-    const float breite = ImGui::GetContentRegionAvail().x;
-    const auto beschriftung = [](const char* t, const char* hilfe) {
-        ImGui::TextDisabled("%s", t);
-        if (hilfe != nullptr && hilfe[0] != '\0' && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-            ImGui::BeginTooltip();
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
-            ImGui::TextUnformatted(hilfe);
-            ImGui::PopTextWrapPos();
-            ImGui::EndTooltip();
+    // --- Icon-Leiste --------------------------------------------------------
+    {
+        const float sp = ImGui::GetStyle().ItemSpacing.x;
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{sp * 0.4F, ImGui::GetStyle().ItemSpacing.y});
+        float o0[3];
+        const bool ort = entityOrt(e, o0);
+        if (iconKnopf(tr(Str::EntityFlyTo), UiIcon::Hinfliegen, nullptr, false, ort)) {
+            zurEntityFliegen(static_cast<std::size_t>(i));
         }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::EntDropFloor), UiIcon::Boden, tr(Str::EntDropFloorHint), false, ort)) {
+            if (!entityAufBoden(i)) { addStatus(tr(Str::EntNoFloor)); }
+        }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::EntDuplicate), UiIcon::Duplizieren, nullptr)) { entityDuplizieren(i); }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::EntDelete), UiIcon::Loeschen, nullptr)) { entityLoeschen(i); }
+        ImGui::SameLine(0.0F, sp * 1.2F);
+        if (iconKnopf(tr(Str::EditUndo), UiIcon::Rueckgaengig, nullptr, false, entityUndoMoeglich())) {
+            entityRueckgaengig();
+        }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::EditRedo), UiIcon::Wiederholen, nullptr, false, entityRedoMoeglich())) {
+            entityWiederholen();
+        }
+        ImGui::SameLine(0.0F, sp * 1.2F);
+        if (iconKnopf(tr(Str::EntRaw), UiIcon::Liste, tr(Str::EntRawHint), g_app->entRawAnsicht, true, true)) {
+            g_app->entRawAnsicht = !g_app->entRawAnsicht;
+        }
+        ImGui::PopStyleVar();
+    }
+
+    // --- Suchfeld -----------------------------------------------------------
+    static char suche[48] = "";
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputTextWithHint("##feldsuche", tr(Str::EntSearchFields), suche, sizeof(suche));
+    const std::string such = klein(suche);
+    const auto passt = [&such](const std::string& n) { return such.empty() || klein(n).find(such) != std::string::npos; };
+
+    // --- Der rollende Teil --------------------------------------------------
+    ImGui::BeginChild("entfelder", ImVec2{-1.0F, -1.0F}, ImGuiChildFlags_None);
+    const float hilfeBreite = ImGui::GetFontSize() * 24.0F;
+    const auto hinweis = [hilfeBreite](const char* titel, const char* hilfe) {
+        if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { return; }
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(hilfeBreite);
+        ImGui::TextUnformatted(titel);
+        if (hilfe != nullptr && hilfe[0] != '\0') { ImGui::TextDisabled("%s", hilfe); }
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    };
+    // Eine Tabelle mit zwei Spalten; Zeilen beginnt `zeile`.
+    const auto tabelleAuf = [](const char* id) {
+        if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX)) { return false; }
+        ImGui::TableSetupColumn("##k", ImGuiTableColumnFlags_WidthStretch, 0.42F);
+        ImGui::TableSetupColumn("##v", ImGuiTableColumnFlags_WidthStretch, 0.58F);
+        return true;
+    };
+    const auto zeile = [&hinweis](const char* label, const char* titel, const char* hilfe) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", label);
+        hinweis(titel, hilfe);
+        ImGui::TableSetColumnIndex(1);
     };
     std::set<std::string> gezeigt = {"classname", "origin", "angle", "spawnflags"};
+    // Die Gruppenkoepfe im Ton der Eingabefelder - das Blau der Auswahl war
+    // fuer drei Ueberschriften zu laut.
+    ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
 
-    // Eine Feldzeile: Beschriftung mit Erklaerung, Wert, bei Skripten "Open",
-    // beim NPC-Typ die Auswahl.
+    // Eine Feldzeile: Wert, bei Skripten "Open", beim NPC-Typ die Auswahl, in
+    // der Rohansicht ein x zum Entfernen.
     const auto zeigeFeld = [&](const std::string& name, const std::string& hilfe) {
         ImGui::PushID(name.c_str());
         const std::string* wert = e.find(name);
-        beschriftung(name.c_str(), hilfe.c_str());
+        zeile(name.c_str(), name.c_str(), hilfe.c_str());
         const bool skript = istSkriptFeld(name);
         const bool npcTyp = klein(name) == "npc_type";
-        const float knopf = (skript || npcTyp) ? ImGui::CalcTextSize(tr(Str::EntOpenScript)).x +
-                                                     ImGui::GetStyle().FramePadding.x * 2.0F +
-                                                     ImGui::GetStyle().ItemSpacing.x
-                                               : 0.0F;
-        const float loeschen = g_app->entRawAnsicht ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x : 0.0F;
-        ImGui::SetNextItemWidth(std::max(breite - knopf - loeschen, ImGui::GetFontSize() * 4.0F));
+        const ImGuiStyle& st = ImGui::GetStyle();
+        float knoepfe = 0.0F;
+        if (skript) { knoepfe += ImGui::CalcTextSize(tr(Str::EntOpenScript)).x + st.FramePadding.x * 2.0F + st.ItemSpacing.x; }
+        if (npcTyp) { knoepfe += ImGui::CalcTextSize(tr(Str::EntPickNpc)).x + st.FramePadding.x * 2.0F + st.ItemSpacing.x; }
+        if (g_app->entRawAnsicht) { knoepfe += ImGui::GetFrameHeight() + st.ItemSpacing.x; }
+        ImGui::SetNextItemWidth(std::max(ImGui::GetContentRegionAvail().x - knoepfe, ImGui::GetFontSize() * 3.0F));
         std::string neu;
         if (textFeld("##wert", wert != nullptr ? *wert : std::string(), neu)) {
             entityKeySetzen(i, name, neu);
-        }
-        if (npcTyp && (wert == nullptr || wert->empty())) {
-            ImGui::SameLine(0.0F, 0.0F);
         }
         if (skript) {
             ImGui::SameLine();
@@ -762,7 +835,9 @@ void drawEntityInspector(float hoehe) {
             ImGui::BeginDisabled(!vorhanden);
             if (ImGui::SmallButton(tr(Str::EntOpenScript)) && vorhanden) { skriptOeffnen(*wert, true); }
             ImGui::EndDisabled();
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::EntOpenScriptHint)); }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", tr(Str::EntOpenScriptHint));
+            }
         }
         if (npcTyp) {
             ImGui::SameLine();
@@ -784,135 +859,143 @@ void drawEntityInspector(float hoehe) {
                 ImGui::EndChild();
                 ImGui::EndPopup();
             }
-            if (wert == nullptr || wert->empty()) {
-                ImGui::TextColored(ImVec4{1.0F, 0.75F, 0.3F, 1.0F}, "%s", tr(Str::EntNpcTypeMissing));
-            }
         }
         if (g_app->entRawAnsicht) {
             ImGui::SameLine();
             if (ImGui::SmallButton(tr(Str::EntRemoveKey))) { entityKeySetzen(i, name, std::string()); }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::EntRemoveKeyHint)); }
         }
+        if (npcTyp && (wert == nullptr || wert->empty())) {
+            ImGui::PushTextWrapPos(0.0F);
+            ImGui::TextColored(ImVec4{1.0F, 0.75F, 0.3F, 1.0F}, "%s", tr(Str::EntNpcTypeMissing));
+            ImGui::PopTextWrapPos();
+        }
         ImGui::PopID();
     };
 
-    // Name - unter ihm sprechen die Skripte die Entity an.
-    {
-        const char* nameKey = istNpcKlasse(e.classname) ? "NPC_targetname" : "targetname";
-        gezeigt.insert(klein(nameKey));
-        beschriftung(tr(Str::EntName), nameKey);
-        const std::string* n = e.find(nameKey);
-        std::string neu;
-        ImGui::SetNextItemWidth(breite);
-        if (textFeld("##name", n != nullptr ? *n : std::string(), neu)) {
-            entityKeySetzen(i, nameKey, neu);
-        }
-    }
-
-    // Das Feld, ohne das die Entity nichts tut, gleich unter dem Namen - der
-    // NPC-Typ einer Figur stand sonst unter allen Spawnflags (Foto 11.10.).
+    // --- Allgemein ------------------------------------------------------------
+    const char* nameKey = istNpcKlasse(e.classname) ? "NPC_targetname" : "targetname";
+    std::vector<std::pair<std::string, std::string>> wichtig;   // Name, Hilfe
     for (const char* w : wichtigeFelder(e.classname)) {
         std::string hilfe;
         for (std::size_t k = 0; d != nullptr && k < d->feldAnzahl; ++k) {
             if (klein(d->felder[k].name) == klein(w)) { hilfe = entText(d->felder[k].text); }
         }
-        gezeigt.insert(klein(w));
-        zeigeFeld(w, hilfe);
+        wichtig.emplace_back(w, hilfe);
     }
-
-    // Ort - live beim Ziehen, ein Rueckgaengig-Schritt am Ende.
     float o[3] = {0.0F, 0.0F, 0.0F};
     const bool hatOrt = entityOrt(e, o);
-    if (hatOrt || (d != nullptr && !d->brush)) {
-        static std::vector<MapEntity> vorOrt;
-        beschriftung(tr(Str::EntOrigin), "origin");
-        ImGui::SetNextItemWidth(breite);
-        if (ImGui::DragFloat3("##ort", o, 1.0F, -65536.0F, 65536.0F, "%.0f")) {
-            setKey(g_app->map.entities[static_cast<std::size_t>(i)], "origin", ortText(o));
-            g_app->mapDirty = true;
+    const bool zeigeOrt = hatOrt || (d != nullptr && !d->brush);
+    gezeigt.insert(klein(nameKey));
+    for (const auto& [w, h] : wichtig) {
+        (void)h;
+        gezeigt.insert(klein(w));
+    }
+    const bool allgemeinPasst = passt(tr(Str::EntName)) || passt(nameKey) || passt("origin") || passt("angle") ||
+                                std::any_of(wichtig.begin(), wichtig.end(), [&](const auto& x) { return passt(x.first); });
+    if (allgemeinPasst &&
+        ImGui::CollapsingHeader((std::string(tr(Str::EntSecGeneral)) + "###allgemein").c_str(), ImGuiTreeNodeFlags_DefaultOpen) &&
+        tabelleAuf("##allgemein")) {
+        // Name - unter ihm sprechen die Skripte die Entity an.
+        if (passt(tr(Str::EntName)) || passt(nameKey)) {
+            zeile(tr(Str::EntName), nameKey, tr(Str::EntNameHint));
+            const std::string* n = e.find(nameKey);
+            std::string neu;
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (textFeld("##name", n != nullptr ? *n : std::string(), neu)) {
+                entityKeySetzen(i, nameKey, neu);
+            }
         }
-        if (ImGui::IsItemActivated()) { vorOrt = g_app->map.entities; }
-        if (ImGui::IsItemDeactivatedAfterEdit() && vorOrt.size() == g_app->map.entities.size()) {
-            aenderung(std::move(vorOrt));
-            vorOrt.clear();
+        // Das Feld, ohne das die Entity nichts tut (NPC_type, usescript ...).
+        for (const auto& [w, h] : wichtig) {
+            if (passt(w)) { zeigeFeld(w, h); }
         }
-        // Blickrichtung
-        float winkel = e.find("angle") != nullptr ? std::strtof(e.find("angle")->c_str(), nullptr) : 0.0F;
-        static std::vector<MapEntity> vorWinkel;
-        beschriftung(tr(Str::EntAngle), "angle");
-        ImGui::SetNextItemWidth(breite);
-        if (ImGui::DragFloat("##winkel", &winkel, 1.0F, -360.0F, 720.0F, "%.0f")) {
-            setKey(g_app->map.entities[static_cast<std::size_t>(i)], "angle",
-                   std::to_string(static_cast<int>(std::lround(winkel))));
-            g_app->mapDirty = true;
-        }
-        if (ImGui::IsItemActivated()) { vorWinkel = g_app->map.entities; }
-        if (ImGui::IsItemDeactivatedAfterEdit() && vorWinkel.size() == g_app->map.entities.size()) {
-            aenderung(std::move(vorWinkel));
-            vorWinkel.clear();
-        }
-        // Boden
-        if (ImGui::Button(tr(Str::EntDropFloor))) {
-            if (!entityAufBoden(i)) { addStatus(tr(Str::EntNoFloor)); }
-        }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::EntDropFloorHint)); }
-        ImGui::SameLine();
-        if (ImGui::Button(tr(Str::EntityFlyTo))) { zurEntityFliegen(static_cast<std::size_t>(i)); }
-        float abstand = 0.0F;
-        if (hatOrt && bodenAbstand(e, abstand)) {
-            if (abstand < -0.5F) {
-                ImGui::TextColored(ImVec4{1.0F, 0.45F, 0.35F, 1.0F}, tr(Str::EntBelowFloor), static_cast<double>(-abstand));
+        if (zeigeOrt && (passt("origin") || passt(tr(Str::EntOrigin)))) {
+            // Ort - live beim Ziehen, ein Rueckgaengig-Schritt am Ende.
+            static std::vector<MapEntity> vorOrt;
+            zeile(tr(Str::EntOrigin), "origin", nullptr);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::DragFloat3("##ort", o, 1.0F, -65536.0F, 65536.0F, "%.0f")) {
+                setKey(g_app->map.entities[static_cast<std::size_t>(i)], "origin", ortText(o));
+                g_app->mapDirty = true;
+            }
+            if (ImGui::IsItemActivated()) { vorOrt = g_app->map.entities; }
+            if (ImGui::IsItemDeactivatedAfterEdit() && vorOrt.size() == g_app->map.entities.size()) {
+                aenderung(std::move(vorOrt));
+                vorOrt.clear();
+            }
+            // Wie hoch stehen die Fuesse ueber dem Boden?
+            float abstand = 0.0F;
+            zeile(tr(Str::EntFloor), tr(Str::EntFloor), tr(Str::EntDropFloorHint));
+            if (hatOrt && bodenAbstand(e, abstand)) {
+                if (abstand < -0.5F) {
+                    ImGui::TextColored(ImVec4{1.0F, 0.45F, 0.35F, 1.0F}, tr(Str::EntBelowFloor), static_cast<double>(-abstand));
+                } else {
+                    ImGui::TextDisabled(tr(Str::EntAboveFloor), static_cast<double>(abstand));
+                }
             } else {
-                ImGui::TextDisabled(tr(Str::EntAboveFloor), static_cast<double>(abstand));
+                ImGui::TextDisabled("%s", tr(Str::EntNoFloor));
             }
-        } else if (hatOrt) {
-            ImGui::TextDisabled("%s", tr(Str::EntNoFloor));
         }
+        if (zeigeOrt && (passt("angle") || passt(tr(Str::EntAngle)))) {
+            float winkel = e.find("angle") != nullptr ? std::strtof(e.find("angle")->c_str(), nullptr) : 0.0F;
+            static std::vector<MapEntity> vorWinkel;
+            zeile(tr(Str::EntAngle), "angle", nullptr);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::DragFloat("##winkel", &winkel, 1.0F, -360.0F, 720.0F, "%.0f")) {
+                setKey(g_app->map.entities[static_cast<std::size_t>(i)], "angle",
+                       std::to_string(static_cast<int>(std::lround(winkel))));
+                g_app->mapDirty = true;
+            }
+            if (ImGui::IsItemActivated()) { vorWinkel = g_app->map.entities; }
+            if (ImGui::IsItemDeactivatedAfterEdit() && vorWinkel.size() == g_app->map.entities.size()) {
+                aenderung(std::move(vorWinkel));
+                vorWinkel.clear();
+            }
+        }
+        ImGui::EndTable();
     }
 
-    // Spawnflags als Haekchen mit Namen.
+    // --- Spawnflags als Haekchen mit Namen ---------------------------------------
     if (d != nullptr && d->flagAnzahl > 0) {
-        ImGui::Separator();
-        beschriftung(tr(Str::EntFlags), "spawnflags");
-        const int flags = e.find("spawnflags") != nullptr ? std::atoi(e.find("spawnflags")->c_str()) : 0;
-        int bekannt = 0;
-        // Zwei Spalten, wenn der laengste Name hineinpasst - die Liste ist
-        // bei Figuren sechs Zeilen lang.
-        float laengste = 0.0F;
-        for (std::size_t k = 0; k < d->flagAnzahl; ++k) { laengste = std::max(laengste, ImGui::CalcTextSize(d->flags[k].name).x); }
-        const bool zweiSpalten = d->flagAnzahl > 2 &&
-                                 laengste + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x * 2.0F < breite * 0.5F;
-        const bool tabelle = zweiSpalten && ImGui::BeginTable("##flags", 2);
-        for (std::size_t k = 0; k < d->flagAnzahl; ++k) {
-            const ent::Flag& f = d->flags[k];
-            bekannt |= f.bit;
-            if (tabelle) { ImGui::TableNextColumn(); }
-            bool an = (flags & f.bit) != 0;
-            char label[96];
-            std::snprintf(label, sizeof(label), "%s##f%d", f.name, f.bit);
-            if (ImGui::Checkbox(label, &an)) {
-                const int neu = an ? (flags | f.bit) : (flags & ~f.bit);
-                entityKeySetzen(i, "spawnflags", neu == 0 ? std::string() : std::to_string(neu));
+        bool eines = passt("spawnflags") || passt(tr(Str::EntFlags));
+        for (std::size_t k = 0; k < d->flagAnzahl && !eines; ++k) { eines = passt(d->flags[k].name); }
+        if (eines &&
+            ImGui::CollapsingHeader((std::string(tr(Str::EntFlags)) + "###flags").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            const bool alle = such.empty() || passt("spawnflags") || passt(tr(Str::EntFlags));
+            const int flags = e.find("spawnflags") != nullptr ? std::atoi(e.find("spawnflags")->c_str()) : 0;
+            int bekannt = 0;
+            // Zwei Spalten, wenn der laengste Name hineinpasst.
+            float laengste = 0.0F;
+            for (std::size_t k = 0; k < d->flagAnzahl; ++k) { laengste = std::max(laengste, ImGui::CalcTextSize(d->flags[k].name).x); }
+            const float breite = ImGui::GetContentRegionAvail().x;
+            const bool zweiSpalten = d->flagAnzahl > 2 && laengste + ImGui::GetFrameHeight() +
+                                                                ImGui::GetStyle().ItemInnerSpacing.x * 2.0F < breite * 0.5F;
+            const bool tabelle = zweiSpalten && ImGui::BeginTable("##flagtabelle", 2);
+            for (std::size_t k = 0; k < d->flagAnzahl; ++k) {
+                const ent::Flag& f = d->flags[k];
+                bekannt |= f.bit;
+                if (!alle && !passt(f.name)) { continue; }
+                if (tabelle) { ImGui::TableNextColumn(); }
+                bool an = (flags & f.bit) != 0;
+                char label[96];
+                std::snprintf(label, sizeof(label), "%s##f%d", f.name, f.bit);
+                if (ImGui::Checkbox(label, &an)) {
+                    const int neu = an ? (flags | f.bit) : (flags & ~f.bit);
+                    entityKeySetzen(i, "spawnflags", neu == 0 ? std::string() : std::to_string(neu));
+                }
+                char titel[96];
+                std::snprintf(titel, sizeof(titel), "%s (%d)", f.name, f.bit);
+                hinweis(titel, entText(f.text));
             }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-                ImGui::BeginTooltip();
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
-                ImGui::Text("%s (%d)", f.name, f.bit);
-                if (entText(f.text)[0] != '\0') { ImGui::TextUnformatted(entText(f.text)); }
-                ImGui::PopTextWrapPos();
-                ImGui::EndTooltip();
+            if (tabelle) { ImGui::EndTable(); }
+            if ((flags & ~bekannt) != 0) {
+                ImGui::TextDisabled(tr(Str::EntOtherBits), flags & ~bekannt);
             }
-        }
-        if (tabelle) { ImGui::EndTable(); }
-        if ((flags & ~bekannt) != 0) {
-            ImGui::TextDisabled(tr(Str::EntOtherBits), flags & ~bekannt);
         }
     }
 
-    // Felder: erst die aus der Beschreibung, dann die uebrigen der Entity.
-    ImGui::Separator();
-    ImGui::Checkbox(tr(Str::EntRaw), &g_app->entRawAnsicht);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::EntRawHint)); }
+    // --- Felder: erst die aus der Beschreibung, dann die uebrigen -----------------
     std::vector<std::pair<std::string, std::string>> felder;   // Name, Hilfe
     if (!g_app->entRawAnsicht && d != nullptr) {
         for (std::size_t k = 0; k < d->feldAnzahl; ++k) {
@@ -928,11 +1011,16 @@ void drawEntityInspector(float hoehe) {
         gezeigt.insert(klein(k));
         felder.emplace_back(k, std::string());
     }
-    for (const auto& [name, hilfe] : felder) { zeigeFeld(name, hilfe); }
-    // Ein Feld dazu.
-    {
+    felder.erase(std::remove_if(felder.begin(), felder.end(), [&](const auto& f) { return !passt(f.first); }), felder.end());
+    if ((!felder.empty() || such.empty()) &&
+        ImGui::CollapsingHeader((std::string(tr(Str::EntSecFields)) + "###felder").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (tabelleAuf("##felder")) {
+            for (const auto& [name, hilfe] : felder) { zeigeFeld(name, hilfe); }
+            ImGui::EndTable();
+        }
+        // Ein Feld dazu.
         static char neuerKey[48] = "";
-        ImGui::SetNextItemWidth(breite * 0.55F);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6F);
         const bool enter = ImGui::InputTextWithHint("##neuerkey", tr(Str::EntKeyName), neuerKey, sizeof(neuerKey),
                                                     ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::SameLine();
@@ -942,19 +1030,12 @@ void drawEntityInspector(float hoehe) {
             neuerKey[0] = '\0';
         }
     }
-
-    ImGui::Separator();
-    if (ImGui::Button(tr(Str::EntDuplicate))) { entityDuplizieren(i); }
-    ImGui::SameLine();
-    if (ImGui::Button(tr(Str::EntDelete))) { entityLoeschen(i); }
-    ImGui::BeginDisabled(!entityUndoMoeglich());
-    if (ImGui::SmallButton(tr(Str::EditUndo))) { entityRueckgaengig(); }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!entityRedoMoeglich());
-    if (ImGui::SmallButton(tr(Str::EditRedo))) { entityWiederholen(); }
-    ImGui::EndDisabled();
+    ImGui::PopStyleColor(3);
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0F);
     ImGui::TextDisabled("%s", tr(Str::EntDragHint));
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
     ImGui::PopID();
     ImGui::EndChild();
 }

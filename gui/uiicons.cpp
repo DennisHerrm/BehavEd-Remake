@@ -60,6 +60,50 @@ struct Stift {
 
 }  // namespace
 
+// Jedes Icon in seiner Farbe - shank (11.10.): "du kannst sie auch gerne
+// farbiger machen damit man die besser unterscheiden kann". Die Toene sind
+// mittelhell und kraeftig; im hellen Farbschema dunkler, damit sie auf Weiss
+// lesbar bleiben. Kamera in Magenta wie die camera-Befehle im Skriptbaum.
+ImVec4 uiIconFarbe(UiIcon icon) {
+    ImVec4 c{0.80F, 0.82F, 0.86F, 1.0F};   // neutral
+    switch (icon) {
+        case UiIcon::Neu: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;          // gruen
+        case UiIcon::Oeffnen: c = ImVec4{0.98F, 0.75F, 0.30F, 1.0F}; break;      // bernstein
+        case UiIcon::Speichern: c = ImVec4{0.40F, 0.68F, 1.00F, 1.0F}; break;    // blau
+        case UiIcon::Mission: c = ImVec4{1.00F, 0.58F, 0.28F, 1.0F}; break;      // orange
+        case UiIcon::Karte: c = ImVec4{0.35F, 0.85F, 0.78F, 1.0F}; break;        // tuerkis
+        case UiIcon::Paket: c = ImVec4{0.85F, 0.66F, 0.42F, 1.0F}; break;
+        case UiIcon::Liste: c = ImVec4{0.72F, 0.60F, 1.00F, 1.0F}; break;        // violett
+        case UiIcon::Skript: c = ImVec4{0.75F, 0.80F, 0.90F, 1.0F}; break;
+        case UiIcon::Entity: c = ImVec4{0.36F, 0.82F, 0.95F, 1.0F}; break;       // cyan
+        case UiIcon::Namen: c = ImVec4{0.80F, 0.66F, 1.00F, 1.0F}; break;        // flieder
+        case UiIcon::Figur: c = ImVec4{0.98F, 0.86F, 0.38F, 1.0F}; break;        // gelb
+        case UiIcon::Effekt: c = ImVec4{1.00F, 0.55F, 0.35F, 1.0F}; break;       // orangerot
+        case UiIcon::Leuchten: c = ImVec4{1.00F, 0.80F, 0.25F, 1.0F}; break;     // gold
+        case UiIcon::Licht: c = ImVec4{1.00F, 0.92F, 0.55F, 1.0F}; break;        // warmgelb
+        case UiIcon::Nebel: c = ImVec4{0.70F, 0.78F, 0.88F, 1.0F}; break;        // graublau
+        case UiIcon::Himmel: c = ImVec4{0.45F, 0.75F, 1.00F, 1.0F}; break;       // himmelblau
+        case UiIcon::Kamera: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;       // magenta
+        case UiIcon::Einstellungen: c = ImVec4{0.78F, 0.80F, 0.84F, 1.0F}; break;
+        case UiIcon::Statistik: c = ImVec4{0.50F, 0.88F, 0.55F, 1.0F}; break;
+        case UiIcon::Plus: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
+        case UiIcon::Boden: c = ImVec4{0.55F, 0.85F, 0.45F, 1.0F}; break;
+        case UiIcon::Hinfliegen: c = ImVec4{0.36F, 0.82F, 0.95F, 1.0F}; break;
+        case UiIcon::Duplizieren: c = ImVec4{0.45F, 0.70F, 1.00F, 1.0F}; break;
+        case UiIcon::Loeschen: c = ImVec4{1.00F, 0.42F, 0.40F, 1.0F}; break;     // rot
+        case UiIcon::Explorer: c = ImVec4{0.98F, 0.75F, 0.30F, 1.0F}; break;
+        case UiIcon::Warnung: c = ImVec4{1.00F, 0.75F, 0.30F, 1.0F}; break;
+        case UiIcon::Haken: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
+        default: break;
+    }
+    // Helles Farbschema: dieselbe Farbe, dunkler.
+    const ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+    if (bg.x * 0.3F + bg.y * 0.59F + bg.z * 0.11F > 0.6F) {
+        c = ImVec4{c.x * 0.62F, c.y * 0.62F, c.z * 0.62F, 1.0F};
+    }
+    return c;
+}
+
 void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe) {
     const Stift z{dl, pos, groesse / 16.0F, farbe, std::max(1.0F, groesse / 16.0F * 1.35F)};
     switch (icon) {
@@ -260,7 +304,7 @@ void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe)
 
 // Ein quadratischer Knopf mit Icon. `an`: als eingeschaltet zeichnen (Akzent).
 // Die Kennung ist der Text - Tooltip und Selbsttest finden ihn darueber.
-bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an, bool aktiv) {
+bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an, bool aktiv, bool umschalter) {
     const float h = ImGui::GetFrameHeight();
     ImGui::BeginDisabled(!aktiv);
     const bool geklickt = ImGui::InvisibleButton(text, ImVec2{h, h});
@@ -278,10 +322,14 @@ bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an, bool
     }
     if (ueber && aktiv) { grund = st.Colors[gedrueckt ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered]; }
     if (grund.w > 0.0F) { dl->AddRectFilled(a, b, ImGui::GetColorU32(grund), st.FrameRounding + 2.0F); }
-    ImVec4 farbe = st.Colors[aktiv ? ImGuiCol_Text : ImGuiCol_TextDisabled];
-    if (!an && aktiv && !ueber) { farbe.w *= 0.78F; }
-    const float g = h * 0.62F;
-    uiIcon(dl, icon, ImVec2{a.x + (h - g) * 0.5F, a.y + (h - g) * 0.5F}, g, ImGui::GetColorU32(farbe));
+    // In seiner Farbe; ausgeschaltet gedaempft, gesperrt grau.
+    ImVec4 farbe = aktiv ? uiIconFarbe(icon) : st.Colors[ImGuiCol_TextDisabled];
+    if (aktiv && !an && !ueber && umschalter) { farbe.w *= 0.55F; }
+    const float g = std::floor(h * 0.62F);
+    // Auf ganze Bildpunkte - sonst sitzt das Icon einen halben Punkt daneben
+    // und wirkt verwaschen und nicht mittig (shank, 11.10.).
+    uiIcon(dl, icon, ImVec2{std::floor(a.x + (h - g) * 0.5F), std::floor(a.y + (h - g) * 0.5F)}, g,
+           ImGui::GetColorU32(farbe));
     // Der Hinweis nennt zuerst, was der Knopf IST - ein Icon allein sagt es
     // nicht jedem.
     if (ueber) {
@@ -304,7 +352,7 @@ bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool akti
     const ImGuiStyle& st = ImGui::GetStyle();
     const char* ende = ImGui::FindRenderedTextEnd(text);
     const float tw = ImGui::CalcTextSize(text, ende).x;
-    const float g = h * 0.62F;
+    const float g = std::floor(h * 0.62F);
     const float breite = st.FramePadding.x * 2.0F + g + st.ItemInnerSpacing.x + tw;
     ImGui::BeginDisabled(!aktiv);
     const bool geklickt = ImGui::InvisibleButton(text, ImVec2{breite, h});
@@ -317,7 +365,8 @@ bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool akti
     if (ueber && aktiv) { grund = st.Colors[gedrueckt ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered]; }
     dl->AddRectFilled(a, b, ImGui::GetColorU32(grund), st.FrameRounding);
     const ImU32 farbe = ImGui::GetColorU32(st.Colors[aktiv ? ImGuiCol_Text : ImGuiCol_TextDisabled]);
-    uiIcon(dl, icon, ImVec2{a.x + st.FramePadding.x, a.y + (h - g) * 0.5F}, g, farbe);
+    const ImU32 iconFarbe = aktiv ? ImGui::GetColorU32(uiIconFarbe(icon)) : farbe;
+    uiIcon(dl, icon, ImVec2{std::floor(a.x + st.FramePadding.x), std::floor(a.y + (h - g) * 0.5F)}, g, iconFarbe);
     dl->AddText(ImVec2{a.x + st.FramePadding.x + g + st.ItemInnerSpacing.x, a.y + st.FramePadding.y}, farbe, text, ende);
     if (ueber && hinweis != nullptr && hinweis[0] != '\0') {
         ImGui::SetTooltip("%s", hinweis);

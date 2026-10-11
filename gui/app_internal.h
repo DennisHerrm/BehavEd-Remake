@@ -1850,6 +1850,11 @@ bool kartenBytes(const std::string& id, std::string& out);
 void merkeEntities();
 // Vor dem ausdruecklichen Oeffnen einer Karte: die gemerkten vergessen.
 void vergissEntities(const std::string& kennung);
+// Breite der Entity-Spalte im Map-Tab, in Zeichenhoehen. Seit rc586 18 statt
+// 15: der Inspektor steht darin, und rechts neben der Ansicht ist die
+// Seitenleiste weggefallen.
+inline constexpr float kEntitySpalte = 18.0F;
+
 // --- Bedien-Icons (gui/uiicons.cpp) ----------------------------------------
 enum class UiIcon {
     Neu, Oeffnen, Speichern, Mehr, Karte, Paket, Liste, Skript, Entity, Namen, Figur, Effekt,
@@ -1859,7 +1864,10 @@ enum class UiIcon {
 };
 void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe);
 // Quadratischer Icon-Knopf; der Text ist Kennung und Tooltip-Titel.
-bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an = false, bool aktiv = true);
+// umschalter: ein Ein/Aus-Schalter - ausgeschaltet wird das Icon gedaempft.
+bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an = false, bool aktiv = true,
+               bool umschalter = false);
+ImVec4 uiIconFarbe(UiIcon icon);
 // Icon und Text nebeneinander.
 bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool aktiv = true);
 

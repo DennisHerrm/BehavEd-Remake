@@ -6692,7 +6692,7 @@ void drawEventsList(const Layout& l) {
         ImGui::TableSetupColumn("ebenen",
                                 ImGuiTableColumnFlags_WidthFixed |
                                     ImGuiTableColumnFlags_NoResize,
-                                ImGui::GetFontSize() * 15.0F);
+                                ImGui::GetFontSize() * kEntitySpalte);
     }
     ImGui::TableSetupColumn("inhalt", ImGuiTableColumnFlags_WidthStretch, 1.0F);
     ImGui::TableNextRow();

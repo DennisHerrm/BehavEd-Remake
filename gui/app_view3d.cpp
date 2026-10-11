@@ -7070,7 +7070,7 @@ void drawEntityLayers(float height) {
     const float gesamt = height > 0.0F ? height : ImGui::GetContentRegionAvail().y + height;
     const float listenH = std::max(gesamt * 0.38F, ImGui::GetFontSize() * 7.0F);
     g_app->entFokusListe = false;
-    ImGui::BeginChild("entlayers", ImVec2{ImGui::GetFontSize() * 15.0F, listenH},
+    ImGui::BeginChild("entlayers", ImVec2{ImGui::GetFontSize() * kEntitySpalte, listenH},
                       ImGuiChildFlags_Borders);
     g_app->entFokusListe = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
     static char suche[64] = "";
@@ -7436,6 +7436,12 @@ void drawPickedEntity() {
 // Vorher standen sieben gleich grosse Textknoepfe in einer Reihe - shank:
 // "moderner und intuitiv". Unreal und Hammer zeigen oben nur das Wichtigste.
 void drawMapToolbar() {
+    // Senkrecht MITTIG im Streifen: der Streifen ist eine Knopfzeile plus
+    // Zeilenabstand hoch, und ohne das sass alles oben (shank, 11.10.).
+    {
+        const float rest = ImGui::GetWindowHeight() - ImGui::GetFrameHeight();
+        if (rest > 1.0F) { ImGui::SetCursorPosY(std::floor(rest * 0.5F)); }
+    }
     const float sp = ImGui::GetStyle().ItemSpacing.x;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{sp * 0.5F, ImGui::GetStyle().ItemSpacing.y});
     if (iconKnopf(tr(Str::MissionNew), UiIcon::Neu, tr(Str::MissionNewHint))) {
@@ -7460,7 +7466,7 @@ void drawMapToolbar() {
         uiIcon(ImGui::GetWindowDrawList(), UiIcon::Mission,
                ImVec2{ImGui::GetCursorScreenPos().x,
                       ImGui::GetCursorScreenPos().y + (ImGui::GetFrameHeight() - ImGui::GetFontSize()) * 0.5F},
-               ImGui::GetFontSize(), ImGui::GetColorU32(ImGuiCol_TextDisabled));
+               ImGui::GetFontSize(), ImGui::GetColorU32(uiIconFarbe(UiIcon::Mission)));
         ImGui::Dummy(ImVec2{ImGui::GetFontSize(), ImGui::GetFontSize()});
         ImGui::SameLine(0.0F, sp * 0.5F);
         ImGui::TextUnformatted(g_app->mission.name.c_str());
@@ -12225,7 +12231,7 @@ float ansichtsSchalter(bool nurMessen) {
     for (int i = 0; i < anzahl; ++i) {
         const Schalter& s = schalter[i];
         if (i > 0) { ImGui::SameLine(); }
-        if (iconKnopf(tr(s.text), s.icon, tr(s.hilfe), *s.wert)) {
+        if (iconKnopf(tr(s.text), s.icon, tr(s.hilfe), *s.wert, true, true)) {
             *s.wert = !*s.wert;
             if (s.wert == &g_app->showSky) {
                 kartenNetzNeu();
@@ -12246,7 +12252,7 @@ float ansichtsSchalter(bool nurMessen) {
         } else {
             std::snprintf(hilfe, sizeof(hilfe), "%s", tr(Str::MapThroughCamHint));
         }
-        if (iconKnopf(tr(Str::MapThroughCam), UiIcon::Kamera, hilfe, g_app->throughCamera)) {
+        if (iconKnopf(tr(Str::MapThroughCam), UiIcon::Kamera, hilfe, g_app->throughCamera, true, true)) {
             g_app->throughCamera = !g_app->throughCamera;
             g_app->mapDirty = true;
         }
@@ -12262,7 +12268,7 @@ float ansichtsSchalter(bool nurMessen) {
         ImGui::EndPopup();
     }
     ImGui::SameLine(0.0F, sp * 0.5F);
-    if (iconKnopf(tr(Str::MapStats), UiIcon::Statistik, tr(Str::MapStatsHint), g_app->kartenStatistikOffen)) {
+    if (iconKnopf(tr(Str::MapStats), UiIcon::Statistik, tr(Str::MapStatsHint), g_app->kartenStatistikOffen, true, true)) {
         g_app->kartenStatistikOffen = !g_app->kartenStatistikOffen;
     }
     return breite;
