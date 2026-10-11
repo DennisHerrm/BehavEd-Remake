@@ -82,6 +82,10 @@
 #include <string>
 #include <vector>
 
+namespace bhed::gpu {
+struct KlingenQuad;
+}  // namespace bhed::gpu
+
 namespace bhed::gui {
 
 using i18n::Str;
@@ -375,6 +379,8 @@ struct App {
     bool showSky = true;
     bool zeigeSpuren = true;     // Schwertspuren (rc592), wie cg_saberTrail
     int spurBaender = 0;         // gezeichnete Spurbaender, aufsummiert (Selbsttest)
+    bool zeigeWetter = true;     // Regen, Schnee, Staub, Nebelwolken (rc592)
+    int wetterTeilchenZahl = 0;  // im letzten Bild gezeichnet (Selbsttest)
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand
@@ -2083,6 +2089,9 @@ int animSchluesselAmZeiger();
 void animUeberlagerung();
 void animMaus();
 void drawAnimFenster();
+// --- Wetter (gui/app_wetter.cpp, rc592) ----------------------------------------
+// (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
+int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);

@@ -11424,6 +11424,8 @@ void drawMapView() {
                 // Durchscheinend und additiv: sie kommen nach der Karte,
                 // den Movern und den Figuren, damit sie ueber allem liegen,
                 // das sie nicht verdeckt - wie im Rasterer.
+                // Das Wetter im selben Durchgang: additiv, tiefengetestet.
+                wetterTeilchen(klingen, useCam);
                 if (!klingen.empty()) {
                     std::string fk;
                     const int nk2 = gpu::zeichneKlingen(klingen, vp, &fk);
