@@ -459,6 +459,10 @@ struct App {
         float sx = 0.0F;
         float sy = 0.0F;
         std::size_t entity = 0;
+        // Steht eine Wand zwischen Kamera und Entity? Dann zeichnet die
+        // Ansicht ihr Icon nur blass (rc592) - wie Unreal Sprites hinter
+        // Waenden verbirgt. Geprueft beim Neuzeichnen, nicht je Bild.
+        bool verdeckt = false;
     };
     std::vector<PickedMarker> markers;
     // Namen an Entities und Figuren in der Ansicht (wie die Beschriftungen
@@ -893,6 +897,11 @@ struct App {
         // Eine MD3-Figur (NpcDef::legsModel): steht im ersten Bild, statt
         // alle Bilder der Datei durchzulaufen.
         bool standbild = false;
+        // "model2" eines Brush-Movers (rc592): das md3 faehrt mit dem
+        // Brush-Modell *anBrush mit (g_mover.cpp: s.modelindex2, CG_Mover
+        // zeichnet es an lerpOrigin mit lerpAngles). 0 = ein normales
+        // Kartenmodell.
+        int anBrush = 0;
     };
     std::map<std::string, Md3Model> md3Files;          // Pfad -> Modell
     std::map<std::string, BspMesh> md3Meshes;          // "Pfad#Bild" -> Netz

@@ -1207,10 +1207,16 @@ void entityUeberlagerung(float rasterSkal) {
             if (kat < 0 || kat == 9) { continue; }
             const EntityKat& ek = entityKategorieInfo(kat);
             const ImVec2 c{g_app->kartenAnsicht[0] + mk.sx / skal, g_app->kartenAnsicht[1] + mk.sy / skal - r * 1.6F};
-            dl->AddCircleFilled(c, r, IM_COL32(18, 20, 26, 190));
-            dl->AddCircle(c, r, IM_COL32(ek.r, ek.g, ek.b, 150), 0, 1.2F * px);
+            // Hinter einer Wand: blass und ohne Rand - man ahnt sie, aber
+            // sie draengen sich nicht vor (vorher alle gleich kraeftig, durch
+            // jede Wand hindurch).
+            const bool gewaehlt = entityIstGewaehlt(static_cast<int>(mk.entity)) ||
+                                  g_app->entHover == static_cast<int>(mk.entity);
+            const int deck = (mk.verdeckt && !gewaehlt) ? 55 : 255;
+            dl->AddCircleFilled(c, r, IM_COL32(18, 20, 26, deck * 190 / 255));
+            if (deck == 255) { dl->AddCircle(c, r, IM_COL32(ek.r, ek.g, ek.b, 150), 0, 1.2F * px); }
             uiIcon(dl, ek.icon, ImVec2{std::floor(c.x - g * 0.5F), std::floor(c.y - g * 0.5F)}, g,
-                   IM_COL32(ek.r, ek.g, ek.b, 255));
+                   IM_COL32(ek.r, ek.g, ek.b, deck));
         }
     }
     const auto zeichneKasten = [&](const MapEntity& e, ImU32 farbe, float dicke) {

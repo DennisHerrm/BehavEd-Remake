@@ -590,7 +590,14 @@ void drawCameraGizmos(MapImage& img) {
             if (!c0.ok) {
                 continue;
             }
-            g_app->markers.push_back(App::PickedMarker{c0.x, c0.y, ei});
+            App::PickedMarker marke{c0.x, c0.y, ei};
+            if (!g_app->geo.empty()) {
+                const float* kp = g_app->gezeigteKamera.pos;
+                const float ziel[3] = {p[0], p[1], p[2] + 8.0F};
+                const TraceTreffer tt = traceRay(g_app->geo, kp, ziel);
+                marke.verdeckt = tt.hit && tt.fraction < 0.97F;
+            }
+            g_app->markers.push_back(marke);
             const float es = sizeAt(p) * 0.30F;
             float a[3];
             float bq[3];
@@ -5281,14 +5288,27 @@ void loadMapModels() {
                 }
             }
         }
-        if (mp == nullptr || mp->size() < 5 || e.origin.empty()) {
+        // "model2" an einem Brush-Mover (func_static, func_door, ...): das md3
+        // haengt am Mover und faehrt mit ihm - etwa ein Schiffsmodell an
+        // einem unsichtbaren Brush (rc592; vorher fehlte es ganz).
+        int anBrush = 0;
+        if (const std::string* m2 = e.find("model2");
+            m2 != nullptr && m2->size() > 4 && mp != nullptr && !mp->empty() && (*mp)[0] == '*' &&
+            e.classname.rfind("func_", 0) == 0) {
+            int nr = 0;
+            if (parseInt(mp->substr(1), nr) && nr > 0) {
+                anBrush = nr;
+                mp = m2;
+            }
+        }
+        if (mp == nullptr || mp->size() < 5 || (e.origin.empty() && anBrush == 0)) {
             continue;
         }
         // Nur, was die Engine als Modell aufstellt: misc_model_static,
         // _breakable, _gun_rack, _ammo_rack, _beacon ... Ein target_speaker
         // mit "model"-Schluessel (yavin1b) oder misc_siege_item (nur im
         // Mehrspieler) zeichnet das Einzelspieler-Spiel nicht.
-        if (e.classname.rfind("misc_model", 0) != 0 && !fest) {
+        if (e.classname.rfind("misc_model", 0) != 0 && !fest && anBrush == 0) {
             continue;
         }
         std::string low = *mp;
@@ -5325,6 +5345,7 @@ void loadMapModels() {
         item.path = low;
         item.frames = mm.numFrames;
         item.entity = static_cast<std::size_t>(&e - g_app->map.entities.data());
+        item.anBrush = anBrush;
         (void)std::sscanf(e.origin.c_str(), "%f %f %f", &item.origin[0],
                           &item.origin[1], &item.origin[2]);
         // Dieselbe Regel wie bei den Figuren: "angles" nimmt drei Werte,
@@ -5356,6 +5377,14 @@ void loadMapModels() {
         }
         if (einheitlich != 0.0F) {
             for (int q = 0; q < 3; ++q) { item.scale[q] = einheitlich; }
+        }
+        if (anBrush > 0) {
+            // "angle" ist bei Tueren die Bewegungsrichtung, keine Drehung -
+            // das model2 dreht nur mit den Winkeln des Movers.
+            for (int q = 0; q < 3; ++q) {
+                item.angles[q] = 0.0F;
+                item.scale[q] = 1.0F;
+            }
         }
 
         item.shaderBase = static_cast<int>(g_app->textures.byShader.size());
@@ -10038,6 +10067,8 @@ void drawMapView() {
         }
 
         std::vector<MoverDraw> movers;
+        // Die Stellung je Brush-Modell in diesem Bild - fuer ihr "model2" (rc592).
+        std::unordered_map<int, MoverDraw> brushStand;
 
         // --- .md3-Modelle -------------------------------------------------
         //
@@ -10060,6 +10091,9 @@ void drawMapView() {
                 if (!figStand.visible) {
                     continue;
                 }
+            }
+            if (mm.anBrush > 0) {
+                continue;   // model2 eines Movers - unten mit seinem Brush
             }
             // Ein misc_model_breakable nach use: Schadensmodell, _u1 oder
             // nichts (MoverSim::modellAt, misc_model_breakable_die).
@@ -10242,6 +10276,7 @@ void drawMapView() {
                 modellOrt[nummer] = o;
             }
             std::vector<bool> schonDa(g_app->geo.models.size(), false);
+            brushStand.clear();
             for (const Actor& a : g_app->scene.actors) {
                 if (a.brushModel <= 0 || !a.haveStart ||
                     static_cast<std::size_t>(a.brushModel) >=
@@ -10285,6 +10320,7 @@ void drawMapView() {
                     m.yaw = ms.angles[1];
                     m.roll = ms.angles[2];
                     movers.push_back(m);
+                    brushStand[static_cast<int>(k)] = m;
                     continue;
                 }
                 // Der Ursprung der Entity ist die Verschiebung. Fuer die
@@ -10297,6 +10333,7 @@ void drawMapView() {
                     }
                 }
                 movers.push_back(m);
+                brushStand[static_cast<int>(k)] = m;
             }
         }
         if (g_app->showActors && !g_app->scene.actors.empty()) {
@@ -10342,7 +10379,33 @@ void drawMapView() {
                 m.yaw = st.angles[1];
                 m.roll = st.angles[2];
                 movers.push_back(m);
+                brushStand[a.brushModel] = m;
             }
+        }
+        // --- "model2" der Brush-Mover (rc592) -----------------------------
+        //
+        // Dieselbe Stellung wie ihr Brush (Ort und alle drei Winkel) - wie
+        // CG_Mover das Zweitmodell an lerpOrigin/lerpAngles zeichnet. Ist der
+        // Brush gerade nicht zu sehen (START_OFF), fehlt auch das Modell.
+        for (const App::MapModel& mm : g_app->mapModels) {
+            if (mm.anBrush <= 0) { continue; }
+            const auto st = brushStand.find(mm.anBrush);
+            if (st == brushStand.end()) { continue; }
+            const auto have = g_app->md3Files.find(mm.path);
+            if (have == g_app->md3Files.end()) { continue; }
+            const std::string key = mm.path + "#0";
+            auto netz = g_app->md3Meshes.find(key);
+            if (netz == g_app->md3Meshes.end()) {
+                netz = g_app->md3Meshes.emplace(key, md3ToMesh(have->second, 0, mm.shaderBase)).first;
+            }
+            if (netz->second.indexes.empty()) { continue; }
+            MoverDraw d = st->second;
+            d.mesh = &netz->second;
+            for (int k = 0; k < 3; ++k) {
+                d.pivot[k] = 0.0F;
+                d.scale[k] = 1.0F;
+            }
+            movers.push_back(d);
         }
         // Die Figuren NACH der Karte: sie benutzen deren Tiefenpuffer und
         // verschwinden dadurch hinter Waenden.
