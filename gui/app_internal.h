@@ -234,8 +234,30 @@ struct App {
         float startWinkel = 0.0F;
         float startMaus[2] = {0.0F, 0.0F};
         float achsLaenge = 0.0F;        // Weltlaenge der Gizmo-Achse beim Anfassen
+        // Mehrfachauswahl (rc590): die anderen gewaehlten ziehen mit -
+        // Ausgangsort und -winkel beim Anfassen.
+        std::vector<std::pair<int, std::array<float, 3>>> gruppe;
+        std::vector<float> gruppeWinkel;
     };
     EntZug entZug;
+    // --- Mehrfachauswahl, Raster, Platzieren, gemerkte Ansichten (rc590) -----
+    //
+    // pickedEntity bleibt der HAUPTPUNKT (Inspektor, Gizmo); entAuswahl sind
+    // die weiteren. Strg/Umschalt+Klick nimmt hinzu oder heraus, ein Rahmen
+    // ins Leere waehlt alles darin, die Gruppe zieht mit dem Hauptpunkt.
+    std::vector<int> entAuswahl;
+    bool boxKandidat = false;
+    bool boxAktiv = false;
+    bool boxZusatz = false;
+    float boxStart[2] = {0.0F, 0.0F};
+    int rasterSchritt = 0;              // 0 aus (Strg rastet dann auf 8), sonst 8/16/32/64
+    std::string platzierKlasse;         // Platzieren-Leiste: naechster Klick setzt diese Klasse
+    bool platzierZiehen = false;        // Kachel gedrueckt und in die Ansicht gezogen
+    struct AnsichtsMarke {
+        bool da = false;
+        Camera cam;
+    };
+    std::map<std::string, std::array<AnsichtsMarke, 9>> ansichtsMarken;   // je Karte, Strg+1..9 / 1..9
     // Hervorhebung beim Ueberfahren (wie in Unreal): die Entity unter der
     // Maus in der Ansicht, und die, ueber der die Maus in der Liste steht.
     int entHover = -1;
@@ -1962,6 +1984,7 @@ enum class UiIcon : int {
     Zurueck, Vor, Zielen, Steuern,
     // Wegnetz und Draufsicht (rc589)
     Pfad, Oben, Erzeugen,
+    Raster,
     // Zeitleiste (rc588)
     ZumAnfang, Schleife, Ton, Folgen, Zeilen, Ruhig, ZoomPlus, ZoomMinus, Einpassen,
     // Entity-Arten in Liste und Karte (rc588)
@@ -2026,6 +2049,17 @@ bool entityLoeschen(int i);
 int entityDuplizieren(int i);
 bool entityAufBoden(int i);
 bool entityKeySetzen(int i, const std::string& key, const std::string& wert);
+// Mehrfachauswahl (rc590)
+std::vector<int> entityAuswahl();          // Hauptpunkt zuerst, dann die weiteren
+bool entityIstGewaehlt(int i);
+void entityAuswahlUmschalten(int i);       // Strg+Klick
+void entityAuswahlSetzen(int i);           // nur diese (-1: keine)
+bool entityAuswahlLoeschen();
+int entityAuswahlDuplizieren();
+void platzierLeiste();                     // Kacheln in der Ansicht (app_view3d.cpp)
+void platzierMaus();                       // Klick/Loslassen in der Ansicht setzt die gewaehlte Kachel
+void ansichtsMarkenTasten();
+int entityPlatzieren(const std::string& klasse, float sx, float sy);   // am Bildschirmpunkt (app_mission.cpp)
 bool entityRueckgaengig();
 bool entityWiederholen();
 bool entityUndoMoeglich();

@@ -2864,7 +2864,7 @@ void handleShortcuts() {
                 break;
             case keys::Action::Delete: {
                 // Ueber der Karte mit gewaehlter Entity: die Entity.
-                if (entityFokus() && g_app->pickedEntity >= 0 && entityLoeschen(g_app->pickedEntity)) {
+                if (entityFokus() && g_app->pickedEntity >= 0 && entityAuswahlLoeschen()) {
                     break;
                 }
                 const std::vector<Path> m = selectionOrCurrent();

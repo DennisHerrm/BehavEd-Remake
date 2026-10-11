@@ -3,7 +3,9 @@
 #include "bhed/wegpunkte.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>

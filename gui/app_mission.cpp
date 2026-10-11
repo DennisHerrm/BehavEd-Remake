@@ -582,6 +582,96 @@ int entityDuplizieren(int i) {
     return g_app->pickedEntity;
 }
 
+// --- Mehrfachauswahl (rc590) ----------------------------------------------------
+
+std::vector<int> entityAuswahl() {
+    std::vector<int> aus;
+    const int n = static_cast<int>(g_app->map.entities.size());
+    if (g_app->pickedEntity >= 0 && g_app->pickedEntity < n) { aus.push_back(g_app->pickedEntity); }
+    for (const int i : g_app->entAuswahl) {
+        if (i >= 0 && i < n && std::find(aus.begin(), aus.end(), i) == aus.end()) { aus.push_back(i); }
+    }
+    return aus;
+}
+
+bool entityIstGewaehlt(int i) {
+    const auto a = entityAuswahl();
+    return std::find(a.begin(), a.end(), i) != a.end();
+}
+
+void entityAuswahlSetzen(int i) {
+    g_app->entAuswahl.clear();
+    g_app->pickedEntity = i;
+    g_app->mapDirty = true;
+}
+
+void entityAuswahlUmschalten(int i) {
+    if (i < 0) { return; }
+    std::vector<int> a = entityAuswahl();
+    const auto it = std::find(a.begin(), a.end(), i);
+    if (it != a.end()) {
+        a.erase(it);
+    } else {
+        a.push_back(i);
+    }
+    g_app->pickedEntity = a.empty() ? -1 : a.front();
+    g_app->entAuswahl.assign(a.empty() ? a.end() : a.begin() + 1, a.end());
+    g_app->selectedActor = -1;
+    g_app->cameraSelected = false;
+    g_app->mapDirty = true;
+}
+
+bool entityAuswahlLoeschen() {
+    std::vector<int> a = entityAuswahl();
+    if (a.empty()) { return false; }
+    if (a.size() == 1U) { return entityLoeschen(a.front()); }
+    std::vector<MapEntity> vorher = g_app->map.entities;
+    std::sort(a.begin(), a.end(), std::greater<int>());
+    for (const int i : a) { g_app->map.entities.erase(g_app->map.entities.begin() + i); }
+    g_app->hiddenEntities.clear();
+    g_app->pickedEntity = -1;
+    g_app->entAuswahl.clear();
+    g_app->selectedActor = -1;
+    aenderung(std::move(vorher));
+    return true;
+}
+
+namespace {
+
+// Eine Kopie mit freiem Namen, ohne eigenen Rueckgaengig-Schritt.
+int kopieAnhaengen(int i, float dx, float dy) {
+    MapEntity e = g_app->map.entities[static_cast<std::size_t>(i)];
+    float o[3];
+    if (entityOrt(e, o)) {
+        o[0] += dx;
+        o[1] += dy;
+        setKey(e, "origin", ortText(o));
+    }
+    const char* nameKey = istNpcKlasse(e.classname) ? "NPC_targetname" : "targetname";
+    if (const std::string* n = e.find(nameKey); n != nullptr && !n->empty()) {
+        std::string stamm = *n;
+        while (!stamm.empty() && std::isdigit(static_cast<unsigned char>(stamm.back())) != 0) { stamm.pop_back(); }
+        setKey(e, nameKey, freierName(stamm.empty() ? std::string("ent") : stamm));
+    }
+    g_app->map.entities.push_back(e);
+    return static_cast<int>(g_app->map.entities.size()) - 1;
+}
+
+}  // namespace
+
+int entityAuswahlDuplizieren() {
+    const std::vector<int> a = entityAuswahl();
+    if (a.empty()) { return -1; }
+    if (a.size() == 1U) { return entityDuplizieren(a.front()); }
+    std::vector<MapEntity> vorher = g_app->map.entities;
+    std::vector<int> neu;
+    for (const int i : a) { neu.push_back(kopieAnhaengen(i, 32.0F, 32.0F)); }
+    g_app->pickedEntity = neu.front();
+    g_app->entAuswahl.assign(neu.begin() + 1, neu.end());
+    aenderung(std::move(vorher));
+    return neu.front();
+}
+
 bool entityAufBoden(int i) {
     if (i < 0 || static_cast<std::size_t>(i) >= g_app->map.entities.size()) { return false; }
     MapEntity& e = g_app->map.entities[static_cast<std::size_t>(i)];
@@ -613,6 +703,7 @@ bool entityRueckgaengig() {
     g_app->map.entities = std::move(g_app->entUndo.back());
     g_app->entUndo.pop_back();
     g_app->hiddenEntities.clear();
+    g_app->entAuswahl.clear();
     if (g_app->pickedEntity >= static_cast<int>(g_app->map.entities.size())) { g_app->pickedEntity = -1; }
     nachAenderung();
     return true;
@@ -624,6 +715,7 @@ bool entityWiederholen() {
     g_app->map.entities = std::move(g_app->entRedo.back());
     g_app->entRedo.pop_back();
     g_app->hiddenEntities.clear();
+    g_app->entAuswahl.clear();
     if (g_app->pickedEntity >= static_cast<int>(g_app->map.entities.size())) { g_app->pickedEntity = -1; }
     nachAenderung();
     return true;
@@ -875,11 +967,76 @@ void entityZiehen(float rasterSkal) {
             z.index = ziel;
             z.modus = modus;
             z.vorher = g_app->map.entities;
+            // Alt+Ziehen kopiert erst (wie in Unreal) - im selben Schritt.
+            if (io.KeyAlt && modus <= 3) {
+                std::vector<int> neu;
+                for (const int i : entityAuswahl()) { neu.push_back(kopieAnhaengen(i, 0.0F, 0.0F)); }
+                if (!neu.empty()) {
+                    g_app->pickedEntity = neu.front();
+                    g_app->entAuswahl.assign(neu.begin() + 1, neu.end());
+                    z.index = neu.front();
+                }
+            }
+            z.gruppe.clear();
+            z.gruppeWinkel.clear();
+            for (const int i : entityAuswahl()) {
+                float o[3];
+                if (i == z.index || !entityOrt(g_app->map.entities[static_cast<std::size_t>(i)], o)) { continue; }
+                z.gruppe.emplace_back(i, std::array<float, 3>{o[0], o[1], o[2]});
+                z.gruppeWinkel.push_back(winkelVon(g_app->map.entities[static_cast<std::size_t>(i)]));
+            }
             for (int k = 0; k < 3; ++k) { z.startOrt[k] = zielOrt[k]; }
             z.startWinkel = winkelVon(g_app->map.entities[static_cast<std::size_t>(ziel)]);
             z.startMaus[0] = io.MousePos.x;
             z.startMaus[1] = io.MousePos.y;
             z.achsLaenge = L;
+        }
+    }
+    // --- Rahmen ziehen (rc590) ----------------------------------------------------
+    //
+    // Ins Leere gedrueckt und gezogen: alle Entities im Rahmen. Mit Strg oder
+    // Umschalt kommen sie zur Auswahl hinzu.
+    if (!z.kandidat && !g_app->boxKandidat && g_app->entFokusBild && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        g_app->entHover < 0 && g_app->entGizmoHover == 0 && !g_app->kameraHover && g_app->gizmoAxis < 0 &&
+        g_app->wegWerkzeug == 0 && g_app->platzierKlasse.empty() && !g_app->camViewActive && g_app->showEntities &&
+        !g_app->cameraSelected &&
+        !(g_app->gizmoShown && g_app->gizmoHover >= 0)) {
+        g_app->boxKandidat = true;
+        g_app->boxAktiv = false;
+        g_app->boxZusatz = io.KeyCtrl || io.KeyShift;
+        g_app->boxStart[0] = io.MousePos.x;
+        g_app->boxStart[1] = io.MousePos.y;
+    }
+    if (g_app->boxKandidat) {
+        if (!g_app->boxAktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0F)) { g_app->boxAktiv = true; }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            if (g_app->boxAktiv) {
+                const float x0 = std::min(g_app->boxStart[0], io.MousePos.x);
+                const float x1 = std::max(g_app->boxStart[0], io.MousePos.x);
+                const float y0 = std::min(g_app->boxStart[1], io.MousePos.y);
+                const float y1 = std::max(g_app->boxStart[1], io.MousePos.y);
+                std::vector<int> neu = g_app->boxZusatz ? entityAuswahl() : std::vector<int>{};
+                for (const App::PickedMarker& mk : g_app->markers) {
+                    const float sx = g_app->kartenAnsicht[0] + mk.sx / std::max(rasterSkal, 0.001F);
+                    const float sy = g_app->kartenAnsicht[1] + mk.sy / std::max(rasterSkal, 0.001F);
+                    const int i = static_cast<int>(mk.entity);
+                    if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1 && std::find(neu.begin(), neu.end(), i) == neu.end()) {
+                        neu.push_back(i);
+                    }
+                }
+                g_app->pickedEntity = neu.empty() ? -1 : neu.front();
+                g_app->entAuswahl.assign(neu.empty() ? neu.end() : neu.begin() + 1, neu.end());
+                g_app->selectedActor = -1;
+                g_app->cameraSelected = false;
+                g_app->mapDirty = true;
+                if (neu.size() > 1U) {
+                    char t[96];
+                    std::snprintf(t, sizeof(t), tr(Str::EntSelectedN), static_cast<int>(neu.size()));
+                    addStatus(t);
+                }
+            }
+            g_app->boxKandidat = false;
+            g_app->boxAktiv = false;
         }
     }
     if (!z.kandidat) {
@@ -903,6 +1060,11 @@ void entityZiehen(float rasterSkal) {
             if (spur(a, b, t)) {
                 float o[3];
                 aufFlaeche(e.classname, t, o);
+                if (g_app->rasterSchritt > 0 && !io.KeyCtrl) {
+                    const float r = static_cast<float>(g_app->rasterSchritt);
+                    o[0] = std::round(o[0] / r) * r;
+                    o[1] = std::round(o[1] / r) * r;
+                }
                 setKey(e, "origin", ortText(o));
                 g_app->mapDirty = true;
             }
@@ -922,7 +1084,11 @@ void entityZiehen(float rasterSkal) {
                     const float t = ((io.MousePos.x - z.startMaus[0]) * ax + (io.MousePos.y - z.startMaus[1]) * ay) / l2;
                     float o[3] = {z.startOrt[0], z.startOrt[1], z.startOrt[2]};
                     o[k] += t * z.achsLaenge;
-                    if (io.KeyCtrl) { o[k] = std::round(o[k] / 8.0F) * 8.0F; }   // Raster wie in Radiant
+                    // Raster: eingestellt (Leiste) - Strg schaltet es aus; ohne
+                    // eingestelltes rastet Strg auf 8, wie in Radiant.
+                    const float r = g_app->rasterSchritt > 0 ? (io.KeyCtrl ? 0.0F : static_cast<float>(g_app->rasterSchritt))
+                                                             : (io.KeyCtrl ? 8.0F : 0.0F);
+                    if (r > 0.0F) { o[k] = std::round(o[k] / r) * r; }
                     setKey(e, "origin", ortText(o));
                     g_app->mapDirty = true;
                 }
@@ -944,10 +1110,48 @@ void entityZiehen(float rasterSkal) {
             }
         }
     }
+    // Die Gruppe zieht mit: derselbe Versatz; beim Ring dreht sie um den
+    // Hauptpunkt, und jeder dreht seinen Blick mit.
+    if (z.aktiv && !z.gruppe.empty()) {
+        float jetzt[3];
+        if (entityOrt(g_app->map.entities[static_cast<std::size_t>(z.index)], jetzt)) {
+            const float d[3] = {jetzt[0] - z.startOrt[0], jetzt[1] - z.startOrt[1], jetzt[2] - z.startOrt[2]};
+            const float dw = winkelVon(g_app->map.entities[static_cast<std::size_t>(z.index)]) - z.startWinkel;
+            const float c = std::cos(dw * 3.14159265F / 180.0F);
+            const float sn = std::sin(dw * 3.14159265F / 180.0F);
+            for (std::size_t g = 0; g < z.gruppe.size(); ++g) {
+                const int i = z.gruppe[g].first;
+                if (i < 0 || static_cast<std::size_t>(i) >= g_app->map.entities.size()) { continue; }
+                MapEntity& ge = g_app->map.entities[static_cast<std::size_t>(i)];
+                const auto& s0 = z.gruppe[g].second;
+                float o[3] = {s0[0] + d[0], s0[1] + d[1], s0[2] + d[2]};
+                if (z.modus == 4) {
+                    const float rx = s0[0] - z.startOrt[0];
+                    const float ry = s0[1] - z.startOrt[1];
+                    o[0] = z.startOrt[0] + rx * c - ry * sn;
+                    o[1] = z.startOrt[1] + rx * sn + ry * c;
+                    o[2] = s0[2];
+                    if (hatRichtung(ge)) {
+                        const float w = std::fmod(std::fmod(z.gruppeWinkel[g] + dw, 360.0F) + 360.0F, 360.0F);
+                        setKey(ge, "angle", std::to_string(static_cast<int>(std::lround(w)) % 360));
+                    }
+                }
+                setKey(ge, "origin", ortText(o));
+            }
+        }
+    }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        if (z.aktiv && z.vorher[static_cast<std::size_t>(z.index)].keys != e.keys) {
+        const bool geaendert = z.vorher.size() != g_app->map.entities.size() ||
+                               (z.index < static_cast<int>(z.vorher.size()) &&
+                                z.vorher[static_cast<std::size_t>(z.index)].keys != e.keys);
+        if (z.aktiv && geaendert) {
             aenderung(std::move(z.vorher));
             addStatus(tr(Str::EntMoved));
+        } else if (!z.aktiv && z.vorher.size() != g_app->map.entities.size()) {
+            // Alt gedrueckt, aber nicht gezogen: die Kopien wieder weg.
+            g_app->map.entities = std::move(z.vorher);
+            g_app->entAuswahl.clear();
+            g_app->pickedEntity = z.index < static_cast<int>(g_app->map.entities.size()) ? g_app->pickedEntity : -1;
         }
         z = App::EntZug{};
     }
@@ -1078,6 +1282,21 @@ void entityUeberlagerung(float rasterSkal) {
             }
         }
     }
+    // Die weiteren gewaehlten (Mehrfachauswahl): orange, duenner, ohne Gizmo.
+    for (const int i : g_app->entAuswahl) {
+        if (i >= 0 && i < n && i != ziel) {
+            zeichneKasten(g_app->map.entities[static_cast<std::size_t>(i)], IM_COL32(255, 165, 40, 210), 1.6F * px);
+        }
+    }
+    // Der Rahmen, der gerade gezogen wird.
+    if (g_app->boxAktiv) {
+        const ImVec2 a{g_app->boxStart[0], g_app->boxStart[1]};
+        const ImVec2 b = ImGui::GetIO().MousePos;
+        dl->AddRectFilled(ImVec2{std::min(a.x, b.x), std::min(a.y, b.y)}, ImVec2{std::max(a.x, b.x), std::max(a.y, b.y)},
+                          IM_COL32(255, 165, 40, 40));
+        dl->AddRect(ImVec2{std::min(a.x, b.x), std::min(a.y, b.y)}, ImVec2{std::max(a.x, b.x), std::max(a.y, b.y)},
+                    IM_COL32(255, 165, 40, 220), 0.0F, 0, 1.5F * px);
+    }
     // Gewaehlt - orange, mit Richtung und Gizmo.
     if (ziel >= 0 && ziel < n) {
         const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(ziel)];
@@ -1189,6 +1408,10 @@ void drawEntityInspector(float hoehe) {
         ImGui::SameLine();
         ImGui::TextDisabled("%s", tr(Str::EntUnsavedMark));
     }
+    if (const std::size_t mehr = entityAuswahl().size(); mehr > 1U) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4{1.0F, 0.65F, 0.16F, 1.0F}, tr(Str::EntMoreSelected), static_cast<int>(mehr - 1));
+    }
 
     // --- Icon-Leiste --------------------------------------------------------
     {
@@ -1204,9 +1427,10 @@ void drawEntityInspector(float hoehe) {
             if (!entityAufBoden(i)) { addStatus(tr(Str::EntNoFloor)); }
         }
         ImGui::SameLine();
-        if (iconKnopf(tr(Str::EntDuplicate), UiIcon::Duplizieren, nullptr)) { entityDuplizieren(i); }
+        // Mit Mehrfachauswahl gelten beide fuer alle gewaehlten.
+        if (iconKnopf(tr(Str::EntDuplicate), UiIcon::Duplizieren, tr(Str::EntDuplicateHint))) { entityAuswahlDuplizieren(); }
         ImGui::SameLine();
-        if (iconKnopf(tr(Str::EntDelete), UiIcon::Loeschen, nullptr)) { entityLoeschen(i); }
+        if (iconKnopf(tr(Str::EntDelete), UiIcon::Loeschen, nullptr)) { entityAuswahlLoeschen(); }
         ImGui::SameLine(0.0F, sp * 1.2F);
         if (iconKnopf(tr(Str::EditUndo), UiIcon::Rueckgaengig, nullptr, false, entityUndoMoeglich())) {
             entityRueckgaengig();
@@ -2371,5 +2595,26 @@ bool kartenStrahlUnterMaus(float sx, float sy, TraceTreffer& t) {
 void entitiesGeaendert(std::vector<MapEntity> vorher) { aenderung(std::move(vorher)); }
 
 std::string freierEntityName(const std::string& prefix) { return freierName(prefix); }
+
+int entityPlatzieren(const std::string& klasse, float sx, float sy) {
+    float a[3];
+    float b[3];
+    strahlDurch(sx, sy, a, b);
+    float ort[3];
+    TraceTreffer t;
+    if (spur(a, b, t)) {
+        aufFlaeche(klasse, t, ort);
+    } else {
+        for (int k = 0; k < 3; ++k) { ort[k] = a[k] + (b[k] - a[k]) * (128.0F / 8192.0F); }
+    }
+    if (g_app->rasterSchritt > 0) {
+        const float r = static_cast<float>(g_app->rasterSchritt);
+        ort[0] = std::round(ort[0] / r) * r;
+        ort[1] = std::round(ort[1] / r) * r;
+    }
+    const int neu = neueEntityAn(klasse, ort);
+    g_app->entAuswahl.clear();
+    return neu;
+}
 
 }  // namespace bhed::gui

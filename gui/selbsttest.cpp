@@ -11008,6 +11008,304 @@ std::vector<Schritt> wegSchritte() {
     return s;
 }
 
+// --- Werkzeuge der Kartenansicht (rc590) --------------------------------------
+//
+// Rahmen-Auswahl, Strg-Klick, Gruppe ziehen, Alt+Ziehen kopiert, Gruppe
+// loeschen, Raster, Platzieren (Klick und Ziehen), gemerkte Ansichten.
+std::vector<Schritt> kartenWerkzeugSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto anzahl0 = std::make_shared<std::size_t>(0);
+    auto rahmen = std::make_shared<std::array<ImVec2, 2>>();
+    auto erwartet = std::make_shared<std::set<int>>();
+    const auto schirm = [](const App::PickedMarker& mk) {
+        const float skal = g_app->mapImage.width > 0
+                               ? static_cast<float>(g_app->mapImage.width) /
+                                     std::max(1.0F, g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0])
+                               : 1.0F;
+        return ImVec2{g_app->kartenAnsicht[0] + mk.sx / skal, g_app->kartenAnsicht[1] + mk.sy / skal};
+    };
+    add(tu("Werkzeuge: Ausgangslage", [=] {
+        g_app->cameraSelected = false;
+        g_app->selectedKey = -1;
+        entityAuswahlSetzen(-1);
+        g_app->rasterSchritt = 0;
+        g_app->platzierKlasse.clear();
+        g_app->cam.pos[0] = 200.0F; g_app->cam.pos[1] = 6000.0F; g_app->cam.pos[2] = 700.0F;
+        g_app->cam.angles[0] = 50.0F; g_app->cam.angles[1] = 90.0F; g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+        *anzahl0 = g_app->map.entities.size();
+    }));
+    add(pause(0.6));
+    add(tu("Einen Rahmen um zwei bis vier Marken suchen", [=] {
+        erwartet->clear();
+        // Eine Marke als Anker, dann die Nachbarn in 150 Punkten.
+        const float bx0 = g_app->kartenAnsicht[0] + 120.0F;
+        const float bx1 = g_app->kartenAnsicht[2] - 120.0F;
+        const float by0 = g_app->kartenAnsicht[1] + 140.0F;
+        const float by1 = g_app->kartenAnsicht[3] - 60.0F;
+        for (const App::PickedMarker& a : g_app->markers) {
+            const ImVec2 pa = schirm(a);
+            if (pa.x < bx0 || pa.x > bx1 || pa.y < by0 || pa.y > by1) { continue; }
+            ImVec2 mn = pa;
+            ImVec2 mx = pa;
+            std::set<int> drin;
+            for (const App::PickedMarker& b : g_app->markers) {
+                const ImVec2 pb = schirm(b);
+                if (std::fabs(pb.x - pa.x) < 150.0F && std::fabs(pb.y - pa.y) < 150.0F) {
+                    mn = ImVec2{std::min(mn.x, pb.x), std::min(mn.y, pb.y)};
+                    mx = ImVec2{std::max(mx.x, pb.x), std::max(mx.y, pb.y)};
+                }
+            }
+            const ImVec2 r0{mn.x - 30.0F, mn.y - 30.0F};
+            const ImVec2 r1{mx.x + 30.0F, mx.y + 30.0F};
+            bool startFrei = true;
+            for (const App::PickedMarker& b : g_app->markers) {
+                const ImVec2 pb = schirm(b);
+                if (pb.x >= r0.x && pb.x <= r1.x && pb.y >= r0.y && pb.y <= r1.y) { drin.insert(static_cast<int>(b.entity)); }
+                if (std::fabs(pb.x - r0.x) < 26.0F && std::fabs(pb.y - r0.y) < 26.0F) { startFrei = false; }
+            }
+            if (drin.size() >= 2U && drin.size() <= 6U && startFrei) {
+                (*rahmen)[0] = r0;
+                (*rahmen)[1] = r1;
+                *erwartet = drin;
+                break;
+            }
+        }
+        diag::detail("Knopftest: Werkzeuge - Rahmen mit " + std::to_string(erwartet->size()) + " Marken");
+    }));
+    add(ziehenAn("Rahmen ziehen", [=] { return (*rahmen)[0]; }, 0.0F, 0.0F, 0));   // erst ein Klick ins Leere
+    add({"Rahmen ziehen (zweiter Versuch mit Weg)", [=](int b) {
+             ImGuiIO& io = ImGui::GetIO();
+             const ImVec2 a = (*rahmen)[0];
+             const ImVec2 e = (*rahmen)[1];
+             if (b == 0) { setzeMaus(a); return false; }
+             if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+             if (b >= 3 && b <= 14) {
+                 const float f = static_cast<float>(b - 2) / 12.0F;
+                 setzeMaus(ImVec2{a.x + (e.x - a.x) * f, a.y + (e.y - a.y) * f});
+                 return false;
+             }
+             if (b == 15) { io.AddMouseButtonEvent(0, false); return false; }
+             return b >= 20;
+         }});
+    add(pause(0.3));
+    add(foto("werkzeug_rahmen"));
+    add(pruefe("Rahmen: genau die Entities darin sind gewaehlt", [=] {
+        const auto a = entityAuswahl();
+        const std::set<int> ist(a.begin(), a.end());
+        diag::detail("Knopftest: Werkzeuge - gewaehlt " + std::to_string(ist.size()) + ", erwartet " +
+                     std::to_string(erwartet->size()));
+        return !erwartet->empty() && ist == *erwartet;
+    }));
+    // Strg-Klick auf eine Marke ausserhalb: dazu, nochmal: wieder heraus
+    auto extra = std::make_shared<int>(-1);
+    auto extraOrt = std::make_shared<ImVec2>();
+    add(tu("Eine Marke ausserhalb des Rahmens", [=] {
+        for (const App::PickedMarker& m : g_app->markers) {
+            const ImVec2 p = schirm(m);
+            if (erwartet->count(static_cast<int>(m.entity)) != 0U) { continue; }
+            if (p.x < g_app->kartenAnsicht[0] + 60 || p.x > g_app->kartenAnsicht[2] - 60 ||
+                p.y < g_app->kartenAnsicht[1] + 140 || p.y > g_app->kartenAnsicht[3] - 40) {
+                continue;
+            }
+            bool allein = true;
+            for (const App::PickedMarker& o : g_app->markers) {
+                const ImVec2 q = schirm(o);
+                if (&o != &m && std::fabs(q.x - p.x) < 30.0F && std::fabs(q.y - p.y) < 30.0F) { allein = false; }
+            }
+            if (allein) {
+                *extra = static_cast<int>(m.entity);
+                *extraOrt = p;
+                break;
+            }
+        }
+    }));
+    add(ziehenAn("Strg-Klick auf die Marke", [=] { return *extraOrt; }, 0.0F, 0.0F, 0, ImGuiMod_Ctrl));
+    add(pause(0.2));
+    add(pruefe("Strg-Klick nimmt sie hinzu", [=] { return *extra >= 0 && entityIstGewaehlt(*extra) && entityAuswahl().size() == erwartet->size() + 1; }));
+    add(ziehenAn("noch einmal Strg-Klick", [=] { return *extraOrt; }, 0.0F, 0.0F, 0, ImGuiMod_Ctrl));
+    add(pause(0.2));
+    add(pruefe("... und nimmt sie wieder heraus", [=] { return !entityIstGewaehlt(*extra) && entityAuswahl().size() == erwartet->size(); }));
+    // Gruppe ziehen: an der X-Achse des Hauptpunkts
+    auto vorher = std::make_shared<std::vector<std::array<float, 3>>>();
+    auto tiefe = std::make_shared<std::size_t>(0);
+    const auto orte = [] {
+        std::vector<std::array<float, 3>> v;
+        for (const int i : entityAuswahl()) {
+            float o[3] = {0, 0, 0};
+            entityOrt(g_app->map.entities[static_cast<std::size_t>(i)], o);
+            v.push_back({o[0], o[1], o[2]});
+        }
+        return v;
+    };
+    add(tu("Orte der Gruppe merken", [=] { *vorher = orte(); *tiefe = g_app->entUndo.size(); }));
+    add(pause(0.2));
+    add(ziehenAn("Gruppe an der X-Achse ziehen", [] { ImVec2 p; entityGizmoPunkt(1, p); return p; }, 60.0F, 0.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Gruppe: alle um denselben Versatz verschoben, ein Rueckgaengig-Schritt", [=] {
+        const auto jetzt = orte();
+        if (jetzt.size() != vorher->size() || jetzt.empty()) { return false; }
+        const float dx = jetzt[0][0] - (*vorher)[0][0];
+        bool gleich = std::fabs(dx) > 2.0F;
+        for (std::size_t k = 0; k < jetzt.size(); ++k) {
+            gleich = gleich && std::fabs((jetzt[k][0] - (*vorher)[k][0]) - dx) <= 1.01F &&
+                     std::fabs(jetzt[k][1] - (*vorher)[k][1]) <= 1.01F;
+        }
+        diag::detail("Knopftest: Werkzeuge - Gruppe dx " + std::to_string(dx));
+        return gleich && g_app->entUndo.size() == *tiefe + 1;
+    }));
+    // Strg+Z ueber der Karte gehoert den Entities (ausserhalb dem Skript).
+    add(tu("Maus in die Karte (unten links, leer)", [] { setzeMaus(ImVec2{g_app->kartenAnsicht[0] + 40.0F, g_app->kartenAnsicht[3] - 40.0F}); }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(tu("Auswahl wiederherstellen (Rueckgaengig leert sie)", [=] {
+        std::vector<int> v(erwartet->begin(), erwartet->end());
+        entityAuswahlSetzen(v.front());
+        g_app->entAuswahl.assign(v.begin() + 1, v.end());
+    }));
+    add(pause(0.2));
+    add(pruefe("Strg+Z: die ganze Gruppe wieder am alten Ort", [=] {
+        const auto jetzt = orte();
+        bool gleich = jetzt.size() == vorher->size();
+        for (std::size_t k = 0; gleich && k < jetzt.size(); ++k) {
+            gleich = std::fabs(jetzt[k][0] - (*vorher)[k][0]) < 0.5F;
+        }
+        return gleich;
+    }));
+    // Alt+Ziehen kopiert
+    add(ziehenAn("Alt+Ziehen an der X-Achse", [] { ImVec2 p; entityGizmoPunkt(1, p); return p; }, 60.0F, 0.0F, 0, ImGuiMod_Alt));
+    add(pause(0.3));
+    add(pruefe("Alt+Ziehen: Kopien der ganzen Gruppe, die Originale bleiben stehen", [=] {
+        const std::size_t n = g_app->map.entities.size();
+        bool originale = true;
+        std::size_t k = 0;
+        for (const int i : *erwartet) {
+            float o[3];
+            entityOrt(g_app->map.entities[static_cast<std::size_t>(i)], o);
+            (void)k;
+            bool fand = false;
+            for (const auto& v : *vorher) { fand = fand || (std::fabs(v[0] - o[0]) < 0.5F && std::fabs(v[1] - o[1]) < 0.5F); }
+            originale = originale && fand;
+            ++k;
+        }
+        diag::detail("Knopftest: Werkzeuge - nach Alt-Zug " + std::to_string(n) + " Entities (vorher " +
+                     std::to_string(*anzahl0) + ")");
+        return n == *anzahl0 + erwartet->size() && originale && entityAuswahl().front() >= static_cast<int>(*anzahl0);
+    }));
+    add(tu("Maus in die Karte", [] { setzeMaus(ImVec2{g_app->kartenAnsicht[0] + 40.0F, g_app->kartenAnsicht[3] - 40.0F}); }));
+    add(taste(ImGuiKey_Delete, "Entf loescht die Gruppe (die Kopien)"));
+    add(pause(0.3));
+    add(pruefe("Entf: die ganze gewaehlte Gruppe ist weg", [=] { return g_app->map.entities.size() == *anzahl0 && entityAuswahl().empty(); }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(pruefe("Strg+Z: die Kopien sind wieder da", [=] { return g_app->map.entities.size() == *anzahl0 + erwartet->size(); }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(pruefe("Strg+Z: vor dem Kopieren", [=] { return g_app->map.entities.size() == *anzahl0; }));
+    // Raster 16
+    add(klick(tr(Str::Grid), "###main"));
+    add(klick("16", "##Popup"));
+    add(pruefe("Raster: 16", [] { return g_app->rasterSchritt == 16; }));
+    add(tu("Eine Entity waehlen", [=] { entityAuswahlSetzen(*erwartet->begin()); }));
+    add(pause(0.3));
+    add(ziehenAn("an der X-Achse 37 Punkte", [] { ImVec2 p; entityGizmoPunkt(1, p); return p; }, 37.0F, 0.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Raster: der Ort liegt auf einem Vielfachen von 16", [=] {
+        float o[3];
+        entityOrt(g_app->map.entities[static_cast<std::size_t>(*erwartet->begin())], o);
+        diag::detail("Knopftest: Werkzeuge - x nach Rasterzug " + std::to_string(o[0]));
+        return std::fabs(std::fmod(std::fabs(o[0]), 16.0F)) < 0.01F;
+    }));
+    add(tu("zurueck, Raster aus", [] {
+        entityRueckgaengig();
+        g_app->rasterSchritt = 0;
+        entityAuswahlSetzen(-1);
+    }));
+    // Platzieren: Kachel anklicken, dann in die Karte
+    auto boden = std::make_shared<ImVec2>();
+    add(tu("Kamera schraeg ueber einen Spielerstart / eine Figur", [] {
+        for (const MapEntity& e : g_app->map.entities) {
+            float o[3];
+            if ((e.classname.rfind("info_player", 0) == 0 || e.classname.rfind("NPC_", 0) == 0) && entityOrt(e, o)) {
+                g_app->cam.pos[0] = o[0] - 260.0F;
+                g_app->cam.pos[1] = o[1];
+                g_app->cam.pos[2] = o[2] + 260.0F;
+                g_app->cam.angles[0] = 42.0F;
+                g_app->cam.angles[1] = 0.0F;
+                g_app->cam.angles[2] = 0.0F;
+                g_app->mapDirty = true;
+                break;
+            }
+        }
+    }));
+    add(pause(0.4));
+    add(tu("Ein Bodenpunkt im Bild", [=] {
+        // Ein Raster ueber das Bild, ohne Marken in der Naehe, mit begehbarem Boden.
+        bool fand = false;
+        for (float fy = 0.35F; fy < 0.95F && !fand; fy += 0.06F) {
+            for (float fx = 0.25F; fx < 0.85F && !fand; fx += 0.06F) {
+                const float x = g_app->kartenAnsicht[0] + (g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0]) * fx;
+                const float y = g_app->kartenAnsicht[1] + (g_app->kartenAnsicht[3] - g_app->kartenAnsicht[1]) * fy;
+                TraceTreffer t;
+                if (kartenStrahlUnterMaus(x, y, t) && t.normal[2] > 0.7F) {
+                    *boden = ImVec2{x, y};
+                    fand = true;
+                }
+            }
+        }
+        {
+            TraceTreffer t;
+            const float x = (g_app->kartenAnsicht[0] + g_app->kartenAnsicht[2]) * 0.5F;
+            const float y = (g_app->kartenAnsicht[1] + g_app->kartenAnsicht[3]) * 0.5F;
+            const bool h = kartenStrahlUnterMaus(x, y, t);
+            diag::detail("Knopftest: Werkzeuge - Mitte: Treffer " + std::to_string(h) + " z " + std::to_string(t.point[2]) +
+                         " Normale " + std::to_string(t.normal[0]) + " " + std::to_string(t.normal[1]) + " " +
+                         std::to_string(t.normal[2]) + ", Kamera " + std::to_string(g_app->gezeigteKamera.pos[2]) +
+                         " Blick " + std::to_string(g_app->gezeigteKamera.angles[0]) + ", durch Kamera " +
+                         std::to_string(g_app->throughCamera) + "/" + std::to_string(g_app->camViewActive));
+        }
+        diag::detail("Knopftest: Werkzeuge - Bodenpunkt " + std::to_string(fand) + " bei " + std::to_string(boden->x) +
+                     "/" + std::to_string(boden->y));
+        *anzahl0 = g_app->map.entities.size();
+    }));
+    add(klick(tr(Str::EntKindNav), "##platzieren"));
+    add(pause(0.2));
+    add(pruefe("Kachel Laufziel: Platzieren aktiv", [] { return g_app->platzierKlasse == "waypoint_navgoal"; }));
+    add(klickAn("in die Karte", [=] { return *boden; }));
+    add(pause(0.3));
+    add(pruefe("Platzieren: ein Laufziel steht am Klickpunkt, das Werkzeug ist wieder aus", [=] {
+        const auto& v = g_app->map.entities;
+        return v.size() == *anzahl0 + 1 && v.back().classname == "waypoint_navgoal" && g_app->platzierKlasse.empty() &&
+               g_app->pickedEntity == static_cast<int>(v.size()) - 1;
+    }));
+    add(ziehenAn("Kachel Effekt in die Karte ziehen", [] {
+            const Element* e = finde(tr(Str::EntKindFx), "##platzieren", 0, false);
+            return e != nullptr ? e->rect.GetCenter() : ImVec2{0, 0};
+        }, 260.0F, 40.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Ziehen: ein Effekt (fx_runner) wurde gesetzt", [=] {
+        const auto& v = g_app->map.entities;
+        diag::detail("Knopftest: Werkzeuge - nach dem Ziehen " + std::to_string(v.size()) + " Entities, letzte " +
+                     (v.empty() ? std::string() : v.back().classname));
+        return v.size() == *anzahl0 + 2 && v.back().classname == "fx_runner" && g_app->platzierKlasse.empty();
+    }));
+    add(tu("beide zurueck", [] { entityRueckgaengig(); entityRueckgaengig(); }));
+    // Gemerkte Ansichten
+    auto merk = std::make_shared<Camera>();
+    add(tu("Maus in die Karte, Ansicht merken", [=] { setzeMaus(ansichtMitte()); *merk = g_app->cam; }));
+    add(pause(0.1));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_3, "Strg+3"));
+    add(tu("woanders hin", [] { g_app->cam.pos[0] += 900.0F; g_app->cam.angles[1] += 40.0F; g_app->mapDirty = true; }));
+    add(pause(0.2));
+    add(taste(ImGuiKey_3, "3"));
+    add(pause(0.2));
+    add(pruefe("3 springt zur gemerkten Ansicht", [=] {
+        return std::fabs(g_app->cam.pos[0] - merk->pos[0]) < 0.01F && std::fabs(g_app->cam.angles[1] - merk->angles[1]) < 0.01F;
+    }));
+    return s;
+}
+
 // --- Teil 1: Ruhe beim Oeffnen --------------------------------------------
 
 struct RuheFall {
@@ -11391,6 +11689,9 @@ void selbsttest() {
                     for (Schritt& x : (nurLava ? lavaSchritte() : nurHolo ? holoSchritte()
                                        : nurKamera ? kameraSchritte() : nurWeg ? wegSchritte() : ortSchritte())) {
                         a.schritte.push_back(std::move(x));
+                    }
+                    if (nurWeg) {
+                        for (Schritt& x : kartenWerkzeugSchritte()) { a.schritte.push_back(std::move(x)); }
                     }
                 } else {
                     for (Schritt& x : kartenBreitSchritte()) { a.schritte.push_back(std::move(x)); }

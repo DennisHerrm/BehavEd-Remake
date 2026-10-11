@@ -7246,9 +7246,13 @@ void drawEntityLayers(float height) {
                 ImGui::SameLine();
                 const std::string name = entitySkriptName(e);
                 const std::string label = name.empty() ? std::string("(") + e.classname + ")" : name;
-                if (ImGui::Selectable(label.c_str(), g_app->pickedEntity == static_cast<int>(i),
+                if (ImGui::Selectable(label.c_str(), entityIstGewaehlt(static_cast<int>(i)),
                                       ImGuiSelectableFlags_AllowDoubleClick)) {
-                    g_app->pickedEntity = static_cast<int>(i);
+                    if (ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift) {
+                        entityAuswahlUmschalten(static_cast<int>(i));
+                    } else {
+                        entityAuswahlSetzen(static_cast<int>(i));
+                    }
                     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                         zurEntityFliegen(i);
                     }
@@ -7550,6 +7554,130 @@ void drawPickedEntity() {
             }
         }
         ImGui::PopID();
+    }
+}
+
+// --- Platzieren-Leiste (rc590) ---------------------------------------------------
+//
+// Wie "Place Actors" in Unreal: Kacheln mit den Entities, die man fuer eine
+// Szene braucht. Ein Klick waehlt eine Kachel, der naechste Klick in die Karte
+// setzt sie (Umschalt: weitere); oder die Kachel in die Karte ziehen.
+namespace {
+struct Kachel {
+    const char* klasse;
+    UiIcon icon;
+    Str titel;
+};
+const Kachel kKacheln[] = {
+    {"NPC_spawner", UiIcon::Figur, Str::EntKindNpc},
+    {"waypoint_navgoal", UiIcon::Wegpunkt, Str::EntKindNav},
+    {"ref_tag", UiIcon::Marke, Str::EntKindTag},
+    {"target_position", UiIcon::Zielen, Str::EntKindPos},
+    {"target_scriptrunner", UiIcon::Skript, Str::EntKindRunner},
+    {"fx_runner", UiIcon::Effekt, Str::EntKindFx},
+    {"target_speaker", UiIcon::Ton, Str::EntKindSpeaker},
+    {"waypoint", UiIcon::Pfad, Str::EntKindWaypoint},
+    {"info_player_start", UiIcon::Mission, Str::EntKindStart},
+};
+}  // namespace
+
+void platzierLeiste() {
+    if (g_app->geo.empty() || g_app->camViewActive || g_app->kameraPilot) { return; }
+    const float fs = ImGui::GetFontSize();
+    const float hh = ImGui::GetFrameHeight();
+    const int n = static_cast<int>(sizeof(kKacheln) / sizeof(kKacheln[0]));
+    const float hoehe = static_cast<float>(n) * (hh + 2.0F) + fs * 0.6F;
+    const float y = std::max(g_app->kartenAnsicht[1] + fs * 3.0F,
+                             (g_app->kartenAnsicht[1] + g_app->kartenAnsicht[3] - hoehe) * 0.5F);
+    const ImVec2 merk = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(ImVec2{g_app->kartenAnsicht[0] + fs * 0.4F, y});
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4{0.10F, 0.11F, 0.14F, 0.85F});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{fs * 0.2F, fs * 0.3F});
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{2.0F, 2.0F});
+    if (ImGui::BeginChild("##platzieren", ImVec2{0.0F, 0.0F},
+                          ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders |
+                              ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar)) {
+        for (const Kachel& k : kKacheln) {
+            const bool an = g_app->platzierKlasse == k.klasse;
+            char hilfe[300];
+            std::snprintf(hilfe, sizeof(hilfe), tr(Str::PlaceHint), k.klasse);
+            if (iconKnopf(tr(k.titel), k.icon, hilfe, an, true, true)) {
+                g_app->platzierKlasse = an ? std::string() : std::string(k.klasse);
+                g_app->platzierZiehen = false;
+            }
+            // In die Karte ziehen
+            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 8.0F)) {
+                g_app->platzierKlasse = k.klasse;
+                g_app->platzierZiehen = true;
+            }
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    ImGui::SetCursorScreenPos(merk);
+    ImGui::Dummy(ImVec2{0.0F, 0.0F});   // Anker: ImGui will nach dem Cursorsprung ein Element
+}
+
+void platzierMaus() {
+    if (g_app->platzierKlasse.empty()) { return; }
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool imBild = io.MousePos.x >= g_app->kartenAnsicht[0] && io.MousePos.x < g_app->kartenAnsicht[2] &&
+                        io.MousePos.y >= g_app->kartenAnsicht[1] && io.MousePos.y < g_app->kartenAnsicht[3];
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        g_app->platzierKlasse.clear();
+        g_app->platzierZiehen = false;
+        return;
+    }
+    // Vorschau: ein Kreuz dort, wo die Entity landen wuerde.
+    if (imBild) {
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
+        const float r = ImGui::GetFontSize() * 0.6F;
+        dl->AddCircle(io.MousePos, r, IM_COL32(255, 200, 80, 230), 0, 2.0F);
+        dl->AddLine(ImVec2{io.MousePos.x - r * 1.6F, io.MousePos.y}, ImVec2{io.MousePos.x + r * 1.6F, io.MousePos.y},
+                    IM_COL32(255, 200, 80, 200));
+        dl->AddLine(ImVec2{io.MousePos.x, io.MousePos.y - r * 1.6F}, ImVec2{io.MousePos.x, io.MousePos.y + r * 1.6F},
+                    IM_COL32(255, 200, 80, 200));
+        ImGui::SetTooltip(tr(Str::PlaceClickHint), g_app->platzierKlasse.c_str());
+    }
+    if (g_app->platzierZiehen) {
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            if (imBild && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+                entityPlatzieren(g_app->platzierKlasse, io.MousePos.x, io.MousePos.y);
+                g_app->wegKlickVerbraucht = true;
+            }
+            g_app->platzierKlasse.clear();
+            g_app->platzierZiehen = false;
+        }
+        return;
+    }
+    if (imBild && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        entityPlatzieren(g_app->platzierKlasse, io.MousePos.x, io.MousePos.y);
+        g_app->wegKlickVerbraucht = true;   // dieser Klick waehlt nichts anderes aus
+        if (!io.KeyShift) { g_app->platzierKlasse.clear(); }
+    }
+}
+
+// --- Gemerkte Ansichten (rc590): Strg+1..9 merkt, 1..9 springt hin ----------------
+void ansichtsMarkenTasten() {
+    if (ImGui::GetIO().WantTextInput || g_app->geo.empty() || g_app->throughCamera) { return; }
+    auto& marken = g_app->ansichtsMarken[g_app->map.path];
+    for (int k = 0; k < 9; ++k) {
+        const ImGuiKey taste = static_cast<ImGuiKey>(ImGuiKey_1 + k);
+        if (!ImGui::IsKeyPressed(taste, false)) { continue; }
+        char t[96];
+        if (ImGui::GetIO().KeyCtrl) {
+            marken[static_cast<std::size_t>(k)].da = true;
+            marken[static_cast<std::size_t>(k)].cam = g_app->cam;
+            std::snprintf(t, sizeof(t), tr(Str::ViewMarkSaved), k + 1, k + 1);
+            meldung(t, "");
+        } else if (marken[static_cast<std::size_t>(k)].da) {
+            g_app->cam = marken[static_cast<std::size_t>(k)].cam;
+            g_app->mapDirty = true;
+            std::snprintf(t, sizeof(t), tr(Str::ViewMarkJump), k + 1);
+            addStatus(t);
+        }
     }
 }
 
@@ -9698,6 +9826,7 @@ void drawMapView() {
     // Zum SETZEN einer Kamera will man ein Ziel umkreisen und sehen, wie es
     // aus verschiedenen Richtungen aussieht. Fliegen ist gut, um irgendwo
     // hinzukommen, aber umstaendlich, um sich um etwas herumzubewegen.
+    if (hovered) { ansichtsMarkenTasten(); }
     // Draufsicht (rc589): schieben statt drehen, das Rad hebt und senkt die
     // Kamera (die Schnitthoehe bleibt), WASD schiebt in Bildrichtung.
     if (g_app->draufsicht) {
@@ -11610,6 +11739,7 @@ void drawMapView() {
         // Eine gewaehlte Entity ueber den Boden ziehen (gui/app_mission.cpp).
         entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         wegWerkzeugMaus(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
+        platzierMaus();
         entityUeberlagerung(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         wegUeberlagerung();
         // --- Namen an Entities und Figuren -------------------------------
@@ -12288,8 +12418,16 @@ g_app->gizmoAxis = g_app->gizmoHover;
                 // (derselbe Fall wie in rc167).
                 g_app->selectedKey = -1;
                 g_app->cameraSelected = false;
-                g_app->pickedEntity = found;
-                if (found < 0) {
+                // Strg/Umschalt nimmt hinzu oder heraus (rc590); ins Leere mit
+                // gedrueckter Taste laesst die Auswahl stehen (dort beginnt
+                // vielleicht ein Rahmen, der hinzufuegt).
+                const bool zusatz = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift;
+                if (zusatz && found >= 0) {
+                    entityAuswahlUmschalten(found);
+                } else if (!zusatz) {
+                    entityAuswahlSetzen(found);
+                }
+                if (found < 0 && !zusatz) {
                     g_app->selectedActor = -1;
                     g_app->gizmoShown = false;
                     g_app->gizmoAxis = -1;
@@ -12397,6 +12535,7 @@ g_app->gizmoAxis = g_app->gizmoHover;
         const float bildB = g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0];
         kameraUeberlagerung(bildB > 0.0F ? static_cast<float>(g_app->mapImage.width) / bildB : 1.0F);
     }
+    platzierLeiste();
     // Draufsicht: die Schnitthoehe oben rechts (rc589).
     if (g_app->draufsicht && !g_app->geo.empty()) {
         const ImVec2 merk = ImGui::GetCursorScreenPos();
@@ -12536,7 +12675,7 @@ float ansichtsSchalter(bool nurMessen) {
     // Abstand), Einstellungen, Statistik. Fehlt hier ein Knopf, laeuft die
     // Leiste rechts ueber den Rand (Wegpunkttest: "nicht ganz sichtbar").
     const float breite = static_cast<float>(anzahl) * h + static_cast<float>(anzahl - 1) * sp * 0.5F +
-                         sp + 3.0F * h + 2.0F * sp * 0.5F + 2.0F * (h + sp);
+                         sp + 3.0F * h + 2.0F * sp * 0.5F + 3.0F * (h + sp);
     if (nurMessen) {
         return breite;
     }
@@ -12579,6 +12718,23 @@ float ansichtsSchalter(bool nurMessen) {
         g_app->wegFensterOffen = !g_app->wegFensterOffen;
         if (g_app->wegFensterOffen) { g_app->zeigeWegnetz = true; }
         g_app->mapDirty = true;
+    }
+    // Raster (rc590): fuer Ziehen und Setzen von Entities.
+    ImGui::SameLine();
+    {
+        char hilfe[300];
+        std::snprintf(hilfe, sizeof(hilfe), "%s\n%s", tr(Str::GridHint),
+                      g_app->rasterSchritt > 0 ? std::to_string(g_app->rasterSchritt).c_str() : tr(Str::GridOff));
+        if (iconKnopf(tr(Str::Grid), UiIcon::Raster, hilfe, g_app->rasterSchritt > 0, true, true)) {
+            ImGui::OpenPopup("##raster");
+        }
+        if (ImGui::BeginPopup("##raster")) {
+            if (ImGui::MenuItem(tr(Str::GridOff), nullptr, g_app->rasterSchritt == 0)) { g_app->rasterSchritt = 0; }
+            for (const int r : {8, 16, 32, 64}) {
+                if (ImGui::MenuItem(std::to_string(r).c_str(), nullptr, g_app->rasterSchritt == r)) { g_app->rasterSchritt = r; }
+            }
+            ImGui::EndPopup();
+        }
     }
     ImGui::SameLine(0.0F, sp * 0.5F);
     if (iconKnopf(tr(Str::MapViewSettings), UiIcon::Einstellungen, tr(Str::MapViewSettingsHint)) ||
