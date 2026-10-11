@@ -37,6 +37,7 @@
 #include "bhed/bsp.h"
 #include "bhed/camtrack.h"
 #include "bhed/wegpunkte.h"
+#include "bhed/moveranim.h"
 #include "bhed/mission.h"
 #include "bhed/missionsgraph.h"
 #include "bhed/scene.h"
@@ -330,6 +331,15 @@ struct App {
     bool modellKnochen = false;
     int modellKnochenLinien = 0;     // im letzten Bild gezeichnet (Selbsttest)
     bool animScrollen = false;       // Liste zur gewaehlten Animation rollen
+    // Mover animieren (gui/app_animation.cpp, rc592)
+    bool animFensterOffen = false;
+    int animEntity = -1;
+    int animSchluessel = -1;
+    bool animZug = false;            // eine Raute wird gezogen
+    float animZugMaus[2] = {0.0F, 0.0F};
+    float animZugStart[3] = {0.0F, 0.0F, 0.0F};
+    float animZugSkala = 1.0F;
+    std::vector<AnimSchluessel> animVorschau;
     float lastModelCam[7]{};
     // --- Feinheit des Netzes ---------------------------------------------
     //
@@ -1991,7 +2001,7 @@ enum class UiIcon : int {
     Zurueck, Vor, Zielen, Steuern,
     // Wegnetz und Draufsicht (rc589)
     Pfad, Oben, Erzeugen,
-    Raster,
+    Raster, Animieren,
     // Zeitleiste (rc588)
     ZumAnfang, Schleife, Ton, Folgen, Zeilen, Ruhig, ZoomPlus, ZoomMinus, Einpassen,
     // Entity-Arten in Liste und Karte (rc588)
@@ -2054,6 +2064,14 @@ void drawNpcBrowser();
 void modellDrehteller();
 void modellUeberlagerung(ImVec2 lo, ImVec2 groesse);
 void modellFlaechenProtokoll();
+// --- Mover animieren (gui/app_animation.cpp, rc592) ---------------------------
+bool entityAnimierbar(const MapEntity& e);
+void animStarten(int entity);
+bool animSchreiben(const std::vector<AnimSchluessel>& k);
+int animSchluesselAmZeiger();
+void animUeberlagerung();
+void animMaus();
+void drawAnimFenster();
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);

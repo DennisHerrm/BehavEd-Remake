@@ -342,7 +342,7 @@ void wegUeberlagerung() {
 
 void wegWerkzeugMaus(float rasterSkal) {
     (void)rasterSkal;
-    g_app->wegKlickVerbraucht = false;
+    if (g_app->wegKlickVerbraucht) { return; }   // schon vergeben (Animation)
     if (g_app->wegWerkzeug == 0 || g_app->geo.empty() || g_app->camViewActive) { return; }
     const ImGuiIO& io = ImGui::GetIO();
     const bool imBild = io.MousePos.x >= g_app->kartenAnsicht[0] && io.MousePos.x < g_app->kartenAnsicht[2] &&

@@ -936,7 +936,7 @@ void entityZiehen(float rasterSkal) {
     }
 
     // --- Anfassen --------------------------------------------------------------
-    if (!z.kandidat && ziel >= 0 && g_app->entFokusBild && g_app->gizmoAxis < 0 &&
+    if (!z.kandidat && ziel >= 0 && g_app->entFokusBild && g_app->gizmoAxis < 0 && !g_app->wegKlickVerbraucht &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !g_app->camViewActive) {
         int modus = -1;
         if (g_app->entGizmoHover != 0) {
@@ -996,7 +996,8 @@ void entityZiehen(float rasterSkal) {
     //
     // Ins Leere gedrueckt und gezogen: alle Entities im Rahmen. Mit Strg oder
     // Umschalt kommen sie zur Auswahl hinzu.
-    if (!z.kandidat && !g_app->boxKandidat && g_app->entFokusBild && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+    if (!z.kandidat && !g_app->boxKandidat && !g_app->wegKlickVerbraucht && g_app->entFokusBild &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
         g_app->entHover < 0 && g_app->entGizmoHover == 0 && !g_app->kameraHover && g_app->gizmoAxis < 0 &&
         g_app->wegWerkzeug == 0 && g_app->platzierKlasse.empty() && !g_app->camViewActive && g_app->showEntities &&
         !g_app->cameraSelected &&
@@ -1431,6 +1432,19 @@ void drawEntityInspector(float hoehe) {
         if (iconKnopf(tr(Str::EntDuplicate), UiIcon::Duplizieren, tr(Str::EntDuplicateHint))) { entityAuswahlDuplizieren(); }
         ImGui::SameLine();
         if (iconKnopf(tr(Str::EntDelete), UiIcon::Loeschen, nullptr)) { entityAuswahlLoeschen(); }
+        // Animieren (rc592): Schiffe, Tueren, Plattformen selbst bewegen.
+        if (entityAnimierbar(e)) {
+            ImGui::SameLine();
+            if (iconKnopf(tr(Str::EntAnimate), UiIcon::Animieren, tr(Str::EntAnimateHint), g_app->animFensterOffen &&
+                                                                                             g_app->animEntity == i,
+                          true, true)) {
+                if (g_app->animFensterOffen && g_app->animEntity == i) {
+                    g_app->animFensterOffen = false;
+                } else {
+                    animStarten(i);
+                }
+            }
+        }
         ImGui::SameLine(0.0F, sp * 1.2F);
         if (iconKnopf(tr(Str::EditUndo), UiIcon::Rueckgaengig, nullptr, false, entityUndoMoeglich())) {
             entityRueckgaengig();

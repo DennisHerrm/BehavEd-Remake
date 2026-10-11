@@ -15412,6 +15412,7 @@ void draw() {
         drawKartenStatistik();
         drawWegFenster();
         drawNpcBrowser();
+        drawAnimFenster();
         drawEinblendungen();
         drawAbout();
     }

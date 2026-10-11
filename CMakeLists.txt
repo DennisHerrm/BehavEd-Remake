@@ -31,6 +31,7 @@ add_library(bhed_core STATIC
   src/entdefs.cpp
   src/missionbau.cpp
   src/wegpunkte.cpp
+  src/moveranim.cpp
   src/missionsgraph.cpp
   src/sound.cpp
   src/timeline.cpp
@@ -192,6 +193,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/app_kamera.cpp
     gui/app_wegpunkte.cpp
     gui/app_modell.cpp
+    gui/app_animation.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp
@@ -327,6 +329,9 @@ if(BEHAVED_TESTS)
   add_executable(wegpunkttest tests/wegpunkttest.cpp)
   target_link_libraries(wegpunkttest PRIVATE bhed_core)
   add_test(NAME wegpunkte COMMAND wegpunkttest)
+  add_executable(moveranimtest tests/moveranimtest.cpp)
+  target_link_libraries(moveranimtest PRIVATE bhed_core)
+  add_test(NAME moveranim COMMAND moveranimtest)
 
   # Eine Mission anlegen und packen (missionbau.h, entdefs.h, writePk3).
   add_executable(missionbautest tests/missionbautest.cpp)

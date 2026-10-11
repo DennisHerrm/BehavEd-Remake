@@ -4178,7 +4178,13 @@ void prepareScene() {
             }
         }
     }
-    g_app->playMs = std::min(g_app->playMs, g_app->camTrack.durationMs);
+    // Auf das Ende des GANZEN Ablaufs, nicht nur der Kamerabahn (rc592).
+    // Vorher sprang der Zeiger nach jeder Skriptaenderung auf das Ende der
+    // Kamerafahrten zurueck - ohne Kamerabefehle auf 0 -, obwohl das Lineal
+    // weiterreicht, sobald Figuren oder Mover laenger laufen (Animationstest:
+    // Schluessel bei 4 s, danach stand der Zeiger auf 0).
+    g_app->playMs = std::min(g_app->playMs, std::max({g_app->camTrack.durationMs, g_app->timeline.practicalEndMs,
+                                                      g_app->timeline.durationMs}));
     g_app->actorAssets.clear();
     // Effekte (fx_runner) und Kartenmodelle (misc_model) gehoeren zur
     // KARTE, nicht zu den Figuren. Sie standen hinter der Abfrage unten und
@@ -7328,7 +7334,7 @@ void platzierLeiste() {
 }
 
 void platzierMaus() {
-    if (g_app->platzierKlasse.empty()) { return; }
+    if (g_app->platzierKlasse.empty() || g_app->animZug) { return; }
     const ImGuiIO& io = ImGui::GetIO();
     const bool imBild = io.MousePos.x >= g_app->kartenAnsicht[0] && io.MousePos.x < g_app->kartenAnsicht[2] &&
                         io.MousePos.y >= g_app->kartenAnsicht[1] && io.MousePos.y < g_app->kartenAnsicht[3];
@@ -11444,11 +11450,17 @@ void drawMapView() {
             g_app->kartenAnsicht[3] = b.y;
         }
         // Eine gewaehlte Entity ueber den Boden ziehen (gui/app_mission.cpp).
+        // Reihenfolge: die Rauten der Animation zuerst - sie liegen oft genau
+        // auf dem Ursprung der Entity, und sonst griffe das Entity-Ziehen den
+        // Klick und verschoebe das Schiff statt des Schluessels.
+        g_app->wegKlickVerbraucht = false;
+        animMaus();
         entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         wegWerkzeugMaus(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         platzierMaus();
         entityUeberlagerung(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         wegUeberlagerung();
+        animUeberlagerung();
         // --- Namen an Entities und Figuren -------------------------------
         if (g_app->zeigeNamen) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
