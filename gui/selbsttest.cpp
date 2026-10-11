@@ -6969,8 +6969,19 @@ std::vector<Schritt> missionsbauSchritte() {
         (void)loadMapFromArchive(z->karte == "maps/duel_mandalore.bsp" ? std::string("maps/academy1.bsp") : std::string("maps/duel_mandalore.bsp"));
     }));
     add(pause(0.5));
+    // rc592: die Leiste zeigte weiter den Namen der Mission, obwohl vorn eine
+    // andere Karte lag.
+    add(pruefe("Leiste: vorn eine andere Karte - ihr Name, nicht der der Mission", [=] {
+        const std::string n = leistenTitel();
+        diag::detail("Knopftest: Missionsbau - Leiste zeigt \"" + n + "\" (Karte " + g_app->map.path + ", Mission " +
+                     g_app->mission.name + ")");
+        return n != g_app->mission.name && (n == "academy1" || n == "duel_mandalore");
+    }));
     add(tu("zurueck", [=] { activateTab(z->vorher); }));
     add(pause(0.5));
+    add(pruefe("Leiste: wieder die Missionskarte - der Name der Mission", [=] {
+        return leistenTitel() == g_app->mission.name;
+    }));
     add(pruefe("Reiterwechsel: bearbeitete Entities der neuen Mission sind noch da", [=] {
         bool gleich = g_app->map.entities.size() == z->gespeichert.size();
         for (std::size_t i = 0; gleich && i < z->gespeichert.size(); ++i) { gleich = g_app->map.entities[i].keys == z->gespeichert[i].keys; }

@@ -2191,6 +2191,9 @@ void loadMapTextures();
 // Die Textur zu EINEM Shadernamen. Auch die .md3-Modelle gehen diesen Weg -
 // zwei getrennte waeren zwei Gelegenheiten, verschieden falsch zu liegen.
 bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out);
+// Was die Kartenleiste als Namen zeigt: die Mission, wenn ihre Karte vorn
+// liegt, sonst den Namen der Karte (rc592) - siehe drawMapToolbar.
+std::string leistenTitel();
 // Sagt im Detailprotokoll, WO eine fehlende Datei stattdessen liegt - oder
 // dass ihr Name in keinem Archiv vorkommt. Ohne das heisst "nicht
 // gefunden" nur "such weiter, irgendwo".

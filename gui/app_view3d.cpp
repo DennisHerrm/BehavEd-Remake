@@ -7556,6 +7556,41 @@ void ansichtsMarkenTasten() {
 //
 // Vorher standen sieben gleich grosse Textknoepfe in einer Reihe - shank:
 // "moderner und intuitiv". Unreal und Hammer zeigen oben nur das Wichtigste.
+namespace {
+// Zwei Kartenkennungen gleich? Gross/klein und \ gegen / egal.
+bool gleicheKarte(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) { return false; }
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        char x = static_cast<char>(std::tolower(static_cast<unsigned char>(a[i])));
+        char y = static_cast<char>(std::tolower(static_cast<unsigned char>(b[i])));
+        if (x == '\\') { x = '/'; }
+        if (y == '\\') { y = '/'; }
+        if (x != y) { return false; }
+    }
+    return true;
+}
+// Liegt die Karte der Mission vorn? Die Mission gilt ueber alle Reiter
+// (Speichern nimmt ihre Karte auch aus einem anderen), aber Name und Punkt
+// fuer Ungespeichertes gehoeren nur zu ihrer Karte.
+bool missionKarteVorn() {
+    return g_app->missionAktiv && !g_app->mission.karte.empty() &&
+           gleicheKarte(g_app->map.path, g_app->mission.karte);
+}
+}  // namespace
+
+std::string leistenTitel() {
+    if (missionKarteVorn()) {
+        return g_app->mission.name;
+    }
+    // Sonst der Name der Karte vorn: "maps/academy1.bsp" -> "academy1".
+    std::string n = g_app->map.path;
+    const std::size_t schnitt = n.find_last_of("/\\");
+    if (schnitt != std::string::npos) { n = n.substr(schnitt + 1); }
+    const std::size_t punkt = n.find_last_of('.');
+    if (punkt != std::string::npos) { n.resize(punkt); }
+    return n;
+}
+
 void drawMapToolbar() {
     // Senkrecht MITTIG im Streifen: der Streifen ist eine Knopfzeile plus
     // Zeilenabstand hoch, und ohne das sass alles oben (shank, 11.10.).
@@ -7582,7 +7617,7 @@ void drawMapToolbar() {
     // Der Name der Mission - mit Punkt fuer Ungespeichertes.
     ImGui::SameLine(0.0F, sp);
     ImGui::AlignTextToFramePadding();
-    if (g_app->missionAktiv) {
+    if (missionKarteVorn()) {
         const bool offen = missionUngespeichert();
         uiIcon(ImGui::GetWindowDrawList(), UiIcon::Mission,
                ImVec2{ImGui::GetCursorScreenPos().x,
@@ -7603,6 +7638,22 @@ void drawMapToolbar() {
             ImGui::GetWindowDrawList()->AddCircleFilled(
                 ImVec2{q.x + r, q.y + ImGui::GetFrameHeight() * 0.5F}, r, ImGui::GetColorU32(ImGuiCol_PlotHistogram));
             ImGui::Dummy(ImVec2{r * 2.0F, ImGui::GetFrameHeight()});
+        }
+    } else if (g_app->missionAktiv && !g_app->map.path.empty()) {
+        // Vorn liegt eine andere Karte als die der Mission (rc592: hier stand
+        // weiter der Name der Mission).
+        const std::string titel = leistenTitel();
+        uiIcon(ImGui::GetWindowDrawList(), UiIcon::Karte,
+               ImVec2{ImGui::GetCursorScreenPos().x,
+                      ImGui::GetCursorScreenPos().y + (ImGui::GetFrameHeight() - ImGui::GetFontSize()) * 0.5F},
+               ImGui::GetFontSize(), ImGui::GetColorU32(uiIconFarbe(UiIcon::Karte)));
+        ImGui::Dummy(ImVec2{ImGui::GetFontSize(), ImGui::GetFontSize()});
+        ImGui::SameLine(0.0F, sp * 0.5F);
+        ImGui::TextUnformatted(titel.c_str());
+        if (ImGui::IsItemHovered()) {
+            char t[900];
+            std::snprintf(t, sizeof(t), tr(Str::MapNotMission), g_app->map.path.c_str(), g_app->mission.name.c_str());
+            ImGui::SetTooltip("%s", t);
         }
     } else {
         ImGui::TextDisabled("%s", tr(Str::MissionNoneShort));

@@ -1343,6 +1343,7 @@ S = [
     ("AnimDragHint", "In the view: drag a diamond to move a key (Shift: only up and down).", "In der Ansicht: eine Raute ziehen verschiebt den Schlüssel (Umschalt: nur hoch und runter).", "在视图中:拖动菱形移动关键帧(Shift:仅上下)。", "ビューで菱形をドラッグしてキーを移動 (Shift: 上下のみ)。"),
     ("MapFlares", "Lens flares", "Lens-Flares", "镜头光晕", "レンズフレア"),
     ("MapWeather", "Weather particles", "Wetterteilchen", "天气粒子", "天候パーティクル"),
+    ("MapNotMission", "Map in this tab: %s\nThe mission \"%s\" uses another map - Save mission still saves it.", "Karte in diesem Reiter: %s\nDie Mission \"%s\" benutzt eine andere Karte - Mission speichern sichert sie trotzdem.", "此标签页中的地图: %s\n任务 \"%s\" 使用另一张地图 - 保存任务仍会保存它。", "このタブのマップ: %s\nミッション \"%s\" は別のマップを使用しています - ミッションの保存は引き続き保存します。"),
     ("FlowFollowsHint", "In a split view, Graph and Tracks follow the script you are working on.",
      "In der geteilten Ansicht folgen Graph und Spuren dem Skript, an dem du gerade arbeitest.",
      "在分屏视图中,图表和轨道会跟随你正在编辑的脚本。",
