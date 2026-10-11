@@ -6311,6 +6311,68 @@ std::vector<Schritt> neustartSchritte() {
     return s;
 }
 
+// --- Eine eigene Mission wie ein Anwender laden (BHED_EDITORTEST=missionfoto) ---
+//
+// Map-Tab -> "Load mission..." -> Mission aus einer pk3 waehlen, dann die
+// Zwischensequenz an mehreren Zeitpunkten fotografieren. Fuer den Vergleich mit
+// dem Spiel (eigene Mission md_tpa_jedi, 11.10.).
+//   BHED_MISSION_ARCHIV  Pfad der pk3
+//   BHED_MISSION_NAME    Name in der Missionsliste (z. B. md_tpa_jedi)
+//   BHED_ZEIT            Zeitpunkte in ms ("5000 12000 ...")
+std::vector<Schritt> missionFotoSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const std::string archiv = std::getenv("BHED_MISSION_ARCHIV") ? std::getenv("BHED_MISSION_ARCHIV") : "";
+    const std::string name = std::getenv("BHED_MISSION_NAME") ? std::getenv("BHED_MISSION_NAME") : "";
+    std::vector<double> zeiten;
+    if (const char* z = std::getenv("BHED_ZEIT")) {
+        std::istringstream is(z);
+        double t = 0.0;
+        while (is >> t) { zeiten.push_back(t); }
+    }
+    add(tu("Missionfoto: Kartenansicht, Missionen der pk3", [=] {
+        g_app->leftMode = 1;
+        missionenAusArchiv(archiv);
+    }));
+    add(pause(0.5));
+    // Hat die pk3 nur EINE spielbare Mission, laedt "Load mission..." sie
+    // gleich (missionenAusArchiv) - dann gibt es keine Auswahl.
+    add(tu("Missionfoto: Auswahl oder gleich geladen", [=] {
+        if (g_app->missionPickOpen) {
+            schritteEinfuegen({waehleInListe(name, false, 0, "##missionpick")});
+            return;
+        }
+        diag::detail("Knopftest: Missionfoto - keine Auswahl, Mission direkt geladen");
+    }));
+    add(warteBis("Missionfoto: Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 1500));
+    add(pause(1.0));
+    add(tu("Missionfoto: Bestand", [] {
+        int spawner = 0;
+        for (const auto& e : g_app->map.entities) {
+            if (e.classname == "NPC_spawner") { ++spawner; }
+        }
+        diag::detail("Knopftest: Missionfoto - aktiv " + g_app->shownName + ", Reiter " +
+                     std::to_string(g_app->tabs.size()) + ", Entities " + std::to_string(g_app->map.entities.size()) +
+                     ", NPC_spawner " + std::to_string(spawner) + ", Figuren " +
+                     std::to_string(g_app->scene.actors.size()));
+        for (const auto& a : g_app->scene.actors) {
+            diag::detail("Knopftest: Missionfoto - Figur \"" + a.name + "\" Typ \"" + a.npcType + "\"");
+        }
+    }));
+    add(foto("missionfoto_start"));
+    for (const double t : zeiten) {
+        add(tu("Missionfoto: zu " + std::to_string(static_cast<int>(t)) + " ms", [=] {
+            g_app->playing = false;
+            g_app->throughCamera = true;
+            g_app->playMs = t;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.6));
+        add(foto("missionfoto_" + std::to_string(static_cast<int>(t))));
+    }
+    return s;
+}
+
 std::vector<Schritt> missionReiterSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
@@ -9503,6 +9565,8 @@ void selbsttest() {
     static const bool nurMission = std::strcmp(modus, "mission") == 0;
     // Die Funde der Code-Pruefung vom 03.10., jeder im Programm nachgestellt.
     static const bool nurPruefung = std::strcmp(modus, "pruefung") == 0;
+    // Eine eigene Mission aus einer pk3 laden und fotografieren (BHED_MISSION_ARCHIV, ..._NAME, BHED_ZEIT).
+    static const bool nurMissionFoto = std::strcmp(modus, "missionfoto") == 0;
     ImGuiContext& g = *ImGui::GetCurrentContext();
     g.TestEngineHookItems = true;
     Ablauf& a = g_ablauf;
@@ -9539,6 +9603,10 @@ void selbsttest() {
                 a.teil = 2;
             } else if (nurAblauf) {
                 a.schritte = ablaufSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurMissionFoto) {
+                a.schritte = missionFotoSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurPruefung) {
