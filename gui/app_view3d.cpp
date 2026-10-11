@@ -7426,50 +7426,91 @@ void drawPickedEntity() {
     }
 }
 
+// Die Kopfzeile der Kartenansicht (rc586).
+//
+// Links die Mission: Neu, Laden, Speichern als Icons, daneben ihr Name und ein
+// Punkt, solange etwas ungespeichert ist - wie der Stern im Reiter. Dann
+// "Karten und Dateien" (Karte oeffnen, aus einer .pk3, .ent) als Klappmenue
+// und die Skripte der Karte. Rechts die Ansicht (ansichtsSchalter).
+//
+// Vorher standen sieben gleich grosse Textknoepfe in einer Reihe - shank:
+// "moderner und intuitiv". Unreal und Hammer zeigen oben nur das Wichtigste.
 void drawMapToolbar() {
-    // Eine Mission von Anfang bis Ende: neu anlegen, laden, speichern.
-    if (ImGui::Button(tr(Str::MissionNew))) { g_app->neueMissionOffen = true; }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MissionNewHint));
+    const float sp = ImGui::GetStyle().ItemSpacing.x;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{sp * 0.5F, ImGui::GetStyle().ItemSpacing.y});
+    if (iconKnopf(tr(Str::MissionNew), UiIcon::Neu, tr(Str::MissionNewHint))) {
+        g_app->neueMissionOffen = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button(tr(Str::LoadMission))) { loadMissionArchive(); }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::LoadMissionHint));
+    if (iconKnopf(tr(Str::LoadMission), UiIcon::Oeffnen, tr(Str::LoadMissionHint))) {
+        loadMissionArchive();
     }
     ImGui::SameLine();
-    ImGui::BeginDisabled(!g_app->missionAktiv);
-    if (ImGui::Button(tr(Str::MissionSave))) { g_app->missionSpeichernOffen = true; }
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("%s", tr(g_app->missionAktiv ? Str::MissionSaveHint : Str::MissionKeine));
+    if (iconKnopf(tr(Str::MissionSave), UiIcon::Speichern,
+                  tr(g_app->missionAktiv ? Str::MissionSaveHint : Str::MissionKeine), false, g_app->missionAktiv)) {
+        g_app->missionSpeichernOffen = true;
     }
-    ImGui::SameLine();
-    if (ImGui::Button(tr(Str::OpenMapFile))) { doLoadMap(); }
-    ImGui::SameLine();
-    if (ImGui::Button(tr(Str::OpenMapPk3))) {
-        if (g_app->gamePaths.empty()) { rescanGamePaths(); }
-        g_app->pk3Kind = 1;
-        refreshPk3List();
-        g_app->pk3Open = true;
+    ImGui::PopStyleVar();
+
+    // Der Name der Mission - mit Punkt fuer Ungespeichertes.
+    ImGui::SameLine(0.0F, sp);
+    ImGui::AlignTextToFramePadding();
+    if (g_app->missionAktiv) {
+        const bool offen = missionUngespeichert();
+        uiIcon(ImGui::GetWindowDrawList(), UiIcon::Mission,
+               ImVec2{ImGui::GetCursorScreenPos().x,
+                      ImGui::GetCursorScreenPos().y + (ImGui::GetFrameHeight() - ImGui::GetFontSize()) * 0.5F},
+               ImGui::GetFontSize(), ImGui::GetColorU32(ImGuiCol_TextDisabled));
+        ImGui::Dummy(ImVec2{ImGui::GetFontSize(), ImGui::GetFontSize()});
+        ImGui::SameLine(0.0F, sp * 0.5F);
+        ImGui::TextUnformatted(g_app->mission.name.c_str());
+        if (ImGui::IsItemHovered()) {
+            char t[900];
+            std::snprintf(t, sizeof(t), tr(Str::MissionProject), g_app->mission.projektOrdner.c_str());
+            ImGui::SetTooltip("%s%s%s", t, offen ? "\n" : "", offen ? tr(Str::MissionUnsavedHint) : "");
+        }
+        if (offen) {
+            ImGui::SameLine(0.0F, sp * 0.6F);
+            const ImVec2 q = ImGui::GetCursorScreenPos();
+            const float r = ImGui::GetFontSize() * 0.22F;
+            ImGui::GetWindowDrawList()->AddCircleFilled(
+                ImVec2{q.x + r, q.y + ImGui::GetFrameHeight() * 0.5F}, r, ImGui::GetColorU32(ImGuiCol_PlotHistogram));
+            ImGui::Dummy(ImVec2{r * 2.0F, ImGui::GetFrameHeight()});
+        }
+    } else {
+        ImGui::TextDisabled("%s", tr(Str::MissionNoneShort));
     }
-    ImGui::SameLine();
-    // Die .ent-Datei ersetzt die Entities der Karte. Movie Duels arbeitet
-    // so: die .bsp bleibt unveraendert, die Entities kommen aus einer
-    // eigenen Datei daneben.
-    if (ImGui::Button(tr(Str::OpenEnt))) { openEntFile(); }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::OpenEntHint));
+
+    // Karten und Dateien
+    ImGui::SameLine(0.0F, sp * 1.5F);
+    if (iconTextKnopf(tr(Str::MapMore), UiIcon::Karte, tr(Str::MapMoreHint)) || g_app->kartenMehrOeffnen) {
+        g_app->kartenMehrOeffnen = false;
+        ImGui::OpenPopup("##kartenmehr");
+    }
+    if (ImGui::BeginPopup("##kartenmehr")) {
+        if (ImGui::MenuItem(tr(Str::OpenMapFile))) { doLoadMap(); }
+        if (ImGui::MenuItem(tr(Str::OpenMapPk3))) {
+            if (g_app->gamePaths.empty()) { rescanGamePaths(); }
+            g_app->pk3Kind = 1;
+            refreshPk3List();
+            g_app->pk3Open = true;
+        }
+        // Die .ent-Datei ersetzt die Entities der Karte. Movie Duels arbeitet
+        // so: die .bsp bleibt unveraendert, die Entities kommen daneben.
+        if (ImGui::MenuItem(tr(Str::OpenEnt))) { openEntFile(); }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tr(Str::OpenEntHint));
+        }
+        ImGui::EndPopup();
     }
     // Die Skripte der Karte als Klappliste - so findet man die Sequenz zur
     // Karte, ohne den Pfad zu kennen.
     if (!g_app->map.scripts.empty()) {
-        ImGui::SameLine();
+        ImGui::SameLine(0.0F, sp * 0.5F);
         char label[64];
-        std::snprintf(label, sizeof(label), "%s (%d)", tr(Str::MapScripts),
-                      static_cast<int>(g_app->map.scripts.size()));
-        if (ImGui::BeginCombo("##mapscripts", label,
-                              ImGuiComboFlags_HeightLarge)) {
+        std::snprintf(label, sizeof(label), "%s (%d)", tr(Str::MapScripts), static_cast<int>(g_app->map.scripts.size()));
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize(label).x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0F);
+        if (ImGui::BeginCombo("##mapscripts", label, ImGuiComboFlags_HeightLarge)) {
             drawMapScriptList();
             ImGui::EndCombo();
         }
@@ -7477,6 +7518,15 @@ void drawMapToolbar() {
             ImGui::SetTooltip("%s", tr(Str::MapScriptsHint));
         }
     }
+
+    // Rechts: die Ansicht. Ist kein Platz mehr, rueckt sie direkt hinter den Rest.
+    const float rechts = ansichtsSchalter(true);
+    const float x = ImGui::GetWindowContentRegionMax().x - rechts;
+    ImGui::SameLine();
+    if (x > ImGui::GetCursorPosX()) {
+        ImGui::SetCursorPosX(x);
+    }
+    ansichtsSchalter(false);
 }
 
 // Die Zeitleiste unter der Kartenansicht.
@@ -9283,35 +9333,12 @@ void drawTimeline() {
 //
 // Zwei Fassungen desselben Dings laufen immer auseinander. Jetzt gibt es
 // nur noch eine, und der leere Fall sieht aus wie der volle.
-void drawMapSidebarColumn(float breite, float hoehe) {
-    ImGui::BeginGroup();
-    // Der Knopf steht IMMER da, auch eingeklappt - sonst kaeme man nicht
-    // mehr an die Einstellungen heran.
-    if (ImGui::Button(g_app->mapSidebar ? ">" : "<", ImVec2{breite, 0.0F})) {
-        g_app->mapSidebar = !g_app->mapSidebar;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapSidebarHint));
-    }
-    if (g_app->mapSidebar) {
-        const float restH =
-            std::max(60.0F, hoehe - ImGui::GetFrameHeightWithSpacing());
-        if (ImGui::BeginChild("mapopts", ImVec2{breite, restH},
-                              ImGuiChildFlags_Borders)) {
-            drawMapSidebar();
-        }
-        ImGui::EndChild();
-    }
-    ImGui::EndGroup();
-}
-
 // Wie breit ist die Leiste? Dieselbe Rechnung fuer beide Faelle.
 float mapSidebarWidth(float verfuegbar) {
-    const float knopfW = ImGui::GetFrameHeight();
-    return g_app->mapSidebar
-               ? std::clamp(ImGui::GetFontSize() * 13.0F, 120.0F,
-                            std::max(160.0F, verfuegbar * 0.45F))
-               : knopfW;
+    // Seit rc586 gibt es die Leiste nicht mehr - die Einstellungen stehen als
+    // Icons in der Kopfzeile (ansichtsSchalter). Das Bild bekommt die Breite.
+    (void)verfuegbar;
+    return 0.0F;
 }
 
 // --- Der bearbeitete Schluessel geht mit der Zeitleiste ---------------------
@@ -9382,8 +9409,7 @@ void drawMapView() {
         const ImVec2 leer = ImGui::GetContentRegionAvail();
         const float leisteW0 = mapSidebarWidth(leer.x);
         g_app->mapSidebarW = leisteW0;
-        const float bildW = std::max(
-            64.0F, leer.x - leisteW0 - ImGui::GetStyle().ItemSpacing.x);
+        const float bildW = std::max(64.0F, leer.x - leisteW0);
         g_app->dbgBildW = bildW;
         const float bildH = std::max(64.0F, leer.y - 2.0F);
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
@@ -9399,8 +9425,6 @@ void drawMapView() {
                      ImGui::GetColorU32(ImGuiCol_TextDisabled),
                      tr(Str::MapEmpty));
         ImGui::Dummy(ImVec2{bildW, bildH});
-        ImGui::SameLine();
-        drawMapSidebarColumn(leisteW0, bildH);
         return;
     }
 
@@ -9411,8 +9435,7 @@ void drawMapView() {
     // zurueckholt.
     const float leisteW = mapSidebarWidth(avail.x);
     g_app->mapSidebarW = leisteW;
-    const int w = std::max(64, static_cast<int>(avail.x - leisteW -
-                                                ImGui::GetStyle().ItemSpacing.x));
+    const int w = std::max(64, static_cast<int>(avail.x - leisteW));
     // Nur noch EINE Zeile Bedienung unter dem Bild: Ort und Kameraknopf.
     // Alles andere steht rechts oder in der Zeitleiste.
     const int h = std::max(64, static_cast<int>(avail.y) -
@@ -12080,8 +12103,6 @@ g_app->gizmoAxis = g_app->gizmoHover;
     // SameLine setzt sie neben das Bild; die Breite ist oben schon vom Bild
     // abgezogen worden. Ein eigenes Kindfenster, damit sie fuer sich rollen
     // kann - bei kleinem Fenster passen die Einstellungen sonst nicht.
-    ImGui::SameLine();
-    drawMapSidebarColumn(g_app->mapSidebarW, static_cast<float>(h));
 }
 
 // Die Bedienung der Karte - UNTER allen Spalten, ueber die volle Breite.
@@ -12100,96 +12121,53 @@ g_app->gizmoAxis = g_app->gizmoHover;
 // Die Reihenfolge ist die alte geblieben, nur untereinander statt
 // nebeneinander: wer sie gewohnt ist, findet alles am selben Platz in der
 // Liste.
-void drawMapSidebar() {
+// --- Die Ansicht einstellen: Kopfzeile statt Seitenleiste -------------------
+//
+// Bis rc585 stand rechts neben dem Bild eine Leiste mit Reglern, Haekchen und
+// Zaehlern. Sie nahm dem Bild ein Viertel der Breite, und die Haelfte davon
+// waren Werte fuer Entwickler ("37 Aufrufe"). shank (11.10.): "moderner und
+// intuitiv". Vorbild ist Unreals Viewport: oben eine schmale Leiste mit
+// Umschaltern als Icons, Einstellungen in einem Klappfenster, Zahlen in einem
+// eigenen Statistikfenster.
+
+// Netz neu bauen, wenn Himmel oder Detail sich aendern.
+void kartenNetzNeu() {
+    g_app->mapBereit = false;
+    g_app->mesh = g_app->geo.models.empty()
+                      ? buildMesh(g_app->geo, g_app->meshDetail, !g_app->showSky)
+                      : buildModelMesh(g_app->geo, 0, g_app->meshDetail, !g_app->showSky);
+    g_app->mapBereit = !g_app->mesh.batches.empty();
+    g_app->brushMeshes.clear();
+    gpu::vergissMoverNetze();   // die Puffer hingen an den alten Netzen
+    g_app->mapDirty = true;
+}
+
+// Im Klappfenster der Ansicht: Licht, Detail, Schatten, Figuren.
+void ansichtEinstellungen() {
     ImGui::BeginDisabled(g_app->geo.empty());
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0F);
-    if (ImGui::SliderFloat(tr(Str::MapBrightness), &g_app->mapBrightness,
-                           0.5F, 6.0F, "%.1fx")) {
+    const float feld = ImGui::GetFontSize() * 8.0F;
+    ImGui::SetNextItemWidth(feld);
+    if (ImGui::SliderFloat(tr(Str::MapBrightness), &g_app->mapBrightness, 0.5F, 6.0F, "%.1fx")) {
         g_app->mapDirty = true;
     }
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0F);
-    if (ImGui::SliderFloat(tr(Str::MapMinLight), &g_app->mapMinLight,
-                           0.0F, 0.5F, "%.2f")) {
+    ImGui::SetNextItemWidth(feld);
+    if (ImGui::SliderFloat(tr(Str::MapMinLight), &g_app->mapMinLight, 0.0F, 0.5F, "%.2f")) {
         g_app->mapDirty = true;
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", tr(Str::MapMinLightHint));
     }
-    // Bildrate: die Zeit fuers Zeichnen, nicht die des ganzen Fensters -
-    // ImGui zeichnet auch dann, wenn die Karte unveraendert bleibt.
-    if (g_app->mapFrameMs > 0.0F) {
-        ImGui::TextDisabled(tr(Str::MapFps), 1000.0F / g_app->mapFrameMs);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(tr(Str::MapFrameMs), static_cast<double>(g_app->mapFrameMs));
-        }
-        }
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0F);
+    ImGui::SetNextItemWidth(feld);
     if (ImGui::SliderInt(tr(Str::MapDetail), &g_app->meshDetail, 1, 10)) {
-        // Die Welt ist Untermodell 0 - OHNE die beweglichen Teile.
-        //
-        // buildMesh(geo) enthaelt sie mit. Wer sie zusaetzlich bewegt
-        // zeichnet, hat sie doppelt: einmal am gebauten Platz, einmal am
-        // aktuellen. In Ruhe faellt das nicht auf, weil beide Kopien
-        // deckungsgleich liegen - beim ersten Verschieben steht der
-        // Doppelgaenger da. Eine Probe hat es gefangen.
-        //
-        // Genau so trennt es die Engine: Welt ist Modell 0, alles andere
-        // haengt an einer Entity (R_LoadSubmodels).
-        g_app->mapBereit = false;
-        g_app->mesh = g_app->geo.models.empty()
-                          ? buildMesh(g_app->geo, g_app->meshDetail, !g_app->showSky)
-                          : buildModelMesh(g_app->geo, 0, g_app->meshDetail,
-                                           !g_app->showSky);
-        g_app->mapBereit = !g_app->mesh.batches.empty();
-        // Die Netze der bewegten Teile stammen aus derselben Karte und
-        // derselben Feinheit - wechselt eines davon, sind sie ungueltig.
-        g_app->brushMeshes.clear();
-        gpu::vergissMoverNetze();   // die Puffer hingen an den alten Netzen
-        g_app->mapDirty = true;
-    }
-    if (ImGui::Checkbox(tr(Str::MapNames), &g_app->zeigeNamen)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapNamesHint));
-    }
-    if (ImGui::Checkbox(tr(Str::MapEntities), &g_app->showEntities)) {
-        g_app->mapDirty = true;
-    }
-    // Der Hinweis gehoert HIERHER. Er stand hinter "Sky" und ueberschrieb
-    // dort dessen eigenen - wer ueber Sky zeigte, las den Entities-Text,
-    // und Entities selbst hatte keinen (Kartentest 27.09.).
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapEntitiesHint));
-    }
-    if (ImGui::Checkbox(tr(Str::MapEffects), &g_app->showEffects)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapEffectsHint));
-    }
-    if (ImGui::Checkbox(tr(Str::MapGlow), &g_app->showGlow)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapGlowHint));
-    }
-    if (g_app->showGlow) {
-        // Wie viele Bildpunkte im Gluehpuffer standen. Null heisst: nichts
-        // im Bild glueht, und dann ist das Bild unveraendert. Die Zahl statt
-        // des Eindrucks - sonst dreht man am Schalter und schaut, was besser
-        // aussieht.
-        ImGui::SameLine();
-        // Die Zahl der Zeichenaufrufe des Gluehdurchgangs - die Zahl der
-        // Bildpunkte kennt die Grafikkarte nicht ohne Rueckuebertragung.
-        ImGui::TextDisabled("(%d Aufrufe)", g_app->gpuGluehen);
+        // Die Welt ist Untermodell 0 - OHNE die beweglichen Teile (die zeichnet
+        // die Engine an ihrer Entity, R_LoadSubmodels).
+        kartenNetzNeu();
     }
     {
-        // Die vier Stellungen von cg_shadows.
-        const char* arten[4] = {tr(Str::MapShadowOff), tr(Str::MapShadowBlob),
-                                tr(Str::MapShadowStencil), tr(Str::MapShadowPlanar)};
+        const char* arten[4] = {tr(Str::MapShadowOff), tr(Str::MapShadowBlob), tr(Str::MapShadowStencil),
+                                tr(Str::MapShadowPlanar)};
         const int art = std::clamp(g_app->schattenArt, 0, 3);
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0F);
+        ImGui::SetNextItemWidth(feld);
         if (ImGui::BeginCombo(tr(Str::MapShadows), arten[art])) {
             for (int i = 0; i < 4; ++i) {
                 if (ImGui::Selectable(arten[i], i == art)) {
@@ -12202,171 +12180,169 @@ void drawMapSidebar() {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", tr(Str::MapShadowsHint));
         }
-        if (art != 0) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%d)", g_app->schattenAnzahl);
-        }
-    }
-    if (ImGui::Checkbox(tr(Str::MapFog), &g_app->showFog)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapFogHint));
-    }
-    if (g_app->showFog) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%zu)", g_app->geo.nebel.size());
-    }
-    if (ImGui::Checkbox(tr(Str::MapDynLights), &g_app->showDynLights)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapDynLightsHint));
-    }
-    if (g_app->showDynLights) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%d)", g_app->lichtAufrufe);
-    }
-    if (ImGui::Checkbox(tr(Str::MapActors), &g_app->showActors)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapActorsHint));
     }
     if (g_app->showActors) {
-        // Ein Knopf, der 0 -> 90 -> 180 -> 270 durchschaltet. Diagnose, wie
-        // "Beidseitig" beim Boden: erscheinen die Figuren erst bei einem
-        // dieser Werte richtig, ist die Frage entschieden und der Wert kann
-        // fest in den Zeichner.
-            char lbl[64];
+        // Figuren um 90 Grad drehen - fuer Modelle, die anders herum stehen.
+        char lbl[64];
         std::snprintf(lbl, sizeof(lbl), tr(Str::ActorYaw), g_app->actorYaw);
         if (ImGui::SmallButton(lbl)) {
             g_app->actorYaw = (g_app->actorYaw + 90) % 360;
             g_app->mapDirty = true;
         }
     }
+    ImGui::EndDisabled();
+}
+
+// Die Umschalter der Ansicht (rechts in der Kopfzeile). Mit nurMessen nur die
+// Breite, ohne zu zeichnen.
+float ansichtsSchalter(bool nurMessen) {
+    struct Schalter {
+        Str text;
+        Str hilfe;
+        UiIcon icon;
+        bool* wert;
+    };
+    const Schalter schalter[] = {
+        {Str::MapEntities, Str::MapEntitiesHint, UiIcon::Entity, &g_app->showEntities},
+        {Str::MapNames, Str::MapNamesHint, UiIcon::Namen, &g_app->zeigeNamen},
+        {Str::MapActors, Str::MapActorsHint, UiIcon::Figur, &g_app->showActors},
+        {Str::MapEffects, Str::MapEffectsHint, UiIcon::Effekt, &g_app->showEffects},
+        {Str::MapGlow, Str::MapGlowHint, UiIcon::Leuchten, &g_app->showGlow},
+        {Str::MapDynLights, Str::MapDynLightsHint, UiIcon::Licht, &g_app->showDynLights},
+        {Str::MapFog, Str::MapFogHint, UiIcon::Nebel, &g_app->showFog},
+        {Str::MapSky, Str::MapSkyHint, UiIcon::Himmel, &g_app->showSky},
+    };
+    const float h = ImGui::GetFrameHeight();
+    const float sp = ImGui::GetStyle().ItemSpacing.x;
+    const int anzahl = static_cast<int>(sizeof(schalter) / sizeof(schalter[0]));
+    // Acht Schalter, dann Kamera, Einstellungen, Statistik.
+    const float breite = static_cast<float>(anzahl) * h + static_cast<float>(anzahl - 1) * sp * 0.5F +
+                         sp + 3.0F * h + 2.0F * sp * 0.5F;
+    if (nurMessen) {
+        return breite;
+    }
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{sp * 0.5F, ImGui::GetStyle().ItemSpacing.y});
+    for (int i = 0; i < anzahl; ++i) {
+        const Schalter& s = schalter[i];
+        if (i > 0) { ImGui::SameLine(); }
+        if (iconKnopf(tr(s.text), s.icon, tr(s.hilfe), *s.wert)) {
+            *s.wert = !*s.wert;
+            if (s.wert == &g_app->showSky) {
+                kartenNetzNeu();
+            }
+            g_app->mapDirty = true;
+        }
+    }
+    ImGui::PopStyleVar();
+    ImGui::SameLine(0.0F, sp);
+    // Durch die Kamera schauen - der wichtigste Schalter fuer Zwischensequenzen.
+    {
+        char hilfe[400];
+        if (g_app->throughCamera && g_app->camViewActive) {
+            char info[200];
+            std::snprintf(info, sizeof(info), tr(Str::MapCamInfo), g_app->camViewLabel.c_str(),
+                          static_cast<double>(g_app->camViewFov));
+            std::snprintf(hilfe, sizeof(hilfe), "%s\n%s", tr(Str::MapThroughCamHint), info);
+        } else {
+            std::snprintf(hilfe, sizeof(hilfe), "%s", tr(Str::MapThroughCamHint));
+        }
+        if (iconKnopf(tr(Str::MapThroughCam), UiIcon::Kamera, hilfe, g_app->throughCamera)) {
+            g_app->throughCamera = !g_app->throughCamera;
+            g_app->mapDirty = true;
+        }
+    }
+    ImGui::SameLine(0.0F, sp * 0.5F);
+    if (iconKnopf(tr(Str::MapViewSettings), UiIcon::Einstellungen, tr(Str::MapViewSettingsHint)) ||
+        g_app->ansichtEinstellungenOeffnen) {
+        g_app->ansichtEinstellungenOeffnen = false;
+        ImGui::OpenPopup("##ansichteinstellungen");
+    }
+    if (ImGui::BeginPopup("##ansichteinstellungen")) {
+        ansichtEinstellungen();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine(0.0F, sp * 0.5F);
+    if (iconKnopf(tr(Str::MapStats), UiIcon::Statistik, tr(Str::MapStatsHint), g_app->kartenStatistikOffen)) {
+        g_app->kartenStatistikOffen = !g_app->kartenStatistikOffen;
+    }
+    return breite;
+}
+
+// Die Zahlen fuer Entwickler und Fehlersuche - eigenes Fenster.
+void drawKartenStatistik() {
+    if (!g_app->kartenStatistikOffen) {
+        return;
+    }
+    if (!ImGui::Begin((std::string(tr(Str::MapStats)) + "###kartenstatistik").c_str(), &g_app->kartenStatistikOffen,
+                      ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        return;
+    }
+    // Bildrate: die Zeit fuers Zeichnen der Karte, nicht des ganzen Fensters.
+    if (g_app->mapFrameMs > 0.0F) {
+        ImGui::Text(tr(Str::MapFps), 1000.0F / g_app->mapFrameMs);
+        ImGui::SameLine();
+        ImGui::TextDisabled(tr(Str::MapFrameMs), static_cast<double>(g_app->mapFrameMs));
+    }
+    if (g_app->textures.found + g_app->textures.missing != 0) {
+        ImGui::Text(tr(Str::MapTexFound), g_app->textures.found, g_app->textures.found + g_app->textures.missing);
+    } else if (g_app->gamePaths.empty()) {
+        ImGui::TextDisabled("%s", tr(Str::MapTexNone));
+    }
+    ImGui::Text(tr(Str::MapTriangles), static_cast<int>(g_app->mesh.indexes.size() / 3),
+                static_cast<int>(g_app->mesh.batches.size()));
     if (g_app->showActors && !g_app->scene.actors.empty()) {
         int withModel = 0;
         for (const App::ActorAssets& a : g_app->actorAssets) {
             if (!a.model.empty()) { ++withModel; }
         }
-            if (withModel == 0) {
+        if (withModel == 0) {
             ImGui::TextDisabled("%s", tr(Str::ActorsNoModels));
         } else {
-            ImGui::TextDisabled(tr(Str::ActorsFound), withModel,
-                                static_cast<int>(g_app->scene.actors.size()));
+            ImGui::Text(tr(Str::ActorsFound), withModel, static_cast<int>(g_app->scene.actors.size()));
         }
     }
-    if (ImGui::Checkbox(tr(Str::MapThroughCam), &g_app->throughCamera)) {
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapThroughCamHint));
-    }
+    if (g_app->showGlow) { ImGui::TextDisabled("%s: %d", tr(Str::MapGlow), g_app->gpuGluehen); }
+    if (g_app->schattenArt != 0) { ImGui::TextDisabled("%s: %d", tr(Str::MapShadows), g_app->schattenAnzahl); }
+    if (g_app->showFog) { ImGui::TextDisabled("%s: %d", tr(Str::MapFog), static_cast<int>(g_app->geo.nebel.size())); }
+    if (g_app->showDynLights) { ImGui::TextDisabled("%s: %d", tr(Str::MapDynLights), g_app->lichtAufrufe); }
     if (g_app->throughCamera) {
-            if (g_app->camViewActive) {
+        if (g_app->camViewActive) {
             ImGui::TextDisabled(tr(Str::MapCamInfo), g_app->camViewLabel.c_str(),
                                 static_cast<double>(g_app->camViewFov));
         } else {
             ImGui::TextDisabled("%s", tr(Str::MapCamNone));
         }
     }
-    if (ImGui::Checkbox(tr(Str::MapSky), &g_app->showSky)) {
-        // Die Welt ist Untermodell 0 - OHNE die beweglichen Teile.
-        //
-        // buildMesh(geo) enthaelt sie mit. Wer sie zusaetzlich bewegt
-        // zeichnet, hat sie doppelt: einmal am gebauten Platz, einmal am
-        // aktuellen. In Ruhe faellt das nicht auf, weil beide Kopien
-        // deckungsgleich liegen - beim ersten Verschieben steht der
-        // Doppelgaenger da. Eine Probe hat es gefangen.
-        //
-        // Genau so trennt es die Engine: Welt ist Modell 0, alles andere
-        // haengt an einer Entity (R_LoadSubmodels).
-        g_app->mapBereit = false;
-        g_app->mesh = g_app->geo.models.empty()
-                          ? buildMesh(g_app->geo, g_app->meshDetail, !g_app->showSky)
-                          : buildModelMesh(g_app->geo, 0, g_app->meshDetail,
-                                           !g_app->showSky);
-        g_app->mapBereit = !g_app->mesh.batches.empty();
-        // Die Netze der bewegten Teile stammen aus derselben Karte und
-        // derselben Feinheit - wechselt eines davon, sind sie ungueltig.
-        g_app->brushMeshes.clear();
-        gpu::vergissMoverNetze();   // die Puffer hingen an den alten Netzen
-        g_app->mapDirty = true;
-    }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tr(Str::MapSkyHint));
-    }
-    if (g_app->textures.found + g_app->textures.missing != 0) {
-            ImGui::TextDisabled(tr(Str::MapTexFound), g_app->textures.found,
-                            g_app->textures.found + g_app->textures.missing);
-    } else if (g_app->gamePaths.empty()) {
-            ImGui::TextDisabled("%s", tr(Str::MapTexNone));
-    }
-    ImGui::TextDisabled(tr(Str::MapTriangles),
-                        static_cast<int>(g_app->mesh.indexes.size() / 3),
-                        static_cast<int>(g_app->mesh.batches.size()));
-    // --- Die Zahlen des GPU-Wegs, wenn er laeuft --------------------------
-    //
-    // Sie standen im View-Menue, und das ist beim Hinsehen zu. Hier stehen
-    // sie neben den Dreiecken, wo man ohnehin hinschaut.
-    //
-    // "uebersprungen" ist die wichtige Zahl: ein Stapel ohne Textur oder
-    // ohne Shader wird still ausgelassen, und genau so verschwindet eine
-    // halbe Tuer, ohne dass es irgendwo auffaellt.
-    {
-        ImGui::TextDisabled("GPU: %d Aufrufe, %d uebersprungen",
-                            g_app->gpuAufrufe, g_app->gpuUebersprungen);
-        // Welche Zustaende aus rc434 laufen? Steuerbar ueber
-        // BHED_D3D_STATES. Ein Bild ohne diese Zeile kostet eine Runde.
-        ImGui::TextDisabled("%s", gpu::zustandsLage());
-        // --- Die Aufstellung, mit der Zeit der Grafikkarte daneben -------
-        //
-        // Die Zeit kommt von der Karte selbst (D3D11_QUERY_TIMESTAMP). Sie
-        // ist zwei bis drei Bilder alt - das ist der Preis dafuer, dass
-        // niemand auf sie wartet. Steht keine da, hat das Geraet keine
-        // Zeitmarken oder es liegt noch kein vollstaendiges Bild vor.
-        //
-        // Je Quelle sind es ZWEI Messungen, deckend und gemischt, weil das
-        // Bild seit rc432 zweimal ueber alle Quellen laeuft. Angezeigt wird
-        // die Summe.
-        const struct {
-            const char* name;
-            int aufrufe;
-            gpu::Abschnitt a;
-            gpu::Abschnitt b;
-        } zeilen[] = {
-            {"Karte",   g_app->gpuKarte,    gpu::Abschnitt::KarteDeckend,
-                                            gpu::Abschnitt::KarteGemischt},
-            {"Effekte", g_app->gpuEffekte,  gpu::Abschnitt::EffekteDeckend,
-                                            gpu::Abschnitt::EffekteGemischt},
-            {"Mover",   g_app->gpuMover,    gpu::Abschnitt::MoverDeckend,
-                                            gpu::Abschnitt::MoverGemischt},
-            {"Figuren", g_app->gpuFiguren2, gpu::Abschnitt::Figuren,
-                                            gpu::Abschnitt::Figuren},
-            {"Gluehen", g_app->gpuGluehen,  gpu::Abschnitt::Gluehen,
-                                            gpu::Abschnitt::Gluehen},
-        };
-        for (const auto& z : zeilen) {
-            const float ms = (z.a == z.b) ? gpu::millisekunden(z.a)
-                                          : gpu::millisekundenBeide(z.a, z.b);
-            if (ms >= 0.0F) {
-                ImGui::TextDisabled("  %-8s %5d Aufrufe  %6.2f ms", z.name,
-                                    z.aufrufe, static_cast<double>(ms));
-            } else {
-                ImGui::TextDisabled("  %-8s %5d Aufrufe", z.name, z.aufrufe);
-            }
-        }
-        if (!g_app->gpuFehler.empty()) {
-            // Umbrechen statt abschneiden: die Meldung war laenger als die
-            // Leiste breit ist, und die abgeschnittene Haelfte war gerade
-            // die mit der Auskunft.
-            ImGui::PushTextWrapPos(0.0F);
-            ImGui::TextDisabled("GPU: %s", g_app->gpuFehler.c_str());
-            ImGui::PopTextWrapPos();
+    ImGui::Separator();
+    ImGui::TextDisabled("GPU: %d Aufrufe, %d uebersprungen", g_app->gpuAufrufe, g_app->gpuUebersprungen);
+    ImGui::TextDisabled("%s", gpu::zustandsLage());
+    const struct {
+        const char* name;
+        int aufrufe;
+        gpu::Abschnitt a;
+        gpu::Abschnitt b;
+    } zeilen[] = {
+        {"Karte", g_app->gpuKarte, gpu::Abschnitt::KarteDeckend, gpu::Abschnitt::KarteGemischt},
+        {"Effekte", g_app->gpuEffekte, gpu::Abschnitt::EffekteDeckend, gpu::Abschnitt::EffekteGemischt},
+        {"Mover", g_app->gpuMover, gpu::Abschnitt::MoverDeckend, gpu::Abschnitt::MoverGemischt},
+        {"Figuren", g_app->gpuFiguren2, gpu::Abschnitt::Figuren, gpu::Abschnitt::Figuren},
+        {"Gluehen", g_app->gpuGluehen, gpu::Abschnitt::Gluehen, gpu::Abschnitt::Gluehen},
+    };
+    for (const auto& z : zeilen) {
+        const float ms = (z.a == z.b) ? gpu::millisekunden(z.a) : gpu::millisekundenBeide(z.a, z.b);
+        if (ms >= 0.0F) {
+            ImGui::TextDisabled("  %-8s %5d Aufrufe  %6.2f ms", z.name, z.aufrufe, static_cast<double>(ms));
+        } else {
+            ImGui::TextDisabled("  %-8s %5d Aufrufe", z.name, z.aufrufe);
         }
     }
-    ImGui::EndDisabled();
+    if (!g_app->gpuFehler.empty()) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
+        ImGui::TextDisabled("GPU: %s", g_app->gpuFehler.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
 }
 
 void drawMapPanel() {

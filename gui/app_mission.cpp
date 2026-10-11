@@ -587,6 +587,29 @@ bool entityWiederholen() {
     return true;
 }
 
+bool missionUngespeichert() {
+    if (!g_app->missionAktiv) {
+        return false;
+    }
+    if (g_app->entitiesUngespeichert.count(g_app->mission.karte) != 0U) {
+        return true;
+    }
+    const std::string ordner = klein(g_app->mission.ordner) + "/";
+    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+        const bool aktiv = static_cast<int>(i) == g_app->activeTab;
+        const bool schmutzig = aktiv ? g_app->doc.dirty() : g_app->tabs[i].doc.dirty();
+        if (!schmutzig) {
+            continue;
+        }
+        const std::string r = aktiv ? skriptRef(g_app->path, g_app->skriptPfad)
+                                    : skriptRef(g_app->tabs[i].path, g_app->tabs[i].skriptPfad);
+        if (klein(r).rfind(ordner, 0) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool entityFokus() {
     return g_app->leftMode == 1 && (g_app->entFokusBild || g_app->entFokusListe) && !ImGui::GetIO().WantTextInput;
 }

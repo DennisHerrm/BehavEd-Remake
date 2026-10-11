@@ -168,6 +168,10 @@ struct App {
     bool missionAktiv = false;
     bool neueMissionOffen = false;
     bool missionSpeichernOffen = false;
+    // Kopfzeile der Kartenansicht (rc586): Klappfenster und Statistik.
+    bool ansichtEinstellungenOeffnen = false;   // naechstes Bild oeffnen (Selbsttest)
+    bool kartenMehrOeffnen = false;             // dito, Menue "Karten und Dateien"
+    bool kartenStatistikOffen = false;
     // Karten (Kennung), deren Entities geaendert und nicht gespeichert sind.
     std::set<std::string> entitiesUngespeichert;
     bool entFrageBeantwortet = false;   // beim Beenden schon gefragt
@@ -1846,6 +1850,19 @@ bool kartenBytes(const std::string& id, std::string& out);
 void merkeEntities();
 // Vor dem ausdruecklichen Oeffnen einer Karte: die gemerkten vergessen.
 void vergissEntities(const std::string& kennung);
+// --- Bedien-Icons (gui/uiicons.cpp) ----------------------------------------
+enum class UiIcon {
+    Neu, Oeffnen, Speichern, Mehr, Karte, Paket, Liste, Skript, Entity, Namen, Figur, Effekt,
+    Leuchten, Licht, Nebel, Himmel, Kamera, Einstellungen, Statistik, Plus, Boden, Hinfliegen,
+    Duplizieren, Loeschen, Rueckgaengig, Wiederholen, Explorer, Suche, Verschieben, Drehen,
+    Mission, Schliessen, Haken, Warnung,
+};
+void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe);
+// Quadratischer Icon-Knopf; der Text ist Kennung und Tooltip-Titel.
+bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an = false, bool aktiv = true);
+// Icon und Text nebeneinander.
+bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool aktiv = true);
+
 // --- Missionsbau (gui/app_mission.cpp) -----------------------------------
 void drawEntityInspector(float hoehe);
 void drawNeueMission();
@@ -1868,6 +1885,13 @@ void missionAusGeladener(const Mission& m);
 bool missionSpeichernNach(const std::string& pk3, std::string* fehler);
 std::string missionStandardOrdner(const std::string& name);
 bool missionBeendenFrage();
+// Gibt es an der Mission Ungespeichertes (Entities oder Skripte)?
+bool missionUngespeichert();
+// Kopfzeile der Kartenansicht (gui/app_view3d.cpp)
+void kartenNetzNeu();
+void ansichtEinstellungen();
+float ansichtsSchalter(bool nurMessen);
+void drawKartenStatistik();
 bool entityFokus();
 int reiterFuerSkriptRef(const std::string& ref);
 // Einen Reiter speichern, auf Wunsch unter einem neuen Pfad (ohne Dialog).

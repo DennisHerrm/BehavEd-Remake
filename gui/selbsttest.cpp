@@ -3609,6 +3609,8 @@ std::vector<Schritt> kartenBreitSchritte() {
     // Detail: Regler nach links ziehen baut das Netz neu
     auto detail0 = std::make_shared<int>(0);
     add(tu("Detail merken", [=] { *detail0 = g_app->meshDetail; }));
+    add(tu("Ansicht einstellen: Klappfenster auf", [] { g_app->ansichtEinstellungenOeffnen = true; }));
+    add(pause(0.3));
     add(ziehenAn("Detail-Regler nach links", [] {
         const Element* e = finde(tr(Str::MapDetail), "", 0, false);
         return e != nullptr ? ImVec2{e->rect.Max.x - 4.0F, e->rect.GetCenter().y} : ImVec2{0, 0};
@@ -3619,11 +3621,22 @@ std::vector<Schritt> kartenBreitSchritte() {
         return g_app->meshDetail != *detail0 && g_app->mapBereit && !g_app->mesh.batches.empty();
     }));
     add(tu("Detail zurueck", [=] { g_app->meshDetail = *detail0; }));
+    add(tu("Ansicht einstellen: Klappfenster auf", [] { g_app->ansichtEinstellungenOeffnen = true; }));
+    add(pause(0.3));
     add(ziehenAn("Detail-Regler nach rechts", [] {
         const Element* e = finde(tr(Str::MapDetail), "", 0, false);
         return e != nullptr ? ImVec2{e->rect.Min.x + 4.0F, e->rect.GetCenter().y} : ImVec2{0, 0};
     }, 600.0F, 0.0F, 0));
     add(gezeichnet("Detail wieder hoch"));
+    // Das Klappfenster schliessen (Esc), wie ein Anwender - solange es offen
+    // ist, gehoeren Maus und Tasten ihm, nicht der Ansicht.
+    // (Esc erreicht es nur mit Fokus, den es nach dem Ziehen nicht mehr hat;
+    // ein Anwender klickt daneben - hier wird es direkt geschlossen.)
+    add(tu("Klappfenster schliessen", [] {
+        if (GImGui->OpenPopupStack.Size > 0) { ImGui::ClosePopupToLevel(0, true); }
+    }));
+    add(tu("Maus in die Ansicht", [=] { setzeMaus(ansichtMitte()); }));
+    add(pause(0.2));
 
     // ---- Navigation in der freien Ansicht --------------------------------
     auto pos0 = std::make_shared<std::array<float, 3>>();
@@ -3640,9 +3653,12 @@ std::vector<Schritt> kartenBreitSchritte() {
                 dp += std::fabs(g_app->cam.pos[k] - (*pos0)[k]);
                 da += std::fabs(g_app->cam.angles[k] - (*ang0)[k]);
             }
-            char z[160];
-            std::snprintf(z, sizeof(z), "Knopftest: %s - Ort %.1f, Winkel %.1f", was.c_str(),
-                          static_cast<double>(dp), static_cast<double>(da));
+            char z[400];
+            std::snprintf(z, sizeof(z), "Knopftest: %s - Ort %.1f, Winkel %.1f (unter der Maus: %s, Klappfenster %s, durch Kamera %s)",
+                          was.c_str(), static_cast<double>(dp), static_cast<double>(da),
+                          GImGui->HoveredWindow != nullptr ? GImGui->HoveredWindow->Name : "-",
+                          ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) ? "offen" : "zu",
+                          g_app->throughCamera ? "an" : "aus");
             diag::detail(z);
             return (!ort || dp > 1.0F) && (!winkel || da > 0.5F);
         });
@@ -4068,6 +4084,8 @@ std::vector<Schritt> kartenBreitSchritte() {
     add(pruefe("File > Close map: keine Karte mehr, Hinweis 'No map loaded'", [] {
         return g_app->geo.empty() && g_app->map.empty() && g_app->markers.empty();
     }));
+    add(tu("Karten & Dateien: Menue auf", [] { g_app->kartenMehrOeffnen = true; }));
+    add(pause(0.3));
     add(klick(tr(Str::OpenMapPk3)));
     add(pause(0.3));
     add(pruefe("From .pk3... oeffnet den Browser mit Karten", [] { return g_app->pk3Open && g_app->pk3Kind == 1; }));
@@ -8833,11 +8851,15 @@ std::vector<Schritt> ablaufSchritte() {
     // --- 3. Detail runter und wieder hoch -------------------------------------
     auto detail0 = std::make_shared<int>(0);
     add(tu("Ablauf: Detail merken", [=] { *detail0 = g_app->meshDetail; }));
+    add(tu("Ansicht einstellen: Klappfenster auf", [] { g_app->ansichtEinstellungenOeffnen = true; }));
+    add(pause(0.3));
     add(ziehenAn("Detail-Regler nach links", [] {
         const Element* e = finde(tr(Str::MapDetail), "", 0, false);
         return e != nullptr ? ImVec2{e->rect.Max.x - 4.0F, e->rect.GetCenter().y} : ImVec2{0, 0};
     }, -400.0F, 0.0F, 0));
     ansicht("Detail runter");
+    add(tu("Ansicht einstellen: Klappfenster auf", [] { g_app->ansichtEinstellungenOeffnen = true; }));
+    add(pause(0.3));
     add(ziehenAn("Detail-Regler nach rechts", [] {
         const Element* e = finde(tr(Str::MapDetail), "", 0, false);
         return e != nullptr ? ImVec2{e->rect.Min.x + 4.0F, e->rect.GetCenter().y} : ImVec2{0, 0};
