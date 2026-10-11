@@ -6661,7 +6661,8 @@ void drawEventsList(const Layout& l) {
     // nicht gab.
     //
     // EIGENE ID JE MODUS: eine ID, ein Zustand (rc495).
-    const bool mitEbenen = (g_app->leftMode == 1);
+    // Karte: die Entity-Liste; Modell (rc591): die Animationsliste.
+    const bool mitEbenen = (g_app->leftMode == 1 || g_app->leftMode == 2);
     const char* const innenId = (g_app->leftMode == 1)   ? "##linksMap"
                                 : (g_app->leftMode == 2) ? "##linksModel"
                                                          : "##linksEvents";
@@ -6750,6 +6751,18 @@ void drawEventsList(const Layout& l) {
         // vorzeitig zurueckkehren - der Anker nicht.
         ImGui::Dummy(ImVec2{0.0F, 0.0F});
         drawEntityLayers(l.frameH);
+        ImGui::EndGroup();
+    } else if (g_app->leftMode == 2) {
+        ImGui::BeginGroup();
+        const float top = ImGui::GetCursorPosY();
+        ImGui::TextUnformatted(tr(Str::ModelAnimations));
+        if (!g_app->animList.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%d", static_cast<int>(g_app->animList.size()));
+        }
+        ImGui::SetCursorPosY(top + l.headerH);
+        ImGui::Dummy(ImVec2{0.0F, 0.0F});   // Anker (siehe oben)
+        drawAnimListe(l.frameH);
         ImGui::EndGroup();
     }
 
@@ -15398,6 +15411,7 @@ void draw() {
         drawMissionSpeichern();
         drawKartenStatistik();
         drawWegFenster();
+        drawNpcBrowser();
         drawEinblendungen();
         drawAbout();
     }

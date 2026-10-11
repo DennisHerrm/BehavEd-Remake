@@ -323,6 +323,13 @@ struct App {
     int modelSkinIndex = -1;
     std::string modelDir;
     bool showModelTextures = true;
+    // Model-Tab (rc591)
+    bool npcBrowserOffen = false;
+    std::string npcGeladen;          // zuletzt im NPC-Browser geladen
+    bool modellDrehteller = false;
+    bool modellKnochen = false;
+    int modellKnochenLinien = 0;     // im letzten Bild gezeichnet (Selbsttest)
+    bool animScrollen = false;       // Liste zur gewaehlten Animation rollen
     float lastModelCam[7]{};
     // --- Feinheit des Netzes ---------------------------------------------
     //
@@ -2036,6 +2043,17 @@ void drawKameraInspector(float hoehe);
 
 // --- Missionsbau (gui/app_mission.cpp) -----------------------------------
 void drawEntityInspector(float hoehe);
+// --- Model-Tab (gui/app_modell.cpp, rc591) -----------------------------------
+void animWaehlen(int i, bool abspielen);
+bool animInsSkript(int i);
+void drawAnimListe(float hoehe);
+void modellAnsichtEinpassen();
+bool npcLaden(const std::string& typ);
+const std::vector<std::string>& npcTypenListe();
+void drawNpcBrowser();
+void modellDrehteller();
+void modellUeberlagerung(ImVec2 lo, ImVec2 groesse);
+void modellFlaechenProtokoll();
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);

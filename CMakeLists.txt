@@ -191,6 +191,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/app_ansichten.cpp
     gui/app_kamera.cpp
     gui/app_wegpunkte.cpp
+    gui/app_modell.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp
