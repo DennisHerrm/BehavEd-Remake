@@ -5,10 +5,12 @@
 // deshalb beides - dass eine echte Karte richtig gelesen wird, und dass eine
 // kaputte weder stuerzt noch Unsinn liefert.
 #include "bhed/bspgeo.h"
+#include "bhed/bsp.h"
 #include "bhed/gpuskin.h"
 #include "bhed/mapview.h"
 
 #include <algorithm>
+#include <array>
 
 #include <cstddef>
 #include <cstdint>
@@ -59,9 +61,78 @@ int main(int argc, char** argv) {
         expect("eine Strecke ohne Laenge trifft nichts", !t0.hit);
     }
 
+    // --- Lightmap-Stile (rc592) ---------------------------------------------
+    //
+    // Eine Flaeche mit Stil 0 auf Seite 0 und Stil 32 auf Seite 1, dort um
+    // 64 Bildpunkte nach rechts versetzt (so legt q3map2 die Zusatzstile ab).
+    // Die Engine addiert die Stilseite im Bildpuffer (CGEN_LIGHTMAPSTYLE,
+    // GL_ONE GL_ONE) mit der Helligkeit des Stils. Eingerechnet muss die
+    // Seite 0 danach Stil 0 + Stil 32 tragen - einmal, auch wenn sich zwei
+    // Flaechen denselben Block teilen.
+    {
+        bhed::BspGeometry g;
+        const int w = bhed::BspGeometry::kLightmapSize;
+        g.lightmaps.assign(2, std::vector<std::uint8_t>(static_cast<std::size_t>(w * w * 3), 0));
+        auto px = [&](int seite, int x, int y) -> std::uint8_t* {
+            return &g.lightmaps[static_cast<std::size_t>(seite)][static_cast<std::size_t>((y * w + x) * 3)];
+        };
+        for (int y = 0; y < w; ++y) {
+            for (int x = 0; x < w; ++x) {
+                px(0, x, y)[0] = 50;
+                px(1, x, y)[0] = 100;
+                px(1, x, y)[1] = 200;
+            }
+        }
+        const float uv[4][2] = {{0.25F, 0.25F}, {0.375F, 0.25F}, {0.375F, 0.375F}, {0.25F, 0.375F}};
+        bhed::BspGeometry::StilEcke se{};
+        for (int v = 0; v < 4; ++v) {
+            bhed::BspVertex vx;
+            vx.lightmap[0] = uv[v][0];
+            vx.lightmap[1] = uv[v][1];
+            vx.colour[0] = 10;
+            g.verts.push_back(vx);
+            se.lm[0][0] = uv[v][0] + 0.5F;
+            se.lm[0][1] = uv[v][1];
+            se.farbe[0][0] = 20;
+            g.stilEcken.push_back(se);
+        }
+        bhed::BspSurface s;
+        s.type = bhed::BspSurface::Type::Planar;
+        s.firstVert = 0;
+        s.numVerts = 4;
+        s.lightmap = 0;
+        s.stile[1] = 32;
+        s.eckStile[1] = 32;
+        s.stilLightmap[1] = 1;
+        s.stilEcken = 0;
+        g.surfaces.push_back(s);
+        g.surfaces.push_back(s);   // teilt sich den Block
+        std::array<std::array<float, 3>, 256> an{};
+        for (auto& c : an) { c = {1.0F, 1.0F, 1.0F}; }
+        const int n = bhed::stileEinrechnen(g, an);
+        expect("Stile: zwei Flaechen eingerechnet", n == 2);
+        expect("Stile: Block auf Seite 0 traegt Stil 0 + Stil 32",
+               px(0, 40, 40)[0] == 150 && px(0, 40, 40)[1] == 200);
+        expect("Stile: ausserhalb des Blocks unveraendert", px(0, 10, 10)[0] == 50 && px(0, 10, 10)[1] == 0);
+        expect("Stile: Eckenfarbe addiert (einmal je Ecke, Flaechen teilen Ecken nicht doppelt)",
+               g.verts[0].colour[0] == 30);
+        // Ein Licht mit START_OFF: Stil 32 hat Gewicht null.
+        std::vector<bhed::MapEntity> ents(2);
+        ents[0].classname = "worldspawn";
+        ents[0].keys = {{"ls_1r", "aaaz"}};
+        ents[1].classname = "light";
+        ents[1].targetname = "l1";
+        ents[1].keys = {{"targetname", "l1"}, {"style", "32"}, {"spawnflags", "4"}};
+        const auto gw = bhed::lichtStilGewichte(ents);
+        expect("Stilgewicht: Stil 0 voll, unbekannte Stile voll", gw[0][0] == 1.0F && gw[5][1] == 1.0F);
+        expect("Stilgewicht: START_OFF ist aus", gw[32][0] == 0.0F && gw[32][2] == 0.0F);
+        expect("Stilgewicht: ls_1r 'aaaz' ist im Mittel ein Viertel, g und b voll",
+               near(gw[1][0], 0.25F, 1e-4F) && gw[1][1] == 1.0F);
+    }
+
     if (argc < 2) {
         std::printf("  (keine .bsp angegeben - Test uebersprungen)\n");
-        return 0;
+        return fails != 0 ? 1 : 0;
     }
 
     for (int a = 1; a < argc; ++a) {

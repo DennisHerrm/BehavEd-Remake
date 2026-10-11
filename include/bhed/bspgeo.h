@@ -17,6 +17,7 @@
 #ifndef BHED_BSPGEO_H
 #define BHED_BSPGEO_H
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -61,6 +62,18 @@ struct BspSurface {
     float flareOrt[3]{};
     float flareFarbe[3]{};
     float flareNormale[3]{};
+    // --- Lightmap-Stile (rc592) ------------------------------------------
+    //
+    // dsurface_t traegt vier Lichtstufen: lightmapStyles[4],
+    // vertexStyles[4], lightmapNum[4] (255 = keine). Stufe 0 steckt in
+    // `lightmap` und den Ecken; die Stufen 1..3 sind Lichter, die sich
+    // schalten oder flackern lassen - q3map2 legt sie auf eigene
+    // Lightmapseiten, oft an anderer Stelle. Ihre Eckendaten stehen ab
+    // `stilEcken` in BspGeometry::stilEcken (-1: keine Zusatzstile).
+    std::uint8_t stile[4]{0, 255, 255, 255};
+    std::uint8_t eckStile[4]{0, 255, 255, 255};
+    int stilLightmap[4]{-1, -1, -1, -1};
+    int stilEcken = -1;
     // In welchem Nebel die Flaeche liegt - dsurface_t.fogNum, -1 keiner.
     // Die Engine nimmt fogNum + 1 (tr_bsp.cpp, `surf->fogIndex`), weil bei
     // ihr Platz 0 "kein Nebel" heisst; hier zeigt die Zahl direkt in
@@ -115,6 +128,13 @@ struct BspGeometry {
     // Textur aus einer .pk3 zu holen.
     static constexpr int kLightmapSize = 128;
     std::vector<std::vector<std::uint8_t>> lightmaps;
+    // Die Lichtstufen 1..3 der Ecken von Flaechen mit Zusatzstilen - siehe
+    // BspSurface::stilEcken. Lightmapkoordinaten und Farbe je Stufe.
+    struct StilEcke {
+        float lm[3][2]{};
+        std::uint8_t farbe[3][4]{};
+    };
+    std::vector<StilEcke> stilEcken;
     // Breite und Hoehe je Lightmap. Die aus der .bsp sind 128x128; externe
     // (ladeExterneLightmaps) haben die Groesse ihres Bildes - q3map2 schreibt
     // sie mit -lightmapsize oft 512 oder 1024 gross. Fehlt ein Eintrag,
@@ -554,6 +574,33 @@ void setzeSpurVorlage(bool an) noexcept;
 // Kasten; von aussen sieht man sonst nur die Schale.
 [[nodiscard]] BspMesh buildMesh(const BspGeometry& geo, int level = 6,
                                 bool skipSky = true);
+
+// --- Lightmap-Stile einrechnen (rc592) -------------------------------------
+//
+// Die Engine zeichnet jede Zusatzstufe als eigene Lightmapstufe mit
+// rgbGen lightingStyle und GL_ONE GL_ONE (tr_shader.cpp, FinishShader) -
+// das Licht ist die SUMME aller Stufen, jede mit der Helligkeit ihres Stils
+// (styleColors, aus den CS_LIGHT_STYLES). behaved rechnet die Summe beim
+// Laden in Stufe 0 ein: die Zusatzseite wird an die Stelle der Stufe-0-
+// Seite gelegt (q3map2 versetzt sie nur), mit dem Gewicht des Stils
+// multipliziert und addiert; ebenso die Eckenfarben.
+//
+// `gewicht[stil]` ist r, g, b in 0..1. Ein Block, den sich mehrere Flaechen
+// teilen, wird nur einmal addiert. Gibt die Zahl der Flaechen zurueck, die
+// etwas bekommen haben. Ein Lichtschalter im Skript (use auf ein light)
+// schaltet danach nichts mehr um - das Bild zeigt den Anfangszustand.
+int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht);
+
+// Die Helligkeit jedes Stils zu Beginn, wie CG_SetLightstyle sie aus den
+// CS_LIGHT_STYLES liest ('a' = 0 bis 'z' = 1, leer = voll):
+//   0        immer voll
+//   1..31    worldspawn "ls_<n>r/g/b" (SP_worldspawn) - ein Muster, das mit
+//            10 Hz durchlaeuft; genommen wird sein Mittel
+//   32..     light mit targetname und "style" (SP_light,
+//            misc_lightstyle_set): an "z" bzw. das Muster von
+//            "switch_style", mit START_OFF (4) "a" bzw. "style_off"
+struct MapEntity;
+[[nodiscard]] std::array<std::array<float, 3>, 256> lichtStilGewichte(const std::vector<MapEntity>& ents);
 
 // --- Externe Lightmaps (q3map2 -external) ----------------------------------
 //

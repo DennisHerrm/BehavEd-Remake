@@ -1,8 +1,12 @@
 #include "bhed/bspgeo.h"
+#include "bhed/bsp.h"
 #include "bhed/image.h"
 #include "bhed/diag.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstdlib>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -399,6 +403,11 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         s.firstIndex = i32(b, at + 20);
         s.numIndexes = i32(b, at + 24);
         s.lightmap = i32(b, at + 36);          // erste von vier
+        for (int k = 0; k < 4; ++k) {
+            s.stile[k] = static_cast<std::uint8_t>(b[at + 28 + static_cast<std::size_t>(k)]);
+            s.eckStile[k] = static_cast<std::uint8_t>(b[at + 32 + static_cast<std::size_t>(k)]);
+            s.stilLightmap[k] = i32(b, at + 36 + static_cast<std::size_t>(k) * 4);
+        }
         s.fog = i32(b, at + 4);                // fogNum, -1 = keiner
         s.patchWidth = i32(b, at + 140);
         s.patchHeight = i32(b, at + 144);
@@ -433,6 +442,28 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
              s.patchWidth > kMaxPatchGroesse || s.patchHeight > kMaxPatchGroesse ||
              s.patchWidth * s.patchHeight > s.numVerts)) {
             s.type = BspSurface::Type::Bad;
+        }
+        // Die Lichtstufen 1..3 der Ecken (rc592) - siehe BspSurface::stilEcken.
+        bool zusatz = false;
+        for (int k = 1; k < 4; ++k) {
+            zusatz = zusatz || s.stile[k] != 255 || s.eckStile[k] != 255;
+        }
+        if (zusatz && s.numVerts > 0) {
+            s.stilEcken = static_cast<int>(out.stilEcken.size());
+            for (int v = 0; v < s.numVerts; ++v) {
+                const std::size_t va =
+                    dv.offset + (static_cast<std::size_t>(s.firstVert) + static_cast<std::size_t>(v)) * kVertexSize;
+                BspGeometry::StilEcke se;
+                for (int k = 0; k < 3; ++k) {
+                    se.lm[k][0] = f32(b, va + 28 + static_cast<std::size_t>(k) * 8);
+                    se.lm[k][1] = f32(b, va + 32 + static_cast<std::size_t>(k) * 8);
+                    for (int q = 0; q < 4; ++q) {
+                        se.farbe[k][q] = static_cast<std::uint8_t>(
+                            b[va + 68 + static_cast<std::size_t>(k) * 4 + static_cast<std::size_t>(q)]);
+                    }
+                }
+                out.stilEcken.push_back(se);
+            }
         }
         // Den Kasten um die Flaeche EINMAL rechnen - siehe
         // BspSurface::mins/maxs. Der Spurtest spart sich damit die
@@ -758,6 +789,180 @@ BspMesh buildMesh(const BspGeometry& geo, int level, bool skipSky) {
     return buildRange(geo, level, skipSky, 0, geo.surfaces.size());
 }
 
+int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht) {
+    // Quellseiten unveraendert lesen: liegt eine Stilseite zugleich als
+    // Stufe-0-Seite in Gebrauch, darf das Einrechnen sie nicht vorher
+    // veraendern. Kopiert wird nur, was als Quelle dient.
+    std::map<int, std::vector<std::uint8_t>> quelle;
+    // Je (Seite, Stil) die schon addierten Bildpunkte - ein Block, den sich
+    // mehrere Flaechen teilen, bekommt seinen Stil nur einmal.
+    std::map<std::pair<int, int>, std::vector<std::uint8_t>> schon;
+    std::vector<std::uint8_t> eckeSchon(geo.verts.size(), 0);
+    int zahl = 0;
+    for (const BspSurface& s : geo.surfaces) {
+        if (s.stilEcken < 0 || s.numVerts <= 0 ||
+            static_cast<std::size_t>(s.stilEcken) + static_cast<std::size_t>(s.numVerts) > geo.stilEcken.size() ||
+            s.firstVert < 0 ||
+            static_cast<std::size_t>(s.firstVert) + static_cast<std::size_t>(s.numVerts) > geo.verts.size()) {
+            continue;
+        }
+        bool etwas = false;
+        for (int k = 1; k < 4; ++k) {
+            // --- Die Lightmap dieser Stufe ---------------------------------
+            const int stil = s.stile[k];
+            const auto& w = gewicht[static_cast<std::size_t>(stil)];
+            const bool hell = w[0] > 0.0F || w[1] > 0.0F || w[2] > 0.0F;
+            const int p0 = s.lightmap;
+            const int pk = s.stilLightmap[k];
+            if (stil != 255 && hell && p0 >= 0 && pk >= 0 &&
+                static_cast<std::size_t>(p0) < geo.lightmaps.size() &&
+                static_cast<std::size_t>(pk) < geo.lightmaps.size()) {
+                const int bw = geo.lightmapW(static_cast<std::size_t>(p0));
+                const int bh = geo.lightmapH(static_cast<std::size_t>(p0));
+                const std::size_t bytes = static_cast<std::size_t>(bw) * static_cast<std::size_t>(bh) * 3U;
+                if (geo.lightmapW(static_cast<std::size_t>(pk)) == bw &&
+                    geo.lightmapH(static_cast<std::size_t>(pk)) == bh &&
+                    geo.lightmaps[static_cast<std::size_t>(p0)].size() == bytes &&
+                    geo.lightmaps[static_cast<std::size_t>(pk)].size() == bytes) {
+                    // Versatz zwischen den Koordinaten - muss fuer alle Ecken
+                    // derselbe sein (q3map2 verschiebt den Block nur).
+                    float lo[2] = {1.0e30F, 1.0e30F};
+                    float hi[2] = {-1.0e30F, -1.0e30F};
+                    float d0[2] = {0.0F, 0.0F};
+                    bool gleich = true;
+                    for (int v = 0; v < s.numVerts; ++v) {
+                        const BspVertex& vx = geo.verts[static_cast<std::size_t>(s.firstVert + v)];
+                        const BspGeometry::StilEcke& se = geo.stilEcken[static_cast<std::size_t>(s.stilEcken + v)];
+                        const float d[2] = {se.lm[k - 1][0] - vx.lightmap[0], se.lm[k - 1][1] - vx.lightmap[1]};
+                        if (v == 0) {
+                            d0[0] = d[0];
+                            d0[1] = d[1];
+                        } else if (std::fabs(d[0] - d0[0]) * static_cast<float>(bw) > 0.5F ||
+                                   std::fabs(d[1] - d0[1]) * static_cast<float>(bh) > 0.5F) {
+                            gleich = false;
+                        }
+                        for (int q = 0; q < 2; ++q) {
+                            lo[q] = std::min(lo[q], vx.lightmap[q]);
+                            hi[q] = std::max(hi[q], vx.lightmap[q]);
+                        }
+                    }
+                    if (gleich && std::isfinite(lo[0]) && std::isfinite(hi[1])) {
+                        const int x0 = std::clamp(static_cast<int>(std::floor(lo[0] * static_cast<float>(bw))), 0, bw);
+                        const int x1 = std::clamp(static_cast<int>(std::ceil(hi[0] * static_cast<float>(bw))), 0, bw);
+                        const int y0 = std::clamp(static_cast<int>(std::floor(lo[1] * static_cast<float>(bh))), 0, bh);
+                        const int y1 = std::clamp(static_cast<int>(std::ceil(hi[1] * static_cast<float>(bh))), 0, bh);
+                        const int dx = static_cast<int>(std::lround(d0[0] * static_cast<float>(bw)));
+                        const int dy = static_cast<int>(std::lround(d0[1] * static_cast<float>(bh)));
+                        auto q = quelle.find(pk);
+                        if (q == quelle.end()) {
+                            q = quelle.emplace(pk, geo.lightmaps[static_cast<std::size_t>(pk)]).first;
+                        }
+                        std::vector<std::uint8_t>& maske = schon[{p0, stil}];
+                        if (maske.empty()) {
+                            maske.assign(static_cast<std::size_t>(bw) * static_cast<std::size_t>(bh), 0);
+                        }
+                        std::vector<std::uint8_t>& ziel = geo.lightmaps[static_cast<std::size_t>(p0)];
+                        for (int y = y0; y < y1; ++y) {
+                            const int ys = y + dy;
+                            if (ys < 0 || ys >= bh) { continue; }
+                            for (int x = x0; x < x1; ++x) {
+                                const int xs = x + dx;
+                                if (xs < 0 || xs >= bw) { continue; }
+                                const std::size_t m = static_cast<std::size_t>(y) * static_cast<std::size_t>(bw) +
+                                                      static_cast<std::size_t>(x);
+                                if (maske[m] != 0) { continue; }
+                                maske[m] = 1;
+                                const std::size_t zi = m * 3U;
+                                const std::size_t qi = (static_cast<std::size_t>(ys) * static_cast<std::size_t>(bw) +
+                                                        static_cast<std::size_t>(xs)) * 3U;
+                                for (int c = 0; c < 3; ++c) {
+                                    const float summe = static_cast<float>(ziel[zi + static_cast<std::size_t>(c)]) +
+                                                        w[static_cast<std::size_t>(c)] *
+                                                            static_cast<float>(q->second[qi + static_cast<std::size_t>(c)]);
+                                    ziel[zi + static_cast<std::size_t>(c)] =
+                                        static_cast<std::uint8_t>(std::min(255.0F, summe + 0.5F));
+                                }
+                            }
+                        }
+                        etwas = true;
+                    }
+                }
+            }
+            // --- Die Eckenfarbe dieser Stufe -------------------------------
+            const int eStil = s.eckStile[k];
+            const auto& we = gewicht[static_cast<std::size_t>(eStil == 255 ? 0 : eStil)];
+            if (eStil != 255 && (we[0] > 0.0F || we[1] > 0.0F || we[2] > 0.0F)) {
+                for (int v = 0; v < s.numVerts; ++v) {
+                    const std::size_t vi = static_cast<std::size_t>(s.firstVert + v);
+                    const std::uint8_t bit = static_cast<std::uint8_t>(1U << k);
+                    if ((eckeSchon[vi] & bit) != 0U) { continue; }
+                    eckeSchon[vi] = static_cast<std::uint8_t>(eckeSchon[vi] | bit);
+                    BspVertex& vx = geo.verts[vi];
+                    const BspGeometry::StilEcke& se = geo.stilEcken[static_cast<std::size_t>(s.stilEcken + v)];
+                    for (int c = 0; c < 3; ++c) {
+                        const float summe = static_cast<float>(vx.colour[c]) +
+                                            we[static_cast<std::size_t>(c)] * static_cast<float>(se.farbe[k - 1][c]);
+                        vx.colour[c] = static_cast<std::uint8_t>(std::min(255.0F, summe + 0.5F));
+                    }
+                }
+                etwas = true;
+            }
+        }
+        if (etwas) { ++zahl; }
+    }
+    return zahl;
+}
+
+namespace {
+// Ein Lichtstilmuster ("aaz...") als mittlere Helligkeit, 'a' 0 bis 'z' 1
+// (CG_SetLightstyle). Leer heisst voll - ls->length 0 gibt 255.
+float musterHell(const std::string& m) {
+    if (m.empty()) { return 1.0F; }
+    float summe = 0.0F;
+    for (const char c : m) {
+        const int w = std::clamp(static_cast<int>(std::tolower(static_cast<unsigned char>(c))) - 'a', 0, 25);
+        summe += static_cast<float>(w) / 25.0F;
+    }
+    return summe / static_cast<float>(m.size());
+}
+int ganzVon(const MapEntity& e, const char* key) {
+    const std::string* v = e.find(key);
+    return (v != nullptr) ? std::atoi(v->c_str()) : 0;
+}
+}  // namespace
+
+std::array<std::array<float, 3>, 256> lichtStilGewichte(const std::vector<MapEntity>& ents) {
+    std::array<std::array<float, 3>, 256> g{};
+    for (auto& c : g) { c = {1.0F, 1.0F, 1.0F}; }
+    // 1..31: die Muster aus dem worldspawn.
+    for (const MapEntity& e : ents) {
+        if (e.classname != "worldspawn") { continue; }
+        for (int i = 1; i < 32; ++i) {
+            static const char* kKanal[3] = {"r", "g", "b"};
+            for (int c = 0; c < 3; ++c) {
+                const std::string* m = e.find("ls_" + std::to_string(i) + kKanal[c]);
+                if (m != nullptr) { g[static_cast<std::size_t>(i)][static_cast<std::size_t>(c)] = musterHell(*m); }
+            }
+        }
+        break;
+    }
+    const auto basis = g;   // switch_style/style_off kopieren die Muster
+    for (const MapEntity& e : ents) {
+        if (e.classname != "light" || e.find("targetname") == nullptr) { continue; }
+        const int stil = ganzVon(e, "style");
+        if (stil <= 0 || stil > 255) { continue; }
+        const bool an = (ganzVon(e, "spawnflags") & 4) == 0;   // START_OFF
+        const int muster = an ? ganzVon(e, "switch_style") : ganzVon(e, "style_off");
+        if (muster > 0 && muster < 256) {
+            g[static_cast<std::size_t>(stil)] = basis[static_cast<std::size_t>(muster)];
+        } else {
+            const float v = an ? 1.0F : 0.0F;
+            g[static_cast<std::size_t>(stil)] = {v, v, v};
+        }
+    }
+    return g;
+}
+
 int ladeExterneLightmaps(BspGeometry& geo, const std::string& kartenOrdner,
                          const std::function<bool(const std::string&, std::string&)>& lies) {
     // Nur die Nummern, die eine Flaeche wirklich benutzt - nicht 0 bis zur
@@ -769,6 +974,12 @@ int ladeExterneLightmaps(BspGeometry& geo, const std::string& kartenOrdner,
     for (const BspSurface& s : geo.surfaces) {
         if (s.lightmap >= 0 && s.lightmap < kMaxLightmapNummer) {
             benutzt.insert(s.lightmap);
+        }
+        // Die Seiten der Zusatzstile liegen ebenso extern (rc592).
+        for (int k = 1; k < 4; ++k) {
+            if (s.stile[k] != 255 && s.stilLightmap[k] >= 0 && s.stilLightmap[k] < kMaxLightmapNummer) {
+                benutzt.insert(s.stilLightmap[k]);
+            }
         }
     }
     int geladen = 0;

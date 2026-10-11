@@ -13178,6 +13178,16 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
                     diag::detail("Externe Lightmaps: " + std::to_string(extern2) + " aus maps/" + karte + "/");
                 }
             }
+            // Die Lichtstufen 1..3 (schaltbare und flackernde Lichter) in
+            // Stufe 0 einrechnen - VOR dem Netz, das die Eckenfarben kopiert
+            // (rc592, siehe stileEinrechnen).
+            {
+                const int stilFlaechen = stileEinrechnen(geo, lichtStilGewichte(g_app->map.entities));
+                if (stilFlaechen > 0) {
+                    diag::detail("Lightmap-Stile: " + std::to_string(stilFlaechen) +
+                                 " Flaechen mit zusaetzlichen Lichtstufen eingerechnet");
+                }
+            }
             g_app->geo = std::move(geo);
             // Lightmaps und Texturen der vorigen Karte auf der Grafikkarte
             // vergessen - sie liegen dort nach Nummer.
