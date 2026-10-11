@@ -173,6 +173,9 @@ struct TextureSet {
         CullMode cull = CullMode::Front;
         // rgbGen wave: die Helligkeit pulst.
         Wave rgbWave;
+        // alphaGen wave: der Alphawert pulst (rc592) - ersetzt alphaConst
+        // in jedem Bild, siehe batchStateAus.
+        Wave alphaWave;
         // rgbGen const ( r g b ) - feste Einfaerbung, 0..1. Negativ heisst
         // nicht gesetzt. Siehe ShaderInfo::Stage::rgbConst.
         float rgbConst[3]{-1.0F, -1.0F, -1.0F};

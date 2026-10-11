@@ -170,6 +170,9 @@ PipelineState pipelineFor(const BatchState& bs, bool hatLightmap,
         f |= kAlphaKonst;
     } else if (bs.alphaGen == AlphaGen::Identity) {
         f |= kAlphaEins;
+    } else if (bs.alphaGen == AlphaGen::OneMinusVertex) {
+        // Beide Bits zusammen kamen vorher nie vor - siehe kAlphaKonst.
+        f |= kAlphaKonst | kAlphaEins;
     }
     if (bs.numTexMods > 0) {
         f |= kTexMod;

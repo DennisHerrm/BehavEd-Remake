@@ -350,6 +350,10 @@ enum class AlphaGen : std::uint8_t {
     // behaved ist die Vorgabe eine andere - siehe die Notiz bei
     // FromImage.
     Identity,
+    // alphaGen oneMinusVertex - eins minus der Alphawert der Ecke
+    // (ComputeColors, AGEN_ONE_MINUS_VERTEX). Seit rc592; steht in den
+    // Plasma-Shadern von MD (plasma_scarif).
+    OneMinusVertex,
     Unsupported,
 };
 
@@ -438,6 +442,10 @@ struct ShaderInfo {
         BlendMode blend = BlendMode::Opaque;
         AlphaTest alphaTest = AlphaTest::None;
         float alphaConst = -1.0F;
+        // alphaGen wave (rc592): der Alphawert pulst - RB_CalcWaveAlpha,
+        // auf 0..1 begrenzt. alphaGen ist dann Const, und alphaConst wird
+        // in jedem Bild aus der Welle neu gesetzt.
+        Wave alphaWave;
         // Woher der Alphawert kommt - siehe AlphaGen.
         AlphaGen alphaGen = AlphaGen::FromImage;
         // --- depthWrite: Tiefe schreiben, obwohl gemischt wird ----------
@@ -607,6 +615,8 @@ struct ShaderInfo {
     // tr_shade_calc.cpp, RB_CalcWaveColor(): glow = EvalWaveForm(wf),
     // auf 0..1 begrenzt, dann als Farbe aller drei Kanaele.
     Wave rgbWave;
+    // alphaGen wave der Bildstufe - siehe Stage::alphaWave.
+    Wave alphaWave;
 
     // deformVertexes wave - die Flaeche selbst wogt.
     //

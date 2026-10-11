@@ -376,6 +376,10 @@ void batchStateAus(const TextureSet::Tex& t, float zeitSekunden,
     bs.depthFunc = t.depthFunc;
     bs.texGen = t.texGen;
     bs.alphaConst = t.alphaConst;
+    // alphaGen wave (rc592): RB_CalcWaveAlpha - EvalWaveFormClamped.
+    if (t.alphaWave.active()) {
+        bs.alphaConst = std::clamp(waveValue(t.alphaWave, zeitSekunden), 0.0F, 1.0F);
+    }
     bs.depthWrite = t.depthWrite;
     bs.autosprite = t.autosprite;
     bs.polygonOffset = t.polygonOffset;

@@ -12273,6 +12273,7 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                 t.autosprite = it->second.autosprite;
                     t.cull = it->second.cull;
                     t.rgbWave = it->second.rgbWave;
+                    t.alphaWave = it->second.alphaWave;
                     t.deformWave = it->second.deformWave;
                     t.deformSpread = it->second.deformSpread;
                     t.polygonOffset = it->second.polygonOffset;
@@ -12395,6 +12396,7 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                 t.autosprite = it->second.autosprite;
                 t.cull = it->second.cull;
                 t.rgbWave = it->second.rgbWave;
+                t.alphaWave = it->second.alphaWave;
                 t.deformWave = it->second.deformWave;
                 t.deformSpread = it->second.deformSpread;
                 t.polygonOffset = it->second.polygonOffset;
@@ -12801,6 +12803,7 @@ void loadMapTextures() {
                     }
                     zusatz.numTexMods = st.numTexMods;
                     zusatz.rgbWave = st.rgbWave;
+                    zusatz.alphaWave = st.alphaWave;
                     // Die Stufe bringt ihr EIGENES glow mit. Bei
                     // `table_blue` glueht genau diese dritte Stufe,
                     // die beiden darunter nicht.
@@ -12887,6 +12890,7 @@ void loadMapTextures() {
                                 bild.texMods[k] = erst.texMods[k];
                             }
                             bild.rgbWave = erst.rgbWave;
+                            bild.alphaWave = erst.alphaWave;
                             bild.glow = erst.glow;
                             bild.texGen = erst.texGen;
                             bild.clamp = erst.clamp;
@@ -12942,6 +12946,7 @@ void loadMapTextures() {
                         bild.autosprite = t.autosprite;
                         bild.cull = t.cull;
                         bild.rgbWave = t.rgbWave;
+                        bild.alphaWave = t.alphaWave;
                         bild.deformWave = t.deformWave;
                         bild.deformSpread = t.deformSpread;
                         bild.polygonOffset = t.polygonOffset;

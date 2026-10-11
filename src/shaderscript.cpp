@@ -213,6 +213,8 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     CullMode cull = CullMode::Front;
     Wave rgbWave;
     Wave stageRgb;
+    Wave alphaWave;
+    Wave stageAlphaWave;
     Wave deformWave;
     float deformSpread = 0.0F;
     bool polygonOffset = false;
@@ -251,6 +253,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageBlend = BlendMode::Opaque;
                 stageAlpha = AlphaTest::None;
                 stageRgb = Wave{};
+                stageAlphaWave = Wave{};
             }
             continue;
         }
@@ -293,6 +296,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     blend = stageBlend;
                     alphaTest = stageAlpha;
                     rgbWave = stageRgb;
+                    alphaWave = stageAlphaWave;
                     alphaConst = stageAlphaConst;
                     glow = stageGlow;
                     texGen = stageTexGen;
@@ -333,6 +337,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     st.animFreq = stageAnimFreq;
                     st.animOneShot = stageAnimOneShot;
                     st.rgbWave = stageRgb;
+                    st.alphaWave = stageAlphaWave;
                     st.glow = stageGlow;
                     st.texGen = stageTexGen;
                     st.alphaGen = stageAlphaGen;
@@ -423,6 +428,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     info.alphaTest = alphaTest;
                     info.cull = cull;
                     info.rgbWave = rgbWave;
+                    info.alphaWave = alphaWave;
                     info.deformWave = deformWave;
                     info.deformSpread = deformSpread;
                     info.polygonOffset = polygonOffset;
@@ -632,6 +638,8 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             cull = CullMode::Front;
             rgbWave = Wave{};
             stageRgb = Wave{};
+            alphaWave = Wave{};
+            stageAlphaWave = Wave{};
             rgbVertexImage = false;
             stageRgbVertex = false;
             deformWave = Wave{};
@@ -722,10 +730,10 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             // alphaGen const <wert>: ein FESTER Alphawert fuer die ganze
             // Stufe, unabhaengig vom Bild (RB_CalcAlphaFromConst).
             //
-            // Andere Formen (alphaGen wave, lightingSpecular, portal) sind
-            // NICHT gebaut - sie kommen in den hier vorliegenden Shadern
-            // nicht vor, und eine falsch geratene waere schlimmer als
-            // keine.
+            // Seit rc592 auch wave (pulsend, RB_CalcWaveAlpha), entity
+            // (eins: Weltflaechen und Effekte tragen shaderRGBA 255) und
+            // oneMinusVertex. Offen bleiben portal und dot - eine falsch
+            // geratene Form waere schlimmer als keine.
             if (key == "alphagen" && depth >= 2) {
                 const std::string rest = lower(secondWord(line));
                 if (firstWord(rest) == "const") {
@@ -740,8 +748,34 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     stageAlphaGen = AlphaGen::Vertex;
                 } else if (lower(firstWord(rest)) == "identity") {
                     stageAlphaGen = AlphaGen::Identity;
+                } else if (firstWord(rest) == "oneminusvertex") {
+                    stageAlphaGen = AlphaGen::OneMinusVertex;
+                } else if (firstWord(rest) == "entity") {
+                    stageAlphaConst = 1.0F;
+                    stageAlphaGen = AlphaGen::Const;
+                } else if (firstWord(rest) == "wave") {
+                    std::string w = secondWord(rest);
+                    Wave wv;
+                    wv.func = waveFuncFromName(firstWord(w));
+                    w = secondWord(w);
+                    wv.base = readNum(firstWord(w));
+                    w = secondWord(w);
+                    wv.amplitude = readNum(firstWord(w));
+                    w = secondWord(w);
+                    wv.phase = readNum(firstWord(w));
+                    w = secondWord(w);
+                    wv.frequency = readNum(firstWord(w));
+                    if (wv.active()) {
+                        stageAlphaWave = wv;
+                        // Platzhalter bis zum ersten Bild - batchStateAus
+                        // setzt den Wert der Welle ein.
+                        stageAlphaConst = std::clamp(wv.base, 0.0F, 1.0F);
+                        stageAlphaGen = AlphaGen::Const;
+                    } else {
+                        stageAlphaGen = AlphaGen::Unsupported;
+                    }
                 } else if (!firstWord(rest).empty()) {
-                    // wave, entity, portal, dot, vertex - nicht nachgebaut.
+                    // portal, dot - nicht nachgebaut.
                     // Siehe AlphaGen: gemerkt wird es trotzdem, damit die
                     // Stufe weggelassen statt falsch gezeichnet werden kann.
                     stageAlphaGen = AlphaGen::Unsupported;

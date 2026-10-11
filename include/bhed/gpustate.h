@@ -116,6 +116,8 @@ enum Feature : std::uint32_t {
     //
     // Zwei Bits, weil es drei Faelle sind und der vierte (Vertex und
     // FromImage) der Vorgabezustand ohne Bit ist.
+    //
+    // Beide zusammen (rc592): alphaGen oneMinusVertex -> 1 - Eckenwert.
     kAlphaKonst    = 1U << 15,  //        alphaGen const <x>  -> gRgb.a
     kAlphaEins     = 1U << 16,  //        alphaGen identity   -> 1.0
 };

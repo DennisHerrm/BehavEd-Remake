@@ -1062,6 +1062,9 @@ VSOut main(VSIn ein) {
 // entscheidet alphaGen. Der Shader nahm bis rc443 durchweg den Eckenwert -
 // `alphaGen const 0` (unter anderem in der Lava) hatte gar keine Wirkung.
 std::string alphaZeile(std::uint32_t features) {
+    if ((features & (kAlphaKonst | kAlphaEins)) == (kAlphaKonst | kAlphaEins)) {
+        return "    c.a *= 1.0 - ein.farbe.a;\n";   // alphaGen oneMinusVertex
+    }
     if ((features & kAlphaKonst) != 0U) {
         return "    c.a *= gRgb.a;\n";
     }

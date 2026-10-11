@@ -750,7 +750,7 @@ int main() {
                    o.rgbConst[0] > 0.49F && o.rgbConst[0] < 0.51F &&
                        o.rgbConst[1] > 0.24F && o.rgbConst[1] < 0.26F &&
                        o.rgbConst[2] > 0.12F && o.rgbConst[2] < 0.13F);
-            // Die uebrigen alphaGen-Formen bleiben nicht nachgebaut - sonst
+            // alphaGen portal bleibt nicht nachgebaut - sonst
             // wuerde die Stufe mit dem Bildalpha gezeichnet, und das ist
             // etwas anderes, kein Naeherungswert.
             {
@@ -759,15 +759,24 @@ int main() {
                     "textures/p/e\n{\n{\nmap x\nalphaGen entity\n}\n}\n"
                     "textures/p/pt\n{\n{\nmap x\nalphaGen portal 256\n}\n}\n"
                     "textures/p/v\n{\n{\nmap x\nalphaGen vertex\n}\n}\n"
-                    "textures/p/id\n{\n{\nmap x\nalphaGen identity\n}\n}\n";
+                    "textures/p/id\n{\n{\nmap x\nalphaGen identity\n}\n}\n"
+                    "textures/p/om\n{\n{\nmap x\nalphaGen oneMinusVertex\n}\n}\n";
                 bhed::ShaderMap smr;
                 bhed::parseShaderScript(rest2, smr);
-                expect("alphaGen wave bleibt nicht nachgebaut",
-                       smr["textures/p/w"].alphaGen ==
-                           bhed::AlphaGen::Unsupported);
-                expect("alphaGen entity ebenso",
-                       smr["textures/p/e"].alphaGen ==
-                           bhed::AlphaGen::Unsupported);
+                // Seit rc592: wave pulst den Alphawert (RB_CalcWaveAlpha),
+                // entity ist auf Weltflaechen und Effekten eins (shaderRGBA
+                // 255), oneMinusVertex kehrt den Eckenwert um.
+                expect("alphaGen wave ist ein pulsender fester Wert",
+                       smr["textures/p/w"].alphaGen == bhed::AlphaGen::Const &&
+                           smr["textures/p/w"].alphaWave.active() &&
+                           smr["textures/p/w"].stages.size() == 1 &&
+                           smr["textures/p/w"].stages[0].alphaWave.active());
+                expect("alphaGen entity ist eins",
+                       smr["textures/p/e"].alphaGen == bhed::AlphaGen::Const &&
+                           smr["textures/p/e"].alphaConst == 1.0F);
+                expect("alphaGen oneMinusVertex hat seine eigene Form",
+                       smr["textures/p/om"].alphaGen ==
+                           bhed::AlphaGen::OneMinusVertex);
                 expect("alphaGen vertex hat seine eigene Stufe",
                    smr["textures/p/v"].alphaGen == bhed::AlphaGen::Vertex);
             expect("alphaGen identity ebenso",
