@@ -3646,6 +3646,7 @@ void drawPk3Browser() {
                     // Derselbe Weg wie beim Oeffnen von der Platte:
                     // Entities, Geometrie und Texturen.
                     diag::Step mapStep("Karte aus Archiv: " + f.name);
+                    vergissEntities(f.name);
                     loadMapFromBytes(data, f.name);
                     // Eine Karte im Archiv hat keinen Pfad auf der Platte;
                     // beim naechsten Start liesse sie sich so nicht wieder
@@ -13009,6 +13010,13 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
                      " Brush-Netze der vorigen Karte entfernt");
     }
 
+    // Waren die Entities dieser Karte ersetzt (.ent, Bearbeitung), gelten
+    // die - nicht die der .bsp (entitiesJeKarte).
+    if (const auto gemerkt = g_app->entitiesJeKarte.find(m.path); gemerkt != g_app->entitiesJeKarte.end()) {
+        m.entities = gemerkt->second;
+        collectNames(m);
+        diag::detail(std::to_string(m.entities.size()) + " gemerkte Entities fuer " + m.path);
+    }
     g_app->map = std::move(m);
     // Die Effektbahnen (samt Spurprotokoll) gehoeren zur alten Geometrie.
     vergissEffektBahnen();
@@ -13088,6 +13096,16 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
 // (.ent) laedt der Missionsweg; hier geht es nur um die Geometrie, und
 // mehr braucht der Wechsel auch nicht - die Entities haengen am Skript,
 // nicht am Reiter.
+void merkeEntities() {
+    if (!g_app->map.path.empty()) {
+        g_app->entitiesJeKarte[g_app->map.path] = g_app->map.entities;
+    }
+}
+
+void vergissEntities(const std::string& kennung) {
+    g_app->entitiesJeKarte.erase(kennung);
+}
+
 bool loadMapFromArchive(const std::string& id) {
     std::string data;
     if (id.empty() || !readFromArchives(id, data)) {
@@ -13117,6 +13135,7 @@ void doLoadMap() {
     const std::string p = platform::openFileDialog(
         tr(Str::MapLoad), "JKA maps (*.bsp)|*.bsp|All files (*.*)|*.*", start);
     if (!p.empty()) {
+        vergissEntities(p);
         loadMap(p);
     }
 }
@@ -13142,6 +13161,7 @@ void openEntFile() {
         return;
     }
     g_app->map.entities = std::move(ents);
+    merkeEntities();
     // Die Namenslisten neu aufbauen - der Editor bietet sie an.
     g_app->map.targetNames.clear();
     g_app->map.cameraGroups.clear();

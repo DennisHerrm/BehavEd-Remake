@@ -6411,6 +6411,89 @@ std::vector<Schritt> missionReiterSchritte() {
                      std::to_string(g_app->tabs.size()) + "), Band " + std::to_string(g_app->homeTab));
         return !erwartet.empty() && g_app->shownName == erwartet && g_app->homeTab == g_app->activeTab;
     }));
+    // --- Die Entities der .ent ueberleben einen Kartenwechsel -------------
+    //
+    // Gefunden beim Bau einer eigenen Mission (11.10.): ein Reiter mit einer
+    // ANDEREN Karte, dann zurueck - und loadMapFromArchive las nur die .bsp.
+    // Die Entities aus der .ent (alle Figuren der Mission) waren fort.
+    auto vorher = std::make_shared<std::pair<int, std::size_t>>(-1, 0);
+    auto entMission = std::make_shared<std::pair<std::string, std::string>>();   // Archiv, Name
+    add(tu("Mission: eine Mission MIT .ent suchen und laden", [=] {
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const Pk3& arc : gp.archives) {
+                for (const Pk3Entry& e : arc.entries) {
+                    const std::string& n = e.name;
+                    // md_*: eine Mission mit Skripten, nicht nur eine Karte mit .ent
+                    if (!entMission->first.empty() || n.size() <= 9 || n.rfind("maps/md_", 0) != 0 ||
+                        n.compare(n.size() - 4, 4, ".ent") != 0) {
+                        continue;
+                    }
+                    const std::string name = n.substr(5, n.size() - 9);
+                    const Pk3Entry* bspE = arc.find("maps/" + name + ".bsp");
+                    if (bspE == nullptr) { continue; }
+                    // Nur aussagekraeftig, wenn .ent und .bsp verschieden viele haben.
+                    std::string entText;
+                    std::string bspBytes;
+                    MapData bspMap;
+                    std::vector<MapEntity> entEnts;
+                    if (!readPk3File(arc, e, entText) || !readPk3File(arc, *bspE, bspBytes) ||
+                        !readBsp(bspBytes, bspMap)) {
+                        continue;
+                    }
+                    parseEntities(entText, entEnts);
+                    diag::detail("Knopftest: Kandidat " + name + ": .ent " + std::to_string(entEnts.size()) +
+                                 ", .bsp " + std::to_string(bspMap.entities.size()));
+                    if (!entEnts.empty() && entEnts.size() != bspMap.entities.size()) {
+                        *entMission = {arc.path, name};
+                        vorher->second = entEnts.size();
+                    }
+                }
+            }
+        }
+        diag::detail("Knopftest: Mission mit .ent: \"" + entMission->second + "\" in \"" + entMission->first + "\"");
+        if (!entMission->first.empty()) {
+            missionenAusArchiv(entMission->first);
+            if (g_app->missionPickOpen) {
+                schritteEinfuegen({waehleInListe(entMission->second, false, 0, "##missionpick")});
+            }
+        }
+    }));
+    add(pruefe("Mission: eine Mission mit .ent gefunden", [=] { return !entMission->first.empty(); }));
+    add(warteBis("Mission mit .ent geladen", [=] {
+        return g_app->map.path == "maps/" + entMission->second + ".bsp" && g_app->camTrackValid;
+    }, 1200));
+    add(pruefe("Mission: geladen mit den Entities der .ent", [=] {
+        diag::detail("Knopftest: Mission - geladen " + std::to_string(g_app->map.entities.size()) +
+                     " Entities, .ent hat " + std::to_string(vorher->second));
+        return g_app->map.entities.size() == vorher->second;
+    }));
+    add(tu("Mission: Entities merken, Reiter mit einer anderen Karte", [=] {
+        vorher->first = g_app->activeTab;
+        std::string andere;
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const Pk3& arc : gp.archives) {
+                for (const Pk3Entry& e : arc.entries) {
+                    const std::string& n = e.name;
+                    if (andere.empty() && n.size() > 9 && n.rfind("maps/", 0) == 0 &&
+                        n.compare(n.size() - 4, 4, ".bsp") == 0 && n != g_app->map.path) {
+                        andere = n;
+                    }
+                }
+            }
+        }
+        diag::detail("Knopftest: Mission - " + std::to_string(vorher->second) + " Entities in Reiter " +
+                     std::to_string(vorher->first) + " (" + g_app->map.path + "), andere Karte \"" + andere + "\"");
+        neuerReiter();
+        if (!andere.empty()) { (void)loadMapFromArchive(andere); }
+    }));
+    add(pause(0.5));
+    add(tu("Mission: zurueck in den Missionsreiter", [=] { activateTab(vorher->first); }));
+    add(pause(0.5));
+    add(pruefe("Mission: nach dem Kartenwechsel sind die Entities der .ent wieder da", [=] {
+        diag::detail("Knopftest: Mission - zurueck: " + std::to_string(g_app->map.entities.size()) +
+                     " Entities (vorher " + std::to_string(vorher->second) + "), Karte " + g_app->map.path);
+        return vorher->second > 0 && g_app->map.entities.size() == vorher->second;
+    }));
     // Zweiter Fall: dieselbe Mission noch einmal laden, waehrend ein anderer
     // Reiter vorn ist - alle Skripte sind schon offen (rc579: nicht doppelt),
     // vorn stehen soll trotzdem das erste.

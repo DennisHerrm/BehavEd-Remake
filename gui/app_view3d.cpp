@@ -6787,6 +6787,9 @@ void loadMission(const Mission& m) {
         step.fail("Karte nicht lesbar: " + m.mapFile);
         return;
     }
+    // Die Mission ausdruecklich laden heisst: ihre .ent, nicht was von
+    // frueher gemerkt ist.
+    vergissEntities(m.mapFile);
     loadMapFromBytes(data, m.mapFile);
     // Aus einem Archiv gibt es keinen Pfad auf der Platte.
     g_app->settings.mapPath.clear();
@@ -6800,6 +6803,7 @@ void loadMission(const Mission& m) {
         if (!ents.empty()) {
             g_app->map.entities = std::move(ents);
             collectNames(g_app->map);
+            merkeEntities();
             diag::info(std::to_string(g_app->map.entities.size()) +
                        " Entities aus " + m.entFile);
         }

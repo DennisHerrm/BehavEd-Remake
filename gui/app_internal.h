@@ -140,6 +140,16 @@ struct App {
     //     (1) : ( Exported )
     std::vector<std::string> statusLines;
     MapData map;
+    // Die Entities je Karte (Kennung = MapData::path), wenn sie NICHT aus
+    // der .bsp stammen: aus einer .ent (Mission, "Open .ent...") oder
+    // bearbeitet.
+    //
+    // Gefunden beim Bau einer eigenen Mission (11.10.): ein Reiter mit einer
+    // anderen Karte und zurueck - der Reiterwechsel las die Karte neu, aber
+    // nur die .bsp. Alle Figuren der Mission waren fort. loadMapFromBytes
+    // setzt sie von hier wieder ein; wer eine Karte ausdruecklich oeffnet,
+    // bekommt sie frisch (vergissEntities).
+    std::map<std::string, std::vector<MapEntity>> entitiesJeKarte;
     // Kartenansicht
     BspGeometry geo;
     BspMesh mesh;
@@ -1790,6 +1800,11 @@ std::vector<KameraSchluessel> kameraSchluessel(const Script& script);
 int schluesselFuerZeit(double ms);
 // Eine Karte ueber ihre Kennung aus den Archiven holen (Mission aus .pk3).
 bool loadMapFromArchive(const std::string& id);
+// Die jetzigen Entities der Karte merken (entitiesJeKarte) - nach .ent und
+// nach jeder Bearbeitung.
+void merkeEntities();
+// Vor dem ausdruecklichen Oeffnen einer Karte: die gemerkten vergessen.
+void vergissEntities(const std::string& kennung);
 void selectByPath(const Path& p);
 void drawMapPanel();
 void drawMapSidebar();
