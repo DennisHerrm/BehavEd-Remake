@@ -78,6 +78,8 @@ inline constexpr std::size_t kDeformSpreadAt = kDeformAt + 4U;  // 20
 // Die Hoehe der Wolkenkuppel (rc592) - ein float gleich hinter dem Spread,
 // im selben Viererblock (HLSL packt float hinter float).
 inline constexpr std::size_t kWolkenAt = kDeformSpreadAt + 1U;  // 21
+// Die Weite aus alphaGen portal (rc593), gleich dahinter.
+inline constexpr std::size_t kPortalWeiteAt = kWolkenAt + 1U;  // 22
 // Die Stellung eines Movers steht NICHT hier: sie wird vor dem Zeichnen in
 // die Kameramatrix multipliziert (siehe gpushader.cpp). Eine eigene Matrix
 // im Stapelpuffer hatte 16 Felder gekostet und ein Bild erzeugt, in dem alle

@@ -194,6 +194,7 @@ void packeKonstanten(const BatchState& bs, float* ziel,
         ziel[kDeformSpreadAt] = bs.deformSpread;
     }
     ziel[kWolkenAt] = bs.wolkenHoehe;
+    ziel[kPortalWeiteAt] = bs.portalWeite;
     // move: RB_CalcMoveVertexes - der Versatz ist fuer alle Ecken gleich,
     // also hier einmal gerechnet statt in jeder Ecke.
     if (bs.deform2.moveWave.active()) {

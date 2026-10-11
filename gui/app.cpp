@@ -12275,6 +12275,8 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                     t.cull = it->second.cull;
                     t.rgbWave = it->second.rgbWave;
                     t.alphaWave = it->second.alphaWave;
+                    t.portalWeite = it->second.portalWeite;
+                    t.istPortal = it->second.istPortal;
                     t.deformWave = it->second.deformWave;
                     t.deformSpread = it->second.deformSpread;
                     t.deform2 = it->second.deform2;
@@ -12399,6 +12401,8 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
                 t.cull = it->second.cull;
                 t.rgbWave = it->second.rgbWave;
                 t.alphaWave = it->second.alphaWave;
+                t.portalWeite = it->second.portalWeite;
+                t.istPortal = it->second.istPortal;
                 t.deformWave = it->second.deformWave;
                 t.deformSpread = it->second.deformSpread;
                 t.deform2 = it->second.deform2;
@@ -12449,6 +12453,7 @@ void wolkenLaden(const ShaderInfo& info, const std::string& name, TextureSet::Te
         wolke.alphaTest = st.alphaTest;
         wolke.alphaConst = st.alphaConst;
         wolke.alphaWave = st.alphaWave;
+        wolke.portalWeite = st.portalWeite;
         wolke.alphaGen = st.alphaGen;
         for (int k = 0; k < st.numTexMods; ++k) {
             wolke.texMods[k] = st.texMods[k];
@@ -12859,6 +12864,7 @@ void loadMapTextures() {
                     zusatz.numTexMods = st.numTexMods;
                     zusatz.rgbWave = st.rgbWave;
                     zusatz.alphaWave = st.alphaWave;
+                    zusatz.portalWeite = st.portalWeite;
                     // Die Stufe bringt ihr EIGENES glow mit. Bei
                     // `table_blue` glueht genau diese dritte Stufe,
                     // die beiden darunter nicht.
@@ -12947,6 +12953,7 @@ void loadMapTextures() {
                             }
                             bild.rgbWave = erst.rgbWave;
                             bild.alphaWave = erst.alphaWave;
+                            bild.portalWeite = erst.portalWeite;
                             bild.glow = erst.glow;
                             bild.texGen = erst.texGen;
                             bild.clamp = erst.clamp;
@@ -13003,6 +13010,7 @@ void loadMapTextures() {
                         bild.cull = t.cull;
                         bild.rgbWave = t.rgbWave;
                         bild.alphaWave = t.alphaWave;
+                        bild.portalWeite = t.portalWeite;
                         bild.deformWave = t.deformWave;
                         bild.deformSpread = t.deformSpread;
                         bild.deform2 = t.deform2;

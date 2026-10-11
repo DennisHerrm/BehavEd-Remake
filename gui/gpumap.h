@@ -283,6 +283,13 @@ void waehleZiel(int satz);
 // Bild von Satz `satz` (gleiche Groesse wie das Ziel, Pixel fuer Pixel), die
 // Wolkenschichten fallen weg. -1 schaltet zurueck auf die Himmelsbox.
 void setzeHimmelPortal(int satz);
+// Spiegel (rc593): Portalflaechen bekommen das Bild von Satz `satz` unter
+// ihre Stufen gelegt; -1 schaltet ab.
+void setzeSpiegelBild(int satz);
+// Im Spiegeldurchgang: umgedrehte Wicklung und die Schnittebene
+// (nx, ny, nz, -d) - was dahinter liegt, wird verworfen. `an` false stellt
+// zurueck.
+void setzeSpiegelung(bool an, const float ebene[4]);
 
 // Die Textur des Renderziels, zum Anzeigen. nullptr, wenn keins da ist.
 //

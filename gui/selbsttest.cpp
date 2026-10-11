@@ -11664,6 +11664,35 @@ std::vector<Schritt> lichtSchritte() {
                      std::to_string(g_app->d3dMeldungen.size()) + ", Fehler \"" + g_app->gpuFehler + "\"");
         return da && g_app->himmelPortalGezeichnet && g_app->gpuFehler.empty() && g_app->d3dMeldungen.empty();
     }));
+    // --- Spiegel (rc593): der Spiegelboden in duel_executor ---------------------
+    add(tu("Spiegel: duel_executor laden", [] { (void)loadMapFromArchive("maps/duel_executor.bsp"); }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(tu("Spiegel: ueber dem Spiegelboden, Blick schraeg nach unten", [] {
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->cam.pos[0] = -1160.0F;
+        g_app->cam.pos[1] = 1600.0F;
+        g_app->cam.pos[2] = 100.0F;
+        g_app->cam.angles[0] = 30.0F;
+        g_app->cam.angles[1] = 90.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(foto("spiegel_executor"));
+    add(pruefe("Spiegel: der Boden zeigt das Spiegelbild (Satz 3), ohne D3D-Meldung", [] {
+        diag::detail("Knopftest: Spiegel - gezeichnet " + std::to_string(g_app->spiegelGezeichnet) + ", Ebene " +
+                     std::to_string(g_app->spiegelEbene[2]) + " d " + std::to_string(g_app->spiegelEbene[3]) +
+                     ", D3D " + std::to_string(g_app->d3dMeldungen.size()));
+        return g_app->spiegelGezeichnet && g_app->spiegelEbene[2] > 0.99F && g_app->d3dMeldungen.empty() &&
+               gpu::zielTexturSatz(3) != nullptr;
+    }));
+    add(tu("Spiegel: hinter den Spiegel (unter den Boden)", [] {
+        g_app->cam.pos[2] = -200.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(pruefe("Spiegel: von hinten kein Spiegelbild", [] { return !g_app->spiegelGezeichnet; }));
     return s;
 }
 

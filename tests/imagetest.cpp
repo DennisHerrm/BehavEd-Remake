@@ -750,7 +750,7 @@ int main() {
                    o.rgbConst[0] > 0.49F && o.rgbConst[0] < 0.51F &&
                        o.rgbConst[1] > 0.24F && o.rgbConst[1] < 0.26F &&
                        o.rgbConst[2] > 0.12F && o.rgbConst[2] < 0.13F);
-            // alphaGen portal bleibt nicht nachgebaut - sonst
+            // alphaGen portal ist seit rc593 gebaut (unten) - sonst
             // wuerde die Stufe mit dem Bildalpha gezeichnet, und das ist
             // etwas anderes, kein Naeherungswert.
             {
@@ -781,9 +781,11 @@ int main() {
                    smr["textures/p/v"].alphaGen == bhed::AlphaGen::Vertex);
             expect("alphaGen identity ebenso",
                    smr["textures/p/id"].alphaGen == bhed::AlphaGen::Identity);
-            expect("alphaGen portal ebenso",
-                       smr["textures/p/pt"].alphaGen ==
-                           bhed::AlphaGen::Unsupported);
+            // Seit rc593: alphaGen portal <weite> - der Alphawert waechst mit
+            // dem Abstand zum Auge bis zur Weite (RB_CalcAlphaFromPortal).
+            expect("alphaGen portal: eigene Form mit Weite",
+                       smr["textures/p/pt"].alphaGen == bhed::AlphaGen::Portal &&
+                           smr["textures/p/pt"].portalWeite == 256.0F);
             }
             // skyParms <box> <wolkenhoehe> (rc592): die Hoehe der
             // Wolkenkuppel; 0 nimmt die Engine als 512 (ParseSkyParms).
@@ -793,7 +795,8 @@ int main() {
                     "textures/h/b\n{\nskyParms - 0 -\n{\nmap wolke\n}\n}\n"
                     "textures/h/c\n{\n{\nmap wolke\n}\n}\n"
                     "textures/h/d\n{\nskyParms textures/skies/x\n{\nmap wolke\n}\n}\n"
-                    "textures/h/e\n{\n{\nmap wolke\nalphaGen wave sin 0 1 0 1\nalphaGen vertex\n}\n}\n";
+                    "textures/h/e\n{\n{\nmap wolke\nalphaGen wave sin 0 1 0 1\nalphaGen vertex\n}\n}\n"
+                    "textures/h/f\n{\nportal\n{\nmap boden\nblendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA\n}\n}\n";
                 bhed::ShaderMap smh;
                 bhed::parseShaderScript(hs, smh);
                 expect("skyParms: Wolkenhoehe 2048", smh["textures/h/a"].wolkenHoehe == 2048.0F);
@@ -803,6 +806,8 @@ int main() {
                 // zurueck - keine Wolken; das letzte alphaGen einer Stufe gilt.
                 expect("skyParms ohne Wolkenhoehe: keine Wolken", smh["textures/h/d"].wolkenHoehe == 0.0F &&
                                                                     smh["textures/h/d"].skyBox == "textures/skies/x");
+                expect("portal: der Shader ist eine Spiegel-/Portalflaeche", smh["textures/h/f"].istPortal &&
+                                                                            !smh["textures/h/e"].istPortal);
                 expect("alphaGen: das letzte gilt, keine Welle bleibt haengen",
                        smh["textures/h/e"].alphaGen == bhed::AlphaGen::Vertex && !smh["textures/h/e"].alphaWave.active() &&
                            smh["textures/h/e"].alphaConst < 0.0F);

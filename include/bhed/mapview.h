@@ -176,6 +176,10 @@ struct TextureSet {
         // alphaGen wave: der Alphawert pulst (rc592) - ersetzt alphaConst
         // in jedem Bild, siehe batchStateAus.
         Wave alphaWave;
+        // alphaGen portal (rc593): die Weite, siehe ShaderInfo::portalWeite.
+        float portalWeite = 0.0F;
+        // Spiegel- oder Portalflaeche (rc593), siehe ShaderInfo::istPortal.
+        bool istPortal = false;
         // rgbGen const ( r g b ) - feste Einfaerbung, 0..1. Negativ heisst
         // nicht gesetzt. Siehe ShaderInfo::Stage::rgbConst.
         float rgbConst[3]{-1.0F, -1.0F, -1.0F};
@@ -637,6 +641,8 @@ struct BatchState {
     const std::vector<int>* skyFaces = nullptr;
     // Wolkenschicht, siehe TextureSet::Tex::wolkenHoehe.
     float wolkenHoehe = 0.0F;
+    // alphaGen portal (rc593).
+    float portalWeite = 0.0F;
 
     // --- Ab hier: uebernommen, damit ein Verbraucher OHNE Tex auskommt ---
     //

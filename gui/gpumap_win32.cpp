@@ -196,12 +196,19 @@ struct ZielFelder {
     int w = 0;
     int h = 0;
 };
-constexpr int kZielSaetze = 3;
+// Satz 3 (rc593): das Spiegelbild einer Portalflaeche.
+constexpr int kZielSaetze = 4;
 ZielFelder g_geparkt[kZielSaetze];
 int g_zielSatz = 0;
 // Himmelsportal (rc593): >= 0 heisst, Himmelsflaechen zeigen das Bild dieses
 // Satzes statt der Himmelsbox, und die Wolkenschichten fallen weg.
 int g_himmelPortalSatz = -1;
+// Spiegel (rc593): >= 0 heisst, Portalflaechen bekommen das Bild dieses
+// Satzes unter ihre Stufen gelegt.
+int g_spiegelSatz = -1;
+// Im Spiegeldurchgang: umgedrehte Wicklung und die Schnittebene.
+bool g_spiegelnd = false;
+float g_clip[4] = {0.0F, 0.0F, 0.0F, 1.0F};
 
 // Hochgeladene Karten-Texturen, nach Platz im Texturensatz.
 //
@@ -443,7 +450,7 @@ void pruefeStapelLagen(ID3DBlob* vsBlob) {
         const Soll soll[] = {{"gTexMatrix", kTexMatrixAt}, {"gTexOffTurb", kTexOffTurbAt},
                              {"gRgb", kRgbAt}, {"gAlphaSchwelle", kAlphaAt},
                              {"gDeform", kDeformAt}, {"gDeformSpread", kDeformSpreadAt},
-                             {"gWolkenHoehe", kWolkenAt},
+                             {"gWolkenHoehe", kWolkenAt}, {"gPortalWeite", kPortalWeiteAt},
                              {"gDeformMove", kDeformMoveAt}, {"gBulge", kBulgeAt},
                              {"gDeformNormal", kDeformNormalAt}};
         std::string z = "GPU-Stapelpuffer (aus dem Shader gelesen):";
@@ -703,8 +710,9 @@ ID3D11DepthStencilState* holeTiefe(const PipelineState& p) {
 ID3D11RasterizerState* holeRaster(std::uint32_t features) {
     // Die Keulbits UND polygonOffset - alles andere aendert den
     // Rasterzustand nicht.
+    // Im Spiegel ist die Wicklung umgedreht (rc593) - eigener Schluessel.
     const std::uint32_t schluessel =
-        features & (kCullNone | kCullBack | kPolygonOffset);
+        (features & (kCullNone | kCullBack | kPolygonOffset)) | (g_spiegelnd ? (1U << 31) : 0U);
     const auto it = g_raster.find(schluessel);
     if (it != g_raster.end()) {
         return it->second;
@@ -728,8 +736,9 @@ ID3D11RasterizerState* holeRaster(std::uint32_t features) {
     } else {
         rd.CullMode = D3D11_CULL_BACK;
     }
-    // Die Ecken kommen im Uhrzeigersinn aus dem BSP.
-    rd.FrontCounterClockwise = FALSE;
+    // Die Ecken kommen im Uhrzeigersinn aus dem BSP - im Spiegelbild
+    // erscheinen sie gegen den Uhrzeigersinn.
+    rd.FrontCounterClockwise = g_spiegelnd ? TRUE : FALSE;
     rd.DepthClipEnable = TRUE;
     // --- polygonOffset ------------------------------------------------
     //
@@ -1174,7 +1183,7 @@ ID3D11Buffer* g_cbFigur = nullptr;
 // Genau das Bild: richtig texturiert, richtig animiert, in plausiblen
 // Abstaenden zueinander - aber alle zusammen an der falschen Stelle
 // ausserhalb der Karte.
-float g_bildDaten[40] = {0.0F};
+float g_bildDaten[44] = {0.0F};
 bool g_bildDatenDa = false;
 ShaderPaar g_figurShader;
 bool g_figurShaderVersucht = false;
@@ -1662,6 +1671,16 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
                 }
             }
         }
+        // Im Spiegeldurchgang (rc593) die Spiegelflaechen selbst nicht: sie
+        // liegen auf der Spiegelebene, bleiben unter der Spiegelung stehen und
+        // deckten das ganze Spiegelbild zu.
+        if (g_spiegelnd && textures != nullptr) {
+            const int pz = (call.bild >= 0) ? call.bild : mesh.batches[call.batch].shader;
+            if (pz >= 0 && static_cast<std::size_t>(pz) < textures->byShader.size() &&
+                textures->byShader[static_cast<std::size_t>(pz)].istPortal) {
+                continue;
+            }
+        }
         // Himmelsportal (rc593): der Himmel kommt aus dem Portalbild, die
         // Wolkenschichten gehoeren dort hinein und fallen hier weg - wie
         // RDF_SKYBOXPORTAL im Spiel, wo die Hauptszene keinen Himmel zeichnet.
@@ -1750,10 +1769,70 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         } else if ((call.state.features & kSky) != 0U) {
             himmel = holeHimmel(textures, bs2.skyFaces);
         }
+        // --- Spiegel (rc593): erst das Spiegelbild, Pixel fuer Pixel ------
+        //
+        // R_MirrorViewBySurface zeichnet die gespiegelte Szene VOR der
+        // Hauptszene in denselben Bereich; die Stufen der Portalflaeche
+        // mischen sich dann darueber (meist GL_ONE GL_ONE_MINUS_SRC_ALPHA
+        // mit alphaGen portal), und die Lightmapstufe multipliziert alles.
+        //
+        // Unser Grundstufe ist Textur x Lightmap in EINEM deckenden Zug.
+        // Gleichwertig: erst Spiegelbild x Lightmap deckend (kSpiegelBild,
+        // derselbe Lichtweg), dann die Grundstufe mit ONE/ONE_MINUS_SRC_ALPHA
+        // darueber - (Textur + Spiegel*(1-a)) x Lightmap.
+        bool ueberSpiegel = false;
+        if (g_spiegelSatz >= 0 && !call.zusatzstufe && textures != nullptr && platz >= 0 &&
+            static_cast<std::size_t>(platz) < textures->byShader.size() &&
+            textures->byShader[static_cast<std::size_t>(platz)].istPortal) {
+            std::string sf2;
+            ShaderPaar* spSpiegel = holeShader(call.state.features | kSpiegelBild, call.state.numTexMods, &sf2);
+            auto* spiegelBild = static_cast<ID3D11ShaderResourceView*>(zielTexturSatz(g_spiegelSatz));
+            if (spSpiegel != nullptr && spiegelBild != nullptr) {
+                c->VSSetShader(spSpiegel->vs, nullptr, 0);
+                c->PSSetShader(spSpiegel->ps, nullptr, 0);
+                c->IASetInputLayout(spSpiegel->layout);
+                if (ID3D11BlendState* bsd = holeBlend(Blend::Opaque)) {
+                    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+                    c->OMSetBlendState(bsd, faktor, 0xFFFFFFFFU);
+                }
+                if (tiefeAn()) {
+                    PipelineState pd = call.state;
+                    pd.blend = Blend::Opaque;
+                    pd.depthWrite = true;
+                    pd.depthTestEqual = false;
+                    pd.depthTestOff = false;
+                    if (ID3D11DepthStencilState* dsd = holeTiefe(pd)) { c->OMSetDepthStencilState(dsd, 0); }
+                }
+                ID3D11ShaderResourceView* vier[4] = {bild, lm, nullptr, spiegelBild};
+                c->PSSetShaderResources(0, 4, vier);
+                c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
+                ++abgesetzt;
+                ueberSpiegel = true;
+                // Den Zustand der eigentlichen Stufe wieder setzen - eine
+                // deckende Grundstufe mischt sich jetzt darueber.
+                c->VSSetShader(sp->vs, nullptr, 0);
+                c->PSSetShader(sp->ps, nullptr, 0);
+                c->IASetInputLayout(sp->layout);
+                ID3D11BlendState* bsz = (call.state.blend == Blend::Opaque)
+                                            ? holeBlend(Blend::Unbekannt, BlendFactor::One, BlendFactor::OneMinusSrcAlpha)
+                                            : holeBlend(call.state.blend, call.state.srcFactor, call.state.dstFactor);
+                if (bsz != nullptr) {
+                    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+                    c->OMSetBlendState(bsz, faktor, 0xFFFFFFFFU);
+                }
+                if (tiefeAn()) {
+                    if (ID3D11DepthStencilState* dsz = holeTiefe(call.state)) { c->OMSetDepthStencilState(dsz, 0); }
+                }
+            }
+        }
         ID3D11ShaderResourceView* srvs[4] = {bild, lm, himmel, portal};
         c->PSSetShaderResources(0, (portal != nullptr) ? 4U : 3U, srvs);
         c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
         ++abgesetzt;
+        if (ueberSpiegel) {
+            // Die naechste Flaeche bekommt ihren Zustand wieder ganz neu.
+            letzter = nullptr;
+        }
     }
     return abgesetzt;
 }
@@ -2009,6 +2088,23 @@ void waehleZiel(int satz) {
 void* zielTexturSatz(int satz) {
     if (satz == g_zielSatz) { return g_zielSrv; }
     return (satz >= 0 && satz < kZielSaetze) ? g_geparkt[satz].srv : nullptr;
+}
+
+void setzeSpiegelBild(int satz) {
+    g_spiegelSatz = (satz >= 0 && satz < kZielSaetze) ? satz : -1;
+    if (g_spiegelSatz < 0) {
+        if (ID3D11DeviceContext* c = ctx()) {
+            ID3D11ShaderResourceView* nichts = nullptr;
+            c->PSSetShaderResources(3, 1, &nichts);
+        }
+    }
+}
+
+void setzeSpiegelung(bool an, const float ebene[4]) {
+    g_spiegelnd = an;
+    for (int k = 0; k < 4; ++k) {
+        g_clip[k] = (an && ebene != nullptr) ? ebene[k] : ((k == 3) ? 1.0F : 0.0F);
+    }
 }
 
 void setzeHimmelPortal(int satz) {
@@ -3918,7 +4014,7 @@ int zeichneModellAnsicht(const GlmModel& model, const ModelTextures* textures,
         bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         return SUCCEEDED(d->CreateBuffer(&bd, nullptr, ziel));
     };
-    if (!legeCb(&g_cbBild, 40U * 4U) ||
+    if (!legeCb(&g_cbBild, 44U * 4U) ||
         !legeCb(&g_cbStapel, static_cast<UINT>(kKonstFloats) * 4U)) {
         if (fehler != nullptr) { *fehler = "Konstantenpuffer nicht anlegbar"; }
         return 0;
@@ -4197,6 +4293,8 @@ void shutdown() {
     }
     g_zielSatz = 0;
     g_himmelPortalSatz = -1;
+    g_spiegelSatz = -1;
+    g_spiegelnd = false;
     for (Netzpuffer& n : g_netz) {
         if (n.vb != nullptr) { n.vb->Release(); n.vb = nullptr; }
         if (n.ib != nullptr) { n.ib->Release(); n.ib = nullptr; }
@@ -4877,7 +4975,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     // JeBild: float4x4 + float3 + float = 20 float.
     // 40 float - siehe die Lagentabelle beim Fuellen. Nicht 38: die
     // Ausrichtungsluecken zaehlen mit.
-    if (!legeCb(&g_cbBild, 40U * 4U) ||
+    if (!legeCb(&g_cbBild, 44U * 4U) ||
         !legeCb(&g_cbStapel, static_cast<UINT>(kKonstFloats) * 4U)) {
         if (fehler != nullptr) { *fehler = "Konstantenpuffer nicht anlegbar"; }
         return 0;
@@ -4965,6 +5063,9 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
             f[34] = achse(rechts, 2); f[35] = 0.0F;
             f[36] = achse(hoch, 0);   f[37] = achse(hoch, 1);
             f[38] = achse(hoch, 2);   f[39] = 0.0F;
+            // Schnittebene (rc593) - im Spiegeldurchgang die Spiegelebene.
+            f[40] = g_clip[0];        f[41] = g_clip[1];
+            f[42] = g_clip[2];        f[43] = g_clip[3];
             // Merken, damit zeichneFigur nur die Matrix austauschen kann.
             std::memcpy(g_bildDaten, f, sizeof(g_bildDaten));
             g_bildDatenDa = true;
@@ -5116,6 +5217,8 @@ bool bereiteZiel(int, int) { return false; }
 void* zielTextur() { return nullptr; }
 void waehleZiel(int) {}
 void setzeHimmelPortal(int) {}
+void setzeSpiegelBild(int) {}
+void setzeSpiegelung(bool, const float*) {}
 void* zielTexturSatz(int) { return nullptr; }
 bool leseTiefe(std::vector<float>&, int, int, float, float) { return false; }
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }

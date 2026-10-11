@@ -1349,6 +1349,112 @@ struct ShotView {
 
 bool shotAtSelection(ShotView& out);
 
+// --- Spiegel (rc593) -------------------------------------------------------
+//
+// R_GetPortalOrientations: eine Flaeche mit einem `portal`-Shader braucht
+// ein misc_portal_surface in der Naehe ihrer Ebene. Ohne target ist es ein
+// Spiegel (die Kamera wird an der Ebene gespiegelt); mit target zeigt es den
+// Blick einer misc_portal_camera - das ist hier (noch) nicht gebaut, die
+// Flaeche zeigt dann ihre Stufen wie bisher.
+namespace {
+struct SpiegelFlaeche {
+    float n[3]{};
+    float d = 0.0F;
+    float mitte[3]{};
+    float radius = 0.0F;
+};
+const std::vector<SpiegelFlaeche>& spiegelKandidaten() {
+    static std::vector<SpiegelFlaeche> liste;
+    static const void* geoStand = nullptr;
+    static int entStand = -1;
+    static std::size_t texStand = 0;
+    if (geoStand == g_app->geo.surfaces.data() && entStand == g_app->entStand &&
+        texStand == g_app->textures.byShader.size()) {
+        return liste;
+    }
+    geoStand = g_app->geo.surfaces.data();
+    entStand = g_app->entStand;
+    texStand = g_app->textures.byShader.size();
+    liste.clear();
+    std::vector<std::array<float, 3>> orte;
+    for (const MapEntity& e : g_app->map.entities) {
+        if (e.classname != "misc_portal_surface" || e.find("target") != nullptr || e.origin.empty()) { continue; }
+        std::array<float, 3> o{};
+        if (std::sscanf(e.origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]) == 3) { orte.push_back(o); }
+    }
+    if (orte.empty()) { return liste; }
+    for (const BspSurface& s : g_app->geo.surfaces) {
+        if ((s.type != BspSurface::Type::Planar && s.type != BspSurface::Type::TriangleSoup) || s.numVerts < 3 ||
+            s.shader < 0 || static_cast<std::size_t>(s.shader) >= g_app->textures.byShader.size() ||
+            !g_app->textures.byShader[static_cast<std::size_t>(s.shader)].istPortal) {
+            continue;
+        }
+        const BspVertex* v = &g_app->geo.verts[static_cast<std::size_t>(s.firstVert)];
+        float a[3];
+        float b[3];
+        for (int k = 0; k < 3; ++k) {
+            a[k] = v[1].xyz[k] - v[0].xyz[k];
+            b[k] = v[2].xyz[k] - v[0].xyz[k];
+        }
+        float n[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+        const float l = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        if (l < 1e-6F) { continue; }
+        for (float& q : n) { q /= l; }
+        // Zur sichtbaren Seite: wie die Normale der Ecke.
+        if (n[0] * v[0].normal[0] + n[1] * v[0].normal[1] + n[2] * v[0].normal[2] < 0.0F) {
+            for (float& q : n) { q = -q; }
+        }
+        const float d = n[0] * v[0].xyz[0] + n[1] * v[0].xyz[1] + n[2] * v[0].xyz[2];
+        bool mitEntity = false;
+        for (const auto& o : orte) {
+            if (std::fabs(n[0] * o[0] + n[1] * o[1] + n[2] * o[2] - d) <= 64.0F) { mitEntity = true; break; }
+        }
+        if (!mitEntity) { continue; }
+        SpiegelFlaeche f;
+        float lo[3] = {1e30F, 1e30F, 1e30F};
+        float hi[3] = {-1e30F, -1e30F, -1e30F};
+        for (int q = 0; q < s.numVerts; ++q) {
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], v[q].xyz[k]);
+                hi[k] = std::max(hi[k], v[q].xyz[k]);
+            }
+        }
+        for (int k = 0; k < 3; ++k) {
+            f.n[k] = n[k];
+            f.mitte[k] = 0.5F * (lo[k] + hi[k]);
+        }
+        f.d = d;
+        f.radius = 0.5F * std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) +
+                                    (hi[2] - lo[2]) * (hi[2] - lo[2]));
+        liste.push_back(f);
+    }
+    return liste;
+}
+}  // namespace
+
+bool spiegelFuer(const Camera& cam, float ebene[4]) {
+    float vorn[3];
+    cam.forward(vorn);
+    float besteWeite = 1e30F;
+    bool gefunden = false;
+    for (const SpiegelFlaeche& f : spiegelKandidaten()) {
+        // Die Kamera muss vor dem Spiegel stehen ...
+        const float seite = f.n[0] * cam.pos[0] + f.n[1] * cam.pos[1] + f.n[2] * cam.pos[2] - f.d;
+        if (seite <= 1.0F) { continue; }
+        // ... und die Flaeche vor der Kamera liegen.
+        const float zu[3] = {f.mitte[0] - cam.pos[0], f.mitte[1] - cam.pos[1], f.mitte[2] - cam.pos[2]};
+        const float weite = std::sqrt(zu[0] * zu[0] + zu[1] * zu[1] + zu[2] * zu[2]);
+        if (zu[0] * vorn[0] + zu[1] * vorn[1] + zu[2] * vorn[2] < -f.radius) { continue; }
+        if (weite - f.radius < besteWeite) {
+            besteWeite = weite - f.radius;
+            for (int k = 0; k < 3; ++k) { ebene[k] = f.n[k]; }
+            ebene[3] = f.d;
+            gefunden = true;
+        }
+    }
+    return gefunden;
+}
+
 bool himmelPortalOrt(float ort[3]) {
     for (const MapEntity& e : g_app->map.entities) {
         if (e.classname != "misc_skyportal" || e.origin.empty()) { continue; }
@@ -10970,6 +11076,37 @@ void drawMapView() {
                                       ? std::max(4.0F, bildCam.pos[2] - g_app->draufSchnitt)
                                       : 4.0F;
                 gpu::baueViewProj(bildCam, bildW, bildH, nah, kartenFern() + (nah > 4.0F ? nah : 0.0F), vp);
+                // --- Spiegeldurchgang (rc593) ---------------------------------
+                //
+                // Statt der gespiegelten Kamera (die sich mit Winkeln nicht
+                // beschreiben laesst - sie ist seitenverkehrt) wird die WELT
+                // an der Spiegelebene gespiegelt: vp x R. Die Kameraposition
+                // An die Zeichner geht weiter die ECHTE Kameraposition: sie
+                // waehlen damit auch die sichtbaren Blaetter (PVS), und die
+                // gespiegelte liegt hinter dem Spiegel im Leeren.
+                float kamOrt[3] = {bildCam.pos[0], bildCam.pos[1], bildCam.pos[2]};
+                const bool spiegeln = nebenbild && g_app->imSpiegelDurchgang;
+                const float* sn = g_app->spiegelEbene;
+                auto spiegle = [&](float* v3, bool ort) {
+                    const float abst = sn[0] * v3[0] + sn[1] * v3[1] + sn[2] * v3[2] - (ort ? sn[3] : 0.0F);
+                    for (int k = 0; k < 3; ++k) { v3[k] -= 2.0F * abst * sn[k]; }
+                };
+                if (spiegeln) {
+                    float r[16] = {0.0F};
+                    for (int z = 0; z < 3; ++z) {
+                        for (int sp2 = 0; sp2 < 3; ++sp2) {
+                            r[z * 4 + sp2] = (z == sp2 ? 1.0F : 0.0F) - 2.0F * sn[z] * sn[sp2];
+                        }
+                        r[z * 4 + 3] = 2.0F * sn[3] * sn[z];
+                    }
+                    r[15] = 1.0F;
+                    gpu::multipliziere(vp, r, vp);
+                    spiegle(kamOrt, true);
+                    // Eine Einheit vor dem Spiegel schneiden: was genau auf der
+                    // Ebene liegt (der Boden um den Spiegel), gehoert nicht ins Bild.
+                    const float clip[4] = {sn[0], sn[1], sn[2], -sn[3] - 1.0F};
+                    gpu::setzeSpiegelung(true, clip);
+                }
                 // Die Kameraachsen fuer den Himmel - aus derselben Quelle
                 // wie der Rasterer, sonst zeigt der Himmel woandershin.
                 float gvorn[3];
@@ -10979,6 +11116,12 @@ void drawMapView() {
                 hc.forward(gvorn);
                 hc.right(grechts);
                 hc.up(ghoch);
+                if (spiegeln) {
+                    // Der Himmel blickt im Spiegel in die gespiegelte Richtung.
+                    spiegle(gvorn, false);
+                    spiegle(grechts, false);
+                    spiegle(ghoch, false);
+                }
                 const float gfokus =
                     1.0F / std::tan(bildCam.fovY * 3.14159265F / 180.0F * 0.5F);
                 std::string f;
@@ -11478,7 +11621,7 @@ void drawMapView() {
                             }
                         }
                     }
-                    if (!weltLichter.empty() || !blobs.empty()) {
+                    if (!g_app->imSpiegelDurchgang && (!weltLichter.empty() || !blobs.empty())) {
                         gpu::setzeSchritt("Licht und Schatten");
                         std::string fl;
                         const int nl = gpu::zeichneLichtUndSchatten(
@@ -11520,7 +11663,7 @@ void drawMapView() {
                     // Figurenschatten kommen erst danach (SS_STENCIL_SHADOW,
                     // RB_ShadowFinish).
                     g_app->nebelAufrufe = 0;
-                    if (g_app->showFog && !g_app->geo.nebel.empty()) {
+                    if (!g_app->imSpiegelDurchgang && g_app->showFog && !g_app->geo.nebel.empty()) {
                         gpu::setzeSchritt("Nebel");
                         std::string fn;
                         const int nn = gpu::zeichneNebel(
@@ -11551,7 +11694,7 @@ void drawMapView() {
                             g_app->gpuMover += nm;
                         }
                     }
-                    if (!figurSchatten.empty()) {
+                    if (!g_app->imSpiegelDurchgang && !figurSchatten.empty()) {
                         gpu::setzeSchritt("Figurenschatten");
                         std::string fs2;
                         const int ns = gpu::zeichneFigurSchatten(figurSchatten,
@@ -11581,8 +11724,8 @@ void drawMapView() {
                 // den Movern und den Figuren, damit sie ueber allem liegen,
                 // das sie nicht verdeckt - wie im Rasterer.
                 // Das Wetter im selben Durchgang: additiv, tiefengetestet.
-                if (!g_app->imPortalDurchgang) { wetterTeilchen(klingen, bildCam); }
-                flareSchilde(klingen, bildCam, static_cast<float>(bildW) / static_cast<float>(std::max(bildH, 1)));
+                if (!g_app->imPortalDurchgang && !g_app->imSpiegelDurchgang) { wetterTeilchen(klingen, bildCam); }
+                if (!g_app->imSpiegelDurchgang) flareSchilde(klingen, bildCam, static_cast<float>(bildW) / static_cast<float>(std::max(bildH, 1)));
                 if (!klingen.empty()) {
                     std::string fk;
                     const int nk2 = gpu::zeichneKlingen(klingen, vp, &fk);
@@ -11625,6 +11768,7 @@ void drawMapView() {
                         g_app->d3dMeldungen.push_back(m);
                     }
                 }
+                if (spiegeln) { gpu::setzeSpiegelung(false, nullptr); }
                 g_app->gpuFehler = f;
                 if (g_app->gpuAufrufe <= 0 && g_app->gpuFehler.empty()) {
                     g_app->gpuFehler = "kein Zeichenaufruf abgesetzt";
@@ -11700,13 +11844,25 @@ void drawMapView() {
                 return ok;
             };
             g_app->himmelPortalGezeichnet = false;
+            g_app->spiegelGezeichnet = false;
             if (gpu::bereiteZiel(gw, gh)) {
+                // --- Spiegel (rc593): das Spiegelbild zuerst, in Satz 3 ------
+                if (!g_app->draufsicht && spiegelFuer(useCam, g_app->spiegelEbene)) {
+                    g_app->imSpiegelDurchgang = true;
+                    const bool ok = nebenBild(useCam, gw, gh, 3, "Spiegel");
+                    g_app->imSpiegelDurchgang = false;
+                    if (ok) {
+                        g_app->spiegelGezeichnet = true;
+                        gpu::setzeSpiegelBild(3);
+                    }
+                }
                 if (portalFuer(useCam, gw, gh)) {
                     g_app->himmelPortalGezeichnet = true;
                     gpu::setzeHimmelPortal(2);
                 }
                 gpuBild(useCam, gw, gh, false);
                 gpu::setzeHimmelPortal(-1);
+                gpu::setzeSpiegelBild(-1);
                 // --- Bild-im-Bild der gewaehlten Kamera (rc592) --------------
                 //
                 // Ein Drittel der Breite, Seitenverhaeltnis der Ansicht, in

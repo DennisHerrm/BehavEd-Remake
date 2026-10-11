@@ -216,6 +216,9 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     Wave stageRgb;
     Wave alphaWave;
     Wave stageAlphaWave;
+    float portalWeite = 0.0F;
+    float stagePortalWeite = 0.0F;
+    bool istPortal = false;
     Wave deformWave;
     float deformSpread = 0.0F;
     DeformZusatz deform2;
@@ -257,6 +260,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageAlpha = AlphaTest::None;
                 stageRgb = Wave{};
                 stageAlphaWave = Wave{};
+                stagePortalWeite = 0.0F;
             }
             continue;
         }
@@ -300,6 +304,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     alphaTest = stageAlpha;
                     rgbWave = stageRgb;
                     alphaWave = stageAlphaWave;
+                    portalWeite = stagePortalWeite;
                     alphaConst = stageAlphaConst;
                     glow = stageGlow;
                     texGen = stageTexGen;
@@ -341,6 +346,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     st.animOneShot = stageAnimOneShot;
                     st.rgbWave = stageRgb;
                     st.alphaWave = stageAlphaWave;
+                    st.portalWeite = stagePortalWeite;
                     st.glow = stageGlow;
                     st.texGen = stageTexGen;
                     st.alphaGen = stageAlphaGen;
@@ -433,6 +439,8 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     info.cull = cull;
                     info.rgbWave = rgbWave;
                     info.alphaWave = alphaWave;
+                    info.portalWeite = portalWeite;
+                    info.istPortal = istPortal;
                     info.deformWave = deformWave;
                     info.deformSpread = deformSpread;
                     info.deform2 = deform2;
@@ -669,6 +677,12 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 polygonOffset = true;
                 continue;
             }
+            // `portal` / `sort portal` (rc593): Spiegel- oder Portalflaeche.
+            if (key == "portal" ||
+                (key == "sort" && lower(firstWord(secondWord(line))) == "portal")) {
+                istPortal = true;
+                continue;
+            }
             if (key == "cull") {
                 const std::string what = lower(firstWord(secondWord(line)));
                 if (what == "none" || what == "twosided" || what == "disable") {
@@ -694,6 +708,9 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             stageRgb = Wave{};
             alphaWave = Wave{};
             stageAlphaWave = Wave{};
+            portalWeite = 0.0F;
+            stagePortalWeite = 0.0F;
+            istPortal = false;
             rgbVertexImage = false;
             stageRgbVertex = false;
             deformWave = Wave{};
@@ -809,6 +826,12 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     stageAlphaGen = AlphaGen::Identity;
                 } else if (firstWord(rest) == "oneminusvertex") {
                     stageAlphaGen = AlphaGen::OneMinusVertex;
+                } else if (firstWord(rest) == "portal") {
+                    // ParseStage: ohne Zahl nimmt die Engine 256.
+                    const std::string w = firstWord(secondWord(rest));
+                    stagePortalWeite = w.empty() ? 256.0F : readNum(w);
+                    if (!(stagePortalWeite > 0.0F)) { stagePortalWeite = 256.0F; }
+                    stageAlphaGen = AlphaGen::Portal;
                 } else if (firstWord(rest) == "entity") {
                     stageAlphaConst = 1.0F;
                     stageAlphaGen = AlphaGen::Const;
@@ -834,7 +857,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                         stageAlphaGen = AlphaGen::Unsupported;
                     }
                 } else if (!firstWord(rest).empty()) {
-                    // portal, dot - nicht nachgebaut.
+                    // dot, skyalpha ... - nicht nachgebaut.
                     // Siehe AlphaGen: gemerkt wird es trotzdem, damit die
                     // Stufe weggelassen statt falsch gezeichnet werden kann.
                     stageAlphaGen = AlphaGen::Unsupported;

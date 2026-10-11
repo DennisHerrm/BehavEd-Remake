@@ -402,6 +402,12 @@ struct App {
     // Wetter), und ob die Ansicht zuletzt mit Portalhimmel gezeichnet wurde.
     bool imPortalDurchgang = false;
     bool himmelPortalGezeichnet = false;
+    // Spiegel (rc593): gerade im Spiegeldurchgang (Ebene n.p = d in
+    // spiegelEbene), und ob die Ansicht zuletzt mit Spiegelbild gezeichnet
+    // wurde (Selbsttest).
+    bool imSpiegelDurchgang = false;
+    float spiegelEbene[4]{0.0F, 0.0F, 1.0F, 0.0F};
+    bool spiegelGezeichnet = false;
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand
@@ -2011,6 +2017,9 @@ void kameraVorschauZeigen();
 void lichtStileZuZeit();
 // Der Ort des misc_skyportal der Karte (rc593), false ohne eines.
 bool himmelPortalOrt(float ort[3]);
+// Der Spiegel, den die Kamera gerade sieht (rc593): Ebene n.p = d. false
+// ohne einen - siehe app_view3d.cpp, spiegelKandidaten.
+bool spiegelFuer(const Camera& cam, float ebene[4]);
 // Die MOVE-Schluessel des Skripts, in der Reihenfolge, in der App::selectedKey
 // zaehlt: Ort, Winkel (erstes PAN danach, sonst das vorige) und Zeile.
 struct KameraSchluessel {

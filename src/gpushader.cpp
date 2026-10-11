@@ -64,6 +64,9 @@ cbuffer JeBild : register(b0) {
     float    gFuellung3;
     float3   gHoch;
     float    gFuellung4;
+    // Schnittebene (rc593): Spiegelbild ohne das, was hinter dem Spiegel
+    // liegt. dot(float4(welt, 1), gClip) < 0 wird verworfen; (0,0,0,1) laesst alles.
+    float4   gClip;
 };
 cbuffer JeStapel : register(b1) {
     float4 gTexMatrix;     // die ganze tcMod-Kette als 2x2
@@ -79,6 +82,7 @@ cbuffer JeStapel : register(b1) {
     float4 gDeform;        // base, amplitude, phase, frequency
     float  gDeformSpread;
     float  gWolkenHoehe;   // Wolkenkuppel, siehe gpuconst.h (21)
+    float  gPortalWeite;   // alphaGen portal, siehe gpuconst.h (22)
     // rc592, siehe gpuconst.h: jedes ein eigener Viererblock (24, 28, 32).
     float4 gDeformMove;    // xyz Versatz
     float4 gBulge;         // breite, hoehe, tempo
@@ -158,10 +162,12 @@ struct VSOut {
     float4 pos   : SV_POSITION;
     float2 uv    : TEXCOORD0;
     float4 farbe : COLOR0;
+    float  clip  : SV_ClipDistance0;
 };
 VSOut main(VSIn ein) {
     VSOut aus;
     aus.pos = mul(gViewProj, float4(ein.pos, 1.0));
+    aus.clip = dot(float4(ein.pos, 1.0), gClip);
     aus.uv = ein.uv;
     aus.farbe = ein.farbe;
     return aus;
@@ -796,6 +802,7 @@ struct VSOut {
     float2 uv     : TEXCOORD0;
     float2 uvLm   : TEXCOORD1;
     float4 farbe  : COLOR0;
+    float  clip   : SV_ClipDistance0;
 };
 VSOut main(VSIn ein) {
     VSOut aus;
@@ -833,6 +840,7 @@ VSOut main(VSIn ein) {
     // Danach die Stellung der Figur in der Welt.
     float4 w4 = mul(gFigurWelt, float4(welt, 1.0));
     aus.pos = mul(gViewProj, w4);
+    aus.clip = dot(w4, gClip);
     aus.uv = ein.uv;
     aus.uvLm = float2(0.0, 0.0);
     // --- Die Beleuchtung aus der Normalen --------------------------------
@@ -911,6 +919,7 @@ struct VSOut {
     float2 uv     : TEXCOORD0;
     float2 uvLm   : TEXCOORD1;
     float4 farbe  : COLOR0;
+    float  clip   : SV_ClipDistance0;
 };
 )";
     // deformVertexes normal: Wertrauschen in vier Dimensionen, linear
@@ -1120,6 +1129,10 @@ float rausch4(float4 q) {
     if ((features & (kRgbConst | kRgbWave)) != 0U) {
         s += "    aus.farbe.rgb = gRgb.rgb;\n";
     }
+    // alphaGen portal: der Abstand zum Auge durch die Weite, hoechstens 1.
+    wenn(s, features, kAlphaPortal,
+         "    aus.farbe.a = saturate(length(welt - gKamera) / max(gPortalWeite, 1.0));\n");
+    s += "    aus.clip = dot(float4(welt, 1.0), gClip);\n";
     s += "    return aus;\n}\n";
     return s;
 }
@@ -1199,7 +1212,11 @@ float4 main(VSOut ein) : SV_TARGET {
     float4 c = gBild.Sample(gSampler, wuv);
 )";
     } else {
-        s += "    float4 c = gBild.Sample(gSampler, ein.uv);\n";
+        if ((features & kSpiegelBild) != 0U) {
+            s += "    float4 c = float4(gPortal.Load(int3(int2(ein.pos.xy), 0)).rgb, 1.0);\n";
+        } else {
+            s += "    float4 c = gBild.Sample(gSampler, ein.uv);\n";
+        }
     }
 
     // --- Der Himmel, woertlich wie skyFace() ------------------------------
@@ -1384,6 +1401,7 @@ std::string shaderName(std::uint32_t features, int numTexMods) {
         {kAutosprite2, "_a2"},   {kBulge, "_bu"},
         {kDeformMove, "_mv"},    {kDeformNormal, "_dn"},
         {kWolke, "_wk"},         {kSkyPortal, "_sp2"},
+        {kAlphaPortal, "_ap"},      {kSpiegelBild, "_spb"},
         // kRohEcke MUSS ein Kuerzel bekommen: es aendert den erzeugten
         // Quelltext (kein Helligkeitsfaktor auf der Eckenfarbe). Ohne
         // Kuerzel bekaemen zwei verschiedene Shader denselben Namen und

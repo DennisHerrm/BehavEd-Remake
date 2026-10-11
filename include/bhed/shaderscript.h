@@ -354,6 +354,9 @@ enum class AlphaGen : std::uint8_t {
     // (ComputeColors, AGEN_ONE_MINUS_VERTEX). Seit rc592; steht in den
     // Plasma-Shadern von MD (plasma_scarif).
     OneMinusVertex,
+    // alphaGen portal <weite> (rc593) - Alpha = Abstand zum Auge / weite,
+    // hoechstens 1 (RB_CalcAlphaFromPortal). Siehe ShaderInfo::portalWeite.
+    Portal,
     Unsupported,
 };
 
@@ -473,6 +476,8 @@ struct ShaderInfo {
         // auf 0..1 begrenzt. alphaGen ist dann Const, und alphaConst wird
         // in jedem Bild aus der Welle neu gesetzt.
         Wave alphaWave;
+        // Die Weite aus alphaGen portal (rc593).
+        float portalWeite = 0.0F;
         // Woher der Alphawert kommt - siehe AlphaGen.
         AlphaGen alphaGen = AlphaGen::FromImage;
         // --- depthWrite: Tiefe schreiben, obwohl gemischt wird ----------
@@ -649,6 +654,12 @@ struct ShaderInfo {
     Wave rgbWave;
     // alphaGen wave der Bildstufe - siehe Stage::alphaWave.
     Wave alphaWave;
+    // alphaGen portal der Bildstufe - siehe Stage::portalWeite.
+    float portalWeite = 0.0F;
+    // `portal` (oder `sort portal`, rc593): eine Spiegel- oder Portalflaeche.
+    // Die Engine zeichnet dahinter das Bild aus der gespiegelten Kamera
+    // (R_MirrorViewBySurface), die Stufen des Shaders liegen darueber.
+    bool istPortal = false;
 
     // deformVertexes wave - die Flaeche selbst wogt.
     //
