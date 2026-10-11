@@ -6,6 +6,7 @@
 // Werte abweist, zerschiesst beim Oeffnen-und-Speichern fremde Skripte.
 
 #include "bhed/validate.h"
+#include "bhed/mpfelder.h"
 
 #include <algorithm>
 #include <cctype>
@@ -108,12 +109,12 @@ std::size_t abstand(const std::string& a, const std::string& b) {
     return zeile[b.size()];
 }
 
-std::string naechster(const std::string& wert, const TypeSet& ts) {
+const TypeEntry* naechsterEintrag(const std::string& wert, const TypeSet& ts) {
     const std::string ziel = vereinfache(wert);
     // Stufe 1: gleich, wenn man Unterstriche wegdenkt.
     for (const TypeEntry& e : ts.entries) {
         if (vereinfache(e.name) == ziel) {
-            return " (meintest du " + e.name + "?)";
+            return &e;
         }
     }
     // Stufe 2: naechster Nachbar, aber nur wenn er wirklich nah ist.
@@ -136,10 +137,12 @@ std::string naechster(const std::string& wert, const TypeSet& ts) {
         const std::size_t d = abstand(ziel, vereinfache(e.name));
         if (d < beste) { beste = d; treffer = &e; }
     }
-    if (treffer != nullptr) {
-        return " (meintest du " + treffer->name + "?)";
-    }
-    return {};
+    return treffer;
+}
+
+std::string naechster(const std::string& wert, const TypeSet& ts) {
+    const TypeEntry* e = naechsterEintrag(wert, ts);
+    return e != nullptr ? " (meintest du " + e->name + "?)" : std::string();
 }
 
 void checkArg(const Param& p, const Arg& a, const CommandDb& db,
@@ -369,8 +372,209 @@ std::vector<Param> expandFields(const Command& c, const CommandDb& db,
     return out;
 }
 
-void validate(const Script& s, const CommandDb& db, std::vector<Issue>& out) {
+namespace {
+
+std::string grossText(const std::string& s) {
+    std::string g = s;
+    for (char& c : g) { c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
+    return g;
+}
+
+// Alle $get( TYP, "FELD" ) in einem Ausdruck.
+std::vector<std::pair<std::string, std::string>> getsIn(const std::string& t) {
+    std::vector<std::pair<std::string, std::string>> out;
+    const std::string g = grossText(t);
+    std::size_t p = 0;
+    while ((p = g.find("GET(", p)) != std::string::npos) {
+        std::size_t q = p + 4;
+        while (q < g.size() && g[q] == ' ') { ++q; }
+        std::size_t e = q;
+        while (e < g.size() && (std::isalpha(static_cast<unsigned char>(g[e])) != 0)) { ++e; }
+        const std::string typ = g.substr(q, e - q);
+        const std::size_t a = g.find('"', e);
+        const std::size_t b = a == std::string::npos ? a : g.find('"', a + 1);
+        if (b != std::string::npos && !typ.empty()) {
+            out.emplace_back(typ, g.substr(a + 1, b - a - 1));
+        }
+        p += 4;
+    }
+    return out;
+}
+
+void sammleNamen(const std::vector<Node>& ns, std::vector<std::string>& variablen,
+                 std::vector<std::pair<std::string, const Node*>>& tasks) {
+    for (const Node& n : ns) {
+        if (n.kind != Node::Kind::Command) { continue; }
+        if (n.name == "declare" && n.args.size() >= 2) { variablen.push_back(grossText(n.args[1].text)); }
+        if (n.name == "task" && !n.args.empty()) { tasks.emplace_back(grossText(n.args[0].text), &n); }
+        sammleNamen(n.children, variablen, tasks);
+    }
+}
+
+// Haelt ein Task etwas, das im MP nie fertig wird? (Kein MP-Code meldet
+// TID_ANIM_*, TID_ANIM_HOLD, TID_RESIZE oder TID_CHAN_VOICE als erledigt.)
+const Node* nieFertig(const std::vector<Node>& ns) {
+    for (const Node& n : ns) {
+        if (n.kind != Node::Kind::Command) { continue; }
+        if (n.name == "set" && !n.args.empty()) {
+            const std::string f = grossText(n.args[0].text);
+            if (f.rfind("SET_ANIM_", 0) == 0 || f == "SET_ENDFRAME" || f == "SET_ANIMFRAME" || f == "SET_WIDTH") {
+                return &n;
+            }
+        }
+        if (n.name == "sound" && !n.args.empty() && grossText(n.args[0].text).rfind("CHAN_VOICE", 0) == 0) {
+            return &n;
+        }
+        if (const Node* k = nieFertig(n.children)) { return k; }
+    }
+    return nullptr;
+}
+
+void mpWalk(const std::vector<Node>& ns, const CommandDb& db, const std::string& path,
+            const std::vector<std::string>& variablen,
+            const std::vector<std::pair<std::string, const Node*>>& tasks, std::vector<Issue>& out) {
+    using L = Issue::Level;
+    for (const Node& n : ns) {
+        if (n.kind != Node::Kind::Command) { continue; }
+        const std::string where = path.empty() ? n.name : path + "/" + n.name;
+        if (n.name == "camera") {
+            out.push_back({L::Warning, "M001", where, "camera tut im MP nichts (alle Unterbefehle sind Stubs)",
+                           n.args.empty() ? std::string() : n.args[0].text, ""});
+        }
+        if (n.name == "print" && !n.args.empty() && n.args[0].kind == Arg::Kind::String) {
+            const std::string& t = n.args[0].text;
+            if (t.rfind('!', 0) != 0 && t.rfind("@@@", 0) != 0) {
+                out.push_back({L::Warning, "M007", where,
+                               "print ohne ! am Anfang zeigt im MP nichts an", t, ""});
+            }
+        }
+        if (n.name == "set" && !n.args.empty() && n.args[0].kind != Arg::Kind::Expr) {
+            const std::string name = grossText(n.args[0].text);
+            const mp::Feld* f = mp::feld(name);
+            const bool variable = std::find(variablen.begin(), variablen.end(), name) != variablen.end();
+            if ((f == nullptr || !f->inMp) && !variable) {
+                out.push_back({L::Warning, "M002", where, name + " kennt der MP nicht (variable or field not found)",
+                               name, ""});
+            } else if (f != nullptr && f->inMp) {
+                if (f->status == mp::Status::Stub) {
+                    out.push_back({L::Warning, "M003", where, name + " ist im MP ein Stub und tut nichts", name, ""});
+                } else if (f->status == mp::Status::OhneWirkung) {
+                    out.push_back({L::Warning, "M004", where, name + " wird im MP angenommen, tut aber nichts", name, ""});
+                } else {
+                    if (f->wer == mp::Wer::Npc) {
+                        out.push_back({L::Info, "M005", where, name + " wirkt im MP nur auf NPCs", name, ""});
+                    } else if (f->wer == mp::Wer::SpielerOderNpc) {
+                        out.push_back({L::Info, "M006", where, name + " wirkt im MP nur auf Spieler und NPCs", name, ""});
+                    }
+                    if (f->ravenStub) {
+                        out.push_back({L::Info, "M016", where,
+                                       name + " wirkt nur auf OpenJK-Servern (im originalen MP ein Stub)", name, ""});
+                    }
+                }
+                if (name == "SET_ORIGIN" || name == "SET_TELEPORT_DEST") {
+                    out.push_back({L::Info, "M008", where, name + " wirkt im MP nicht auf Spieler und NPCs", name, ""});
+                }
+                if (name == "SET_WEAPON" || name == "SET_COPY_ORIGIN" || name == "SET_SABERACTIVE") {
+                    out.push_back({L::Warning, "M009", where,
+                                   name + " stuerzt den MP-Server ab, wenn das Skript nicht auf einem Spieler oder NPC laeuft",
+                                   name, ""});
+                }
+                if (name == "SET_SABERACTIVE") {
+                    out.push_back({L::Warning, "M010", where, "SET_SABERACTIVE ist im MP umgekehrt", name, ""});
+                }
+                if (name == "SET_SABER_OFFENSE" || name == "SET_SABER_DEFENSE" || name == "SET_SABER_THROW") {
+                    const char* stattdessen = name == "SET_SABER_OFFENSE"   ? "Absorb"
+                                              : name == "SET_SABER_DEFENSE" ? "Protect"
+                                                                            : "Rage";
+                    out.push_back({L::Warning, "M011", where, name + " setzt im MP die Macht " + stattdessen,
+                                   name, stattdessen});
+                }
+                if (name == "SET_TIMESCALE") {
+                    out.push_back({L::Info, "M012", where, "SET_TIMESCALE gilt fuer den ganzen Server", name, ""});
+                }
+                if (name == "SET_GRAVITY") {
+                    out.push_back({L::Info, "M013", where, "SET_GRAVITY haelt im MP nur bei NPCs", name, ""});
+                }
+            }
+        }
+        // $get in den Argumenten
+        for (const Arg& a : n.args) {
+            if (a.kind != Arg::Kind::Expr) { continue; }
+            for (const auto& [typ, feldname] : getsIn(a.text)) {
+                const mp::Get g = mp::get(feldname, typ);
+                if (g == mp::Get::Scheitert) {
+                    out.push_back({L::Warning, "M015", where,
+                                   "$get( " + typ + ", " + feldname + " ) liefert im MP nie einen Wert",
+                                   typ, feldname});
+                } else if (g == mp::Get::AbsturzOhneParms) {
+                    out.push_back({L::Warning, "M009", where,
+                                   "$get( " + typ + ", " + feldname + " ) stuerzt ab, wenn die Entity keine Parms hat",
+                                   feldname, ""});
+                }
+            }
+        }
+        if (n.name == "dowait" && !n.args.empty()) {
+            const std::string t = grossText(n.args[0].text);
+            for (const auto& [name, task] : tasks) {
+                if (name != t) { continue; }
+                if (const Node* k = nieFertig(task->children)) {
+                    const std::string was = k->name == "set" && !k->args.empty() ? k->args[0].text : k->name;
+                    out.push_back({L::Warning, "M017", where,
+                                   "dowait kehrt im MP nie zurueck: der Task enthaelt " + was, n.args[0].text, was});
+                }
+                break;
+            }
+        }
+        mpWalk(n.children, db, where, variablen, tasks, out);
+    }
+}
+
+// set ( "SET_..." ) ohne /*@SET_TYPES*/: ein Feldname, den es nicht gibt, ist
+// ein Tippfehler (Variablen heissen nicht SET_...). Mit Annotation meldet ihn
+// schon V004.
+void feldnamenWalk(const std::vector<Node>& ns, const CommandDb& db, const std::string& path,
+                   std::vector<Issue>& out) {
+    const TypeSet* felder = db.typeset("SET_TYPES");
+    for (const Node& n : ns) {
+        if (n.kind != Node::Kind::Command) { continue; }
+        const std::string where = path.empty() ? n.name : path + "/" + n.name;
+        if (felder != nullptr && n.name == "set" && !n.args.empty() && n.args[0].typeset.empty() &&
+            n.args[0].kind != Arg::Kind::Expr) {
+            const std::string name = n.args[0].text;
+            // Auch die Felder von Movie Duels (in der Tabelle als SP-Feld) gelten - sie
+            // stehen nicht in der mitgelieferten SDK-Liste.
+            const mp::Feld* bekannt = mp::feld(name);
+            if (grossText(name).rfind("SET_", 0) == 0 && felder->find(name) == nullptr &&
+                (bekannt == nullptr || !bekannt->inSp)) {
+                const TypeEntry* vorschlag = naechsterEintrag(name, *felder);
+                out.push_back({Issue::Level::Warning, "V012", where,
+                               name + " ist kein Feld" + (vorschlag != nullptr ? " (meintest du " + vorschlag->name + "?)" : ""),
+                               name, vorschlag != nullptr ? vorschlag->name : std::string()});
+            }
+        }
+        feldnamenWalk(n.children, db, where, out);
+    }
+}
+
+}  // namespace
+
+void validate(const Script& s, const CommandDb& db, std::vector<Issue>& out, bool mp) {
     walk(s.nodes, db, "", out);
+    if (!mp) {
+        // Im MP meldet M002 dasselbe (und mehr) - nicht doppelt.
+        feldnamenWalk(s.nodes, db, "", out);
+        return;
+    }
+    std::vector<std::string> variablen;
+    std::vector<std::pair<std::string, const Node*>> tasks;
+    sammleNamen(s.nodes, variablen, tasks);
+    mpWalk(s.nodes, db, "", variablen, tasks, out);
+    // Hoechstens 32 Variablen auf einmal (Q3_Registers, MAX_VARIABLES).
+    if (variablen.size() > 32) {
+        out.push_back({Issue::Level::Warning, "M014", "declare",
+                       std::to_string(variablen.size()) + " Variablen - der MP haelt hoechstens 32",
+                       std::to_string(variablen.size()), ""});
+    }
 }
 
 } // namespace bhed

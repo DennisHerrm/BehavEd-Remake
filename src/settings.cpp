@@ -103,6 +103,7 @@ std::string writeSettings(const Settings& s) {
     put(o, "schattenArt", std::to_string(s.schattenArt));
     put(o, "nebel", s.nebel);
     put(o, "dynLicht", s.dynLicht);
+    put(o, "mpZiel", s.mpZiel);
     put(o, "showTypes", s.showTypes);
     put(o, "gFloats", s.gFloats);
     put(o, "foldMacros", s.foldMacros);
@@ -271,6 +272,7 @@ bool readSettings(const std::string& text, Settings& out) {
         }
         else if (key == "nebel") { out.nebel = toBool(value); }
         else if (key == "dynLicht") { out.dynLicht = toBool(value); }
+        else if (key == "mpZiel") { out.mpZiel = toBool(value); }
         else if (key == "mapSidebar") {
             out.mapSidebar = (value == "true" || value == "1");
         }

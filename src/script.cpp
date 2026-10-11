@@ -163,6 +163,11 @@ struct Reader {
         if (diag != nullptr) { diag->push_back({static_cast<int>(pos) + 1, m});
 }
     }
+    // Mit Code (L001...) und der Zeile, um die es geht - die Oberflaeche
+    // zeigt die Meldung beim Oeffnen in der eingestellten Sprache.
+    void note(int zeile, const std::string& m, const char* code, const std::string& arg) {
+        if (diag != nullptr) { diag->push_back({zeile, m, code, arg}); }
+    }
 
     // Ein Kommentar, der hinter Code stand, als eigene Zeile danach.
     static void kommentarDanach(std::vector<Node>& out, const Zeile& z) {
@@ -193,11 +198,12 @@ struct Reader {
     bool readNodes(std::vector<Node>& out, int depth) {
         while (pos < lines.size()) {
             const std::string raw = lines[pos];
+            const int zeileNr = static_cast<int>(pos) + 1;
             const Zeile z = zerlege(raw);
             const std::string& s = z.code;
             if (s == "}") {
                 if (depth == 0) {
-                    note("unerwartete schliessende Klammer");
+                    note(zeileNr, "unerwartete schliessende Klammer", "L005", trim(raw));
                     ++pos;
                     wortgetreu(out, raw);
                     continue;
@@ -234,10 +240,10 @@ struct Reader {
                 continue;
             }
             std::size_t op = s.find('(');
-            if (op == std::string::npos) { note("Zeile ohne Klammer: " + s); wortgetreu(out, raw); continue; }
+            if (op == std::string::npos) { note(zeileNr, "Zeile ohne Klammer: " + s, "L001", s); wortgetreu(out, raw); continue; }
             std::size_t cl = s.rfind(')');
             if (cl == std::string::npos || cl < op) {
-                note("Klammer nicht geschlossen: " + s);
+                note(zeileNr, "Klammer nicht geschlossen: " + s, "L002", s);
                 wortgetreu(out, raw);
                 continue;
             }
@@ -265,7 +271,7 @@ struct Reader {
 }
                     if (pos < lines.size()) { auf = zerlege(lines[pos]); }
                     if (pos >= lines.size() || auf.code != "{") {
-                        note("Blockbefehl ohne '{': " + n.name);
+                        note(zeileNr, "Blockbefehl ohne '{': " + n.name, "L003", n.name);
                         out.push_back(std::move(n));
                         kommentarDanach(out, z);
                         continue;
@@ -274,7 +280,8 @@ struct Reader {
                 }
                 n.hasBlock = true;
                 if (!readNodes(n.children, depth + 1)) {
-                    note("Block nicht geschlossen: " + n.name);
+                    note(zeileNr, "Block nicht geschlossen: " + n.name, "L004", n.name);
+                    n.blockOffen = true;
                     out.push_back(std::move(n));
                     kommentarDanach(out, z);
                     return false;
@@ -287,7 +294,7 @@ struct Reader {
                 kommentarDanach(out, zu);
                 continue;
             }
-            note("unbekannter Zeilenrest '" + after + "' bei " + n.name);
+            note(zeileNr, "unbekannter Zeilenrest '" + after + "' bei " + n.name, "L006", trim(raw));
             out.push_back(std::move(n));
             kommentarDanach(out, z);
         }

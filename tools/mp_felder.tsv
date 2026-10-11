@@ -1,0 +1,322 @@
+# MP-Felder (set) - geprueft gegen codemp/game/g_ICARUScb.c (MovieDuels/OpenJK) und das Raven-MP-SDK, 11.10.2026.
+# Spalten: field in_sp in_mp mp_status mp_entity note. [raven:stubbed] = im originalen Raven-MP-Spielmodul nur ein Stub.
+field	in_sp	in_mp	mp_status	mp_entity	note
+SET_ADDLHANDBOLT_MODEL	yes	yes	stubbed	-	g_ICARUScb.c:5096-5126
+SET_ADDRHANDBOLT_MODEL	yes	yes	stubbed	-	g_ICARUScb.c:5096-5126
+SET_ADJUST_AREA_PORTALS	yes	yes	stubbed	-	g_ICARUScb.c:6490-6502
+SET_AGGRESSION	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3311/3342 values outside 1-5 ignored
+SET_AIM	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3311/3342 values outside 1-5 ignored
+SET_ALT_FIRE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_ANGERSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_ANGLES	yes	yes	differs	any	g_ICARUScb.c:1922-1929 clients: SetClientViewAngle; non-clients: only s.angles copied (apos.trBase/currentAngles untouched, SP sets them: code/game/Q3_Interface.cpp:1295-1297) -> probably no visible rotation on movers
+SET_ANIMATION_STYLE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIMFRAME	yes	yes	stubbed	-	g_ICARUScb.c:5454; returns qfalse without a task (6449) -> dowait never returns
+SET_ANIM_BOTH	yes	yes	works	player_or_npc	g_ICARUScb.c:2214/2242 client guard; registers TID_ANIM_* which no MP game code ever completes -> a task/dowait on it does not return (only stomped by next anim)
+SET_ANIM_BOTH_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_HOLDTIME_BOTH	yes	yes	stubbed	-	g_ICARUScb.c:2321 warning; still returns qfalse with TID_ANIM_* (5778-5799) -> dowait never returns
+SET_ANIM_HOLDTIME_BOTH_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_HOLDTIME_LOWER	yes	yes	stubbed	-	g_ICARUScb.c:2321 warning; still returns qfalse with TID_ANIM_* (5778-5799) -> dowait never returns
+SET_ANIM_HOLDTIME_LOWER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_HOLDTIME_UPPER	yes	yes	stubbed	-	g_ICARUScb.c:2321 warning; still returns qfalse with TID_ANIM_* (5778-5799) -> dowait never returns
+SET_ANIM_HOLDTIME_UPPER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_LOWER	yes	yes	works	player_or_npc	g_ICARUScb.c:2214/2242 client guard; registers TID_ANIM_* which no MP game code ever completes -> a task/dowait on it does not return (only stomped by next anim)
+SET_ANIM_LOWER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_SPEED_BOTH_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_SPEED_LOWER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_SPEED_UPPER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ANIM_UPPER	yes	yes	works	player_or_npc	g_ICARUScb.c:2214/2242 client guard; registers TID_ANIM_* which no MP game code ever completes -> a task/dowait on it does not return (only stomped by next anim)
+SET_ANIM_UPPER_FORCED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ARMOR	yes	yes	works	player_or_npc	g_ICARUScb.c:2423 non-clients silently skipped (no message)
+SET_ATTACKSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_AWAKESCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_BEHAVIOR_STATE	yes	yes	works	npc	g_ICARUScb.c:2456
+SET_BLOCKEDSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_BOBA_JET_PACK	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_CAMERA_GROUP	yes	yes	stubbed	-	g_ICARUScb.c:5063/5075/5086
+SET_CAMERA_GROUP_TAG	yes	yes	stubbed	-	g_ICARUScb.c:5063/5075/5086
+SET_CAMERA_GROUP_Z_OFS	yes	yes	stubbed	-	g_ICARUScb.c:5063/5075/5086
+SET_CAPTIONTEXTCOLOR	yes	yes	stubbed	-	g_ICARUScb.c:5571 via Q3_SetTextColor
+SET_CAPTURE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3879
+SET_CENTERTEXT	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_CENTERTEXTCOLOR	yes	yes	stubbed	-	g_ICARUScb.c:5571 via Q3_SetTextColor
+SET_CHASE_ENEMIES	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_CINEMATIC_SKIPSCRIPT	yes	yes	stubbed	-	g_ICARUScb.c:4180
+SET_CLEAN_DAMAGING_ENTS	yes	yes	stubbed	-	g_ICARUScb.c:5557
+SET_CLOAK	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_CLOSINGCREDITS	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_CONSOLE_COMMAND	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_COPY_ORIGIN	yes	yes	differs	player_or_npc	g_ICARUScb.c:1866-1867 Q3_SetOrigin (client-aware) then SetClientViewAngle without client check (g_client.c:1148) -> NULL deref CRASH on non-client entities when target found; on players: moves + sets view angles. Same in Raven SDK (1977)
+SET_COUNT	yes	yes	works	any	g_ICARUScb.c:3557 "+N"/"-N" add
+SET_CROUCHED	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_DAMAGEENTITY	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_DEATHSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_DEFAULT_BSTATE	yes	yes	works	npc	g_ICARUScb.c:2627
+SET_DEFEND_TARGET	yes	yes	stubbed	-	g_ICARUScb.c:6065 "unimplemented" (doc lists it as working)
+SET_DELAYEDSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_DELAYSCRIPTTIME	yes	yes	stubbed	-	g_ICARUScb.c:5355
+SET_DISABLE_SHADER_ANIM	yes	yes	stubbed	-	g_ICARUScb.c:5398/5412
+SET_DISMEMBERABLE	yes	yes	stubbed	-	g_ICARUScb.c:4757/4745/4700/4192
+SET_DISMEMBER_LIMB	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_DISTSQRD_TO_PLAYER	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_DMG_BY_HEAVY_WEAP_ONLY	yes	yes	stubbed	-	g_ICARUScb.c:6490-6502
+SET_DONTFIRE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4050
+SET_DONTSHOOT	yes	yes	works	any	[raven:stubbed] g_ICARUScb.c:4013 no guard (flags)
+SET_DONT_FLEE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_DPITCH	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2659 NPC guard (doc says no guard); returns qfalse + TID_ANGLE_FACE (5846)
+SET_DYAW	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2709 NPC guard; ignored while NPC has an enemy (2715)
+SET_EARSHOT	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2762-2890
+SET_ENDFRAME	yes	yes	stubbed	-	g_ICARUScb.c:5440; returns qfalse with TID_ANIM_BOTH (6443) -> dowait never returns
+SET_ENDLESS_BP	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ENDLESS_ST	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_END_SCREENDISSOLVE	yes	yes	stubbed	-	g_ICARUScb.c:6535
+SET_ENEMY	yes	yes	works	any	g_ICARUScb.c:2036 no guard
+SET_ENEMY_TEAM	yes	yes	stubbed	-	g_ICARUScb.c:5806
+SET_EVENT	yes	yes	stubbed	-	g_ICARUScb.c:3909
+SET_FACEAUX	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEBLINK	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEBLINKFROWN	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEEYESCLOSED	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEEYESOPENED	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEFROWN	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACEGLAD	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FACEHAPPY	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FACENORMAL	yes	yes	stubbed	-	g_ICARUScb.c:5185
+SET_FACESHOCKED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FACESMILE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FACE_MOVE_DIR	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_FFAMODE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FFDEATHSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_FFIRESCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_FIRE_WEAPON	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4083
+SET_FIRE_WEAPON_NO_ANIM	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FLEESCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_FOLLOWDIST	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3477 NPC guard (doc says no guard)
+SET_FORCED_MARCH	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_FORCE_ABSORB	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_ABSORB_LEVEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_BLAST	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_BLAST_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DEADLYSIGHT	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DEADLYSIGHT_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DESTRUCTION	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DESTRUCTION_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DRAIN	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_DRAIN_LEVEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_FEAR	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_FEAR_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_GRASP	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_GRASP_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_GRIP	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_GRIP_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_HEAL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_HEAL_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_INVINCIBLE	yes	yes	stubbed	-	g_ICARUScb.c:5482/2970/4837
+SET_FORCE_JUMP_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_LIGHTNING	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_LIGHTNING_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_LIGHTNING_STRIKE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_LIGHTNING_STRIKE_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_MINDTRICK_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_MIND_TRICK	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PROJECTION	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PROJECTION_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PROTECT	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PROTECT_LEVEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PULL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PULL_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_PUSH	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PUSH_FAKE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_PUSH_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_RAGE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_RAGE_LEVEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_REPULSE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_REPULSE_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_SABERTHROW	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_SIGHT_LEVEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_SPEED	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_SPEED_LEVEL	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:3769 client guard; level 0 removes the power from forcePowersKnown (3807); 0-3 only
+SET_FORCE_STASIS	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORCE_STASIS_LEVEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_FORWARDMOVE	yes	yes	stubbed	-	g_ICARUScb.c:4978/5005 (non-clients get an error first)
+SET_FRICTION	yes	yes	stubbed	-	g_ICARUScb.c:3379 (non-clients get an error first, 3373)
+SET_FULLNAME	md_only	yes	works	any	g_ICARUScb.c:3744 MP-only field (not in SP SDK header)
+SET_FUNC_USABLE_VISIBLE	yes	yes	works	any	g_ICARUScb.c:4133
+SET_GENDER	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_GRAVITY	yes	yes	differs	player_or_npc	g_ICARUScb.c:3402 client guard; only NPCs keep it (NPCAI_CUSTOM_GRAVITY 3411); players reset to g_gravity every frame (g_active.c:2343-2369)
+SET_GREET_ALLIES	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2991
+SET_HEALTH	yes	yes	works	any	g_ICARUScb.c:2372 sets ent->health on any entity; clients: clamp to max, 0 kills via player_die (2385-2400)
+SET_HFOV	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2762-2890
+SET_HUD	yes	yes	stubbed	-	g_ICARUScb.c:6669
+SET_ICARUS_FREEZE	yes	yes	works	any	g_ICARUScb.c:3129-3132 target looked up by targetname, then script_targetname
+SET_ICARUS_UNFREEZE	yes	yes	works	any	g_ICARUScb.c:3129-3132 target looked up by targetname, then script_targetname
+SET_IGNOREALERTS	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3967
+SET_IGNOREENEMIES	yes	yes	stubbed	-	g_ICARUScb.c:3947
+SET_IGNOREPAIN	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3929
+SET_INACTIVE	yes	yes	works	any	g_ICARUScb.c:4106; also accepts "locked"/"unlocked" for doors (6525-6531)
+SET_INTERFACE	yes	yes	stubbed	-	g_ICARUScb.c:6463
+SET_INVINCIBLE	yes	yes	works	any	[raven:stubbed] g_ICARUScb.c:4794 FL_GODMODE; on func_breakable toggles spawnflag 1 (4804)
+SET_INVISIBLE	yes	yes	works	any	g_ICARUScb.c:2930 "true" also sets contents 0; "false" does not restore contents (use SET_SOLID)
+SET_ITEM	yes	yes	stubbed	-	g_ICARUScb.c:3195
+SET_KOTOR_MODE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_LCARSTEXT	yes	yes	stubbed	-	g_ICARUScb.c:5619/5632
+SET_LEADER	yes	yes	works	player_or_npc	g_ICARUScb.c:2100 client guard; only NPC AI (BS_FOLLOW_LEADER) uses it
+SET_LEAN	yes	yes	stubbed	-	g_ICARUScb.c:6003
+SET_LOADGAME	yes	yes	stubbed	-	g_ICARUScb.c:6590
+SET_LOCATION	yes	yes	stubbed	-	g_ICARUScb.c:5199 (get-only in SP)
+SET_LOCKED_ENEMY	yes	yes	stubbed	-	g_ICARUScb.c:4167
+SET_LOCKYAW	yes	yes	stubbed	-	g_ICARUScb.c:5032 "not currently available" (doc lists it as working)
+SET_LOCK_PLAYER_WEAPONS	yes	yes	stubbed	-	g_ICARUScb.c:5215/5229/5243
+SET_LOOK_FOR_ENEMIES	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_LOOK_TARGET	yes	yes	works	player_or_npc	[raven:stubbed] g_ICARUScb.c:5146 client guard; sets renderInfo.lookTarget (head look)
+SET_LOOPSOUND	yes	yes	works	any	g_ICARUScb.c:3103 "NULL"/"NONE" stops
+SET_LOOP_ANIM	yes	yes	stubbed	-	g_ICARUScb.c:5426/5468
+SET_LOSTENEMYSCRIPT	yes	enum_only	unknown	-	in MP enum but missing from setTable (g_ICARUScb.c:71-84) -> unknown (Q3_SetBehaviorSet case 5284 unreachable); also missing from SP setTable. not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_MENU_SCREEN	yes	yes	noop	-	g_ICARUScb.c:6593 empty case, silent
+SET_MINDTRICKSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_MISSIONFAILED	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_MISSIONSTATUSACTIVE	yes	enum_only	unknown	-	in MP enum but not setTable. not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_MISSIONSTATUSTEXT	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_MISSIONSTATUSTIME	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_MISSION_STATUS_SCREEN	no	yes	stubbed	-	g_ICARUScb.c:6540; MP-only name (not in SP SDK header)
+SET_MODEL	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_MORELIGHT	yes	yes	stubbed	-	g_ICARUScb.c:4757/4745/4700/4192
+SET_MORELIGHT_PLAYER	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_MUSIC_STATE	yes	yes	stubbed	-	g_ICARUScb.c:3766
+SET_NAVGOAL	yes	yes	works	npc	g_ICARUScb.c:2145 NPC guard (+alive); blocks dowait until reached
+SET_NOAVOID	yes	yes	works	npc	g_ICARUScb.c:4857
+SET_NOTARGET	yes	yes	works	any	g_ICARUScb.c:3990
+SET_NO_ACROBATICS	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_ALERT_TALK	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_ANGLES	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_NO_COMBAT_TALK	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_FALLTODEATH	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_FORCE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_GROUPS	yes	yes	stubbed	-	g_ICARUScb.c:6490-6502
+SET_NO_IMPACT_DAMAGE	yes	yes	stubbed	-	g_ICARUScb.c:5215/5229/5243
+SET_NO_KNOCKBACK	yes	yes	works	any	g_ICARUScb.c:5528
+SET_NO_MINDTRICK	yes	yes	stubbed	-	g_ICARUScb.c:4757/4745/4700/4192
+SET_NO_PVS_CULL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_NO_RESPONSE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_NO_SABER_RETURN	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_NPCSABER1	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_NPCSABER2	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_NPC_SCALE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_OBJECTIVE_CLEARALL	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_OBJECTIVE_FAILED	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_OBJECTIVE_HIDE	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_OBJECTIVE_LIGHTSIDE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_OBJECTIVE_SHOW	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_OBJECTIVE_SUCCEEDED	yes	yes	stubbed	-	g_ICARUScb.c:6597-6628
+SET_OBJECTIVE_SUCCEEDED_NO_UPDATE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_ORIGIN	yes	yes	differs	any	g_ICARUScb.c:5660 calls G_SetOrigin directly (g_utils.c:1874, no ps update) -> no effect on players/NPCs; works on non-client ents; NPC_* spawner hack 5661
+SET_PAINSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_PAINTARGET	yes	yes	stubbed	-	g_ICARUScb.c:3714
+SET_PARM1	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM10	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM11	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM12	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM13	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM14	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM15	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM16	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM2	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM3	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM4	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM5	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM6	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM7	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM8	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PARM9	yes	yes	works	any	g_ICARUScb.c:3820 Q3_SetParm; "+N"/"-N" add (3843); max 63 chars (g_public.h:202); $get VECTOR of a parm on an entity that never had parms set derefs NULL (1522)
+SET_PAZAAK_ALLOWED	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PAZAAK_END	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PAZAAK_PLAY	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PAZAAK_WAGER	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PLAYERMODEL	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PLAYERSCALE	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PLAYERSKIN	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_PLAYER_LOCKED	yes	yes	stubbed	-	g_ICARUScb.c:5215/5229/5243
+SET_PLAYER_TEAM	yes	yes	stubbed	-	g_ICARUScb.c:5802
+SET_PLAYER_USABLE	yes	yes	works	any	g_ICARUScb.c:5367
+SET_RADAR_ICON	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_RADAR_OBJECT	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_RAILCENTERTRACKLOCKED	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_RAILCENTERTRACKUNLOCKED	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_REMOVELHANDBOLT_MODEL	yes	yes	stubbed	-	g_ICARUScb.c:5096-5126
+SET_REMOVERHANDBOLT_MODEL	yes	yes	stubbed	-	g_ICARUScb.c:5096-5126
+SET_REMOVE_TARGET	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3687
+SET_RENDER_CULL_RADIUS	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_RIGHTMOVE	yes	yes	stubbed	-	g_ICARUScb.c:4978/5005 (non-clients get an error first)
+SET_RUNNING	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_RUNSPEED	yes	yes	works	npc	g_ICARUScb.c:3217/3250
+SET_SABER1	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER1BLADEOFF	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER1BLADEON	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER1_COLOR1	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER1_COLOR2	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER2	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER2BLADEOFF	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER2BLADEON	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER2_COLOR1	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER2_COLOR2	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABERACTIVE	yes	yes	differs	player_or_npc	g_ICARUScb.c:5509-5515 reversed ("true" turns a lit saber off, "false" turns an unlit saber on); non-client: warning but no return -> NULL deref CRASH (5503-5509). Same in Raven (4861-4874)
+SET_SABERCOLLISIONS	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER_DEFENSE	yes	yes	differs	player_or_npc	[raven:stubbed] g_ICARUScb.c:6684 index 9 = FP_PROTECT in MP (q_shared.h:375) -> sets PROTECT level
+SET_SABER_OFFENSE	yes	yes	differs	player_or_npc	[raven:stubbed] g_ICARUScb.c:6684 index 10 = FP_ABSORB in MP (q_shared.h:376) -> sets ABSORB level, not saber style
+SET_SABER_ORIGIN	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SABER_THROW	yes	yes	differs	player_or_npc	[raven:stubbed] g_ICARUScb.c:6684 index = toSet-SET_FORCE_HEAL_LEVEL = 8 = FP_RAGE in MP (q_shared.h:374) -> sets RAGE level, not saber throw
+SET_SAFE_REMOVE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SCALE	yes	yes	works	any	g_ICARUScb.c:3505-3511 clients: ps.iModelScale
+SET_SCROLLTEXT	yes	yes	stubbed	-	g_ICARUScb.c:5619/5632
+SET_SCROLLTEXTCOLOR	yes	yes	stubbed	-	g_ICARUScb.c:5571 via Q3_SetTextColor
+SET_SECRET_AREA_FOUND	yes	enum_only	unknown	-	in MP enum but not setTable. not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SECURITY_KEY	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SHADER_ANIM	yes	yes	stubbed	-	g_ICARUScb.c:5398/5412
+SET_SHIELDED	yes	yes	stubbed	-	g_ICARUScb.c:6490-6502
+SET_SHIELDS	yes	yes	stubbed	-	g_ICARUScb.c:5482/2970/4837
+SET_SHOOTDIST	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2744
+SET_SHOT_SPACING	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3448
+SET_SKILL	yes	yes	noop	-	g_ICARUScb.c:6630 silent (get-only); doc wrongly lists it as stubbed
+SET_SKIN	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SOLID	yes	yes	works	any	g_ICARUScb.c:4913 "true" waits until spot is clear (TID_RESIZE)
+SET_SOUNDSET	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_SPAWNSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_STARTFRAME	yes	yes	stubbed	-	g_ICARUScb.c:5426/5468
+SET_TACTICAL_HIDE	yes	yes	unknown	-	in MP setTable (234-235) but no case in Q3_Set -> default ICARUS_SetVar (6689) -> behaves like an unknown name
+SET_TACTICAL_SHOW	yes	yes	unknown	-	in MP setTable (234-235) but no case in Q3_Set -> default ICARUS_SetVar (6689) -> behaves like an unknown name
+SET_TARGET	yes	yes	works	any	g_ICARUScb.c:3588/3617 "NULL" clears
+SET_TARGET2	yes	yes	stubbed	-	g_ICARUScb.c:3648
+SET_TARGETNAME	yes	yes	works	any	g_ICARUScb.c:3588/3617 "NULL" clears
+SET_TELEPORT_DEST	yes	yes	differs	any	g_ICARUScb.c:1806 G_SetOrigin -> no effect on players/NPCs; if spot occupied waits (returns qfalse, TID_MOVE_NAV)
+SET_TEMP_BSTATE	yes	yes	works	npc	g_ICARUScb.c:2579
+SET_TIMESCALE	yes	yes	differs	any	g_ICARUScb.c:2918 sets the timescale cvar (CVAR_CHEAT|CVAR_SYSTEMINFO, qcommon/common.cpp:1184; Cvar_VM_Set forces, cvar.cpp:801) -> whole server; voice sounds are skipped while timescale>1 (493)
+SET_TREASONED	yes	yes	noop	-	g_ICARUScb.c:6256 prints INFO "SET_TREASONED is disabled" under developer 2 (not fully silent)
+SET_UNDYING	yes	yes	works	any	[raven:stubbed] g_ICARUScb.c:4767 no guard (FL_UNDYING)
+SET_UNDYINGPLAYERVICTORYSCRIPT	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_USESCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_USE_CP_NEAREST	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:4202-4740 each guarded by !ent->NPC
+SET_USE_SUBTITLES	yes	yes	stubbed	-	g_ICARUScb.c:4757/4745/4700/4192
+SET_VADERBREATH	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_VADERDAMAGEDBREATH	md_only	no	unknown	-	MovieDuels SP extension only (code/game/Q3_Interface.h). not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_VAMPIRE	yes	yes	stubbed	-	g_ICARUScb.c:5482/2970/4837
+SET_VEHICLE	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_VFOV	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2762-2890
+SET_VICTORYSCRIPT	yes	yes	works	any	g_ICARUScb.c:6088-6104 Q3_SetBehaviorSet (5253)
+SET_VIDEO_FADE_IN	yes	yes	stubbed	-	g_ICARUScb.c:6572/6578/6582
+SET_VIDEO_FADE_OUT	yes	yes	stubbed	-	g_ICARUScb.c:6572/6578/6582
+SET_VIDEO_PLAY	yes	yes	stubbed	-	g_ICARUScb.c:6572/6578/6582
+SET_VIEWENTITY	yes	yes	stubbed	-	g_ICARUScb.c:3162
+SET_VIEWTARGET	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3028 client guard, but implemented via Q3_SetDYaw/Q3_SetDPitch which are NPC-only (3059-3060) -> no effect on players
+SET_VIGILANCE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2762-2890
+SET_VISRANGE	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:2762-2890
+SET_WAIT	yes	yes	works	any	g_ICARUScb.c:3435
+SET_WALKING	yes	yes	works	npc	g_ICARUScb.c:4245 NPC guard (implemented in Raven SDK too)
+SET_WALKSPEED	yes	yes	works	npc	g_ICARUScb.c:3217/3250
+SET_WATCHTARGET	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3082
+SET_WEAPON	yes	yes	differs	player_or_npc	g_ICARUScb.c:3177-3181 no client check -> NULL deref CRASH on non-client; STAT_WEAPONS replaced by single weapon (whole loadout); ChangeWeapon only acts on NPCs (NPC_combat.c:578) so players are not switched; unknown name -> 1<<-1. Same in Raven (3109)
+SET_WIDTH	yes	yes	stubbed	-	g_ICARUScb.c:2904; Q3_Set returns qfalse without registering a task (5902) -> a dowait on it never returns
+SET_WINTER_GEAR	yes	no	unknown	-	not in MP setTable -> Q3_Set default -> engine Q3_SetVar: sets a declared variable of that name if one exists, else prints "ERROR: <name> variable or field not found!" when developer!=0 (codemp/icarus/Q3_Interface.cpp:382,624)
+SET_XVELOCITY	yes	yes	works	player_or_npc	g_ICARUScb.c:1892 client guard; adds to velocity (1899) + 500ms knockback time
+SET_YAWSPEED	yes	yes	works	npc	[raven:stubbed] g_ICARUScb.c:3283
+SET_YVELOCITY	yes	yes	works	player_or_npc	g_ICARUScb.c:1892 client guard; adds to velocity (1899) + 500ms knockback time
+SET_ZVELOCITY	yes	yes	works	player_or_npc	g_ICARUScb.c:1892 client guard; adds to velocity (1899) + 500ms knockback time
+SET_Z_OFFSET	yes	yes	works	mover	g_ICARUScb.c:2013 refused on clients and target_scriptrunner; duration=|offset|/speed*1000 (2024)

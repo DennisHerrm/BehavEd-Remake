@@ -57,6 +57,8 @@ void loadSettings(App* a);
 void resetIconTexture();
 void setDpiScale(App* a, float s);
 void reopenLastIfWanted(App* a, const std::string& kommandozeile);
+// Nach einem Update: einmal zeigen, was neu ist.
+void changelogZeigen();
 // Eine Datei, die eine zweite Instanz weitergereicht hat (Doppelklick im
 // Explorer, waehrend behaved schon laeuft). Leer = nur nach vorn holen.
 void dateiVonAussen(const std::string& pfad);
@@ -397,7 +399,32 @@ void buildFonts() {
     io.Fonts->Clear();
     const float size = 16.0F;
 
-    if (!addFontIfPresent(io, "C:\\Windows\\Fonts\\segoeui.ttf", size, false)) {
+    // --- Die Schrift des Originals ----------------------------------------
+    //
+    // BehavEd.exe setzt nirgends eine eigene Schrift: alle acht
+    // Dialogvorlagen geben "MS Sans Serif", 8 pt an (13 Pixel bei 100 %).
+    // Das ist eine Bitmapschrift (SSERIFE.FON), die ImGui nicht laden kann;
+    // Microsoft Sans Serif (micross.ttf) ist ihre TrueType-Fassung mit
+    // denselben Formen. Gewuenscht von shank (11.10.) - Minus und Punkt sind
+    // darin deutlich kraeftiger als in Segoe UI ("forgetting the '-' or '.'
+    // ... they are very small").
+    //
+    // Die Zeilenhoehe bleibt 16 (alle Masse haengen daran); die Buchstaben
+    // werden im Verhaeltnis des Originals kleiner gerastert: 13 Pixel Schrift
+    // in 16 Pixel hohen Zeilen. Ohne das waere Microsoft Sans Serif bei
+    // gleicher Groesse ein Fuenftel breiter als Segoe UI (kuerzere Ober- und
+    // Unterlaengen), und die Reihen liefen ueber.
+    bool original = false;
+    if (GetFileAttributesA("C:\\Windows\\Fonts\\micross.ttf") != INVALID_FILE_ATTRIBUTES) {
+        ImFontConfig config;
+        config.ExtraSizeScale = 13.0F / 16.0F;
+        // Ober- und Unterlaenge bleiben die der vollen Groesse (imgui_draw.cpp,
+        // FontBakedInit teilt durch ExtraSizeScale) - die kleineren Buchstaben
+        // stuenden sonst auf der alten Grundlinie, also zu tief.
+        config.GlyphOffset.y = -(size - 13.0F) * 0.5F;
+        original = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\micross.ttf", size, &config) != nullptr;
+    }
+    if (!original && !addFontIfPresent(io, "C:\\Windows\\Fonts\\segoeui.ttf", size, false)) {
         io.Fonts->AddFontDefault();
     }
     // Eine Schrift mit CJK-Zeichen dazumischen, damit 中文 und 日本語 im
@@ -813,6 +840,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 // das ist keine Datei zum Oeffnen.
                 if (bhed::gui::updater::warteAufVorgaenger(kommandozeile)) {
                     kommandozeile.clear();
+                    bhed::gui::changelogZeigen();   // was ist neu?
                 }
             }
             LocalFree(argv);

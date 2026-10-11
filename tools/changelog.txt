@@ -1,0 +1,283 @@
+# Changelog fuer das Fenster "Changelog" (Hilfe/Updates), in allen vier Sprachen.
+# tools/gen_changelog.py macht daraus src/changelog.cpp.
+#
+# Aufbau je Fassung, neueste zuerst:
+#   ## rc583 2026-10-11
+#   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
+# Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
+
+## rc583 2026-10-11
+[en]
+- Multiplayer mode: View > Target game > Multiplayer. The notes then also show what does nothing or works differently on an MP server – camera, print without !, fields MP doesn't know or only stubs, fields that only work on NPCs or players, server crash risks (SET_WEAPON, SET_COPY_ORIGIN, SET_SABERACTIVE), the reversed SET_SABERACTIVE, $get that never returns a value, dowait that never returns, more than 32 variables. Every rule was checked against the MP game code. Thanks to @Seph for the report.
+- A misspelled SET_ field in set ( ... ) is now reported with a suggestion (e.g. SET_ORIGNI – did you mean SET_ORIGIN?).
+- The original font: BehavEd 2002 uses MS Sans Serif 8 pt everywhere; BehavEd-Remake now uses its TrueType version (Microsoft Sans Serif). Minus signs and dots are easier to see.
+- The event editor fits into the window: commands with many fields (e.g. camera PAN) no longer stick out of the window – fields give up their spare width first.
+- Compile refuses a script with a line it doesn't understand (e.g. a missing parenthesis) or a block without a closing }, like the original IBIze. Before, such a line was silently left out of the .ibi.
+- Opening a script lists every line that wasn't understood in the status bar, with its line number.
+- Changelog window (File menu, About window, update window) – in every language.
+- Command line: bhed compile no longer writes an .ibi when compiling fails.
+[de]
+- Multiplayer-Modus: Ansicht > Zielspiel > Multiplayer. Die Anmerkungen zeigen dann zusätzlich, was auf einem MP-Server nichts tut oder anders geht – camera, print ohne !, Felder, die der MP nicht kennt oder nur als Stub hat, Felder nur für NPCs oder Spieler, Absturzgefahr für den Server (SET_WEAPON, SET_COPY_ORIGIN, SET_SABERACTIVE), das umgekehrte SET_SABERACTIVE, $get ohne Wert, dowait ohne Rückkehr, mehr als 32 Variablen. Jede Regel ist am MP-Spielcode geprüft. Danke an @Seph für den Bericht.
+- Ein vertipptes SET_-Feld in set ( ... ) wird jetzt mit Vorschlag gemeldet (z. B. SET_ORIGNI – meintest du SET_ORIGIN?).
+- Die Schrift des Originals: BehavEd 2002 nutzt überall MS Sans Serif 8 pt; BehavEd-Remake nimmt jetzt deren TrueType-Fassung (Microsoft Sans Serif). Minus und Punkt sind besser zu erkennen.
+- Der Ereigniseditor passt ins Fenster: Befehle mit vielen Feldern (z. B. camera PAN) ragen nicht mehr hinaus – zuerst geben die Felder ihren freien Platz ab.
+- Übersetzen verweigert ein Skript mit einer unverständlichen Zeile (z. B. fehlende Klammer) oder einem Block ohne schließende }, wie das originale IBIze. Vorher fehlte so eine Zeile still in der .ibi.
+- Beim Öffnen nennt die Statusleiste jede nicht verstandene Zeile mit Zeilennummer.
+- Changelog-Fenster (Datei-Menü, About-Fenster, Update-Fenster) – in jeder Sprache.
+- Kommandozeile: bhed compile schreibt keine .ibi mehr, wenn das Übersetzen scheitert.
+[zh]
+- 多人游戏模式：视图 > 目标游戏 > 多人游戏。提示中会额外显示在 MP 服务器上不起作用或行为不同的内容——camera、不以 ! 开头的 print、MP 不认识或只是空壳的字段、只对 NPC 或玩家有效的字段、导致服务器崩溃的风险（SET_WEAPON、SET_COPY_ORIGIN、SET_SABERACTIVE）、相反的 SET_SABERACTIVE、永远不返回值的 $get、永远不返回的 dowait、超过 32 个变量。每条规则都已对照 MP 游戏代码核实。感谢 @Seph 的报告。
+- set ( ... ) 中拼错的 SET_ 字段现在会给出提示和建议（例如 SET_ORIGNI——你是指 SET_ORIGIN 吗？）。
+- 原版字体：BehavEd 2002 处处使用 MS Sans Serif 8 磅；BehavEd-Remake 现在使用其 TrueType 版本（Microsoft Sans Serif）。减号和小数点更容易辨认。
+- 事件编辑器适应窗口：参数很多的命令（如 camera PAN）不再超出窗口——各字段先让出多余的宽度。
+- 编译时会拒绝包含无法识别的行（如缺少括号）或缺少结尾 } 的块的脚本，与原版 IBIze 一致。以前这样的行会被悄悄地从 .ibi 中漏掉。
+- 打开脚本时，状态栏会列出每一行无法识别的内容及其行号。
+- 更新日志窗口（文件菜单、关于窗口、更新窗口）——支持所有语言。
+- 命令行：编译失败时 bhed compile 不再写入 .ibi。
+[ja]
+- マルチプレイモード：表示 > 対象ゲーム > マルチプレイ。注記に、MP サーバーで何もしないもの・動作が異なるものも表示されます――camera、! で始まらない print、MP が知らない／スタブだけのフィールド、NPC やプレイヤーにしか効かないフィールド、サーバーのクラッシュの危険（SET_WEAPON、SET_COPY_ORIGIN、SET_SABERACTIVE）、逆になる SET_SABERACTIVE、値を返さない $get、戻らない dowait、32 個を超える変数。すべてのルールを MP のゲームコードで確認しました。報告してくれた @Seph に感謝します。
+- set ( ... ) の SET_ フィールドの入力ミスを候補付きで知らせるようになりました（例：SET_ORIGNI――SET_ORIGIN のことですか？）。
+- オリジナルのフォント：BehavEd 2002 はすべてに MS Sans Serif 8 pt を使っています。BehavEd-Remake はその TrueType 版（Microsoft Sans Serif）を使うようになりました。マイナス記号とピリオドが見やすくなります。
+- イベントエディタがウィンドウに収まります：フィールドの多いコマンド（例：camera PAN）がウィンドウからはみ出さなくなりました。まず各フィールドの余白が詰められます。
+- 解釈できない行（括弧の不足など）や閉じ括弧 } のないブロックがあるスクリプトは、オリジナルの IBIze と同様にコンパイルを拒否します。以前はそのような行が .ibi から黙って抜け落ちていました。
+- スクリプトを開くと、解釈できなかった行がすべて行番号付きでステータスバーに表示されます。
+- 更新履歴ウィンドウ（ファイルメニュー、バージョン情報ウィンドウ、更新ウィンドウ）—すべての言語に対応。
+- コマンドライン：コンパイルに失敗した場合、bhed compile は .ibi を書き込まなくなりました。
+
+## rc582 2026-10-03
+[en]
+- A full code review: everything that could lose work or crash was reproduced and fixed.
+- Event editor: a file opened from Explorer while the editor was open no longer receives the edited value; long text fields (over 255 characters) are no longer cut.
+- Save As onto a script open in another tab is refused; a failed Save As keeps the old name.
+- Save All: a write-protected file in the background is saved correctly after "Yes"; split view stays as it was.
+- Comments after commands and after } are kept; lines that can't be read are kept word for word.
+- Macro line count, redo after a no-op move, paste identity, decimal comma, quotes with commas, restart after an update, backups of scripts with the same name, settings with many game folders.
+- No more crashes or hangs on damaged BSP, MD3, PK3 and GLA files; UTF-8 files with BOM load; NPC scale 0 works like in the game.
+[de]
+- Eine vollständige Code-Prüfung: alles, was Arbeit kosten oder abstürzen konnte, wurde nachgestellt und behoben.
+- Ereigniseditor: eine Datei, die bei offenem Editor aus dem Explorer geöffnet wird, bekommt den Wert nicht mehr ab; lange Textfelder (über 255 Zeichen) werden nicht mehr abgeschnitten.
+- Save As auf ein Skript, das in einem anderen Reiter offen ist, wird abgelehnt; ein gescheitertes Save As behält den alten Namen.
+- Save All: eine schreibgeschützte Datei im Hintergrund wird nach „Ja“ richtig gespeichert; die geteilte Ansicht bleibt, wie sie war.
+- Kommentare hinter Befehlen und hinter } bleiben erhalten; nicht lesbare Zeilen bleiben wortgetreu stehen.
+- Makrozähler, Wiederholen nach einem Zug ohne Wirkung, Kennung beim Einfügen, Dezimalkomma, Anführungszeichen mit Komma, Neustart nach Update, Sicherungen gleichnamiger Skripte, Einstellungen mit vielen Spielordnern.
+- Keine Abstürze oder Hänger mehr bei kaputten BSP-, MD3-, PK3- und GLA-Dateien; UTF-8-Dateien mit BOM laden; NPC scale 0 wie im Spiel.
+[zh]
+- 全面代码审查：所有可能导致工作丢失或崩溃的问题都已复现并修复。
+- 事件编辑器：编辑器打开时从资源管理器打开的文件不再收到正在编辑的值；超过 255 个字符的长文本字段不再被截断。
+- 另存为到另一个标签页中已打开的脚本时会被拒绝；另存为失败时保留原名称。
+- 全部保存：后台的只读文件在点击“是”后能正确保存；分屏视图保持原样。
+- 命令后面和 } 后面的注释会被保留；无法读取的行按原文保留。
+- 修复宏行数、无效移动后的重做、粘贴的标识、小数逗号、含逗号的引号、更新后的重启、同名脚本的备份、多个游戏文件夹的设置。
+- 损坏的 BSP、MD3、PK3 和 GLA 文件不再导致崩溃或卡死；带 BOM 的 UTF-8 文件可以加载；NPC scale 0 与游戏中一致。
+[ja]
+- コード全体の点検：作業が失われたりクラッシュしたりする可能性のある問題をすべて再現し、修正しました。
+- イベントエディタ：エディタを開いている間にエクスプローラーから開いたファイルに編集中の値が入らなくなりました。255 文字を超える長いテキストフィールドが切り捨てられなくなりました。
+- 別のタブで開いているスクリプトへの「名前を付けて保存」は拒否されます。失敗した場合は元の名前のままです。
+- すべて保存：バックグラウンドの書き込み禁止ファイルが「はい」の後に正しく保存されます。分割表示はそのままです。
+- コマンドの後や } の後のコメントが保持されます。読めない行はそのまま残ります。
+- マクロの行数、効果のない移動後のやり直し、貼り付けの識別、小数点のコンマ、コンマを含む引用符、更新後の再起動、同名スクリプトのバックアップ、多数のゲームフォルダーの設定を修正。
+- 破損した BSP、MD3、PK3、GLA ファイルでクラッシュやフリーズが起きなくなりました。BOM 付き UTF-8 ファイルを読み込めます。NPC scale 0 はゲームと同じ動作になりました。
+
+## rc581 2026-10-03
+[en]
+- In split view the script name stays at the top of each pane while you scroll.
+- After loading a mission, its first script is in front again.
+- Split view after closing a tab: a pane no longer shows the wrong script.
+[de]
+- In der geteilten Ansicht bleibt der Skriptname beim Rollen oben in jedem Feld stehen.
+- Nach dem Laden einer Mission steht wieder ihr erstes Skript vorn.
+- Geteilte Ansicht nach dem Schließen eines Reiters: ein Feld zeigt nicht mehr das falsche Skript.
+[zh]
+- 分屏视图中，滚动时脚本名称会固定在每个窗格的顶部。
+- 加载任务后，其第一个脚本重新显示在最前面。
+- 关闭标签页后的分屏视图：窗格不再显示错误的脚本。
+[ja]
+- 分割表示では、スクロールしてもスクリプト名が各ペインの上部に表示されたままになります。
+- ミッションを読み込んだ後、最初のスクリプトが再び前面に表示されます。
+- タブを閉じた後の分割表示：ペインに間違ったスクリプトが表示されなくなりました。
+
+## rc580 2026-10-03
+[en]
+- Only one BehavEd: double-clicking a script while BehavEd is running opens it in the running window instead of starting a second one.
+- Works for double-click, "Open with" and dropping a file on behaved.exe.
+[de]
+- Nur ein BehavEd: ein Doppelklick auf ein Skript bei laufendem BehavEd öffnet es im laufenden Fenster, statt ein zweites zu starten.
+- Gilt für Doppelklick, „Öffnen mit“ und das Ziehen einer Datei auf behaved.exe.
+[zh]
+- 只运行一个 BehavEd：BehavEd 运行时双击脚本，会在已运行的窗口中打开，而不是再启动一个。
+- 适用于双击、“打开方式”以及将文件拖到 behaved.exe 上。
+[ja]
+- BehavEd は 1 つだけ：BehavEd の実行中にスクリプトをダブルクリックすると、2 つ目を起動せずに実行中のウィンドウで開きます。
+- ダブルクリック、「プログラムから開く」、behaved.exe へのファイルのドロップで動作します。
+
+## rc579 2026-10-03
+[en]
+- Lost changes fixed: opening a script that is already open switches to its tab instead of creating a second copy.
+- After closing a tab you return to the tab you were working in.
+- Save → Ctrl+Z → another edit is no longer treated as saved.
+- Exit after a failed save asks again.
+[de]
+- Verlorene Änderungen behoben: ein bereits offenes Skript wird nicht doppelt geöffnet, behaved wechselt zu seinem Reiter.
+- Nach dem Schließen eines Reiters kehrt man in den Reiter zurück, in dem man gearbeitet hat.
+- Speichern → Strg+Z → eine andere Änderung gilt nicht mehr als gesichert.
+- Beenden nach einem gescheiterten Speichern fragt wieder nach.
+[zh]
+- 修复更改丢失：打开已打开的脚本时会切换到其标签页，而不是再创建一个副本。
+- 关闭标签页后会回到你正在工作的标签页。
+- 保存 → Ctrl+Z → 再做其他修改，不再被视为已保存。
+- 保存失败后退出时会再次询问。
+[ja]
+- 変更が失われる問題を修正：すでに開いているスクリプトを開くと、2 つ目のコピーを作らずにそのタブに切り替わります。
+- タブを閉じた後、作業していたタブに戻ります。
+- 保存 → Ctrl+Z → 別の編集、が保存済みとして扱われなくなりました。
+- 保存に失敗した後の終了で再び確認されます。
+
+## rc578 2026-10-02
+[en]
+- Character size from the NPC file: scale (and scaleX/Y/Z) in .npc files is applied like in the game, e.g. the younglings are now child-sized.
+[de]
+- Figurengröße aus der NPC-Datei: scale (und scaleX/Y/Z) in .npc-Dateien wird wie im Spiel angewandt, z. B. sind die Younglings jetzt kindgroß.
+[zh]
+- 来自 NPC 文件的角色尺寸：.npc 文件中的 scale（以及 scaleX/Y/Z）会像游戏中一样生效，例如幼徒现在是儿童大小。
+[ja]
+- NPC ファイルのキャラクターサイズ：.npc ファイルの scale（と scaleX/Y/Z）がゲームと同じように適用されます。例えばヤングリングが子供のサイズになりました。
+
+## rc577 2026-10-02
+[en]
+- Moving parts (doors, platforms, ships) get dynamic light and fog too.
+- AT-ST: the small shadows under its feet.
+- Shadow type, fog and dynamic light are remembered after a restart.
+[de]
+- Bewegliche Teile (Türen, Plattformen, Schiffe) bekommen auch dynamisches Licht und Nebel.
+- AT-ST: die kleinen Schatten unter seinen Füßen.
+- Schattenart, Nebel und dynamisches Licht bleiben nach einem Neustart erhalten.
+[zh]
+- 移动部件（门、平台、飞船）也会受到动态光照和雾的影响。
+- AT-ST：脚下的小阴影。
+- 阴影类型、雾和动态光照在重启后会被记住。
+[ja]
+- 動く部品（ドア、プラットフォーム、宇宙船）にも動的ライトとフォグがかかります。
+- AT-ST：足元の小さな影。
+- 影の種類、フォグ、動的ライトの設定が再起動後も保持されます。
+
+## rc576 2026-10-02
+[en]
+- Every shadow type of the game's cg_shadows: blob, stencil (real outline) and planar.
+- Fog from the map (fog volumes and global fog), computed like the game's renderer.
+[de]
+- Jede Schattenart des Spiels (cg_shadows): Blob, Stencil (echter Umriss) und planar.
+- Nebel aus der Karte (Nebelvolumen und globaler Nebel), gerechnet wie im Renderer des Spiels.
+[zh]
+- 支持游戏 cg_shadows 的所有阴影类型：圆斑、模板（真实轮廓）和平面。
+- 来自地图的雾（雾体积和全局雾），计算方式与游戏渲染器相同。
+[ja]
+- ゲームの cg_shadows のすべての影の種類：ブロブ、ステンシル（実際の輪郭）、プラナー。
+- マップのフォグ（フォグボリュームとグローバルフォグ）を、ゲームのレンダラーと同じ方法で計算します。
+
+## rc575 2026-10-02
+[en]
+- Shadows under characters and dynamic light: lightsabers and effect lights light up the map and characters around them, as in the game.
+[de]
+- Schatten unter Figuren und dynamisches Licht: Lichtschwerter und Effektlichter beleuchten Karte und Figuren in ihrer Nähe, wie im Spiel.
+[zh]
+- 角色下方的阴影和动态光照：光剑和特效光会照亮周围的地图和角色，与游戏中一致。
+[ja]
+- キャラクターの下の影と動的ライト：ライトセーバーとエフェクトの光が、ゲームと同様に周囲のマップとキャラクターを照らします。
+
+## rc574 2026-10-02
+[en]
+- Geonosians in the arena no longer stand in a black square (two-pass alpha shaders are drawn like in the game).
+[de]
+- Die Geonosianer in der Arena stehen nicht mehr in einem schwarzen Quadrat (zweistufige Alpha-Shader werden wie im Spiel gezeichnet).
+[zh]
+- 竞技场中的吉奥诺西斯人不再站在黑色方块中（双通道透明着色器的绘制方式与游戏一致）。
+[ja]
+- アリーナのジオノーシアンが黒い四角の中に立たなくなりました（2 パスのアルファシェーダーをゲームと同じように描画）。
+
+## rc573 2026-10-02
+[en]
+- BehavEd-Remake is public: source code and downloads are on GitHub (DennisHerrm/BehavEd-Remake), updates come from there.
+[de]
+- BehavEd-Remake ist öffentlich: Quellcode und Downloads liegen auf GitHub (DennisHerrm/BehavEd-Remake), Updates kommen von dort.
+[zh]
+- BehavEd-Remake 已公开：源代码和下载位于 GitHub（DennisHerrm/BehavEd-Remake），更新也来自那里。
+[ja]
+- BehavEd-Remake を公開しました：ソースコードとダウンロードは GitHub（DennisHerrm/BehavEd-Remake）にあり、更新もそこから届きます。
+
+## rc572 2026-10-02
+[en]
+- Undo history: a click selects only that entry; "Undo up to here" and "Undo only this step".
+[de]
+- Rückgängig-Verlauf: ein Klick wählt nur diesen Eintrag; „Bis hierher rückgängig“ und „Nur diesen Schritt rückgängig“.
+[zh]
+- 撤销历史：单击只选择该条目；“撤销到此处”和“仅撤销此步”。
+[ja]
+- 元に戻す履歴：クリックでその項目だけを選択。「ここまで元に戻す」と「この手順だけ元に戻す」。
+
+## rc571 2026-10-02
+[en]
+- Important fix: changes were lost when closing another tab.
+- Backups: every save and compile keeps a copy (backup/<script name>/backup1.txt … backup10.txt).
+- Tidier status bar.
+[de]
+- Wichtiger Fix: beim Schließen eines anderen Reiters gingen Änderungen verloren.
+- Sicherungen: jedes Speichern und Übersetzen legt eine Kopie an (backup/<Skriptname>/backup1.txt … backup10.txt).
+- Aufgeräumte Statusleiste.
+[zh]
+- 重要修复：关闭其他标签页时更改会丢失。
+- 备份：每次保存和编译都会保留一份副本（backup/<脚本名>/backup1.txt … backup10.txt）。
+- 更整洁的状态栏。
+[ja]
+- 重要な修正：別のタブを閉じると変更が失われていました。
+- バックアップ：保存とコンパイルのたびにコピーを残します（backup/<スクリプト名>/backup1.txt … backup10.txt）。
+- すっきりしたステータスバー。
+
+## rc570 2026-10-01
+[en]
+- Updates no longer need a GitHub account.
+[de]
+- Updates brauchen kein GitHub-Konto mehr.
+[zh]
+- 更新不再需要 GitHub 账户。
+[ja]
+- 更新に GitHub アカウントが不要になりました。
+
+## rc569 2026-10-01
+[en]
+- Undo shows exactly what is undone, and the command is selected.
+- Undo history: undo several steps at once.
+- Automatic updates from GitHub.
+- Everything in English, German, Chinese and Japanese.
+[de]
+- Rückgängig zeigt genau, was zurückgenommen wird, und wählt den Befehl an.
+- Rückgängig-Verlauf: mehrere Schritte auf einmal zurücknehmen.
+- Automatische Updates über GitHub.
+- Alles auf Englisch, Deutsch, Chinesisch und Japanisch.
+[zh]
+- 撤销会准确显示撤销的内容，并选中该命令。
+- 撤销历史：一次撤销多个步骤。
+- 通过 GitHub 自动更新。
+- 全部支持英语、德语、中文和日语。
+[ja]
+- 元に戻すときに何が戻されるかを正確に表示し、そのコマンドを選択します。
+- 元に戻す履歴：複数の手順をまとめて元に戻せます。
+- GitHub からの自動更新。
+- すべて英語、ドイツ語、中国語、日本語に対応。
+
+## rc568 2026-09-29
+[en]
+- First release of BehavEd-Remake.
+- ICARUS re-implementation: cutscenes run on the engine's tick; all 466 Movie Duels cutscenes load and play.
+- Effects with physics, saber combat stance, vehicles, MD3 characters, map models.
+[de]
+- Erste Veröffentlichung von BehavEd-Remake.
+- ICARUS nachgebaut: Zwischensequenzen laufen im Takt der Engine; alle 466 Zwischensequenzen von Movie Duels laden und spielen.
+- Effekte mit Physik, Lichtschwert-Kampfhaltung, Fahrzeuge, MD3-Figuren, Kartenmodelle.
+[zh]
+- BehavEd-Remake 首次发布。
+- 重新实现 ICARUS：过场动画按引擎的节拍运行；Movie Duels 的全部 466 个过场动画都能加载和播放。
+- 带物理的特效、光剑战斗姿态、载具、MD3 角色、地图模型。
+[ja]
+- BehavEd-Remake の最初のリリース。
+- ICARUS を再実装：カットシーンはエンジンのティックで動作し、Movie Duels の 466 本のカットシーンすべてを読み込んで再生できます。
+- 物理演算付きエフェクト、ライトセーバーの戦闘姿勢、乗り物、MD3 キャラクター、マップモデル。

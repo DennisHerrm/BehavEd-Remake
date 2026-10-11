@@ -1619,6 +1619,7 @@ struct App {
     // Alt+M: die MRU-Liste oeffnen (das Klappfenster gehoert dem Knopf).
     bool mruOeffnen = false;
     bool aboutOpen = false;
+    bool changelogOpen = false;   // Hilfe: Changelog (alle Fassungen, jede Sprache)
     bool findOpen = false;
     // Das Meldungsfenster. Die Statuszeile zaehlt nur; wer nachlesen will,
     // klickt den Zaehler an.
@@ -1934,6 +1935,7 @@ void selbsttestVorBild();
 // Wie ein Klick in die Ereignisliste: Befehl hinter die Auswahl setzen.
 void fuegeBefehlEin(const Command& c);
 void neuerReiter();
+void changelogZeigen();
 // Fuer den Selbsttest (Modus "pruefung"): Laden, Uebersetzen, Save all und
 // Save As mit festem Pfad - ohne Windows-Dialog.
 void ladePfad(const std::string& p);

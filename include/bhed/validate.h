@@ -44,7 +44,10 @@ struct Issue {
 // da war - und die Datei aendert sich, ohne dass jemand etwas bearbeitet hat.
 [[nodiscard]] const Command* selectOverload(const Node& n, const CommandDb& db);
 
-void validate(const Script& s, const CommandDb& db, std::vector<Issue>& out);
+// `mp`: zusaetzlich die Regeln fuer den Multiplayer (Codes M001...). Was im
+// MP nicht oder anders geht, steht in der nachgeprueften Tabelle
+// (tools/mp_felder.tsv, Beleg je Feld).
+void validate(const Script& s, const CommandDb& db, std::vector<Issue>& out, bool mp = false);
 
 } // namespace bhed
 #endif

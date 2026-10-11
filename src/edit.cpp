@@ -902,6 +902,17 @@ void Document::snapshot(const char* what) {
     redo_.clear();
 }
 
+namespace {
+void blockMarkenWeg(std::vector<Node>& ns) {
+    for (Node& n : ns) {
+        n.blockOffen = false;
+        blockMarkenWeg(n.children);
+    }
+}
+}  // namespace
+
+void Document::offeneBloeckeGeschlossen() { blockMarkenWeg(s_.nodes); }
+
 // --- Einen Schritt zuruecknehmen, der nichts bewirkt hat -----------------
 //
 // Viele Befehle machen erst die Momentaufnahme und merken dann, dass der Zug

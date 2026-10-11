@@ -11,13 +11,16 @@
 #include "bhed/ablauf.h"
 #include "bhed/bspgeo.h"
 #include "bhed/edit.h"
+#include "bhed/commands.h"
 #include "bhed/gla.h"
+#include "bhed/ibi.h"
 #include "bhed/mapview.h"
 #include "bhed/md3.h"
 #include "bhed/pk3.h"
 #include "bhed/scene.h"
 #include "bhed/script.h"
 #include "bhed/settings.h"
+#include "bhed/validate.h"
 
 #include <atomic>
 #include <chrono>
@@ -157,7 +160,75 @@ bool ohne(const char* name) {
     return e != nullptr && std::strstr(e, name) != nullptr;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    // ---- Uebersetzen: Lesefehler duerfen nicht still verschwinden --------
+    //
+    // @Seph (MP-Bericht, 08.10.): eine Zeile mit Syntaxfehler landete als
+    // Kommentar im Baum, fehlte in der .ibi, und das Uebersetzen meldete
+    // Erfolg. IBIze verweigert. Ebenso ein fehlendes '}'.
+    // Aufruf mit <bhc> <kopfdateien> [nachtrag] (ctest uebergibt sie).
+    if (argc >= 3) {
+        bhed::CommandDb db;
+        std::vector<bhed::LoadDiag> ld;
+        bool geladen = bhed::loadCommandDb(argv[1], argv[2], db, ld);
+        if (geladen && argc >= 4) { geladen = bhed::loadCommandDb(argv[3], argv[2], db, ld); }
+        pruefe(geladen, "Befehlsliste geladen");
+        const auto uebersetzt = [&](const std::string& text) {
+            std::vector<bhed::IbiBlock> bl;
+            std::vector<bhed::Diag> d;
+            return bhed::compile(lies(text), db, bl, d);
+        };
+        pruefe(uebersetzt("wait ( 1.000 );\r\n"), "Uebersetzen: ein fehlerfreies Skript geht durch");
+        pruefe(!uebersetzt("wait ( 1.000 );\r\nwait ( 2.000 ;\r\n"),
+               "Uebersetzen: eine Zeile ohne schliessende Klammer wird verweigert (wie IBIze)");
+        pruefe(!uebersetzt("affect ( \"tuer\", FLUSH )\r\n{\r\n\twait ( 1.000 );\r\n"),
+               "Uebersetzen: ein Block ohne schliessende '}' wird verweigert (wie IBIze)");
+        pruefe(uebersetzt("// nur ein Kommentar\r\nwait ( 1.000 ); // dahinter\r\n"),
+               "Uebersetzen: echte Kommentare stoeren nicht");
+
+        // ---- Pruefer: Multiplayer-Regeln (nachgeprueft am MP-Code) -------
+        const auto codes = [&](const std::string& text, bool mp) {
+            std::vector<bhed::Issue> is;
+            bhed::validate(lies(text), db, is, mp);
+            std::string c;
+            for (const bhed::Issue& i : is) { c += i.code + " "; }
+            return c;
+        };
+        const auto hat = [](const std::string& c, const char* code) { return c.find(code) != std::string::npos; };
+        pruefe(hat(codes("camera ( ENABLE );\r\n", true), "M001") && !hat(codes("camera ( ENABLE );\r\n", false), "M001"),
+               "MP: camera meldet M001 - nur im MP-Modus");
+        pruefe(hat(codes("print ( \"hallo\" );\r\n", true), "M007") && !hat(codes("print ( \"!hallo\" );\r\n", true), "M007"),
+               "MP: print ohne ! meldet M007, mit ! nicht");
+        {
+            const std::string c = codes("set ( \"SET_SABERACTIVE\", \"true\" );\r\n", true);
+            pruefe(hat(c, "M009") && hat(c, "M010"), "MP: SET_SABERACTIVE meldet Absturzgefahr und Umkehrung");
+        }
+        pruefe(hat(codes("set ( \"SET_COPY_ORIGIN\", \"punkt\" );\r\n", true), "M009"),
+               "MP: SET_COPY_ORIGIN meldet die Absturzgefahr (g_client.c:1148, kein client-Test)");
+        pruefe(hat(codes("set ( \"SET_SKIN\", \"x\" );\r\n", true), "M002"), "MP: SET_SKIN ist im MP unbekannt (M002)");
+        pruefe(!hat(codes("set ( \"SET_FULLNAME\", \"x\" );\r\n", true), "M002"), "MP: SET_FULLNAME gibt es nur im MP - keine Meldung");
+        pruefe(!hat(codes("declare ( FLOAT, \"meinwert\" );\r\nset ( \"meinwert\", \"3\" );\r\n", true), "M002"),
+               "MP: eine deklarierte Variable ist kein unbekanntes Feld");
+        pruefe(hat(codes("set ( \"SET_SABER_THROW\", \"2\" );\r\n", true), "M011"), "MP: SET_SABER_THROW setzt Rage (M011)");
+        pruefe(hat(codes("task ( \"t\" )\r\n{\r\n\tsound ( CHAN_VOICE, \"sound/a.mp3\" );\r\n}\r\n\r\ndowait ( \"t\" );\r\n", true), "M017"),
+               "MP: dowait auf einen Task mit CHAN_VOICE kehrt nie zurueck (M017)");
+        pruefe(hat(codes("print ( $get( STRING, \"SET_LOCATION\")$ );\r\n", true), "M015"),
+               "MP: $get( STRING, SET_LOCATION ) liefert im MP nie einen Wert (M015)");
+        {
+            std::string viele;
+            for (int k = 0; k < 33; ++k) { viele += "declare ( FLOAT, \"v" + std::to_string(k) + "\" );\r\n"; }
+            pruefe(hat(codes(viele, true), "M014"), "MP: 33 Variablen melden M014");
+        }
+        {
+            std::vector<bhed::Issue> is;
+            bhed::validate(lies("set ( \"SET_ORIGNI\", \"< 0 0 0 >\" );\r\n"), db, is, false);
+            bool v012 = false;
+            for (const bhed::Issue& i : is) { if (i.code == "V012" && i.arg2 == "SET_ORIGIN") { v012 = true; } }
+            pruefe(v012, "Pruefer: set ( \"SET_ORIGNI\" ) ohne Markierung meldet V012 mit Vorschlag SET_ORIGIN");
+            pruefe(!hat(codes("set ( \"SET_ANIM_BOTH_FORCED\", \"BOTH_STAND1\" );\r\n", false), "V012"),
+                   "Pruefer: ein Movie-Duels-Feld ist kein Tippfehler");
+        }
+    }
     // ---- Skriptkern ------------------------------------------------------
     // 1. Die Zeilenzahl eines Makros wird beim Speichern mitgeschrieben.
     {

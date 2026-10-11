@@ -263,6 +263,33 @@ void openInExplorer(const std::string& folder) {
     ShellExecuteW(nullptr, L"open", toWide(folder).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+std::pair<int, int> hauptfensterGroesse(int breite, int hoehe) {
+    // Das sichtbare Hauptfenster DIESES Fadens (die Oberflaeche laeuft im
+    // Hauptfaden, der Selbsttest auch).
+    HWND fenster = nullptr;
+    EnumThreadWindows(
+        GetCurrentThreadId(),
+        [](HWND h, LPARAM l) -> BOOL {
+            if (IsWindowVisible(h) != 0 && GetWindow(h, GW_OWNER) == nullptr) {
+                *reinterpret_cast<HWND*>(l) = h;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&fenster));
+    if (fenster == nullptr) {
+        return {0, 0};
+    }
+    RECT r{};
+    GetWindowRect(fenster, &r);
+    const std::pair<int, int> vorher{r.right - r.left, r.bottom - r.top};
+    if (IsZoomed(fenster) != 0) {
+        ShowWindow(fenster, SW_SHOWNOACTIVATE);
+    }
+    SetWindowPos(fenster, nullptr, 0, 0, breite, hoehe, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    return vorher;
+}
+
 std::uintptr_t starteZweiteInstanz(const std::string& argument) {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);

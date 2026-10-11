@@ -508,6 +508,21 @@ void emit(const std::vector<Node>& ns, const CommandDb& db,
                 }
             }
         } wegmarke{diag, meldungenVorher, hier};
+        // Eine Zeile, die der Leser nicht verstanden hat, steht wortgetreu
+        // als Kommentarknoten im Baum - echte Kommentare beginnen mit "//".
+        // Still weglassen hiesse: ein Tippfehler loescht einen Befehl aus der
+        // .ibi, und das Uebersetzen meldet Erfolg (@Seph, MP-Bericht 08.10.).
+        // IBIze verweigert in diesem Fall; hier ebenso.
+        if (n.kind == Node::Kind::LineComment) {
+            const std::size_t a = n.raw.find_first_not_of(" \t");
+            if (a != std::string::npos && n.raw.compare(a, 2, "//") != 0) {
+                const std::string zeile = n.raw.substr(a);
+                diag.push_back({0, "Zeile nicht verstanden, nicht uebersetzt: " + zeile, "C005", zeile});
+            }
+        }
+        if (n.kind == Node::Kind::Command && n.blockOffen) {
+            diag.push_back({0, "Block ohne schliessende } in der Datei: " + n.name, "C006", n.name});
+        }
         if (n.kind != Node::Kind::Command) {
             continue;   // Leerzeilen, Kommentare und Makromarker sind Quelltext
         }

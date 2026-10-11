@@ -18,6 +18,8 @@ add_library(bhed_core STATIC
   src/edit.cpp
   src/ibi.cpp
   src/i18n.cpp
+  src/changelog.cpp
+  src/mpfelder.cpp
   src/theme.cpp
   src/settings.cpp
   src/keys.cpp
@@ -309,7 +311,7 @@ if(BEHAVED_TESTS)
   if(WIN32)
     target_link_libraries(pruefung PRIVATE psapi)
   endif()
-  add_test(NAME pruefung COMMAND pruefung)
+  add_test(NAME pruefung COMMAND pruefung ${BEHAVED_BHC} ${BEHAVED_DATA} ${BEHAVED_SUPP})
   add_executable(ablauftest tests/ablauftest.cpp)
   target_link_libraries(ablauftest PRIVATE bhed_core)
   add_test(NAME ablauf COMMAND ablauftest)

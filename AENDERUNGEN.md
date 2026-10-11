@@ -1,5 +1,49 @@
 # Änderungen seit rc94
 
+## rc583 — Originalschrift, Editor passt ins Fenster, Multiplayer-Modus, Changelog
+
+Gewünscht (shanks Kumpel): „commands with a lot of parameters like camera pan
+don't fit in the window“ und „forgetting the '-' or '.' … they are very small“
+– dazu shank: „die originale Font nehmen“, „ein Changelog-Fenster … in jeder
+Sprache“. Außerdem der MP-Bericht von @Seph (PDF, 08.10.).
+
+* **Schrift des Originals.** BehavEd.exe setzt keine eigene Schrift; alle
+  acht Dialogvorlagen geben MS Sans Serif 8 pt an (Bitmap SSERIFE.FON, 13 px).
+  Jetzt Microsoft Sans Serif (micross.ttf, deren TrueType-Fassung), mit
+  `ExtraSizeScale` 13/16 – die Zeilenhöhe bleibt 16, alle Maße bleiben.
+  Ober-/Unterlänge rechnet ImGui weiter in voller Größe, daher GlyphOffset nach
+  OBEN. Vergleich (GDI-gerendert): Minus und Punkt kräftiger als in Segoe UI,
+  aber nur wenig – ehrlich gesagt kein großer Sprung.
+* **Ereigniseditor passt ins Fenster.** Nachgestellt mit 1360 × 900 und 150 %
+  (Editor −336..1675 bei sichtbar 0..1338). Zwei Stufen: erst bis auf den
+  Inhalt (kurze Felder wie „0“ geben zuerst ab), dann bis zur harten Grenze;
+  Hilfetext bricht um, Titel wird abgeschnitten. Neu im Selbsttest:
+  `platform::hauptfensterGroesse`.
+* **MP-Bericht @Seph, jeder Punkt nachgestellt:**
+  1. Unlesbare Zeile wurde still aus der .ibi gelassen → Übersetzen verweigert
+     (C005), wie IBIze.
+  2. Fehlende `}` → `Node::blockOffen`, Übersetzen verweigert (C006); Speichern
+     schreibt die `}` und löscht die Marke.
+  4. `set ( "SET_ORIGNI" )` ohne Markierung blieb ohne Hinweis → V012 mit
+     Vorschlag (Movie-Duels-Felder zählen als bekannt; 0 Fehlalarme in 1510
+     Raven-Skripten).
+  6. Lesemeldungen wurden verworfen → Statusleiste beim Öffnen, mit Zeile, in
+     jeder Sprache (L001–L006; die Zeilennummer war um eins verschoben).
+  7. `bhed compile` schrieb die .ibi trotz Fehler → nicht mehr.
+  3/5. **Multiplayer-Modus** (Ansicht > Zielspiel): Regeln M001–M017. Die
+     Feldtabelle (tools/mp_felder.tsv, 319 Felder, Beleg je Zeile) ist gegen
+     codemp/game/g_ICARUScb.c nachgeprüft: 40 Aussagen des PDFs, 19 stimmen,
+     14 teilweise, **7 falsch** – u. a. erzeugen unbekannte Felder KEINE
+     Variable (Q3_SetVar meldet „variable or field not found“), und
+     SET_COPY_ORIGIN stürzt auf Nicht-Spielern ab (g_client.c:1148), statt
+     „sicher“ zu sein. 52 Felder wirken nur auf OpenJK-Servern (Raven-SDK:
+     Stub) → M016.
+  8. Lizenz: shanks Entscheidung, nicht angefasst.
+* **Changelog-Fenster** (Datei-Menü, About, Update-Fenster; nach einem Update
+  einmal von selbst): tools/changelog.txt, vier Sprachen je Fassung,
+  tools/gen_changelog.py baut es in die exe.
+* About zeigt die Fassung (1.0.0-rc583 statt nur 1.0.0).
+
 ## rc582 — Code-Prüfung: alles, was Arbeit kosten oder abstürzen kann
 
 Gewünscht: „schau den kompletten Code nochmal an, ob es noch irgendwas gibt,

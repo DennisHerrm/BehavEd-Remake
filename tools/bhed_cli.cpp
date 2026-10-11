@@ -67,7 +67,7 @@ fs::path findData(const fs::path& exe, const std::string& given) {
 int usage() {
     std::fputs(
         "bhed - Werkzeug fuer ICARUS-Skripte (.icarus / .ibi)\n\n"
-        "  bhed check     <datei|ordner> [--strict]\n"
+        "  bhed check     <datei|ordner> [--strict] [--mp]   (--mp: Multiplayer-Regeln)\n"
         "  bhed tree      <datei> [--types] [--g] [--nofold]\n"
         "  bhed fmt       <datei> [-o <datei>]\n"
         "  bhed compile   <datei.icarus> [-o <datei.ibi>]\n"
@@ -113,6 +113,7 @@ int main(int argc, char** argv) {
     bool optG = false;
     bool optNoFold = false;
     bool optStrict = false;
+    bool optMp = false;
     std::vector<std::string> pos;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
@@ -122,6 +123,7 @@ int main(int argc, char** argv) {
         else if (a == "--g") { optG = true; }
         else if (a == "--nofold") { optNoFold = true; }
         else if (a == "--strict") { optStrict = true; }
+        else if (a == "--mp") { optMp = true; }
         else { pos.push_back(a); }
     }
 
@@ -179,7 +181,7 @@ int main(int argc, char** argv) {
                 ++errs;
             }
             std::vector<bhed::Issue> is;
-            bhed::validate(s, db, is);
+            bhed::validate(s, db, is, optMp);
             for (const bhed::Issue& i : is) {
                 const bool err = i.level == bhed::Issue::Level::Error;
                 if (err) { ++errs; } else { ++warns; }
@@ -251,6 +253,12 @@ int main(int argc, char** argv) {
         std::vector<bhed::Diag> d;
         const bool ok = bhed::compile(s, db, bl, d);
         for (const auto& x : d) { std::fprintf(stderr, "%s\n", x.message.c_str()); }
+        // Bei einem Fehler KEINE .ibi - wie die Oberflaeche. Ein Bauskript
+        // haette sonst eine halbe Datei ausgeliefert (@Seph, MP-Bericht).
+        if (!ok) {
+            std::fprintf(stderr, "nicht uebersetzt - keine .ibi geschrieben\n");
+            return 1;
+        }
         const std::string bytes = bhed::writeIbi(bl);
         fs::path o = outOpt;
         if (o.empty()) { o = fs::path(in).replace_extension(".ibi"); }

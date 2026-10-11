@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bhed::platform {
@@ -54,6 +55,11 @@ std::uintptr_t starteZweiteInstanz(const std::string& argument);
 long zweiteInstanzStand(std::uintptr_t griff);
 // Beenden (nur DIESEN eigenen Kindprozess) und den Griff freigeben.
 void zweiteInstanzSchliessen(std::uintptr_t griff, bool beenden);
+
+// Fuer den Selbsttest: das Hauptfenster auf eine Groesse (aussen, Pixel)
+// setzen - ohne es nach vorn zu holen. Ein maximiertes Fenster wird dafuer
+// wiederhergestellt. Rueckgabe: die Groesse vorher (Breite, Hoehe).
+std::pair<int, int> hauptfensterGroesse(int breite, int hoehe);
 
 // Die Dateinamen eines Ordners, ohne Pfad und ohne Unterordner.
 //

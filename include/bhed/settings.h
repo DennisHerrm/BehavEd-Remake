@@ -153,6 +153,9 @@ struct Settings {
     int schattenArt = 1;
     bool nebel = true;
     bool dynLicht = true;
+    // Zielspiel: true = Multiplayer. Dann prueft der Pruefer zusaetzlich die
+    // MP-Regeln (validate(..., mp), Codes M001...).
+    bool mpZiel = false;
     // Die Trennlinien im Raster der geteilten Ansicht.
     float splitFracX = 0.5F;
     float splitFracY = 0.5F;

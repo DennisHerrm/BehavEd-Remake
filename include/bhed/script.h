@@ -61,6 +61,10 @@ struct Node {
     int count = 0;               // bei Macro: Anzahl der erzeugten Befehle
     std::vector<Node> children;
     std::string raw;             // Rohtext bei LineComment
+    // Der Block stand in der Datei ohne schliessende '}' (der Leser hat ihn
+    // am Dateiende zugemacht). Uebersetzen verweigert, bis gespeichert ist -
+    // wie IBIze, das eine solche Datei gar nicht uebersetzt.
+    bool blockOffen = false;
     // Bleibt beim Kopieren erhalten - genau das traegt den Zustand ueber
     // Zuege und Schnappschuesse. Doppelte werden beim Vergeben aufgeloest.
     Kennung kennung = 0;

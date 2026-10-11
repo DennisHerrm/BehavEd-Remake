@@ -18,6 +18,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include "bhed/changelog.h"
 #include "bhed/fassung.h"
 #include "update.h"
 #include "app_internal.h"
@@ -1173,6 +1174,12 @@ void drawEditor() {
     // einen Punkt je Spalte.
     g_app->editorFeldX.assign(fields.size(), 0.0F);
     g_app->editorFeldW.assign(fields.size(), 0.0F);
+    // Wie schmal eine Spalte werden darf, wenn die Reihe nicht ins Fenster
+    // passt (siehe unten).
+    // Zwei Stufen: erst bis auf den INHALT (so kurze Felder wie "0" zuerst
+    // abgeben), dann bis auf die harte Grenze.
+    std::vector<float> inhaltW(fields.size(), 0.0F);
+    std::vector<float> mindestW(fields.size(), 0.0F);
     const float spaltenAbstand = edStil.CellPadding.x * 2.0F;
     // Breite einer Klappliste (Typmenge). Sie hat KEINEN Expr!-Knopf, und
     // `comboEdit` setzt seine Breite selbst - dieselbe Formel hier und beim
@@ -1223,6 +1230,14 @@ void drawEditor() {
                                 ausText + knopfB + zusatzB,
                                 helferOffen ? ImGui::GetFontSize() * 17.0F
                                             : 0.0F}));
+            mindestW[k] = std::min(
+                breit, alsListe ? ImGui::GetFrameHeight() + ImGui::GetFontSize() * 3.0F +
+                                      (mitKnopf ? knopfB : 0.0F)
+                                : ImGui::GetFontSize() * 4.0F + knopfB + zusatzB);
+            inhaltW[k] = std::clamp(alsListe ? ImGui::CalcTextSize(g_app->editorValues[k].c_str()).x +
+                                                   ImGui::GetFrameHeight() * 2.0F + (mitKnopf ? knopfB : 0.0F)
+                                             : ausText + knopfB + zusatzB,
+                                    mindestW[k], breit);
             if (k > 0) { tabelleW += spaltenAbstand; }
             g_app->editorFeldX[k] = tabelleW;
             g_app->editorFeldW[k] = breit;
@@ -1232,10 +1247,41 @@ void drawEditor() {
     // Die Reihe beginnt an der Beschriftung (rechtsbuendig in `labelW`) und
     // endet an der letzten Spalte. Die Tabelle beginnt bei `dx(kEdLeft)`.
     const float istX = labelW - tw;
+    // --- Passt die Reihe nicht ins Hauptfenster: Felder schmaler ----------
+    //
+    // shank: "when viewing some commands with a lot of parameters like
+    // camera pan, it doesn't fit in the window. Maybe the width could
+    // auto-adjust to fit within the window width?" camera PAN hat vier
+    // Felder, zwei davon mit Helper-Knopf - bei 150 % ragte das Fenster
+    // links und rechts hinaus. Zuerst gibt jede Spalte ab, was sie ueber
+    // ihrem Inhalt hat ("0" fast alles, ein Vektor wenig); reicht das nicht,
+    // anteilig bis zur harten Grenze. Passt alles, bleibt es wie bisher.
+    const float platz = ImGui::GetMainViewport()->WorkSize.x - ImGui::GetFontSize() * 2.0F;
+    for (const std::vector<float>* grenze : {&inhaltW, &mindestW}) {
+        const float reiheVorher = (dx(kEdLeft) - istX) + tabelleW + linksrand * 2.0F;
+        float spiel = 0.0F;
+        for (std::size_t k = 0; k < fields.size(); ++k) {
+            spiel += std::max(0.0F, g_app->editorFeldW[k] - (*grenze)[k]);
+        }
+        if (reiheVorher <= platz || spiel <= 0.0F) {
+            continue;
+        }
+        const float anteil = std::min(1.0F, (reiheVorher - platz) / spiel);
+        tabelleW = 0.0F;
+        for (std::size_t k = 0; k < fields.size(); ++k) {
+            float& w = g_app->editorFeldW[k];
+            w = std::floor(w - std::max(0.0F, w - (*grenze)[k]) * anteil);
+            if (k > 0) { tabelleW += spaltenAbstand; }
+            g_app->editorFeldX[k] = tabelleW;
+            tabelleW += w;
+        }
+    }
     const float reiheW = (dx(kEdLeft) - istX) + tabelleW;
-    const float fensterW = std::ceil(std::max({breiteTitel,
+    // Titel und Hilfetext machen das Fenster nicht breiter als der Platz:
+    // der Titel wird abgeschnitten, die Hilfe bricht um (unten).
+    const float fensterW = std::ceil(std::max({std::min(std::max(breiteTitel, breiteHilfe + linksrand * 2.0F),
+                                                        platz),
                                                reiheW + linksrand * 2.0F,
-                                               breiteHilfe + linksrand * 2.0F,
                                                breiteKnoepfe + linksrand * 2.0F}));
 
     ImGui::OpenPopup(title.c_str());
@@ -1540,7 +1586,8 @@ void drawEditor() {
             // Animationen mit, die in Ravens Kopfdateien nicht stehen.
             const ComboEditResult r =
                 comboEdit("##v", v, ts != nullptr ? &ts->entries : nullptr,
-                          auswahlBreite(v));
+                          std::min(auswahlBreite(v),
+                                   zelleW - (knopfArt != FeldKnopf::Keiner ? knopfB : 0.0F)));
             // NUR bei einer echten Auswahl die Folgefelder zuruecksetzen.
             //
             // Bei jedem Tastendruck waere falsch: das Zuruecksetzen holt die
@@ -1672,7 +1719,7 @@ void drawEditor() {
             hint = std::string("<expr> ") + tr(Str::EditorWas) + " " + hint;
         }
         const float hw = ImGui::CalcTextSize(hint.c_str()).x;
-        ImGui::SetCursorPosX(x + (dx(kEdFieldW) - hw) * 0.5F);
+        ImGui::SetCursorPosX(x + (std::min(dx(kEdFieldW), zelleW) - hw) * 0.5F);
         ImGui::TextDisabled("%s", hint.c_str());
         ImGui::EndGroup();
 
@@ -1808,8 +1855,16 @@ void drawEditor() {
     //
     // Gemittelt gegen `fensterW` - dieselbe ausgerechnete Breite wie die
     // Reihe, nicht `GetWindowWidth()` des laufenden Fensters.
-    ImGui::SetCursorPosX(std::max((fensterW - breiteHilfe) * 0.5F, linksrand));
-    ImGui::Text("( %s )", help.c_str());
+    if (breiteHilfe + linksrand * 2.0F <= fensterW) {
+        ImGui::SetCursorPosX(std::max((fensterW - breiteHilfe) * 0.5F, linksrand));
+        ImGui::Text("( %s )", help.c_str());
+    } else {
+        // Breiter als das Fenster (siehe `platz`): umbrechen statt abschneiden.
+        ImGui::SetCursorPosX(linksrand);
+        ImGui::PushTextWrapPos(fensterW - linksrand);
+        ImGui::TextWrapped("( %s )", help.c_str());
+        ImGui::PopTextWrapPos();
+    }
 
     // Kein fester Abstand mehr. Die erste Fassung setzte hier
     // dy(kEdBtnRow - 40) - ein Mass aus Dialog 137, das fuer MS Sans Serif
@@ -3622,6 +3677,66 @@ void drawPk3Browser() {
     ImGui::EndPopup();
 }
 
+// --- Changelog --------------------------------------------------------
+//
+// shank (11.10.): "ein Changelog-Fenster ... dass die Leute wissen, was wir
+// gefixt haben, ueber die Zeit hinweg, auch in jeder Sprache, die ich
+// anbiete." Die Eintraege stehen in tools/changelog.txt (vier Sprachen je
+// Fassung) und werden mit tools/gen_changelog.py in die exe gebaut - ein
+// fehlendes data/-Verzeichnis kann sie nicht verlieren.
+void drawChangelog() {
+    if (!g_app->changelogOpen) {
+        return;
+    }
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowSize(ImVec2{std::min(ImGui::GetFontSize() * 40.0F, vp->WorkSize.x * 0.9F),
+                                    std::min(ImGui::GetFontSize() * 30.0F, vp->WorkSize.y * 0.85F)},
+                             ImGuiCond_Appearing);
+    ImGui::SetNextWindowPos(ImVec2{vp->WorkPos.x + vp->WorkSize.x * 0.5F, vp->WorkPos.y + vp->WorkSize.y * 0.5F},
+                            ImGuiCond_Appearing, ImVec2{0.5F, 0.5F});
+    bool offen = true;
+    if (ImGui::Begin((std::string(tr(Str::ChangelogTitle)) + "###changelog").c_str(), &offen,
+                     ImGuiWindowFlags_NoCollapse)) {
+        char kopf[300];
+        std::snprintf(kopf, sizeof(kopf), tr(Str::ChangelogIntro), kFassung);
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextDisabled("%s", kopf);
+        ImGui::PopTextWrapPos();
+        ImGui::Separator();
+        const int sprache = static_cast<int>(i18n::currentLanguage());
+        const float knopfH = ImGui::GetFrameHeightWithSpacing();
+        if (ImGui::BeginChild("##eintraege", ImVec2{0.0F, -knopfH})) {
+            const changelog::Eintrag* e = changelog::eintraege();
+            for (std::size_t i = 0; i < changelog::anzahl(); ++i) {
+                const bool installiert = std::strcmp(e[i].fassung, kFassung) == 0;
+                std::string titel = std::string(e[i].fassung) + "  -  " + e[i].datum;
+                if (installiert) { titel += std::string("  (") + tr(Str::ChangelogInstalled) + ")"; }
+                titel += "###v" + std::to_string(i);
+                // Die neuesten zwei offen, der Rest zugeklappt.
+                ImGui::SetNextItemOpen(i < 2, ImGuiCond_Appearing);
+                if (ImGui::CollapsingHeader(titel.c_str())) {
+                    const char* t = e[i].text[(sprache >= 0 && sprache < 4) ? sprache : 0];
+                    ImGui::PushTextWrapPos(0.0F);
+                    for (const char* a = t; *a != '\0';) {
+                        const char* ende = std::strchr(a, '\n');
+                        const std::string punkt = ende != nullptr ? std::string(a, ende) : std::string(a);
+                        ImGui::Bullet();
+                        ImGui::TextWrapped("%s", punkt.c_str());
+                        if (ende == nullptr) { break; }
+                        a = ende + 1;
+                    }
+                    ImGui::PopTextWrapPos();
+                    ImGui::Spacing();
+                }
+            }
+        }
+        ImGui::EndChild();
+        if (ImGui::Button(tr(Str::ChangelogClose))) { offen = false; }
+    }
+    ImGui::End();
+    if (!offen) { g_app->changelogOpen = false; }
+}
+
 void drawAbout() {
     if (!g_app->aboutOpen) {
         return;
@@ -3639,7 +3754,7 @@ void drawAbout() {
                      ImVec2{static_cast<float>(icons::kLogoWidth) * scale,
                             static_cast<float>(icons::kLogoHeight) * scale});
     }
-    ImGui::Text("%s 1.0.0", tr(Str::AppTitle));
+    ImGui::Text("%s 1.0.0-%s", tr(Str::AppTitle), kFassung);
     ImGui::TextUnformatted(tr(Str::AboutOriginal));
     ImGui::Separator();
 
@@ -3658,6 +3773,12 @@ void drawAbout() {
     ImGui::Separator();
     if (ImGui::Button(tr(Str::AboutClose), ImVec2{ImGui::GetFontSize() * 6.0F, 0.0F})) {
         g_app->aboutOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr(Str::ChangelogMenu))) {
+        g_app->aboutOpen = false;
+        g_app->changelogOpen = true;
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -3883,6 +4004,7 @@ bool doSave() {
         return false;
     }
     sicherungAnlegen(quelle, inhalt);
+    g_app->doc.offeneBloeckeGeschlossen();   // die Datei hat jetzt ihre '}'
     // Ab jetzt ist die Quelle die Datei, an der gearbeitet wird. Sonst
     // schriebe das naechste Speichern wieder neben die .ibi.
     if (quelle != g_app->path) {
@@ -4539,6 +4661,28 @@ void oeffneSkriptAusSpeicherI(const std::string& data, const std::string& name) 
     openScriptFromMemory(data, name);
 }
 
+// Was der Leser beim Oeffnen nicht verstanden hat, in die Statusliste - in
+// der eingestellten Sprache. Vorher wurden die Meldungen verworfen
+// ("(void)readScript"), und man erfuhr erst beim Uebersetzen (oder nie),
+// dass eine Zeile nicht verstanden wurde (@Seph, MP-Bericht 08.10.).
+void leseMeldungenZeigen(const std::vector<Diag>& d, const std::string& name) {
+    for (const Diag& x : d) {
+        const char* muster = nullptr;
+        if (x.code == "L001") { muster = tr(Str::LmsgL001); }
+        else if (x.code == "L002") { muster = tr(Str::LmsgL002); }
+        else if (x.code == "L003") { muster = tr(Str::LmsgL003); }
+        else if (x.code == "L004") { muster = tr(Str::LmsgL004); }
+        else if (x.code == "L005") { muster = tr(Str::LmsgL005); }
+        else if (x.code == "L006") { muster = tr(Str::LmsgL006); }
+        if (muster == nullptr) { continue; }
+        char text[300];
+        std::snprintf(text, sizeof(text), muster, x.arg.c_str());
+        char zeile[380];
+        std::snprintf(zeile, sizeof(zeile), tr(Str::ReadNoteLine), name.c_str(), x.line, text);
+        addStatus(zeile);
+    }
+}
+
 void loadPath(const std::string& p) {
     diag::Step step("Skript oeffnen: " + p);
     // Schon offen? Dann dorthin - siehe reiterMitPfad.
@@ -4581,6 +4725,7 @@ void loadPath(const std::string& p) {
     } else {
         (void)readScript(src, sc, d);
     }
+    leseMeldungenZeigen(d, fileName(p));
     // In einen NEUEN Reiter, ausser der aktuelle ist noch unberuehrt.
     //
     // Sonst verliert man beim Oeffnen, woran man gerade arbeitet - und
@@ -5494,6 +5639,8 @@ void doCompile() {
         else if (x.code == "C002") { muster = tr(Str::CmsgC002); }
         else if (x.code == "C003") { muster = tr(Str::CmsgC003); }
         else if (x.code == "C004") { muster = tr(Str::CmsgC004); }
+        else if (x.code == "C005") { muster = tr(Str::CmsgC005); }
+        else if (x.code == "C006") { muster = tr(Str::CmsgC006); }
         char text[400];
         if (muster != nullptr) {
             std::snprintf(text, sizeof(text), muster, x.arg.c_str());
@@ -9224,6 +9371,13 @@ void drawStatus(const Layout& l) {
         ImGui::SameLine();
     };
 
+    // Im Multiplayer-Modus sichtbar sagen, dass die MP-Regeln gelten - sonst
+    // wundert man sich ueber die vielen Anmerkungen.
+    if (g_app->settings.mpZiel) {
+        ImGui::TextColored(ImVec4{0.95F, 0.65F, 0.25F, 1.0F}, "%s", tr(Str::StatusMp));
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::StatusMpHint)); }
+        ImGui::SameLine();
+    }
     zaehler(errs, tr(Str::StatusErrors), true);
     zaehler(warns, tr(Str::StatusWarnings), false);
     if (errs == 0 && warns == 0) {
@@ -9462,6 +9616,18 @@ void drawMessages() {
             else if (i.code == "V008") { muster = tr(Str::VmsgV008); }
             else if (i.code == "V009") { muster = tr(Str::VmsgV009); }
             else if (i.code == "V011") { muster = tr(Str::VmsgV011); }
+            else if (i.code == "V012") { muster = tr(Str::VmsgV012); if (!i.arg2.empty()) { muster = tr(Str::VmsgV012b); } }
+            else if (i.code.size() == 4 && i.code[0] == 'M') {
+                static const Str kMp[] = {Str::MmsgM001, Str::MmsgM002, Str::MmsgM003, Str::MmsgM004,
+                                          Str::MmsgM005, Str::MmsgM006, Str::MmsgM007, Str::MmsgM008,
+                                          Str::MmsgM009, Str::MmsgM010, Str::MmsgM011, Str::MmsgM012,
+                                          Str::MmsgM013, Str::MmsgM014, Str::MmsgM015, Str::MmsgM016,
+                                          Str::MmsgM017};
+                const int nr = std::atoi(i.code.c_str() + 1);
+                if (nr >= 1 && nr <= static_cast<int>(sizeof(kMp) / sizeof(kMp[0]))) {
+                    muster = tr(kMp[nr - 1]);
+                }
+            }
             if (muster != nullptr) {
                 ImGui::TextWrapped(muster, i.arg1.c_str(), i.arg2.c_str());
             } else {
@@ -9610,6 +9776,9 @@ void drawMenu() {
         // Auto-Updater: von Hand nachsehen, und ob es beim Start geschehen soll.
         if (ImGui::MenuItem(tr(Str::UpdMenu))) {
             updater::pruefen(false);
+        }
+        if (ImGui::MenuItem(tr(Str::ChangelogMenu))) {
+            g_app->changelogOpen = true;
         }
         if (ImGui::MenuItem(tr(Str::UpdAutoCheck), nullptr, g_app->settings.updateCheck)) {
             g_app->settings.updateCheck = !g_app->settings.updateCheck;
@@ -9807,6 +9976,22 @@ void drawMenu() {
     }
 
     if (ImGui::BeginMenu(tr(Str::MenuView))) {
+        // Zielspiel. Im Multiplayer tut vieles aus dem Singleplayer nichts -
+        // meist ohne jede Meldung im Spiel (@Seph, MP-Bericht 08.10.,
+        // nachgeprueft gegen codemp/game/g_ICARUScb.c).
+        if (ImGui::BeginMenu(tr(Str::ViewTarget))) {
+            if (ImGui::MenuItem(tr(Str::TargetSp), nullptr, !g_app->settings.mpZiel)) {
+                g_app->settings.mpZiel = false;
+                rebuildTree();
+            }
+            if (ImGui::MenuItem(tr(Str::TargetMp), nullptr, g_app->settings.mpZiel)) {
+                g_app->settings.mpZiel = true;
+                rebuildTree();
+            }
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::TargetMpHint)); }
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::ViewChangeHistory), nullptr, g_app->settings.changeHistory)) {
             g_app->settings.changeHistory = !g_app->settings.changeHistory;
             rebuildTree();
@@ -10036,6 +10221,10 @@ void oeffneSkriptAusSpeicher(const std::string& data, const std::string& name) {
 // Ein neuer, leerer Reiter wie "New" - ohne die Rueckfrage und ohne das
 // Wiederverwenden eines leeren Reiters, die doNew() davorschaltet.
 void neuerReiter() { neuesSkript(); }
+// Aus main: nach dem Neustart eines Updates einmal zeigen, was neu ist.
+void changelogZeigen() {
+    if (g_app != nullptr) { g_app->changelogOpen = true; }
+}
 // Fuer den Selbsttest (Modus "pruefung").
 void ladePfad(const std::string& p) { loadPath(p); }
 void uebersetzen() { doCompile(); }
@@ -11113,7 +11302,7 @@ void rebuildTree() {
     g_app->treeOpt.expanded = &g_app->expanded;
     buildTree(g_app->doc.script(), g_app->db, g_app->treeOpt, g_app->rows);
     g_app->issues.clear();
-    validate(g_app->doc.script(), g_app->db, g_app->issues);
+    validate(g_app->doc.script(), g_app->db, g_app->issues, g_app->settings.mpZiel);
 
     // Die Auswahl haengt am WEG, nicht an der Zeilennummer. Sonst springt
     // sie bei jeder Einfuegung eine Zeile weiter, und der naechste Klick auf
@@ -15045,6 +15234,7 @@ void draw() {
     drawStatus(l);
     drawUndoListe();
     updater::zeichneFenster();
+    drawChangelog();
     drawMessages();
     drawGamePaths();
     drawInterplay();

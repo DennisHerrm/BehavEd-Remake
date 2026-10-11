@@ -473,6 +473,12 @@ private:
     bool abgeschnitten_ = false;
     // Die letzte Momentaufnahme zuruecknehmen, als waere nie etwas gewesen.
     void verwirf();
+public:
+    // Nach dem Speichern: die Datei hat jetzt ihre schliessenden '}', die
+    // Marken "Block ohne }" (Node::blockOffen) gelten nicht mehr. Kein
+    // Rueckgaengig-Schritt - am Skript aendert sich nichts.
+    void offeneBloeckeGeschlossen();
+private:
     // Die Zwischenablage ohne Kennungen - eingefuegt wird eine Kopie.
     [[nodiscard]] std::vector<Node> clipKopie() const;
     // Der gespeicherte Stand ist aus dem Verlauf gefallen (Wiederholen

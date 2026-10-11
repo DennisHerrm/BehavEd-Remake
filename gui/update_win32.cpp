@@ -648,6 +648,10 @@ void zeichneFenster() {
             ShellExecuteW(nullptr, L"open", breit(z.release.htmlUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
         if (!z.release.htmlUrl.empty()) { ImGui::SameLine(); }
+        if (ImGui::Button(tr(Str::ChangelogMenu))) {
+            changelogZeigen();
+        }
+        ImGui::SameLine();
         if (ImGui::Button(tr(Str::UpdLater))) {
             offen = false;
             std::lock_guard<std::mutex> l(g().m);
