@@ -80,6 +80,7 @@ void animStarten(int entity) {
     }
     g_app->animEntity = entity;
     g_app->animSchluessel = -1;
+    g_app->animZug = false;
     g_app->animFensterOffen = true;
 }
 
@@ -156,7 +157,13 @@ void animUeberlagerung() {
 }
 
 void animMaus() {
-    if (!g_app->animFensterOffen || g_app->camViewActive) { return; }
+    if (!g_app->animFensterOffen || g_app->camViewActive) {
+        // Geht das Fenster mitten im Zug zu (oder schaut die Ansicht durch
+        // die Kamera), endet der Zug - sonst sah er das Loslassen nie und
+        // griff spaeter mit alten Nummern zu (Code-Pruefung rc592).
+        g_app->animZug = false;
+        return;
+    }
     const MapEntity* e = animEntityPtr();
     if (e == nullptr) { return; }
     const ImGuiIO& io = ImGui::GetIO();
@@ -172,6 +179,11 @@ void animMaus() {
         c.up(u);
         const float dx = io.MousePos.x - g_app->animZugMaus[0];
         const float dy = io.MousePos.y - g_app->animZugMaus[1];
+        if (g_app->animSchluessel < 0 ||
+            static_cast<std::size_t>(g_app->animSchluessel) >= g_app->animVorschau.size()) {
+            g_app->animZug = false;
+            return;
+        }
         AnimSchluessel& k = g_app->animVorschau[static_cast<std::size_t>(g_app->animSchluessel)];
         for (int a = 0; a < 3; ++a) {
             k.ort[static_cast<std::size_t>(a)] = g_app->animZugStart[a];

@@ -106,12 +106,16 @@ std::string graphSignatur() {
     std::string s = g_app->map.path + "|" + std::to_string(g_app->map.entities.size());
     std::size_t schluessel = 0;
     for (const MapEntity& e : g_app->map.entities) { schluessel += e.keys.size() * 31U + e.targetname.size(); }
-    s += "|" + std::to_string(schluessel) + "|" + std::to_string(g_app->entUndo.size()) + "|" + std::to_string(g_app->entRedo.size());
+    // entStand und Document::stand zaehlen JEDE Aenderung. Die Tiefen der
+    // Rueckgaengig-Stapel taten das nicht mehr, sobald sie bei 200 voll
+    // waren - dann blieb der Graph stehen (Code-Pruefung rc592).
+    s += "|" + std::to_string(schluessel) + "|" + std::to_string(g_app->entStand) + "|" +
+         std::to_string(g_app->entUndo.size()) + "|" + std::to_string(g_app->entRedo.size());
     for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
         const bool aktiv = static_cast<int>(i) == g_app->activeTab;
         const Document& d = aktiv ? g_app->doc : g_app->tabs[i].doc;
-        s += "|" + std::to_string(d.undoDepth()) + "/" + std::to_string(d.redoDepth()) + "/" +
-             std::to_string(d.script().nodes.size());
+        s += "|" + std::to_string(d.stand()) + "/" + std::to_string(d.undoDepth()) + "/" +
+             std::to_string(d.redoDepth()) + "/" + std::to_string(d.script().nodes.size());
     }
     return s + "|" + aktiverSkriptRef();
 }
@@ -202,6 +206,13 @@ std::string graphVerbinden(const std::string& vonSchluessel, const std::string& 
     char t[400];
     if (von.entity >= 0 && nach.entity >= 0) {
         // Entity -> Entity: target. Das Ziel braucht einen targetname.
+        if (static_cast<std::size_t>(nach.entity) >= g_app->map.entities.size() ||
+            static_cast<std::size_t>(von.entity) >= g_app->map.entities.size()) {
+            return {};
+        }
+        // EIN Rueckgaengig-Schritt fuer beides (Name und target) - vorher
+        // waren es zwei, und ein Strg+Z liess den Namen stehen.
+        std::vector<MapEntity> vorher = g_app->map.entities;
         MapEntity& z = g_app->map.entities[static_cast<std::size_t>(nach.entity)];
         std::string name = z.targetname;
         if (name.empty()) {
@@ -209,9 +220,10 @@ std::string graphVerbinden(const std::string& vonSchluessel, const std::string& 
             for (char& c : name) {
                 if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') { c = '_'; }
             }
-            entityKeySetzen(nach.entity, "targetname", name);
+            setKey(z, "targetname", name);
         }
-        entityKeySetzen(von.entity, "target", name);
+        setKey(g_app->map.entities[static_cast<std::size_t>(von.entity)], "target", name);
+        entitiesGeaendert(std::move(vorher));
         std::snprintf(t, sizeof(t), tr(Str::GraphConnected), von.titel.c_str(), nach.titel.c_str(), "target");
         return t;
     }
@@ -482,9 +494,10 @@ void drawGraphAnsicht() {
         }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        if (!z.verbindetVon.empty() && ueberKnoten >= 0 &&
+        const int vonIndex = z.verbindetVon.empty() ? -1 : knotenIndex(z.verbindetVon);
+        if (vonIndex >= 0 && ueberKnoten >= 0 &&
             z.g.knoten[static_cast<std::size_t>(ueberKnoten)].schluessel != z.verbindetVon) {
-            const GraphKnoten& von = z.g.knoten[static_cast<std::size_t>(knotenIndex(z.verbindetVon))];
+            const GraphKnoten& von = z.g.knoten[static_cast<std::size_t>(vonIndex)];
             const GraphKnoten& nach = z.g.knoten[static_cast<std::size_t>(ueberKnoten)];
             if (von.entity >= 0 && !nach.skript.empty() && von.art == GraphKnoten::Art::Figur) {
                 // Bei einer Figur fragen, welches Skript-Feld.

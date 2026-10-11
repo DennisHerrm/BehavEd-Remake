@@ -790,6 +790,7 @@ BspMesh buildMesh(const BspGeometry& geo, int level, bool skipSky) {
 }
 
 int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht) {
+    if (std::getenv("BHED_MESSAUS") != nullptr && std::string(std::getenv("BHED_MESSAUS")).find("stile") != std::string::npos) { return 0; }
     // Quellseiten unveraendert lesen: liegt eine Stilseite zugleich als
     // Stufe-0-Seite in Gebrauch, darf das Einrechnen sie nicht vorher
     // veraendern. Kopiert wird nur, was als Quelle dient.

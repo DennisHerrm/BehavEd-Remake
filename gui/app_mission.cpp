@@ -204,6 +204,8 @@ void strahlDurch(float sx, float sy, float start[3], float ende[3]) {
 // --- Aendern mit Rueckgaengig -----------------------------------------------
 void nachAenderung() {
     ++g_app->entStand;
+    // Nummern, die nach dem Umbau ins Leere zeigen, vergessen.
+    entityNummernPruefen();
     collectNames(g_app->map);
     merkeEntities();
     g_app->entitiesUngespeichert.insert(g_app->map.path);
@@ -553,8 +555,63 @@ bool entityLoeschen(int i) {
     g_app->hiddenEntities.clear();   // Indizes verschoben
     g_app->pickedEntity = -1;
     g_app->selectedActor = -1;
+    entityNummernNachLoeschen(i);
     aenderung(std::move(vorher));
     return true;
+}
+
+void entityNummernVergessen() {
+    g_app->entAuswahl.clear();
+    g_app->animEntity = -1;
+    g_app->animFensterOffen = false;
+    g_app->animZug = false;
+    g_app->animSchluessel = -1;
+    g_app->wegVon = -1;
+    g_app->wegLetzter = -1;
+}
+
+void entityNummernNachLoeschen(int i) {
+    // Eine Nummer hinter der geloeschten rueckt eins vor; die geloeschte
+    // selbst ist weg.
+    const auto nach = [i](int& n) {
+        if (n == i) {
+            n = -1;
+        } else if (n > i) {
+            --n;
+        }
+    };
+    std::vector<int> neu;
+    for (int a : g_app->entAuswahl) {
+        nach(a);
+        if (a >= 0) { neu.push_back(a); }
+    }
+    g_app->entAuswahl = std::move(neu);
+    const int anim = g_app->animEntity;
+    nach(g_app->animEntity);
+    if (anim >= 0 && g_app->animEntity < 0) {
+        g_app->animFensterOffen = false;
+        g_app->animZug = false;
+        g_app->animSchluessel = -1;
+    }
+    nach(g_app->wegVon);
+    nach(g_app->wegLetzter);
+}
+
+void entityNummernPruefen() {
+    const int n = static_cast<int>(g_app->map.entities.size());
+    std::vector<int> neu;
+    for (int a : g_app->entAuswahl) {
+        if (a >= 0 && a < n) { neu.push_back(a); }
+    }
+    g_app->entAuswahl = std::move(neu);
+    if (g_app->animEntity >= n) {
+        g_app->animEntity = -1;
+        g_app->animFensterOffen = false;
+        g_app->animZug = false;
+        g_app->animSchluessel = -1;
+    }
+    if (g_app->wegVon >= n) { g_app->wegVon = -1; }
+    if (g_app->wegLetzter >= n) { g_app->wegLetzter = -1; }
 }
 
 int entityDuplizieren(int i) {
@@ -705,6 +762,7 @@ bool entityRueckgaengig() {
     g_app->hiddenEntities.clear();
     g_app->entAuswahl.clear();
     if (g_app->pickedEntity >= static_cast<int>(g_app->map.entities.size())) { g_app->pickedEntity = -1; }
+    entityNummernPruefen();
     nachAenderung();
     return true;
 }
@@ -717,6 +775,7 @@ bool entityWiederholen() {
     g_app->hiddenEntities.clear();
     g_app->entAuswahl.clear();
     if (g_app->pickedEntity >= static_cast<int>(g_app->map.entities.size())) { g_app->pickedEntity = -1; }
+    entityNummernPruefen();
     nachAenderung();
     return true;
 }

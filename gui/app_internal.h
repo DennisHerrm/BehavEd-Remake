@@ -390,6 +390,10 @@ struct App {
     // Ziehen am Gizmo laeuft es mit. Kostet ein zweites, kleines GPU-Bild,
     // aber nur in dieser Lage. Abschaltbar in der Kameraleiste.
     bool kameraBildImBild = true;
+    // Zaehlt jedes Leeren von texCache (rescanGamePaths). Wer sich einen
+    // Zeiger in texCache merkt, vergleicht hiermit - die ADRESSE von
+    // texCache aendert sich beim Leeren nicht (Code-Pruefung rc592).
+    int texCacheStand = 0;
     bool vorschauGezeigt = false;   // im letzten Bild gezeichnet
     int vorschauW = 0;
     int vorschauH = 0;
@@ -1133,6 +1137,7 @@ struct App {
     bool wegKlickVerbraucht = false;  // ein Werkzeugklick waehlt nichts aus
     WegNetz wegNetz;
     std::size_t wegNetzSchl = 0;      // Pruefsumme der Wegentities beim Bau
+    bool wegNetzGebaut = false;       // wegNetz passt zu wegNetzSchl (auch ein leeres)
     std::vector<WegBefund> wegBefunde;
     bool wegGeprueft = false;
     std::string wegMeldung;           // Ergebnis des letzten Erzeugens
@@ -2114,7 +2119,7 @@ void drawAnimFenster();
 // --- Wetter (gui/app_wetter.cpp, rc592) ----------------------------------------
 // (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
 int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
-int flareSchilde(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
+int flareSchilde(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam, float aspekt);
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);
@@ -2140,6 +2145,14 @@ void platzierMaus();                       // Klick/Loslassen in der Ansicht set
 void ansichtsMarkenTasten();
 int entityPlatzieren(const std::string& klasse, float sx, float sy);   // am Bildschirmpunkt (app_mission.cpp)
 bool entityRueckgaengig();
+// Was auf Entity-NUMMERN zeigt (Auswahl, Animationsfenster, Wegkette) nach
+// einem Kartenwechsel vergessen bzw. nach dem Loeschen von Nummer i
+// nachziehen (Code-Pruefung rc592).
+void entityNummernVergessen();
+void entityNummernNachLoeschen(int i);
+// Nach einem Umbau der Liste (Rueckgaengig, Erzeugtes entfernen): Nummern,
+// die nicht mehr passen, vergessen.
+void entityNummernPruefen();
 bool entityWiederholen();
 bool entityUndoMoeglich();
 bool entityRedoMoeglich();

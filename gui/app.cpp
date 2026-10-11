@@ -11713,6 +11713,7 @@ void rescanGamePaths() {
     // Archiven. Wer einen Spielordner hinzufuegt, will die Textur von dort
     // sehen - und bekaeme sonst weiter die alte.
     g_app->texCache.clear();
+    ++g_app->texCacheStand;
     g_app->skeletons.clear();
     g_app->effects.clear();
     g_app->effectRunners.clear();
@@ -12432,6 +12433,7 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
 // ziehenden Schichten da. Jede Stufe wird ein eigener Eintrag hinter der
 // Box, mit ihrer Mischart, ihrer tcMod-Kette und der Wolkenhoehe.
 void wolkenLaden(const ShaderInfo& info, const std::string& name, TextureSet::Tex& himmel) {
+    if (std::getenv("BHED_MESSAUS") != nullptr && std::string(std::getenv("BHED_MESSAUS")).find("wolken") != std::string::npos) { return; }
     int zahl = 0;
     for (const ShaderInfo::Stage& st : info.stages) {
         if (st.lightmap || st.image.empty() || st.alphaGen == AlphaGen::Unsupported) {
@@ -13121,6 +13123,8 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
     // dieselbe Zahl eine andere Entity, und die Anzeige zeigte Angaben, die
     // es in der neuen Karte gar nicht gibt.
     g_app->pickedEntity = -1;
+    // Ebenso Auswahl, Animationsfenster und Wegkette (Code-Pruefung rc592).
+    entityNummernVergessen();
     // Auch Kamera- und Schluesselwahl gehoeren zur alten Karte (selectedKey
     // wurde nirgends zurueckgesetzt und zeigte danach auf einen anderen Schluessel).
     g_app->cameraSelected = false;

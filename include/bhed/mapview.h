@@ -453,6 +453,9 @@ struct AnbauDraw {
 
 // Eine Figur, wie sie in diesem Bild gezeichnet wird.
 struct ActorDraw {
+    // Nummer der Figur in Scene::actors (-1: keine Szene). Schluessel fuer
+    // alles, was ueber Bilder hinweg an einer Figur haengt (Schwertspuren).
+    int figur = -1;
     // Ein fester Zuschlag auf den Gierwinkel, in Grad.
     //
     // DIAGNOSE, keine Einstellung. Gemessen an

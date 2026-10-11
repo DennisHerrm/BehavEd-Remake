@@ -33,8 +33,14 @@ bool wegKlasse(const MapEntity& e) { return istWegKlasse(e.classname); }
 
 std::size_t pruefsumme() {
     std::size_t h = std::hash<std::string>{}(g_app->map.path);
-    for (const MapEntity& e : g_app->map.entities) {
+    // Die NUMMER gehoert dazu: WegKnoten::entity ist ein Index. Ohne sie
+    // blieb das Netz nach dem Loeschen einer Entity davor stehen und zeigte
+    // eine Stelle zu weit (Code-Pruefung rc592).
+    h = h * 1099511628211ULL ^ g_app->map.entities.size();
+    for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+        const MapEntity& e = g_app->map.entities[i];
         if (!wegKlasse(e)) { continue; }
+        h = h * 1099511628211ULL ^ i;
         for (const auto& [k, v] : e.keys) {
             h = h * 1099511628211ULL ^ std::hash<std::string>{}(k);
             h = h * 1099511628211ULL ^ std::hash<std::string>{}(v);
@@ -103,8 +109,11 @@ std::string nameVon(int i) {
 
 void wegNetzAktuell() {
     const std::size_t s = pruefsumme();
-    if (s == g_app->wegNetzSchl && !g_app->wegNetz.knoten.empty()) { return; }
+    // Auch ein LEERES Netz ist gebaut - vorher wurde es dann in jedem Bild
+    // neu gebaut, und das Ergebnis von "Netz pruefen" stand nur ein Bild lang.
+    if (s == g_app->wegNetzSchl && g_app->wegNetzGebaut) { return; }
     g_app->wegNetzSchl = s;
+    g_app->wegNetzGebaut = true;
     g_app->wegNetz = baueWegNetz(g_app->map.entities, kartenSicht());
     g_app->wegGeprueft = false;
     g_app->wegBefunde.clear();
@@ -164,7 +173,7 @@ int wegSetzen(const float boden[3], int verbindeMit) {
     const std::string neuName = e.targetname;
     g_app->map.entities.push_back(e);
     const int neu = static_cast<int>(g_app->map.entities.size()) - 1;
-    if (verbindeMit >= 0 && verbindeMit < neu) {
+    if (verbindeMit >= 0 && verbindeMit < neu && wegKlasse(g_app->map.entities[static_cast<std::size_t>(verbindeMit)])) {
         MapEntity& v = g_app->map.entities[static_cast<std::size_t>(verbindeMit)];
         if (v.targetname.empty()) { setKey(v, "targetname", freierEntityName("wp")); }
         bool gesetzt = false;
@@ -202,7 +211,11 @@ int wegGenerierteEntfernen() {
     }
     g_app->pickedEntity = -1;
     g_app->hiddenEntities.clear();
+    g_app->entAuswahl.clear();
+    g_app->wegVon = -1;
+    g_app->wegLetzter = -1;
     entitiesGeaendert(std::move(vorher));
+    entityNummernPruefen();
     return static_cast<int>(weg.size());
 }
 

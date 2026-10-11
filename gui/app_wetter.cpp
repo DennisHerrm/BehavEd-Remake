@@ -96,11 +96,23 @@ Wolke nebel(float hell) {
 }
 
 void wetterBauen() {
-    const std::string schl = g_app->map.path + "|" + std::to_string(g_app->map.entities.size());
+    // Die Wolken haengen an den Entities (Flaggen, count, Wind): jede
+    // Aenderung zaehlt (entStand). Der Draussen-Speicher haengt dagegen an der
+    // GEOMETRIE - er bleibt beim Bearbeiten und geht erst mit einer neu
+    // gelesenen Karte (Code-Pruefung rc592: vorher wirkte eine geaenderte
+    // Flagge gar nicht, und eine neu kompilierte Karte behielt ihn).
+    const std::string schl = g_app->map.path + "|" + std::to_string(g_app->map.entities.size()) + "|" +
+                             std::to_string(g_app->entStand);
     if (schl == g_wetter.schluessel) { return; }
+    static const void* geoStand = nullptr;
+    static std::size_t geoFlaechen = 0;
+    if (geoStand != g_app->geo.surfaces.data() || geoFlaechen != g_app->geo.surfaces.size()) {
+        geoStand = g_app->geo.surfaces.data();
+        geoFlaechen = g_app->geo.surfaces.size();
+        g_draussen.clear();
+    }
     g_wetter = Wetter{};
     g_wetter.schluessel = schl;
-    g_draussen.clear();
     for (const MapEntity& e : g_app->map.entities) {
         const int f = flags(e);
         if (e.classname == "fx_rain") {
@@ -225,11 +237,14 @@ float zufall(std::uint32_t& s) {
 }  // namespace
 
 int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
+    g_app->wetterTeilchenZahl = 0;   // auch, wenn gleich nichts kommt
     if (!g_app->zeigeWetter || g_app->geo.empty()) { return 0; }
     wetterBauen();
     if (g_wetter.wolken.empty()) { return 0; }
     float rechts[3];
+    float hoch[3];
     cam.right(rechts);
+    cam.up(hoch);
     const double t = std::max(0.0, g_app->playMs) / 1000.0;
     int n = 0;
     for (std::size_t wi = 0; wi < g_wetter.wolken.size(); ++wi) {
@@ -276,8 +291,6 @@ int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
                 gpu::baueKlingenband(oben, p, cam.pos, rechts, w.breite * 0.5F, q.ecke);
             } else {
                 // Zur Kamera gedrehtes Quadrat.
-                float hoch[3];
-                cam.up(hoch);
                 const float hb = w.breite * 0.5F;
                 const float hh = w.hoehe * 0.5F;
                 for (int k = 0; k < 3; ++k) {
@@ -307,17 +320,26 @@ int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
 // Shaders), naeher als 512 Einheiten entsprechend kleiner, mindestens 5; hell
 // nach dem Winkel zur Flaeche; nur, wenn der Punkt nicht verdeckt ist
 // (RB_TestZFlare - hier ein Strahl von der Kamera).
-int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
+int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam, float aspekt) {
+    g_app->flareZahl = 0;   // auch, wenn gleich nichts kommt
     if (!g_app->zeigeFlares || g_app->geo.empty()) { return 0; }
     float links[3];
     float oben[3];
+    float f[3];
     cam.right(links);
     cam.up(oben);
+    cam.forward(f);
+    // Halbe Blickwinkel als Tangens - fuer den Test, ob das Schild ueberhaupt
+    // im Bild liegt (siehe unten).
+    const float tanY = std::tan(cam.fovY * 3.14159265F / 360.0F);
+    const float tanX = tanY * (aspekt > 0.0F ? aspekt : 1.0F);
+    // Neu holen, sobald texCache geleert wurde (texCacheStand) - die Adresse
+    // von texCache bleibt dabei gleich, der Zeiger hing sonst ins Leere.
     static const TextureSet::Tex* ersatz = nullptr;
-    static const void* ersatzStand = nullptr;
-    if (ersatzStand != &g_app->texCache) {
+    static int ersatzStand = -1;
+    if (ersatzStand != g_app->texCacheStand) {
         ersatz = bild("gfx/misc/flare");
-        ersatzStand = &g_app->texCache;
+        ersatzStand = g_app->texCacheStand;
     }
     int n = 0;
     for (std::size_t i = 0; i < g_app->geo.surfaces.size(); ++i) {
@@ -330,17 +352,30 @@ int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
         if (dist < 1.0F || dist > 16384.0F) { continue; }
         for (float& v : dir) { v /= dist; }
         // vor der Kamera?
-        float f[3];
-        cam.forward(f);
         if (dir[0] * f[0] + dir[1] * f[1] + dir[2] * f[2] < 0.05F) { continue; }
+        float radius = 30.0F;
+        if (dist < 512.0F) { radius = radius * dist / 512.0F; }
+        radius = std::max(radius, 5.0F);
+        // --- Liegt das Schild im Bild? (rc592, Pruefung) ------------------
+        //
+        // Das Schild steht zur Kamera gedreht, alle Ecken in derselben Tiefe
+        // z; seine Ausdehnung quer ist +-radius. Liegt es ganz ausserhalb des
+        // Blickkegels, ist es unsichtbar - dann braucht es auch den Strahl
+        // nicht, der quer durch die Karte geht. hoth2 hat 98 Flares; der
+        // Strahl fuer jedes kostete rund 8 ms je Bild.
+        {
+            const float v[3] = {o[0] - cam.pos[0], o[1] - cam.pos[1], o[2] - cam.pos[2]};
+            const float z = v[0] * f[0] + v[1] * f[1] + v[2] * f[2];
+            const float x = v[0] * links[0] + v[1] * links[1] + v[2] * links[2];
+            const float y = v[0] * oben[0] + v[1] * oben[1] + v[2] * oben[2];
+            const float rand = radius * 1.05F + 1.0F;
+            if (std::fabs(x) - rand > z * tanX || std::fabs(y) - rand > z * tanY) { continue; }
+        }
         // verdeckt?
         const TraceTreffer t = traceRay(g_app->geo, cam.pos, o);
         if (t.hit && t.fraction < 0.98F) { continue; }
         float d = -(dir[0] * s.flareNormale[0] + dir[1] * s.flareNormale[1] + dir[2] * s.flareNormale[2]);
         if (d < 0.0F) { d = -d; }
-        float radius = 30.0F;
-        if (dist < 512.0F) { radius = radius * dist / 512.0F; }
-        radius = std::max(radius, 5.0F);
         gpu::KlingenQuad q;
         for (int k = 0; k < 3; ++k) {
             q.ecke[0][k] = o[k] - links[k] * radius + oben[k] * radius;

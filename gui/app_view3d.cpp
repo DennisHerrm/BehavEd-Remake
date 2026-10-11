@@ -591,7 +591,9 @@ void drawCameraGizmos(MapImage& img) {
                 continue;
             }
             App::PickedMarker marke{c0.x, c0.y, ei};
-            if (!g_app->geo.empty()) {
+            // Wegpunkte (9) bekommen kein Schild, `verdeckt` liest dort
+            // niemand - der Strahl je Wegpunkt war vergebens.
+            if (!g_app->geo.empty() && kat != 9) {
                 const float* kp = g_app->gezeigteKamera.pos;
                 const float ziel[3] = {p[0], p[1], p[2] + 8.0F};
                 const TraceTreffer tt = traceRay(g_app->geo, kp, ziel);
@@ -2681,10 +2683,10 @@ constexpr double kSpurLeben = 60.0;
 const TextureSet::Tex* spurBild() {
     static const TextureSet::Tex* bild = nullptr;
     static bool gesucht = false;
-    static const void* stand = nullptr;
-    if (gesucht && stand == &g_app->texCache) { return bild; }
+    static int stand = -1;
+    if (gesucht && stand == g_app->texCacheStand) { return bild; }
     gesucht = true;
-    stand = &g_app->texCache;
+    stand = g_app->texCacheStand;
     const std::string pfad = "gfx/effects/sabers/saberBlur";
     const auto have = g_app->texCache.find(pfad);
     if (have != g_app->texCache.end()) {
@@ -10596,6 +10598,7 @@ void drawMapView() {
                     continue;
                 }
                 ActorDraw d;
+                d.figur = static_cast<int>(ai);
                 d.model = &assets.model;
                 d.textures = (assets.textures.found != 0) ? &assets.textures
                                                           : nullptr;
@@ -11345,7 +11348,10 @@ void drawMapView() {
                                     // farbe, dann der schmale, fast weisse
                                     // Kern (Radius / 3) - CG_DoSaber.
                                     // Die Spur zuerst (sie liegt hinter der Klinge).
-                                    schwertSpur((static_cast<std::uint64_t>(figurNr) << 16) ^
+                                    // Schluessel nach der Figur in der SZENE, nicht nach
+                                    // der Stelle unter den sichtbaren - die verschob sich,
+                                    // sobald eine Figur davor erschien oder verschwand.
+                                    schwertSpur((static_cast<std::uint64_t>(a.figur >= 0 ? a.figur : figurNr) << 16) ^
                                                     (static_cast<std::uint64_t>(ai2) << 8) ^
                                                     static_cast<std::uint64_t>(kn),
                                                 wA, wB, kd, klingen);
@@ -11554,7 +11560,7 @@ void drawMapView() {
                 // das sie nicht verdeckt - wie im Rasterer.
                 // Das Wetter im selben Durchgang: additiv, tiefengetestet.
                 wetterTeilchen(klingen, bildCam);
-                flareSchilde(klingen, bildCam);
+                flareSchilde(klingen, bildCam, static_cast<float>(bildW) / static_cast<float>(std::max(bildH, 1)));
                 if (!klingen.empty()) {
                     std::string fk;
                     const int nk2 = gpu::zeichneKlingen(klingen, vp, &fk);

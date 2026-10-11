@@ -10161,6 +10161,12 @@ std::vector<Schritt> szenenSchritte() {
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
     add(tu("Szenen: Kartenansicht links", [] {
         g_app->leftMode = 1;
+        if (const char* aus = std::getenv("BHED_MESSAUS")) {
+            const std::string w = aus;
+            if (w.find("wetter") != std::string::npos) { g_app->zeigeWetter = false; }
+            if (w.find("flares") != std::string::npos) { g_app->zeigeFlares = false; }
+            if (w.find("spuren") != std::string::npos) { g_app->zeigeSpuren = false; }
+        }
         // BHED_SCHATTEN=0..3: die Schattenart (cg_shadows) fuer den Lauf.
         if (const char* art = std::getenv("BHED_SCHATTEN")) {
             g_app->schattenArt = std::clamp(std::atoi(art), 0, 3);
@@ -11514,6 +11520,75 @@ std::vector<Schritt> modellSchritte() {
 }
 
 // --- Mover animieren (rc592) -------------------------------------------------------
+// --- Indizes nach Loeschen und Kartenwechsel (Code-Pruefung rc592) ----------
+//
+// Gefunden beim Durchsehen: mehrere Werkzeuge merken sich Entity-NUMMERN
+// (Wegnetz, Auswahl, Animationsfenster, Wegkette). Nach einem Loeschen oder
+// einem Kartenwechsel zeigten sie auf eine andere Entity - oder hinter das
+// Ende der Liste.
+std::vector<Schritt> indexSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto zahl = std::make_shared<int>(0);
+    add(tu("Indizes: eine Entity VOR den Wegpunkten loeschen", [=] {
+        wegNetzAktuell();
+        *zahl = static_cast<int>(g_app->wegNetz.knoten.size());
+        int erster = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (!istWegKlasse(g_app->map.entities[i].classname)) { erster = static_cast<int>(i); break; }
+        }
+        diag::detail("Knopftest: Indizes - Wegknoten " + std::to_string(*zahl) + ", loesche Entity " +
+                     std::to_string(erster));
+        (void)entityLoeschen(erster);
+        wegNetzAktuell();
+    }));
+    add(pause(0.3));
+    add(pruefe("Indizes: das Wegnetz zeigt danach nur auf Wegpunkte, keine Nummer hinter dem Ende", [=] {
+        int schlecht = 0;
+        for (const WegKnoten& k : g_app->wegNetz.knoten) {
+            if (k.entity < 0 || static_cast<std::size_t>(k.entity) >= g_app->map.entities.size() ||
+                !istWegKlasse(g_app->map.entities[static_cast<std::size_t>(k.entity)].classname)) {
+                ++schlecht;
+            }
+        }
+        diag::detail("Knopftest: Indizes - nach dem Loeschen " + std::to_string(g_app->wegNetz.knoten.size()) +
+                     " Knoten, falsch " + std::to_string(schlecht));
+        return schlecht == 0 && static_cast<int>(g_app->wegNetz.knoten.size()) == *zahl;
+    }));
+    add(tu("Loeschen rueckgaengig", [] { (void)entityRueckgaengig(); }));
+    // Ein Rautenzug, der haengen bleibt, weil das Fenster mitten im Zug zugeht
+    // (oder die Ansicht durch die Kamera schaut): danach darf er nicht mehr
+    // laufen - sonst greift er mit einer alten Nummer ins Leere.
+    add(tu("Indizes: Rautenzug, dann Fenster zu", [] {
+        g_app->animZug = true;
+        g_app->animSchluessel = 0;
+        g_app->animFensterOffen = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(pruefe("Indizes: der Zug endet mit dem Fenster", [] { return !g_app->animZug; }));
+    // Auswahl, Animationsfenster und Wegkette gehoeren zur Karte.
+    add(tu("Indizes: Auswahl, Animation und Wegkette setzen, dann andere Karte", [] {
+        g_app->entAuswahl = {1, 2, 3};
+        g_app->animEntity = 2;
+        g_app->animFensterOffen = true;
+        g_app->wegLetzter = 1;
+        g_app->wegVon = 2;
+        (void)loadMapFromArchive(g_app->map.path == "maps/kor1.bsp" ? std::string("maps/academy1.bsp")
+                                                                   : std::string("maps/kor1.bsp"));
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(pause(0.3));
+    add(pruefe("Indizes: nach dem Kartenwechsel keine Auswahl, kein Animationsfenster, keine Wegkette", [] {
+        diag::detail("Knopftest: Indizes - Auswahl " + std::to_string(g_app->entAuswahl.size()) + ", Animation " +
+                     std::to_string(g_app->animFensterOffen) + "/" + std::to_string(g_app->animEntity) + ", Weg " +
+                     std::to_string(g_app->wegLetzter) + "/" + std::to_string(g_app->wegVon));
+        return g_app->entAuswahl.empty() && !g_app->animFensterOffen && g_app->animEntity < 0 &&
+               g_app->wegLetzter < 0 && g_app->wegVon < 0;
+    }));
+    return s;
+}
+
 std::vector<Schritt> animSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
@@ -12034,6 +12109,7 @@ void selbsttest() {
                     if (nurWeg) {
                         for (Schritt& x : kartenWerkzeugSchritte()) { a.schritte.push_back(std::move(x)); }
                         for (Schritt& x : animSchritte()) { a.schritte.push_back(std::move(x)); }
+                        for (Schritt& x : indexSchritte()) { a.schritte.push_back(std::move(x)); }
                     }
                 } else {
                     for (Schritt& x : kartenBreitSchritte()) { a.schritte.push_back(std::move(x)); }
