@@ -618,12 +618,133 @@ bool entityFokus() {
 bool entityUndoMoeglich() { return g_app->entUndoKarte == g_app->map.path && !g_app->entUndo.empty(); }
 bool entityRedoMoeglich() { return g_app->entUndoKarte == g_app->map.path && !g_app->entRedo.empty(); }
 
-// --- Ziehen in der Ansicht --------------------------------------------------
+// --- Ansicht: Hervorheben, Ziehen, Gizmo (wie in Unreal) ---------------------
 //
-// Gerufen aus drawMapView, nachdem das Bild steht (kartenAnsicht gilt). Wer
-// die gewaehlte Entity (oder die Figur ihres Spawners) anfasst und zieht,
-// schiebt sie ueber die Flaeche unter der Maus - wie "Drag to surface" in
-// Unreal. Ein Klick allein waehlt weiter nur.
+// shank (11.10.): "auch feature das du wenn du ueber was drueber hoverst in
+// der karte es umrandet wird usw. kannst dir ja inspiration von unreal engine
+// holen". Und "Verschieben geht nur ueber den Boden" -> Gizmo.
+//
+//   ueberfahren   heller Kasten in der Groesse der Klasse, mit Namen
+//   gewaehlt      oranger Kasten, Pfeil der Blickrichtung, Gizmo:
+//                 rote/gruene/blaue Achse verschieben entlang X/Y/Z,
+//                 gelber Ring dreht (angle)
+//   ziehen        die gewaehlte Entity anfassen und ueber den Boden ziehen
+//
+// Gezeichnet wird ueber dem Bild mit ImGui (nicht in den Tiefenpuffer der
+// Karte): wie Unreals Auswahlumriss bleibt es auch hinter Waenden sichtbar.
+namespace {
+
+struct Proj {
+    float fwd[3];
+    float rgt[3];
+    float upv[3];
+    float pos[3];
+    float f = 1.0F;
+    float x1 = 0.0F;
+    float y1 = 0.0F;
+    float halbB = 1.0F;
+    float halbH = 1.0F;
+};
+
+Proj projektion() {
+    Proj p;
+    const Camera& c = g_app->gezeigteKamera;
+    c.forward(p.fwd);
+    c.right(p.rgt);
+    c.up(p.upv);
+    for (int k = 0; k < 3; ++k) { p.pos[k] = c.pos[k]; }
+    p.f = 1.0F / std::tan(c.fovY * 3.14159265F / 360.0F);
+    p.x1 = g_app->kartenAnsicht[0];
+    p.y1 = g_app->kartenAnsicht[1];
+    p.halbB = (g_app->kartenAnsicht[2] - p.x1) * 0.5F;
+    p.halbH = std::max((g_app->kartenAnsicht[3] - p.y1) * 0.5F, 1.0F);
+    return p;
+}
+
+// Weltpunkt -> Bildschirm. false hinter der Kamera.
+bool aufSchirm(const Proj& p, const float w[3], ImVec2& out, float* tiefe = nullptr) {
+    const float d[3] = {w[0] - p.pos[0], w[1] - p.pos[1], w[2] - p.pos[2]};
+    const float z = d[0] * p.fwd[0] + d[1] * p.fwd[1] + d[2] * p.fwd[2];
+    if (z < 1.0F) { return false; }
+    const float x = d[0] * p.rgt[0] + d[1] * p.rgt[1] + d[2] * p.rgt[2];
+    const float y = d[0] * p.upv[0] + d[1] * p.upv[1] + d[2] * p.upv[2];
+    out = ImVec2{p.x1 + p.halbB + x * p.f / z * p.halbH, p.y1 + p.halbH - y * p.f / z * p.halbH};
+    if (tiefe != nullptr) { *tiefe = z; }
+    return true;
+}
+
+// Abstand eines Punkts zu einer Strecke (Bildschirm).
+float abstandZuStrecke(ImVec2 q, ImVec2 a, ImVec2 b) {
+    const float vx = b.x - a.x;
+    const float vy = b.y - a.y;
+    const float l2 = vx * vx + vy * vy;
+    float t = l2 > 0.0F ? ((q.x - a.x) * vx + (q.y - a.y) * vy) / l2 : 0.0F;
+    t = std::clamp(t, 0.0F, 1.0F);
+    const float dx = a.x + vx * t - q.x;
+    const float dy = a.y + vy * t - q.y;
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+// Kasten der Klasse (mins/maxs), sonst 16er Wuerfel.
+void kasten(const MapEntity& e, float mins[3], float maxs[3]) {
+    const ent::Def* d = ent::def(e.classname);
+    for (int k = 0; k < 3; ++k) {
+        mins[k] = (d != nullptr && !d->brush) ? d->mins[k] : -8.0F;
+        maxs[k] = (d != nullptr && !d->brush) ? d->maxs[k] : 8.0F;
+    }
+}
+
+float winkelVon(const MapEntity& e) {
+    const std::string* a = e.find("angle");
+    return a != nullptr ? std::strtof(a->c_str(), nullptr) : 0.0F;
+}
+
+bool hatRichtung(const MapEntity& e) {
+    return e.find("angle") != nullptr || istNpcKlasse(e.classname) || e.classname == "info_player_start";
+}
+
+// Weltlaenge, die auf dem Schirm etwa `px` Bildpunkte ergibt (Gizmo-Groesse).
+float laengeFuerPx(const Proj& p, const float o[3], float px) {
+    const float d[3] = {o[0] - p.pos[0], o[1] - p.pos[1], o[2] - p.pos[2]};
+    const float z = std::max(d[0] * p.fwd[0] + d[1] * p.fwd[1] + d[2] * p.fwd[2], 1.0F);
+    return px * z / (p.f * p.halbH);
+}
+
+// Welcher Griff des Gizmos liegt unter der Maus? 0 keiner.
+int gizmoGriff(const Proj& p, const float o[3], float L, ImVec2 m) {
+    ImVec2 so;
+    if (!aufSchirm(p, o, so)) { return 0; }
+    const float reich = ImGui::GetFontSize() * 0.45F;
+    for (int k = 0; k < 3; ++k) {
+        float e[3] = {o[0], o[1], o[2]};
+        e[k] += L;
+        ImVec2 se;
+        // Erst ab einem Viertel der Laenge: die Mitte gehoert der Entity
+        // selbst (anfassen und ueber den Boden ziehen).
+        if (aufSchirm(p, e, se) &&
+            abstandZuStrecke(m, ImVec2{so.x + (se.x - so.x) * 0.25F, so.y + (se.y - so.y) * 0.25F}, se) < reich) {
+            return k + 1;
+        }
+    }
+    // Ring in der Waagerechten
+    ImVec2 vorher;
+    bool hat = false;
+    for (int k = 0; k <= 32; ++k) {
+        const float a = static_cast<float>(k) / 32.0F * 6.2831853F;
+        const float w[3] = {o[0] + std::cos(a) * L * 0.8F, o[1] + std::sin(a) * L * 0.8F, o[2]};
+        ImVec2 s;
+        if (!aufSchirm(p, w, s)) { hat = false; continue; }
+        if (hat && abstandZuStrecke(m, vorher, s) < reich) { return 4; }
+        vorher = s;
+        hat = true;
+    }
+    return 0;
+}
+
+constexpr float kGizmoPx = 70.0F;
+
+}  // namespace
+
 void entityZiehen(float rasterSkal) {
     App::EntZug& z = g_app->entZug;
     const ImGuiIO& io = ImGui::GetIO();
@@ -631,30 +752,92 @@ void entityZiehen(float rasterSkal) {
     const bool imBild = io.MousePos.x >= g_app->kartenAnsicht[0] && io.MousePos.x < g_app->kartenAnsicht[2] &&
                         io.MousePos.y >= g_app->kartenAnsicht[1] && io.MousePos.y < g_app->kartenAnsicht[3];
     g_app->entFokusBild = imBild && ImGui::IsWindowHovered();
-    if (!z.kandidat && ziel >= 0 && imBild && ImGui::IsWindowHovered() && g_app->gizmoAxis < 0 &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !g_app->camViewActive) {
-        const float mx = (io.MousePos.x - g_app->kartenAnsicht[0]) * rasterSkal;
-        const float my = (io.MousePos.y - g_app->kartenAnsicht[1]) * rasterSkal;
-        const float reich = ImGui::GetFontSize() * 1.2F;
-        bool getroffen = false;
-        for (const App::PickedMarker& mk : g_app->markers) {
-            if (static_cast<int>(mk.entity) == ziel) {
-                getroffen = getroffen || ((mk.sx - mx) * (mk.sx - mx) + (mk.sy - my) * (mk.sy - my) < reich * reich);
+    const Proj p = projektion();
+
+    // --- Was liegt unter der Maus? (fuer die Hervorhebung) -------------------
+    g_app->entHover = -1;
+    g_app->entGizmoHover = 0;
+    float zielOrt[3] = {0.0F, 0.0F, 0.0F};
+    const bool zielHatOrt = ziel >= 0 && entityOrt(g_app->map.entities[static_cast<std::size_t>(ziel)], zielOrt);
+    const bool gizmoDa = zielHatOrt && g_app->showEntities && !g_app->camViewActive;
+    const float L = gizmoDa ? laengeFuerPx(p, zielOrt, kGizmoPx) : 0.0F;
+    if (g_app->entFokusBild && !z.kandidat && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        if (gizmoDa) { g_app->entGizmoHover = gizmoGriff(p, zielOrt, L, io.MousePos); }
+        if (g_app->entGizmoHover == 0) {
+            const float mx = (io.MousePos.x - g_app->kartenAnsicht[0]) * rasterSkal;
+            const float my = (io.MousePos.y - g_app->kartenAnsicht[1]) * rasterSkal;
+            const float reich = ImGui::GetFontSize() * 1.2F;
+            float best = reich * reich;
+            for (const App::PickedMarker& mk : g_app->markers) {
+                const float d = (mk.sx - mx) * (mk.sx - mx) + (mk.sy - my) * (mk.sy - my);
+                if (d < best) {
+                    best = d;
+                    g_app->entHover = static_cast<int>(mk.entity);
+                }
             }
-        }
-        if (g_app->selectedActor >= 0) {
-            for (const App::ActorMark& am : g_app->actorMarks) {
-                if (am.index == g_app->selectedActor) {
-                    const float r2 = reich * 1.4F;
-                    getroffen = getroffen || ((am.sx - mx) * (am.sx - mx) + (am.sy - my) * (am.sy - my) < r2 * r2);
+            // Eine Figur: ihr Spawner.
+            if (g_app->entHover < 0) {
+                const float r2 = reich * 1.6F;
+                float bestF = r2 * r2;
+                int figur = -1;
+                for (const App::ActorMark& am : g_app->actorMarks) {
+                    const float d = (am.sx - mx) * (am.sx - mx) + (am.sy - my) * (am.sy - my);
+                    if (d < bestF) {
+                        bestF = d;
+                        figur = am.index;
+                    }
+                }
+                if (figur >= 0 && static_cast<std::size_t>(figur) < g_app->scene.actors.size()) {
+                    const std::string& name = g_app->scene.actors[static_cast<std::size_t>(figur)].name;
+                    for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+                        const MapEntity& e = g_app->map.entities[i];
+                        if (istNpcKlasse(e.classname) && klein(entitySkriptName(e)) == klein(name)) {
+                            g_app->entHover = static_cast<int>(i);
+                            break;
+                        }
+                    }
                 }
             }
         }
-        if (getroffen) {
+    }
+
+    // --- Anfassen --------------------------------------------------------------
+    if (!z.kandidat && ziel >= 0 && g_app->entFokusBild && g_app->gizmoAxis < 0 &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !g_app->camViewActive) {
+        int modus = -1;
+        if (g_app->entGizmoHover != 0) {
+            modus = g_app->entGizmoHover;
+        } else {
+            const float mx = (io.MousePos.x - g_app->kartenAnsicht[0]) * rasterSkal;
+            const float my = (io.MousePos.y - g_app->kartenAnsicht[1]) * rasterSkal;
+            const float reich = ImGui::GetFontSize() * 1.2F;
+            bool getroffen = false;
+            for (const App::PickedMarker& mk : g_app->markers) {
+                if (static_cast<int>(mk.entity) == ziel) {
+                    getroffen = getroffen || ((mk.sx - mx) * (mk.sx - mx) + (mk.sy - my) * (mk.sy - my) < reich * reich);
+                }
+            }
+            if (g_app->selectedActor >= 0) {
+                for (const App::ActorMark& am : g_app->actorMarks) {
+                    if (am.index == g_app->selectedActor) {
+                        const float r2 = reich * 1.4F;
+                        getroffen = getroffen || ((am.sx - mx) * (am.sx - mx) + (am.sy - my) * (am.sy - my) < r2 * r2);
+                    }
+                }
+            }
+            if (getroffen) { modus = 0; }
+        }
+        if (modus >= 0) {
             z.kandidat = true;
             z.aktiv = false;
             z.index = ziel;
+            z.modus = modus;
             z.vorher = g_app->map.entities;
+            for (int k = 0; k < 3; ++k) { z.startOrt[k] = zielOrt[k]; }
+            z.startWinkel = winkelVon(g_app->map.entities[static_cast<std::size_t>(ziel)]);
+            z.startMaus[0] = io.MousePos.x;
+            z.startMaus[1] = io.MousePos.y;
+            z.achsLaenge = L;
         }
     }
     if (!z.kandidat) {
@@ -664,20 +847,59 @@ void entityZiehen(float rasterSkal) {
         z = App::EntZug{};
         return;
     }
-    if (!z.aktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (!z.aktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left, z.modus == 0 ? -1.0F : 1.0F)) {
         z.aktiv = true;
     }
     MapEntity& e = g_app->map.entities[static_cast<std::size_t>(z.index)];
     if (z.aktiv && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        float a[3];
-        float b[3];
-        strahlDurch(io.MousePos.x, io.MousePos.y, a, b);
-        TraceTreffer t;
-        if (spur(a, b, t)) {
-            float o[3];
-            aufFlaeche(e.classname, t, o);
-            setKey(e, "origin", ortText(o));
-            g_app->mapDirty = true;
+        if (z.modus == 0) {
+            // Ueber die Flaeche unter der Maus.
+            float a[3];
+            float b[3];
+            strahlDurch(io.MousePos.x, io.MousePos.y, a, b);
+            TraceTreffer t;
+            if (spur(a, b, t)) {
+                float o[3];
+                aufFlaeche(e.classname, t, o);
+                setKey(e, "origin", ortText(o));
+                g_app->mapDirty = true;
+            }
+        } else if (z.modus <= 3) {
+            // Entlang einer Achse: die Mausbewegung auf die Achse auf dem
+            // Schirm abbilden, dann in Welteinheiten.
+            const int k = z.modus - 1;
+            float ende[3] = {z.startOrt[0], z.startOrt[1], z.startOrt[2]};
+            ende[k] += z.achsLaenge;
+            ImVec2 s0;
+            ImVec2 s1;
+            if (aufSchirm(p, z.startOrt, s0) && aufSchirm(p, ende, s1)) {
+                const float ax = s1.x - s0.x;
+                const float ay = s1.y - s0.y;
+                const float l2 = ax * ax + ay * ay;
+                if (l2 > 4.0F) {
+                    const float t = ((io.MousePos.x - z.startMaus[0]) * ax + (io.MousePos.y - z.startMaus[1]) * ay) / l2;
+                    float o[3] = {z.startOrt[0], z.startOrt[1], z.startOrt[2]};
+                    o[k] += t * z.achsLaenge;
+                    if (io.KeyCtrl) { o[k] = std::round(o[k] / 8.0F) * 8.0F; }   // Raster wie in Radiant
+                    setKey(e, "origin", ortText(o));
+                    g_app->mapDirty = true;
+                }
+            }
+        } else {
+            // Ring: der Winkel der Maus um den Mittelpunkt auf dem Schirm.
+            ImVec2 s0;
+            if (aufSchirm(p, z.startOrt, s0)) {
+                const float a0 = std::atan2(-(z.startMaus[1] - s0.y), z.startMaus[0] - s0.x);
+                const float a1 = std::atan2(-(io.MousePos.y - s0.y), io.MousePos.x - s0.x);
+                // Von oben gesehen dreht die Maus im Uhrzeigersinn = Winkel kleiner;
+                // schaut die Kamera von unten, kehrt sich das um.
+                const float sinn = p.upv[2] >= 0.0F ? 1.0F : -1.0F;
+                float w = z.startWinkel + (a1 - a0) * 180.0F / 3.14159265F * sinn;
+                w = std::fmod(std::fmod(w, 360.0F) + 360.0F, 360.0F);
+                if (io.KeyCtrl) { w = std::fmod(std::round(w / 15.0F) * 15.0F, 360.0F); }
+                setKey(e, "angle", std::to_string(static_cast<int>(std::lround(w)) % 360));
+                g_app->mapDirty = true;
+            }
         }
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -687,6 +909,169 @@ void entityZiehen(float rasterSkal) {
         }
         z = App::EntZug{};
     }
+}
+
+// Fuer den Selbsttest: wo liegt ein Griff des Gizmos auf dem Schirm?
+// griff 1..3 = Achse (bei drei Vierteln), 4 = Ring (vorn).
+bool entityGizmoPunkt(int griff, ImVec2& out) {
+    const int ziel = inspektorZiel();
+    float o[3];
+    if (ziel < 0 || !entityOrt(g_app->map.entities[static_cast<std::size_t>(ziel)], o)) { return false; }
+    const Proj p = projektion();
+    const float L = laengeFuerPx(p, o, kGizmoPx);
+    float w[3] = {o[0], o[1], o[2]};
+    if (griff >= 1 && griff <= 3) {
+        w[griff - 1] += L * 0.75F;
+    } else {
+        // Der Punkt des Rings, der der Kamera am naechsten liegt.
+        const float a = std::atan2(p.pos[1] - o[1], p.pos[0] - o[0]);
+        w[0] += std::cos(a) * L * 0.8F;
+        w[1] += std::sin(a) * L * 0.8F;
+    }
+    return aufSchirm(p, w, out);
+}
+
+void entityUeberlagerung(float rasterSkal) {
+    (void)rasterSkal;
+    if (!g_app->showEntities || g_app->camViewActive) {
+        return;
+    }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(ImVec2{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1]},
+                     ImVec2{g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]}, true);
+    const Proj p = projektion();
+    const float px = std::max(1.0F, ImGui::GetFontSize() / 13.0F);
+    const auto zeichneKasten = [&](const MapEntity& e, ImU32 farbe, float dicke) {
+        float o[3];
+        if (!entityOrt(e, o)) { return false; }
+        float mn[3];
+        float mx[3];
+        kasten(e, mn, mx);
+        ImVec2 s[8];
+        for (int k = 0; k < 8; ++k) {
+            const float w[3] = {o[0] + ((k & 1) != 0 ? mx[0] : mn[0]), o[1] + ((k & 2) != 0 ? mx[1] : mn[1]),
+                                o[2] + ((k & 4) != 0 ? mx[2] : mn[2])};
+            if (!aufSchirm(p, w, s[k])) { return false; }
+        }
+        static const int kanten[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
+                                          {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+        for (const auto& k : kanten) { dl->AddLine(s[k[0]], s[k[1]], farbe, dicke); }
+        return true;
+    };
+    const auto zeichneRichtung = [&](const MapEntity& e, ImU32 farbe, float dicke) {
+        float o[3];
+        if (!hatRichtung(e) || !entityOrt(e, o)) { return; }
+        float mn[3];
+        float mx[3];
+        kasten(e, mn, mx);
+        const float a = winkelVon(e) * 3.14159265F / 180.0F;
+        const float l = std::max(32.0F, mx[0] - mn[0]) * 1.2F;
+        const float m[3] = {o[0], o[1], o[2] + (mn[2] + mx[2]) * 0.5F};
+        const float spitze[3] = {m[0] + std::cos(a) * l, m[1] + std::sin(a) * l, m[2]};
+        const float s1[3] = {m[0] + std::cos(a) * l * 0.75F - std::sin(a) * l * 0.15F,
+                             m[1] + std::sin(a) * l * 0.75F + std::cos(a) * l * 0.15F, m[2]};
+        const float s2[3] = {m[0] + std::cos(a) * l * 0.75F + std::sin(a) * l * 0.15F,
+                             m[1] + std::sin(a) * l * 0.75F - std::cos(a) * l * 0.15F, m[2]};
+        ImVec2 a0;
+        ImVec2 a1;
+        ImVec2 b1;
+        ImVec2 b2;
+        if (aufSchirm(p, m, a0) && aufSchirm(p, spitze, a1)) {
+            dl->AddLine(a0, a1, farbe, dicke);
+            if (aufSchirm(p, s1, b1) && aufSchirm(p, s2, b2)) {
+                dl->AddTriangleFilled(a1, b1, b2, farbe);
+            }
+        }
+    };
+    const auto namensSchild = [&](const MapEntity& e, ImU32 farbe) {
+        float o[3];
+        ImVec2 s;
+        if (!entityOrt(e, o)) { return; }
+        float mn[3];
+        float mx[3];
+        kasten(e, mn, mx);
+        const float oben[3] = {o[0], o[1], o[2] + mx[2]};
+        if (!aufSchirm(p, oben, s)) { return; }
+        const std::string n = entitySkriptName(e);
+        const std::string t = (n.empty() ? e.classname : n + "  (" + e.classname + ")") + "\n" + ortText(o);
+        const ImVec2 g = ImGui::CalcTextSize(t.c_str());
+        const ImVec2 a{s.x - g.x * 0.5F - 4.0F * px, s.y - g.y - 8.0F * px};
+        dl->AddRectFilled(a, ImVec2{a.x + g.x + 8.0F * px, a.y + g.y + 4.0F * px}, IM_COL32(15, 17, 22, 210), 3.0F * px);
+        dl->AddText(ImVec2{a.x + 4.0F * px, a.y + 2.0F * px}, farbe, t.c_str());
+    };
+
+    const int ziel = inspektorZiel();
+    const int n = static_cast<int>(g_app->map.entities.size());
+    // Ueberfahren (Ansicht oder Liste) - hell.
+    for (const int h : {g_app->entHover, g_app->entListeHover}) {
+        if (h >= 0 && h < n && h != ziel) {
+            const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(h)];
+            if (zeichneKasten(e, IM_COL32(255, 255, 255, 190), 1.5F * px)) {
+                namensSchild(e, IM_COL32(235, 238, 245, 255));
+            }
+        }
+    }
+    // Gewaehlt - orange, mit Richtung und Gizmo.
+    if (ziel >= 0 && ziel < n) {
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(ziel)];
+        const ImU32 orange = IM_COL32(255, 165, 40, 255);
+        zeichneKasten(e, orange, 2.5F * px);
+        zeichneRichtung(e, orange, 2.0F * px);
+        if (g_app->entHover == ziel || g_app->entZug.kandidat) { namensSchild(e, orange); }
+        float o[3];
+        if (entityOrt(e, o)) {
+            const App::EntZug& z = g_app->entZug;
+            const float L = (z.kandidat && z.modus > 0) ? z.achsLaenge : laengeFuerPx(p, o, kGizmoPx);
+            ImVec2 so;
+            if (aufSchirm(p, o, so)) {
+                const ImU32 achsFarbe[3] = {IM_COL32(235, 70, 70, 255), IM_COL32(80, 210, 90, 255),
+                                            IM_COL32(70, 130, 255, 255)};
+                const int aktiv = z.kandidat ? z.modus : g_app->entGizmoHover;
+                // Ring zuerst (liegt hinter den Achsen).
+                {
+                    const ImU32 ring = aktiv == 4 ? IM_COL32(255, 240, 120, 255) : IM_COL32(240, 200, 60, 200);
+                    ImVec2 vorher;
+                    bool hat = false;
+                    for (int k = 0; k <= 48; ++k) {
+                        const float a = static_cast<float>(k) / 48.0F * 6.2831853F;
+                        const float w[3] = {o[0] + std::cos(a) * L * 0.8F, o[1] + std::sin(a) * L * 0.8F, o[2]};
+                        ImVec2 s;
+                        if (!aufSchirm(p, w, s)) { hat = false; continue; }
+                        if (hat) { dl->AddLine(vorher, s, ring, (aktiv == 4 ? 3.0F : 1.8F) * px); }
+                        vorher = s;
+                        hat = true;
+                    }
+                }
+                for (int k = 0; k < 3; ++k) {
+                    float w[3] = {o[0], o[1], o[2]};
+                    w[k] += L;
+                    ImVec2 se;
+                    if (!aufSchirm(p, w, se)) { continue; }
+                    ImU32 c = achsFarbe[k];
+                    if (aktiv == k + 1) { c = IM_COL32(255, 245, 140, 255); }
+                    dl->AddLine(so, se, c, (aktiv == k + 1 ? 3.5F : 2.5F) * px);
+                    // Pfeilspitze
+                    const float dx = se.x - so.x;
+                    const float dy = se.y - so.y;
+                    const float l = std::sqrt(dx * dx + dy * dy);
+                    if (l > 4.0F) {
+                        const float ux = dx / l;
+                        const float uy = dy / l;
+                        const float sp = 9.0F * px;
+                        dl->AddTriangleFilled(ImVec2{se.x + ux * sp, se.y + uy * sp},
+                                              ImVec2{se.x - uy * sp * 0.5F, se.y + ux * sp * 0.5F},
+                                              ImVec2{se.x + uy * sp * 0.5F, se.y - ux * sp * 0.5F}, c);
+                    }
+                }
+                dl->AddCircleFilled(so, 3.5F * px, IM_COL32(255, 255, 255, 230));
+                // Hinweis beim Ueberfahren eines Griffs.
+                if (!z.kandidat && g_app->entGizmoHover != 0) {
+                    ImGui::SetTooltip("%s", tr(g_app->entGizmoHover == 4 ? Str::EntGizmoRing : Str::EntGizmoAxis));
+                }
+            }
+        }
+    }
+    dl->PopClipRect();
 }
 
 // --- Der Inspektor -------------------------------------------------------------

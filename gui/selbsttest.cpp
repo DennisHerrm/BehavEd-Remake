@@ -6762,6 +6762,85 @@ std::vector<Schritt> missionsbauSchritte() {
     add(tasteKombi(ImGuiMod_Ctrl | ImGuiKey_Y, "Strg+Y ueber der Karte"));
     add(pause(0.2));
     add(pruefe("Strg+Y ueber der Karte: wieder verschoben", [=] { return g_app->entUndo.size() == z->undoTiefe; }));
+    // --- Gizmo und Hervorheben (rc586) ---------------------------------------
+    auto winkel0 = std::make_shared<float>(0.0F);
+    add(tu("Gizmo: Stand merken", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        if (e != nullptr) { (void)entityOrt(*e, z->ortVorher); }
+        *winkel0 = e != nullptr && e->find("angle") != nullptr ? std::strtof(e->find("angle")->c_str(), nullptr) : 0.0F;
+        z->undoTiefe = g_app->entUndo.size();
+    }));
+    add(pause(0.3));
+    add(foto("mb_gizmo"));
+    add(ziehenAn("Gizmo-Achse Z nach oben", [] {
+        ImVec2 q{0.0F, 0.0F};
+        (void)entityGizmoPunkt(3, q);
+        return q;
+    }, 0.0F, -40.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Gizmo Z: nur die Hoehe aendert sich, ein Rueckgaengig-Schritt", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        float o[3] = {0, 0, 0};
+        if (e != nullptr) { (void)entityOrt(*e, o); }
+        diag::detail("Knopftest: Missionsbau - Gizmo Z: " + std::to_string(z->ortVorher[2]) + " -> " + std::to_string(o[2]) +
+                     ", x/y " + std::to_string(o[0] - z->ortVorher[0]) + "/" + std::to_string(o[1] - z->ortVorher[1]) +
+                     ", Verlauf " + std::to_string(z->undoTiefe) + " -> " + std::to_string(g_app->entUndo.size()));
+        return e != nullptr && o[2] > z->ortVorher[2] + 2.0F && std::fabs(o[0] - z->ortVorher[0]) < 0.5F &&
+               std::fabs(o[1] - z->ortVorher[1]) < 0.5F && g_app->entUndo.size() == z->undoTiefe + 1;
+    }));
+    add(tu("Gizmo: Ort fuer den Ring merken", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        if (e != nullptr) { (void)entityOrt(*e, z->ortVorher); }
+    }));
+    add(ziehenAn("Gizmo-Ring drehen", [] {
+        ImVec2 q{0.0F, 0.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 45.0F, -10.0F, 0));
+    add(pause(0.3));
+    add(pruefe("Gizmo-Ring: die Blickrichtung dreht sich, der Ort bleibt", [=] {
+        const MapEntity* e = mb::gewaehlt();
+        float o[3] = {0, 0, 0};
+        if (e != nullptr) { (void)entityOrt(*e, o); }
+        const float w = e != nullptr && e->find("angle") != nullptr ? std::strtof(e->find("angle")->c_str(), nullptr) : 0.0F;
+        diag::detail("Knopftest: Missionsbau - Ring: Winkel " + std::to_string(*winkel0) + " -> " + std::to_string(w));
+        return e != nullptr && std::fabs(w - *winkel0) > 2.0F && std::fabs(o[0] - z->ortVorher[0]) < 0.5F &&
+               std::fabs(o[2] - z->ortVorher[2]) < 0.5F;
+    }));
+    // Ueberfahren einer anderen Entity hebt sie hervor (Kasten + Name).
+    auto andere = std::make_shared<int>(-1);
+    auto gewaehltVorher = std::make_shared<int>(-1);
+    add(tu("Auswahl aufheben, Rundblick (damit andere Entities im Bild sind)", [=] {
+        *gewaehltVorher = g_app->pickedEntity;
+        g_app->pickedEntity = -1;
+        g_app->selectedActor = -1;
+        g_app->cam.angles[1] += 180.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(tu("Maus ueber eine andere Entity", [=] {
+        *andere = -1;
+        for (const App::PickedMarker& mk : g_app->markers) {
+            if (static_cast<int>(mk.entity) != g_app->pickedEntity) {
+                *andere = static_cast<int>(mk.entity);
+                setzeMaus(bildZuSchirm(mk.sx, mk.sy));
+                break;
+            }
+        }
+    }));
+    add(pause(0.3));
+    add(foto("mb_hover"));
+    add(pruefe("Ueberfahren: die Entity unter der Maus ist hervorgehoben", [=] {
+        diag::detail("Knopftest: Missionsbau - Ueberfahren: erwartet " + std::to_string(*andere) + ", hervorgehoben " +
+                     std::to_string(g_app->entHover));
+        return *andere >= 0 && g_app->entHover == *andere;
+    }));
+    add(tu("Auswahl zurueck", [=] {
+        g_app->pickedEntity = *gewaehltVorher;
+        g_app->cam.angles[1] -= 180.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
     // Duplizieren und Entf
     add(tu("Duplizieren", [=] {
         z->vorher = static_cast<int>(g_app->map.entities.size());

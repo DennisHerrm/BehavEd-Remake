@@ -554,6 +554,8 @@ enum class Str {
     EntSecFields,
     EntSearchFields,
     EntFloor,
+    EntGizmoAxis,
+    EntGizmoRing,
     MissionNameTaken,
     MissionNoMap,
     MissionCreated,

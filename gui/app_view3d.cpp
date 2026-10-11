@@ -7070,6 +7070,7 @@ void drawEntityLayers(float height) {
     const float gesamt = height > 0.0F ? height : ImGui::GetContentRegionAvail().y + height;
     const float listenH = std::max(gesamt * 0.38F, ImGui::GetFontSize() * 7.0F);
     g_app->entFokusListe = false;
+    g_app->entListeHover = -1;
     ImGui::BeginChild("entlayers", ImVec2{ImGui::GetFontSize() * kEntitySpalte, listenH},
                       ImGuiChildFlags_Borders);
     g_app->entFokusListe = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
@@ -7158,6 +7159,8 @@ void drawEntityLayers(float height) {
                         zurEntityFliegen(i);
                     }
                 }
+                // Ueberfahren in der Liste hebt die Entity in der Ansicht hervor.
+                if (ImGui::IsItemHovered()) { g_app->entListeHover = static_cast<int>(i); }
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                     ImGui::BeginTooltip();
                     ImGui::TextUnformatted(e.classname.c_str());
@@ -11340,6 +11343,7 @@ void drawMapView() {
         }
         // Eine gewaehlte Entity ueber den Boden ziehen (gui/app_mission.cpp).
         entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
+        entityUeberlagerung(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         // --- Namen an Entities und Figuren -------------------------------
         if (g_app->zeigeNamen) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -12052,7 +12056,9 @@ g_app->gizmoAxis = g_app->gizmoHover;
         // 977 Zielnamen sind zu viele, um sie alle einzublenden. Der unter
         // dem Zeiger genuegt - und der ist genau der, den man gerade in ein
         // SET_NAVGOAL schreiben will.
-        if (g_app->showEntities && !g_app->camViewActive && ImGui::IsItemHovered()) {
+        // Seit rc586 zeigt entityUeberlagerung ein Namensschild an der Entity
+        // selbst (wie Unreal) - der Tooltip nur noch, wenn das nicht greift.
+        if (g_app->showEntities && !g_app->camViewActive && ImGui::IsItemHovered() && g_app->entHover < 0) {
             const ImVec2 m = ImGui::GetIO().MousePos;
             const MapEntity* best = nullptr;
             float bestDist = 18.0F;   // Fangbereich in Bildpunkten

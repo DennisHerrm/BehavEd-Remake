@@ -189,8 +189,20 @@ struct App {
         bool aktiv = false;             // und gezogen
         int index = -1;
         std::vector<MapEntity> vorher;
+        // Was gezogen wird: 0 ueber den Boden, 1..3 Gizmo-Achse X/Y/Z,
+        // 4 Gizmo-Ring (Blickrichtung).
+        int modus = 0;
+        float startOrt[3] = {0.0F, 0.0F, 0.0F};
+        float startWinkel = 0.0F;
+        float startMaus[2] = {0.0F, 0.0F};
+        float achsLaenge = 0.0F;        // Weltlaenge der Gizmo-Achse beim Anfassen
     };
     EntZug entZug;
+    // Hervorhebung beim Ueberfahren (wie in Unreal): die Entity unter der
+    // Maus in der Ansicht, und die, ueber der die Maus in der Liste steht.
+    int entHover = -1;
+    int entListeHover = -1;
+    int entGizmoHover = 0;              // Entity-Gizmo: 0 keiner, 1..3 Achse, 4 Ring
     float rechtsklickBild[2] = {-1.0F, -1.0F};   // Bildschirmstelle des kurzen Rechtsklicks
     // Kartenansicht
     BspGeometry geo;
@@ -1877,6 +1889,9 @@ void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);
 void entityZiehen(float rasterSkal);
+// Kaesten, Blickrichtung, Gizmo und Namen ueber dem Bild (nach entityZiehen).
+void entityUeberlagerung(float rasterSkal);
+bool entityGizmoPunkt(int griff, ImVec2& out);
 int neueEntityAn(const std::string& klasse, const float ort[3]);
 int neueEntityHier(const std::string& klasse, bool amMauspunkt);
 bool entityLoeschen(int i);
