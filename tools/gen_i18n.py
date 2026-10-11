@@ -110,7 +110,9 @@ S = [
     # --- Menü (im Nachbau, das Original hat keins) ---
     ("MenuFile", "File", "Datei", "文件", "ファイル"),
     ("MenuEdit", "Edit", "Bearbeiten", "编辑", "編集"),
-    ("MenuView", "View", "Ansicht", "表示", "表示"),
+    ("MenuView", "View", "Ansicht", "视图", "表示"),
+    ("MenuHelp", "Help", "Hilfe", "帮助", "ヘルプ"),
+    ("HelpAbout", "About BehavEd...", "Ueber BehavEd...", "关于 BehavEd...", "BehavEd について..."),
     ("EditUndo", "Undo", "Rückgängig", "撤销", "元に戻す"),
     ("EditRedo", "Redo", "Wiederholen", "やり直し", "やり直し"),
     ("ViewTheme", "Theme", "Farbgebung", "主题", "テーマ"),

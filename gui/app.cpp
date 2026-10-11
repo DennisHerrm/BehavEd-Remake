@@ -9773,16 +9773,6 @@ void drawMenu() {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", tr(Str::FileBackupFolderHint));
         }
-        // Auto-Updater: von Hand nachsehen, und ob es beim Start geschehen soll.
-        if (ImGui::MenuItem(tr(Str::UpdMenu))) {
-            updater::pruefen(false);
-        }
-        if (ImGui::MenuItem(tr(Str::ChangelogMenu))) {
-            g_app->changelogOpen = true;
-        }
-        if (ImGui::MenuItem(tr(Str::UpdAutoCheck), nullptr, g_app->settings.updateCheck)) {
-            g_app->settings.updateCheck = !g_app->settings.updateCheck;
-        }
         ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::AppExit)) && confirmQuit()) {
             g_app->quitConfirmed = true;
@@ -10140,6 +10130,28 @@ void drawMenu() {
             ImGui::EndMenu();
         }
         ImGui::TextDisabled("%s", tr(Str::ViewScaleHint));
+        ImGui::EndMenu();
+    }
+    // --- Help: About, Changelog, Updates --------------------------------
+    //
+    // shank (11.10.): "mach einen neuen Reiter mit About und da Update und
+    // Changelog rein". Vorher standen Update und Changelog im Datei-Menue
+    // und About nur als Knopf bei den Programmknoepfen (der bleibt).
+    if (ImGui::BeginMenu(tr(Str::MenuHelp))) {
+        if (ImGui::MenuItem(tr(Str::HelpAbout))) {
+            g_app->aboutOpen = true;
+        }
+        if (ImGui::MenuItem(tr(Str::ChangelogMenu))) {
+            g_app->changelogOpen = true;
+        }
+        ImGui::Separator();
+        // Auto-Updater: von Hand nachsehen, und ob es beim Start geschehen soll.
+        if (ImGui::MenuItem(tr(Str::UpdMenu))) {
+            updater::pruefen(false);
+        }
+        if (ImGui::MenuItem(tr(Str::UpdAutoCheck), nullptr, g_app->settings.updateCheck)) {
+            g_app->settings.updateCheck = !g_app->settings.updateCheck;
+        }
         ImGui::EndMenu();
     }
     ImGui::EndMenuBar();

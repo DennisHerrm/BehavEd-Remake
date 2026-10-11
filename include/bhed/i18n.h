@@ -88,6 +88,8 @@ enum class Str {
     MenuFile,
     MenuEdit,
     MenuView,
+    MenuHelp,
+    HelpAbout,
     EditUndo,
     EditRedo,
     ViewTheme,

@@ -5871,7 +5871,7 @@ std::vector<Schritt> pruefungSchritte() {
     {
         auto spracheVorher = std::make_shared<i18n::Language>(i18n::Language::English);
         add(tu("Changelog: Sprache merken", [=] { *spracheVorher = i18n::currentLanguage(); }));
-        add(klick(tr(Str::MenuFile)));
+        add(klick(tr(Str::MenuHelp)));
         add(klick(tr(Str::ChangelogMenu), "##Menu"));
         add(pause(0.5));
         add(pruefe("Changelog: das Fenster ist offen und hat Eintraege", [] {
@@ -5925,6 +5925,31 @@ std::vector<Schritt> pruefungSchritte() {
         }));
         add(pause(0.3));
     }
+
+    // ---- 0a2. Menue Help: About, Changelog, Updates -----------------------
+    add(klick(tr(Str::MenuHelp)));
+    add(pause(0.3));
+    add(pruefe("Help: das Menue hat About, Changelog, Nach Updates suchen und Beim Start suchen", [] {
+        const bool da = finde(tr(Str::HelpAbout), "##Menu", 0, false) != nullptr &&
+                        finde(tr(Str::ChangelogMenu), "##Menu", 0, false) != nullptr &&
+                        finde(tr(Str::UpdMenu), "##Menu", 0, false) != nullptr &&
+                        finde(tr(Str::UpdAutoCheck), "##Menu", 0, false) != nullptr;
+        const bool nichtMehrInDatei = true;   // siehe naechste Probe
+        return da && nichtMehrInDatei;
+    }));
+    add(klick(tr(Str::HelpAbout), "##Menu"));
+    add(pause(0.4));
+    add(pruefe("Help: About oeffnet das About-Fenster", [] { return g_app->aboutOpen; }));
+    add(klick(tr(Str::AboutClose), tr(Str::AboutTitle)));
+    add(pause(0.3));
+    add(klick(tr(Str::MenuFile)));
+    add(pause(0.3));
+    add(pruefe("Help: im Datei-Menue stehen Update und Changelog nicht mehr", [] {
+        return finde(tr(Str::UpdMenu), "##Menu", 0, false) == nullptr &&
+               finde(tr(Str::ChangelogMenu), "##Menu", 0, false) == nullptr;
+    }));
+    add(tasteMit(ImGuiKey_None, ImGuiKey_Escape, "Escape (Menue zu)"));
+    add(pause(0.3));
 
     // ---- 0b. Lesefehler beim Oeffnen stehen in der Statusliste -----------
     //

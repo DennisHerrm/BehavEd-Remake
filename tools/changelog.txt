@@ -6,6 +6,20 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc584 2026-10-11
+[en]
+- New Help menu next to View: About BehavEd, Changelog, Check for updates and Check for updates at startup – all in one place (they were in the File menu before).
+- Chinese: the View menu was labelled in Japanese; it now reads 视图.
+[de]
+- Neues Menü Hilfe neben Ansicht: Über BehavEd, Changelog, Nach Updates suchen und Beim Start nach Updates suchen – alles an einer Stelle (vorher im Datei-Menü).
+- Chinesisch: das Menü Ansicht war japanisch beschriftet; jetzt steht dort 视图.
+[zh]
+- “视图”旁新增“帮助”菜单：关于 BehavEd、更新日志、检查更新和启动时检查更新——全部集中在一处（之前位于“文件”菜单）。
+- 中文：“视图”菜单之前显示的是日文，现在显示为 视图。
+[ja]
+- 表示の隣に新しいヘルプメニュー：BehavEd について、更新履歴、アップデートを確認、起動時にアップデートを確認――すべて 1 か所にまとめました（以前はファイルメニュー）。
+- 中国語：表示メニューが日本語で表示されていましたが、视图 になりました。
+
 ## rc583 2026-10-11
 [en]
 - Multiplayer mode: View > Target game > Multiplayer. The notes then also show what does nothing or works differently on an MP server – camera, print without !, fields MP doesn't know or only stubs, fields that only work on NPCs or players, server crash risks (SET_WEAPON, SET_COPY_ORIGIN, SET_SABERACTIVE), the reversed SET_SABERACTIVE, $get that never returns a value, dowait that never returns, more than 32 variables. Every rule was checked against the MP game code. Thanks to @Seph for the report.

@@ -1,5 +1,14 @@
 # Änderungen seit rc94
 
+## rc584 — Menü Hilfe
+
+Gewünscht: „mach einen neuen Reiter mit About und da Update und Changelog
+rein“. Neues Menü Help/Hilfe hinter View: Über BehavEd, Changelog, Nach Updates
+suchen, Beim Start suchen. Im Datei-Menü stehen Update und Changelog nicht
+mehr; der About-Knopf bei den Programmknöpfen bleibt. Selbsttest `pruefung`
+prüft das Menü (About öffnet, Update-Einträge da, Datei-Menü ohne sie).
+Nebenbei: „View“ war auf Chinesisch japanisch beschriftet (表示) → 视图.
+
 ## rc583 — Originalschrift, Editor passt ins Fenster, Multiplayer-Modus, Changelog
 
 Gewünscht (shanks Kumpel): „commands with a lot of parameters like camera pan
