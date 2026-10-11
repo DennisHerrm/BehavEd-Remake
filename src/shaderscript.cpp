@@ -4,6 +4,7 @@
 #include "bhed/num.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstddef>
 #include <string>
@@ -651,10 +652,16 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     skyBox = box;
                 }
                 // Die Wolkenhoehe (rc592): `if (!cloudHeight) cloudHeight
-                // = 512` - auch bei "-" oder fehlender Zahl.
-                wolkenHoehe = readNum(firstWord(secondWord(secondWord(line))));
-                if (!(wolkenHoehe > 0.0F)) {
-                    wolkenHoehe = 512.0F;
+                // = 512` - auch bei "-". FEHLT die Zahl, kehrt ParseSkyParms
+                // vorher zurueck: dann keine Wolken (Code-Pruefung).
+                const std::string hoehe = firstWord(secondWord(secondWord(line)));
+                if (hoehe.empty()) {
+                    wolkenHoehe = 0.0F;
+                } else {
+                    wolkenHoehe = readNum(hoehe);
+                    if (wolkenHoehe == 0.0F || !std::isfinite(wolkenHoehe)) {
+                        wolkenHoehe = 512.0F;
+                    }
                 }
                 continue;
             }
@@ -784,6 +791,10 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             // geratene Form waere schlimmer als keine.
             if (key == "alphagen" && depth >= 2) {
                 const std::string rest = lower(secondWord(line));
+                // Das LETZTE alphaGen einer Stufe gilt - Reste eines frueheren
+                // (Welle, fester Wert) duerfen nicht stehen bleiben.
+                stageAlphaWave = Wave{};
+                stageAlphaConst = -1.0F;
                 if (firstWord(rest) == "const") {
                     const std::string v = trim(secondWord(rest));
                     if (!v.empty()) {

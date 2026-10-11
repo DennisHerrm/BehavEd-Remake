@@ -11,6 +11,7 @@
 #include "bhed/scene.h"
 #include "bhed/script.h"
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -388,6 +389,14 @@ void probeSzene() {
         pruefe(nah(e.ort[0], 100.0F), "Szene: Klang am Mover-Stand vor Bild 0 (trBase)");
     }
     pruefe(roffEffektStarts(s2).empty(), "Effektstarts: ein Klang ist kein Effekt");
+    // Code-Pruefung rc592: eine NaN-Zeit (wait ( "nan" )) fiel durch beide
+    // Vergleiche und wurde zum Index.
+    {
+        const Roff& rr = *mitNotiz;
+        const RoffBahn bahnN = roffBahn(rr, std::array<float, 3>{0, 0, 0}.data(), std::array<float, 3>{0, 0, 0}.data());
+        const RoffStand st = roffStand(rr, bahnN, std::nan(""), false);
+        pruefe(std::isfinite(st.ort[0]), "ROFF: eine NaN-Zeit gibt den Anfangsstand, kein Lesen ausserhalb");
+    }
 
     // Eine Effekt-Notiz wird ein Effektstart (rc592): G_PlayEffect mit
     // G_EffectIndex(name) - der Zeitplaner setzt "effects/" davor und ".efx"

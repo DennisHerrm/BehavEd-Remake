@@ -277,7 +277,7 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                 const auto nBrushes = static_cast<std::int32_t>(br.length / 12U);
                 const auto nSides = static_cast<std::int32_t>(bs.length / 12U);
                 const auto nPlanes = static_cast<std::int32_t>(out.planes.size());
-                auto ebeneDerSeite = [&](std::int32_t seite) -> const BspGeometry::Plane* {
+                auto ebeneDerSeite = [&](std::int64_t seite) -> const BspGeometry::Plane* {
                     if (seite < 0 || seite >= nSides) {
                         return nullptr;
                     }
@@ -303,8 +303,9 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                         const std::int32_t erste =
                             i32(b, br.offset + static_cast<std::size_t>(n.brush) * 12U);
                         for (int k = 0; k < 3; ++k) {
-                            const BspGeometry::Plane* lo = ebeneDerSeite(erste + k * 2);
-                            const BspGeometry::Plane* hi = ebeneDerSeite(erste + k * 2 + 1);
+                            // In 64 Bit: erste kommt aus der Datei (Code-Pruefung rc592).
+                            const BspGeometry::Plane* lo = ebeneDerSeite(std::int64_t{erste} + k * 2);
+                            const BspGeometry::Plane* hi = ebeneDerSeite(std::int64_t{erste} + k * 2 + 1);
                             n.mins[k] = (lo != nullptr) ? -lo->dist : 0.0F;
                             n.maxs[k] = (hi != nullptr) ? hi->dist : 0.0F;
                             if (lo == nullptr || hi == nullptr) {
@@ -312,7 +313,7 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                             }
                         }
                         if (sichtbar != -1) {
-                            const BspGeometry::Plane* p = ebeneDerSeite(erste + sichtbar);
+                            const BspGeometry::Plane* p = ebeneDerSeite(std::int64_t{erste} + sichtbar);
                             if (p != nullptr) {
                                 n.hatFlaeche = true;
                                 for (int k = 0; k < 3; ++k) { n.ebene[k] = -p->normal[k]; }
@@ -366,6 +367,27 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         if (ls.fits(b.size())) {
             for (std::size_t i = 0; i + 4 <= ls.length; i += 4) {
                 out.leafSurfaces.push_back(i32(b, ls.offset + i));
+            }
+        }
+        // --- Baum und Blaetter pruefen (Code-Pruefung rc592) -----------------
+        //
+        // q3map2 schreibt Kinder immer HINTER ihren Elternknoten
+        // (EmitDrawNode). Ein Kind, das auf sich selbst oder davor zeigt,
+        // ergaebe einen Kreis - die Spurtests liefen endlos. Es wird zu einem
+        // Blatt ausserhalb der Liste (das ueberall uebergangen wird).
+        for (std::size_t i = 0; i < out.nodes.size(); ++i) {
+            for (std::int32_t& kind : out.nodes[i].children) {
+                if (kind >= 0 && (static_cast<std::size_t>(kind) <= i || static_cast<std::size_t>(kind) >= out.nodes.size())) {
+                    kind = -1 - static_cast<std::int32_t>(std::min<std::size_t>(out.leafs.size(), 0x3FFFFFFF));
+                }
+            }
+        }
+        // Ein Blatt, dessen Flaechenbereich nicht in leafSurfaces liegt,
+        // bekaeme sonst bis zu 2^31 Schleifendurchlaeufe je Spurtest.
+        for (BspGeometry::Leaf& l : out.leafs) {
+            if (l.firstSurface < 0 || l.numSurfaces < 0 ||
+                std::int64_t{l.firstSurface} + l.numSurfaces > static_cast<std::int64_t>(out.leafSurfaces.size())) {
+                l.numSurfaces = 0;
             }
         }
         const Lump vs = lumpAt(b, kLumpVis);
@@ -431,7 +453,28 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
             s.firstIndex < 0 || s.numIndexes < 0 ||
             std::int64_t{s.firstIndex} + s.numIndexes > ni ||
             s.shader < 0 || s.shader >= ns) {
-            continue;   // kaputte Flaeche uebergehen, nicht die ganze Karte
+            // Kaputte Flaeche: als leere Bad-Flaeche STEHEN lassen. Fiele sie
+            // aus der Liste, verschoeben sich alle spaeteren Nummern - und
+            // leafSurfaces, die Untermodelle und die Spurtests zeigen mit
+            // Dateinummern hinein (Code-Pruefung rc592).
+            if (ns <= 0) { continue; }
+            BspSurface leer;
+            leer.type = BspSurface::Type::Bad;
+            leer.shader = 0;
+            out.surfaces.push_back(leer);
+            continue;
+        }
+        // Jeder Index der Flaeche muss in IHRE Ecken zeigen (buildRange
+        // rechnet firstVert + index) - die Engine bricht sonst mit "Bad index
+        // in triangle surface" ab.
+        if (s.type == BspSurface::Type::Planar || s.type == BspSurface::Type::TriangleSoup) {
+            for (int q = 0; q < s.numIndexes; ++q) {
+                if (out.indexes[static_cast<std::size_t>(s.firstIndex) + static_cast<std::size_t>(q)] >=
+                    static_cast<std::uint32_t>(s.numVerts)) {
+                    s.type = BspSurface::Type::Bad;
+                    break;
+                }
+            }
         }
         // Ein Patch, dessen Gitter mehr Punkte braucht als die Flaeche hat,
         // liest sonst fremde (oder gar keine) Ecken. Die Engine bricht dort
@@ -623,7 +666,8 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                     float g[3] = {0, 0, 0};
                     if (std::sscanf(txt.substr(a2 + 1, e2 - a2 - 1).c_str(),
                                     "%f %f %f", &g[0], &g[1], &g[2]) == 3 &&
-                        g[0] > 0.0F && g[1] > 0.0F && g[2] > 0.0F) {
+                        std::isfinite(g[0]) && std::isfinite(g[1]) && std::isfinite(g[2]) &&
+                        g[0] >= 1.0F && g[1] >= 1.0F && g[2] >= 1.0F) {
                         for (int i = 0; i < 3; ++i) {
                             out.lightGridSize[i] = g[i];
                         }
@@ -640,10 +684,16 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
             if (gs <= 0.0F) {
                 continue;
             }
+            // In double und begrenzt: mins/maxs kommen aus der Datei, und
+            // float->int eines NaN oder Riesenwerts ist undefiniert.
+            if (!std::isfinite(welt.mins[i]) || !std::isfinite(welt.maxs[i])) {
+                out.lightGridBounds[i] = 0;
+                continue;
+            }
             out.lightGridOrigin[i] = gs * std::ceil(welt.mins[i] / gs);
-            const float mx = gs * std::floor(welt.maxs[i] / gs);
-            out.lightGridBounds[i] =
-                static_cast<int>((mx - out.lightGridOrigin[i]) / gs) + 1;
+            const double mx = static_cast<double>(gs) * std::floor(static_cast<double>(welt.maxs[i]) / gs);
+            const double zellen = (mx - static_cast<double>(out.lightGridOrigin[i])) / gs + 1.0;
+            out.lightGridBounds[i] = (zellen >= 0.0 && zellen < 65536.0) ? static_cast<int>(zellen) : 0;
         }
     }
     // Die Kartengeometrie in Zahlen. Ohne diese Zeile stand im Protokoll
@@ -790,6 +840,7 @@ BspMesh buildMesh(const BspGeometry& geo, int level, bool skipSky) {
 }
 
 int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht) {
+    geo.stilGewicht = gewicht;   // auch fuers Lichtgitter (sampleLightGrid)
     if (std::getenv("BHED_MESSAUS") != nullptr && std::string(std::getenv("BHED_MESSAUS")).find("stile") != std::string::npos) { return 0; }
     // Quellseiten unveraendert lesen: liegt eine Stilseite zugleich als
     // Stufe-0-Seite in Gebrauch, darf das Einrechnen sie nicht vorher
@@ -847,17 +898,24 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
                             hi[q] = std::max(hi[q], vx.lightmap[q]);
                         }
                     }
-                    if (gleich && std::isfinite(lo[0]) && std::isfinite(hi[1])) {
+                    const auto vernuenftig = [](float x) { return std::isfinite(x) && std::fabs(x) < 1.0e4F; };
+                    if (gleich && vernuenftig(lo[0]) && vernuenftig(lo[1]) && vernuenftig(hi[0]) && vernuenftig(hi[1]) &&
+                        vernuenftig(d0[0]) && vernuenftig(d0[1])) {
                         const int x0 = std::clamp(static_cast<int>(std::floor(lo[0] * static_cast<float>(bw))), 0, bw);
                         const int x1 = std::clamp(static_cast<int>(std::ceil(hi[0] * static_cast<float>(bw))), 0, bw);
                         const int y0 = std::clamp(static_cast<int>(std::floor(lo[1] * static_cast<float>(bh))), 0, bh);
                         const int y1 = std::clamp(static_cast<int>(std::ceil(hi[1] * static_cast<float>(bh))), 0, bh);
                         const int dx = static_cast<int>(std::lround(d0[0] * static_cast<float>(bw)));
                         const int dy = static_cast<int>(std::lround(d0[1] * static_cast<float>(bh)));
-                        auto q = quelle.find(pk);
-                        if (q == quelle.end()) {
-                            q = quelle.emplace(pk, geo.lightmaps[static_cast<std::size_t>(pk)]).first;
+                        // Die Zielseite VOR dem ersten Schreiben sichern; gelesen
+                        // wird aus der Sicherung, wenn es eine gibt, sonst aus
+                        // der noch unveraenderten Seite.
+                        if (quelle.find(p0) == quelle.end()) {
+                            quelle.emplace(p0, geo.lightmaps[static_cast<std::size_t>(p0)]);
                         }
+                        const auto qs = quelle.find(pk);
+                        const std::vector<std::uint8_t>& qseite =
+                            (qs != quelle.end()) ? qs->second : geo.lightmaps[static_cast<std::size_t>(pk)];
                         std::vector<std::uint8_t>& maske = schon[{p0, stil}];
                         if (maske.empty()) {
                             maske.assign(static_cast<std::size_t>(bw) * static_cast<std::size_t>(bh), 0);
@@ -879,7 +937,7 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
                                 for (int c = 0; c < 3; ++c) {
                                     const float summe = static_cast<float>(ziel[zi + static_cast<std::size_t>(c)]) +
                                                         w[static_cast<std::size_t>(c)] *
-                                                            static_cast<float>(q->second[qi + static_cast<std::size_t>(c)]);
+                                                            static_cast<float>(qseite[qi + static_cast<std::size_t>(c)]);
                                     ziel[zi + static_cast<std::size_t>(c)] =
                                         static_cast<std::uint8_t>(std::min(255.0F, summe + 0.5F));
                                 }
@@ -1226,8 +1284,9 @@ GridLight sampleLightGrid(const BspGeometry& geo, const float origin[3]) {
     int pos[3] = {};
     float frac[3] = {};
     for (int i = 0; i < 3; ++i) {
-        const float v =
-            (origin[i] - geo.lightGridOrigin[i]) / geo.lightGridSize[i];
+        float v = (origin[i] - geo.lightGridOrigin[i]) / geo.lightGridSize[i];
+        if (!std::isfinite(v)) { v = 0.0F; }
+        v = std::clamp(v, -1.0e6F, 1.0e6F);   // nur NaN/Riesenwerte - normale bleiben bitgleich
         pos[i] = static_cast<int>(std::floor(v));
         frac[i] = v - static_cast<float>(pos[i]);
         // Die Engine KLEMMT hier, sie verwirft nicht: eine Figur ausserhalb
@@ -1236,8 +1295,8 @@ GridLight sampleLightGrid(const BspGeometry& geo, const float origin[3]) {
         pos[i] = std::clamp(pos[i], 0, geo.lightGridBounds[i] - 1);
     }
 
-    const int schritt[3] = {1, geo.lightGridBounds[0],
-                            geo.lightGridBounds[0] * geo.lightGridBounds[1]};
+    const long long schritt[3] = {1, geo.lightGridBounds[0],
+                                  static_cast<long long>(geo.lightGridBounds[0]) * geo.lightGridBounds[1]};
     const long long start = static_cast<long long>(pos[0]) * schritt[0] +
                             static_cast<long long>(pos[1]) * schritt[1] +
                             static_cast<long long>(pos[2]) * schritt[2];
@@ -1271,13 +1330,17 @@ GridLight sampleLightGrid(const BspGeometry& geo, const float origin[3]) {
             continue;
         }
         summe += anteil;
+        // Jede Stufe mit der Helligkeit ihres Stils (R_SetupEntityLighting:
+        // styleColors) - ein Licht mit START_OFF beleuchtet auch keine
+        // Figur. LS_NONE ueberspringt nur diese Stufe (Code-Pruefung rc592).
         for (int st = 0; st < 4; ++st) {
             if (p.styles[st] == 0xFF) {
-                break;
+                continue;
             }
+            const auto& w = geo.stilGewicht[p.styles[st]];
             for (int c = 0; c < 3; ++c) {
-                out.ambient[c] += anteil * static_cast<float>(p.ambient[st][c]);
-                out.directed[c] += anteil * static_cast<float>(p.direct[st][c]);
+                out.ambient[c] += anteil * w[static_cast<std::size_t>(c)] * static_cast<float>(p.ambient[st][c]);
+                out.directed[c] += anteil * w[static_cast<std::size_t>(c)] * static_cast<float>(p.direct[st][c]);
             }
         }
         // latLong: zwei Bytes, die den ganzen Kreis in 256 Schritte teilen.

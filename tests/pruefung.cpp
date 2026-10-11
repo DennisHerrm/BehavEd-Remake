@@ -97,7 +97,8 @@ struct BspFlaeche {
 };
 
 std::string baueBsp(const std::vector<BspFlaeche>& flaechen, int ecken, bool mitNebel = false,
-                    std::int32_t nebelBrush = 0) {
+                    std::int32_t nebelBrush = 0, const std::vector<std::pair<int, std::string>>& zusatz = {},
+                    const std::vector<std::int32_t>& indizes = {0, 1, 2}) {
     constexpr int kLumps = 18;
     std::string b(8 + kLumps * 8, '\0');
     b[0] = 'R'; b[1] = 'B'; b[2] = 'S'; b[3] = 'P';
@@ -113,9 +114,10 @@ std::string baueBsp(const std::vector<BspFlaeche>& flaechen, int ecken, bool mit
     lump(1, shader);
     std::string verts(static_cast<std::size_t>(ecken) * 80, '\0');
     lump(10, verts);
-    std::string idx(3 * 4, '\0');
-    setzeI32(idx, 0, 0); setzeI32(idx, 4, 1); setzeI32(idx, 8, 2);
+    std::string idx(indizes.size() * 4, '\0');
+    for (std::size_t q = 0; q < indizes.size(); ++q) { setzeI32(idx, q * 4, indizes[q]); }
     lump(11, idx);
+    for (const auto& [nr, daten] : zusatz) { lump(nr, daten); }
     if (mitNebel) {
         std::string nebel(72, '\0');
         std::memcpy(nebel.data(), "textures/fogs/test", 18);
@@ -389,8 +391,57 @@ int main(int argc, char** argv) {
             const bhed::BspMesh m = bhed::buildMesh(g, 4, true);
             (void)m;
         }
-        pruefe(absturzFrei && (!ok || g.surfaces.empty()),
+        // Seit rc592 bleibt sie als LEERE Bad-Flaeche stehen (damit die
+        // Nummern der folgenden stimmen) - gelesen wird trotzdem nichts.
+        pruefe(absturzFrei && (!ok || g.surfaces.empty() ||
+                               (g.surfaces[0].type == bhed::BspSurface::Type::Bad && g.surfaces[0].numVerts == 0)),
                "BSP: firstVert+numVerts mit Ueberlauf wird abgelehnt (kein Lesen ausserhalb)");
+    }
+    // ---- Code-Pruefung rc592: weitere kaputte Karten ----------------------
+    if (!ohne("nummern")) {
+        BspFlaeche kaputt;
+        kaputt.firstVert = 0x7FFFFFF0;
+        kaputt.numVerts = 0x20;
+        BspFlaeche gut;
+        const std::string b = baueBsp({kaputt, gut}, 3);
+        bhed::BspGeometry g;
+        const bool ok = bhed::readBspGeometry(b, g);
+        pruefe(ok && g.surfaces.size() == 2U && g.surfaces[1].type == bhed::BspSurface::Type::Planar,
+               "BSP: eine kaputte Flaeche verschiebt die Nummern der folgenden nicht");
+    }
+    if (!ohne("index")) {
+        BspFlaeche f;
+        f.numVerts = 2;   // Index 2 zeigt hinter die eigenen Ecken
+        const std::string b = baueBsp({f}, 3);
+        bhed::BspGeometry g;
+        const bool ok = bhed::readBspGeometry(b, g);
+        pruefe(ok && g.surfaces.size() == 1U && g.surfaces[0].type == bhed::BspSurface::Type::Bad,
+               "BSP: ein Index hinter den Ecken der Flaeche macht sie ungueltig (wie die Engine)");
+    }
+    if (!ohne("baum")) {
+        // Knoten 0 zeigt auf sich selbst, das Blatt nennt 2^31 Flaechen.
+        std::string ebene(16, '\0');
+        const float eins = 1.0F;
+        std::memcpy(ebene.data(), &eins, 4);
+        std::string knoten(36, '\0');
+        setzeI32(knoten, 0, 0);
+        setzeI32(knoten, 4, 0);    // children[0] = 0: ein Kreis
+        setzeI32(knoten, 8, -1);
+        std::string blatt(48, '\0');
+        setzeI32(blatt, 32, 0);
+        setzeI32(blatt, 36, 0x7FFFFFFF);
+        std::string blattFl(4, '\0');
+        BspFlaeche f;
+        const std::string b = baueBsp({f}, 3, false, 0, {{2, ebene}, {3, knoten}, {4, blatt}, {5, blattFl}});
+        bhed::BspGeometry g;
+        const bool ok = bhed::readBspGeometry(b, g);
+        const float a[3] = {-100.0F, 0.0F, 0.0F};
+        const float e[3] = {100.0F, 0.0F, 0.0F};
+        const bhed::TraceTreffer t = bhed::traceRay(g, a, e);
+        (void)t;
+        pruefe(ok && g.nodes.size() == 1U && g.nodes[0].children[0] < 0 && g.leafs.size() == 1U &&
+                   g.leafs[0].numSurfaces == 0,
+               "BSP: ein Knotenkreis und ein Blatt mit 2^31 Flaechen werden beim Lesen entschaerft (Spurtest endet)");
     }
     if (!ohne("patch")) {
         BspFlaeche f;

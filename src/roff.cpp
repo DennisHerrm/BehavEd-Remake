@@ -55,7 +55,9 @@ double spielSchritt(const Roff& r) {
 // Wie viele Bilder sind bis `ms` (einschliesslich) angewandt?
 std::size_t angewandt(const Roff& r, double ms) {
     const double a0 = roffBildZeitMs(r, 0);
-    if (ms < a0 - 1e-6) {
+    // So herum, damit auch NaN (wait ( "nan" )) hier endet - eine NaN-Zeit
+    // fiel sonst durch beide Vergleiche und wurde zum Index (Code-Pruefung).
+    if (!(ms >= a0 - 1e-6)) {
         return 0;
     }
     const double k = std::floor((ms - a0) / spielSchritt(r) + 1e-9) + 1.0;
@@ -278,7 +280,7 @@ RoffStand roffStand(const Roff& r, const RoffBahn& bahn, double msSeitPlay, bool
         return RoffStand{};   // Bahn gehoert nicht zu dieser Datei
     }
     const std::size_t n = r.bilder.size();
-    if (n == 0 || msSeitPlay < 0.0) {
+    if (n == 0 || !(msSeitPlay >= 0.0)) {
         return bahn.stand[0];
     }
     if (figur) {

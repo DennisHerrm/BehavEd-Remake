@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -128,6 +129,14 @@ int main(int argc, char** argv) {
         expect("Stilgewicht: START_OFF ist aus", gw[32][0] == 0.0F && gw[32][2] == 0.0F);
         expect("Stilgewicht: ls_1r 'aaaz' ist im Mittel ein Viertel, g und b voll",
                near(gw[1][0], 0.25F, 1e-4F) && gw[1][1] == 1.0F);
+        // Code-Pruefung rc592: unendliche Lightmap-Koordinaten (kaputte
+        // Datei) werden uebergangen statt in int umgewandelt.
+        bhed::BspGeometry g2 = g;
+        g2.verts[1].lightmap[0] = std::numeric_limits<float>::infinity();
+        for (auto& st : g2.stilEcken) { st.lm[0][1] = std::numeric_limits<float>::quiet_NaN(); }
+        std::vector<std::uint8_t> vor = g2.lightmaps[0];
+        (void)bhed::stileEinrechnen(g2, an);
+        expect("Stile: Unsinnskoordinaten aendern keine Lightmap", g2.lightmaps[0] == vor);
     }
 
     if (argc < 2) {

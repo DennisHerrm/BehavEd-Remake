@@ -261,9 +261,23 @@ void vektorWinkel(const float v[3], float out[3]) {
     out[2] = 0.0F;
 }
 
+// Wie viele Bruchstuecke bei "radius": anzahl * radius, aber hoechstens 512
+// - mehr lokale Entities haelt das Spiel nicht (MAX_LOCAL_ENTITIES), und
+// "radius" "1e10" machte die Umwandlung undefiniert (Code-Pruefung rc592).
+int stueckZahl(int anzahl, float radius) {
+    const float n = static_cast<float>(anzahl) * radius;
+    if (!std::isfinite(n) || n < 0.0F) { return anzahl; }
+    return static_cast<int>(std::min(n, 512.0F));
+}
+
 // AngleSubtract (q_math.cpp): auf -180..180
 float winkelDifferenz(float a, float b) {
     float d = a - b;
+    // Riesige oder unendliche Winkel aus der Datei: -360 aenderte nichts
+    // mehr, die Schleife lief endlos (Code-Pruefung rc592). Fuer normale
+    // Winkel greift das nicht.
+    if (!std::isfinite(d)) { return 0.0F; }
+    if (std::fabs(d) > 720.0F) { d = std::fmod(d, 360.0F); }
     while (d > 180.0F) { d -= 360.0F; }
     while (d < -180.0F) { d += 360.0F; }
     return d;
@@ -1104,7 +1118,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         float skala = std::sqrt(std::sqrt(gr[0] * gr[1] * gr[2])) * 1.75F;
         const int groesse = (skala > 48.0F) ? 2 : (skala > 24.0F) ? 1 : 0;
         skala /= static_cast<float>(anzahl);
-        if (b.radius > 0.0F) { anzahl = static_cast<int>(static_cast<float>(anzahl) * b.radius); }
+        if (b.radius > 0.0F) { anzahl = stueckZahl(anzahl, b.radius); }
         float mitte[3];
         for (int k = 0; k < 3; ++k) { mitte[k] = 0.5F * (b.absMin[k] + b.absMax[k]); }
         if ((b.flags & kNoExplosion) == 0) {
@@ -1133,7 +1147,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         float skala = std::sqrt(std::sqrt(gr[0] * gr[1] * gr[2])) * 1.75F;
         const int groesse = (skala > 48.0F) ? 2 : (skala > 24.0F) ? 1 : 0;
         skala /= static_cast<float>(anzahl);
-        if (b.radius > 0.0F) { anzahl = static_cast<int>(static_cast<float>(anzahl) * b.radius); }
+        if (b.radius > 0.0F) { anzahl = stueckZahl(anzahl, b.radius); }
         float mitte[3];
         for (int k = 0; k < 3; ++k) { mitte[k] = 0.5F * (b.absMin[k] + b.absMax[k]); }
         // modelindex3 (_c1) gibt es nur mit health, und gezeichnet wird es
@@ -1250,7 +1264,12 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         for (int k = 0; k < 3; ++k) { weg[k] = z.pos2[k] - z.pos1[k]; }
         const float laenge = std::sqrt(weg[0] * weg[0] + weg[1] * weg[1] + weg[2] * weg[2]);
         // trDuration ist ein int; SetMoverState macht aus 0 eine 1.
-        z.dauer = static_cast<double>(static_cast<int>(laenge * 1000.0F / tempo));
+        {
+            // In double und begrenzt: riesige path_corner-Orte machten die
+            // Umwandlung nach int undefiniert (Code-Pruefung rc592).
+            const double ms = static_cast<double>(laenge) * 1000.0 / static_cast<double>(tempo);
+            z.dauer = (ms >= 1.0 && ms < 2.0e9) ? static_cast<double>(static_cast<int>(ms)) : (ms >= 2.0e9 ? 2.0e9 : 1.0);
+        }
         if (z.dauer <= 0.0) { z.dauer = 1.0; }
         Mover& m = mover_[z.mover];
         const Stand jetzt = at(m.modell, t);

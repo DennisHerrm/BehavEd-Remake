@@ -135,6 +135,13 @@ struct BspGeometry {
         std::uint8_t farbe[3][4]{};
     };
     std::vector<StilEcke> stilEcken;
+    // Die Helligkeit jedes Lichtstils (r, g, b) - gesetzt von
+    // stileEinrechnen, gelesen von sampleLightGrid. Vorgabe: alle voll.
+    std::array<std::array<float, 3>, 256> stilGewicht = [] {
+        std::array<std::array<float, 3>, 256> g{};
+        for (auto& c : g) { c = {1.0F, 1.0F, 1.0F}; }
+        return g;
+    }();
     // Breite und Hoehe je Lightmap. Die aus der .bsp sind 128x128; externe
     // (ladeExterneLightmaps) haben die Groesse ihres Bildes - q3map2 schreibt
     // sie mit -lightmapsize oft 512 oder 1024 gross. Fehlt ein Eintrag,
