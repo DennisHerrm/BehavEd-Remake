@@ -7535,9 +7535,8 @@ void drawMapToolbar() {
     const float rechts = ansichtsSchalter(true);
     const float x = ImGui::GetWindowContentRegionMax().x - rechts;
     ImGui::SameLine();
-    if (x > ImGui::GetCursorPosX()) {
-        ImGui::SetCursorPosX(x);
-    }
+    // SameLine mit Abstand vom Zeilenanfang statt SetCursorPosX (lint_imgui_context).
+    ImGui::SameLine(std::max(x, ImGui::GetCursorPosX()));
     ansichtsSchalter(false);
 }
 

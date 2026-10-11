@@ -1174,12 +1174,11 @@ void drawEntityInspector(float hoehe) {
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     };
-    // Eine Tabelle mit zwei Spalten; Zeilen beginnt `zeile`.
-    const auto tabelleAuf = [](const char* id) {
-        if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX)) { return false; }
+    // Tabellen mit zwei Spalten (Beschriftung | Wert); Zeilen beginnt `zeile`.
+    constexpr ImGuiTableFlags kTabelle = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX;
+    const auto spalten = [] {
         ImGui::TableSetupColumn("##k", ImGuiTableColumnFlags_WidthStretch, 0.42F);
         ImGui::TableSetupColumn("##v", ImGuiTableColumnFlags_WidthStretch, 0.58F);
-        return true;
     };
     const auto zeile = [&hinweis](const char* label, const char* titel, const char* hilfe) {
         ImGui::TableNextRow();
@@ -1276,11 +1275,12 @@ void drawEntityInspector(float hoehe) {
         (void)h;
         gezeigt.insert(klein(w));
     }
-    const bool allgemeinPasst = passt(tr(Str::EntName)) || passt(nameKey) || passt("origin") || passt("angle") ||
-                                std::any_of(wichtig.begin(), wichtig.end(), [&](const auto& x) { return passt(x.first); });
+    bool allgemeinPasst = passt(tr(Str::EntName)) || passt(nameKey) || passt("origin") || passt("angle");
+    for (const auto& x : wichtig) { allgemeinPasst = allgemeinPasst || passt(x.first); }
     if (allgemeinPasst &&
         ImGui::CollapsingHeader((std::string(tr(Str::EntSecGeneral)) + "###allgemein").c_str(), ImGuiTreeNodeFlags_DefaultOpen) &&
-        tabelleAuf("##allgemein")) {
+        ImGui::BeginTable("##allgemein", 2, kTabelle)) {
+        spalten();
         // Name - unter ihm sprechen die Skripte die Entity an.
         if (passt(tr(Str::EntName)) || passt(nameKey)) {
             zeile(tr(Str::EntName), nameKey, tr(Str::EntNameHint));
@@ -1399,7 +1399,8 @@ void drawEntityInspector(float hoehe) {
     felder.erase(std::remove_if(felder.begin(), felder.end(), [&](const auto& f) { return !passt(f.first); }), felder.end());
     if ((!felder.empty() || such.empty()) &&
         ImGui::CollapsingHeader((std::string(tr(Str::EntSecFields)) + "###felder").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (tabelleAuf("##felder")) {
+        if (ImGui::BeginTable("##felder", 2, kTabelle)) {
+            spalten();
             for (const auto& [name, hilfe] : felder) { zeigeFeld(name, hilfe); }
             ImGui::EndTable();
         }

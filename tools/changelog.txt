@@ -6,6 +6,40 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc586 2026-10-11
+[en]
+- The Map tab has a new, cleaner look. At the top: New, Load and Save mission as icons, the mission name with a dot while something is unsaved, a "Maps & files" menu and, on the right, the view switches as icons (entities, names, characters, effects, glow, lights, fog, sky, through camera), view settings and a statistics window. The sidebar is gone - the 3D view is much wider.
+- Colourful line icons, drawn as vectors - sharp at every size, and easy to tell apart.
+- Entity inspector like Unreal's Details panel: an icon bar (fly there, onto floor, duplicate, delete, undo, redo, all keys), a filter field and the groups General, Spawnflags and Fields with label and value side by side. The entity column is wider.
+- Hovering an entity or a character in the view outlines it and shows its name and position - also when you hover it in the entity list. The selected entity gets an orange box, an arrow for its facing and a gizmo: drag the red, green or blue arrow to move it along one axis, the yellow ring to turn it (Ctrl: 8-unit grid / 15 degree steps).
+- Start panel when no map is open: create a mission, open a mission, just open a map, and your recent missions.
+- Open mission folder...: continue a mission from its folder - also one you never packed, after a restart.
+- Short notifications at the bottom right (mission created, saved ...) with "Show in Explorer".
+[de]
+- Der Map-Tab sieht neu und aufgeräumter aus. Oben: Neu, Laden und Speichern als Icons, der Missionsname mit einem Punkt, solange etwas ungespeichert ist, ein Menü „Karten & Dateien“ und rechts die Ansichtsschalter als Icons (Entities, Namen, Figuren, Effekte, Leuchten, Licht, Nebel, Himmel, durch die Kamera), Ansichtseinstellungen und ein Statistikfenster. Die Seitenleiste ist weg - die 3D-Ansicht ist viel breiter.
+- Farbige Strich-Icons, als Vektor gezeichnet - scharf bei jeder Größe und gut zu unterscheiden.
+- Entity-Inspektor wie Unreals Details: eine Icon-Leiste (hinfliegen, auf den Boden, duplizieren, löschen, rückgängig, wiederholen, alle Schlüssel), ein Suchfeld und die Gruppen Allgemein, Spawnflags und Felder mit Beschriftung und Wert nebeneinander. Die Entity-Spalte ist breiter.
+- Fährt man in der Ansicht über eine Entity oder Figur, wird sie umrandet und zeigt Namen und Position - auch beim Überfahren in der Entity-Liste. Die gewählte Entity bekommt einen orangen Kasten, einen Pfeil für die Blickrichtung und ein Gizmo: den roten, grünen oder blauen Pfeil ziehen verschiebt entlang einer Achse, der gelbe Ring dreht (Strg: 8er-Raster / 15-Grad-Schritte).
+- Startfläche, wenn keine Karte offen ist: Mission erstellen, Mission öffnen, nur eine Karte öffnen, und die zuletzt bearbeiteten Missionen.
+- Open mission folder...: eine Mission aus ihrem Ordner weiterbearbeiten - auch eine nie gepackte, nach einem Neustart.
+- Kurze Einblendungen unten rechts (Mission angelegt, gespeichert ...) mit „Im Explorer zeigen“.
+[zh]
+- 地图标签页焕然一新、更加整洁。顶部:新建、加载和保存任务的图标,任务名称(有未保存内容时显示圆点)、“地图和文件”菜单,右侧是视图开关图标(实体、名称、角色、特效、辉光、光照、雾、天空、通过摄像机)、视图设置和统计窗口。侧边栏已移除 - 3D 视图宽了很多。
+- 彩色线条图标,以矢量绘制 - 任何尺寸都清晰,易于区分。
+- 实体检查器类似 Unreal 的 Details 面板:图标栏(飞过去、放到地面、复制、删除、撤销、重做、全部键)、筛选框,以及“常规”“生成标志”“字段”分组,标签和值并排显示。实体栏更宽。
+- 在视图中将鼠标悬停在实体或角色上时会显示轮廓及其名称和位置 - 在实体列表中悬停时也是如此。选中的实体会显示橙色框、朝向箭头和操纵器:拖动红、绿、蓝箭头沿单轴移动,拖动黄色圆环旋转(Ctrl: 8 单位网格 / 每步 15 度)。
+- 未打开地图时显示开始面板:创建任务、打开任务、只打开地图,以及最近的任务。
+- Open mission folder...:从任务文件夹继续编辑 - 包括从未打包的任务,重启后也可以。
+- 右下角的简短通知(任务已创建、已保存……),带“在资源管理器中显示”。
+[ja]
+- マップタブが新しく、すっきりしました。上部: 新規・読み込み・保存のアイコン、ミッション名(未保存のときは点を表示)、「マップとファイル」メニュー、右側に表示切り替えのアイコン(エンティティ、名前、キャラクター、エフェクト、グロー、ライト、フォグ、空、カメラ視点)、表示設定、統計ウィンドウ。サイドバーをなくし、3D ビューがずっと広くなりました。
+- カラフルな線のアイコンをベクターで描画 - どのサイズでもくっきり、見分けやすくなりました。
+- Unreal の Details パネルのようなエンティティインスペクター: アイコンバー(移動、床に置く、複製、削除、元に戻す、やり直し、すべてのキー)、絞り込み欄、「一般」「スポーンフラグ」「フィールド」のグループでラベルと値を横に並べて表示。エンティティ列を広げました。
+- ビューでエンティティやキャラクターにマウスを重ねると輪郭が表示され、名前と位置が出ます - エンティティ一覧で重ねたときも同様です。選択中のエンティティにはオレンジの枠、向きの矢印、ギズモが表示されます: 赤・緑・青の矢印をドラッグで軸に沿って移動、黄色のリングで回転(Ctrl: 8 単位グリッド / 15 度刻み)。
+- マップが開いていないときのスタート画面: ミッション作成、ミッションを開く、マップだけ開く、最近のミッション。
+- Open mission folder...: フォルダーからミッションの作業を続けられます - まだまとめていないミッションも、再起動後でも。
+- 右下に短い通知(ミッションを作成、保存しました など)と「エクスプローラーで表示」。
+
 ## rc585 2026-10-11
 [en]
 - Build a whole mission in the Map tab. New mission...: pick any map and a name – a player start, a script runner, the intro script and a mission folder are created, and the intro plays in the preview right away.

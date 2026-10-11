@@ -1,5 +1,40 @@
 # Änderungen seit rc94
 
+## rc586 — Map-Tab modern: Icons, Inspektor, Hervorheben, Gizmo, Startfläche
+
+Gewünscht: „ja mach bitte alles. Ich will das es moderner und intuitiv aussieht
+wenn du icons erstellen musst dafür dann mach das bitte“, dazu „wenn du über
+was drüber hoverst in der karte es umrandet wird … inspiration von unreal
+engine“ und „die icons … sind zu weit oben und nicht sauber mittig und du
+kannst sie auch gerne farbiger machen“.
+
+* **Icons** (`gui/uiicons.cpp`): 34 Strich-Icons auf dem 16er-Raster, je eine
+  Farbe (`uiIconFarbe`, im hellen Schema dunkler), auf ganze Pixel gesetzt;
+  `iconKnopf`/`iconTextKnopf` mit InvisibleButton – Kennung ist der Text, der
+  Selbsttest findet die Knöpfe weiter darüber.
+* **Kopfzeile statt Seitenleiste:** Neu/Laden/Speichern, Missionsname mit Punkt
+  (`missionUngespeichert`), „Maps & files“ (Klappmenü), Skripte; rechts acht
+  Ansichtsschalter + durch die Kamera + ⚙ (Helligkeit, Umgebung, Detail,
+  Schatten, Figurenausrichtung) + Statistikfenster. Senkrecht mittig im
+  Streifen. Die Seitenleiste ist weg (`mapSidebarWidth` = 0).
+* **Inspektor** wie Unreals Details: fester Kopf + Icon-Leiste + Suchfeld, nur
+  die Felder rollen; Gruppen Allgemein/Spawnflags/Felder als Tabellen
+  (Beschriftung | Wert), ruhige Gruppenköpfe. Entity-Spalte 15 → 18
+  Zeichenhöhen (`kEntitySpalte`).
+* **Ansicht:** Überfahren (Ansicht und Liste) → heller Kasten in der Größe der
+  Klasse + Namensschild mit Position; Auswahl → oranger Kasten, Pfeil der
+  Blickrichtung, Gizmo (X/Y/Z-Pfeile ab einem Viertel der Länge – die Mitte
+  bleibt zum Ziehen über den Boden –, gelber Ring dreht `angle`; Strg rastet).
+  Über dem Bild mit ImGui gezeichnet, auch hinter Wänden sichtbar.
+* **Startfläche** statt „No map loaded“; **mission.txt** im Missionsordner,
+  „Open mission folder…“ und „Zuletzt bearbeitet“ – eine nie gepackte Mission
+  ist nach einem Neustart wieder erreichbar. **Einblendungen** unten rechts
+  (`meldung`), „Im Explorer zeigen“ (im Selbsttest nur protokolliert).
+* **Tests:** `missionsbau` 38 Prüfungen (neu: Startfläche, Gizmo Z nur Höhe +
+  ein Rückgängig-Schritt, Ring nur Winkel, Überfahren, Einblendung, Öffnen aus
+  dem Ordner). `karte`: Klappfenster vor der Navigation schließen (offen gehören
+  Maus und Tasten ihm – richtig so).
+
 ## rc585 — Missionen komplett im Map-Tab bauen
 
 Gewünscht: „im Map Tab eine eigene Mission erstellen … dann sehen wir was
