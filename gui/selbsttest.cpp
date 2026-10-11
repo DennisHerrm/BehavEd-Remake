@@ -6937,6 +6937,223 @@ std::vector<Schritt> missionsbauSchritte() {
         return gleich && !g_app->geo.empty();
     }));
 
+    // ---------------- Drei Ansichten: Classic, Graph, Spuren (rc587) ----------------
+    //
+    // "das man wenn man will in alle 3 arbeiten kann durch umschalten": in jeder
+    // Ansicht etwas aendern, dazwischen umschalten, Rueckgaengig ueber die
+    // Ansichten hinweg - alles auf demselben Dokument.
+    {
+        auto schl = std::make_shared<std::map<std::string, std::string>>();
+        const auto knotenPunkt = [](const std::string& sch, bool ausgang) {
+            const App::GraphZustand& gz = g_app->graph;
+            const float s = ImGui::GetFontSize() / 13.0F;
+            for (const GraphKnoten& k : gz.g.knoten) {
+                if (k.schluessel != sch) { continue; }
+                const float B = 190.0F * s * gz.zoom;
+                const float H = 62.0F * s * gz.zoom;
+                const ImVec2 a{gz.ursprung.x + gz.panX + k.x * gz.zoom, gz.ursprung.y + gz.panY + k.y * gz.zoom};
+                return ausgang ? ImVec2{a.x + B, a.y + H * 0.5F} : ImVec2{a.x + B * 0.5F, a.y + H * 0.5F};
+            }
+            return ImVec2{-1.0F, -1.0F};
+        };
+        const auto kanteDa = [](const std::string& von, const std::string& nach, const std::string& label) {
+            const auto& g = g_app->graph.g;
+            for (const GraphKante& k : g.kanten) {
+                if (g.knoten[static_cast<std::size_t>(k.von)].schluessel == von &&
+                    g.knoten[static_cast<std::size_t>(k.nach)].schluessel == nach && k.label == label) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        add(tu("Ansichten: Schluessel der Knoten bestimmen", [=] {
+            mb::zumReiter("intro.txt");
+            for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+                const MapEntity& e = g_app->map.entities[i];
+                if (e.classname == "info_player_start") { (*schl)["start"] = "e:" + std::to_string(i); }
+                if (e.classname == "target_scriptrunner" && e.targetname != "runner1") { (*schl)["introStarter"] = "e:" + std::to_string(i); }
+                if (e.classname == "target_scriptrunner" && e.targetname == "runner1") { (*schl)["runner1"] = "e:" + std::to_string(i); }
+                if (e.classname == "NPC_spawner" && mb::wert(&e, "NPC_targetname") == "npc1") { (*schl)["npc1"] = "e:" + std::to_string(i); }
+            }
+            std::string o = g_app->mission.ordner;
+            for (char& c : o) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+            (*schl)["intro"] = "s:" + o + "/intro";
+            (*schl)["runner1Skript"] = "s:" + o + "/runner1";
+            std::string t;
+            for (const auto& [k, v] : *schl) { t += k + "=" + v + " "; }
+            diag::detail("Knopftest: Ansichten - " + t);
+        }));
+        add(pause(0.3));
+        add(klick(tr(Str::FlowGraph)));
+        add(pause(0.8));
+        add(foto("ans_graph"));
+        add(pruefe("Graph: Ansicht aktiv; Start -target-> Starter -usescript-> intro; npc1 als Knoten", [=] {
+            diag::detail("Knopftest: Ansichten - Graph " + std::to_string(g_app->graph.g.knoten.size()) + " Knoten, " +
+                         std::to_string(g_app->graph.g.kanten.size()) + " Kanten");
+            return g_app->settings.flussAnsicht == 1 && kanteDa((*schl)["start"], (*schl)["introStarter"], "target") &&
+                   kanteDa((*schl)["introStarter"], (*schl)["intro"], "usescript") &&
+                   knotenPunkt((*schl)["npc1"], false).x >= 0.0F;
+        }));
+        // Verbinden mit der Maus: vom Ausgang des Starters runner1 auf die Figur npc1.
+        auto vonP = std::make_shared<ImVec2>();
+        auto nachP = std::make_shared<ImVec2>();
+        add(tu("Graph: Punkte fuer die Verbindung", [=] {
+            *vonP = knotenPunkt((*schl)["runner1"], true);
+            *nachP = knotenPunkt((*schl)["npc1"], false);
+            diag::detail("Knopftest: Ansichten - ziehe von " + std::to_string(vonP->x) + "/" + std::to_string(vonP->y) +
+                         " nach " + std::to_string(nachP->x) + "/" + std::to_string(nachP->y));
+        }));
+        add({"Ziehe im Graph: runner1 -> npc1", [=](int b) {
+                 ImGuiIO& io = ImGui::GetIO();
+                 if (b == 0) { setzeMaus(*vonP); return false; }
+                 if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+                 if (b >= 3 && b <= 14) {
+                     const float f = static_cast<float>(b - 2) / 12.0F;
+                     setzeMaus(ImVec2{vonP->x + (nachP->x - vonP->x) * f, vonP->y + (nachP->y - vonP->y) * f});
+                     return false;
+                 }
+                 if (b == 15) { io.AddMouseButtonEvent(0, false); return false; }
+                 return b >= 20;
+             }});
+        add(pause(0.4));
+        add(pruefe("Graph-Verbindung mit der Maus: runner1.target = targetname von npc1, die Kante ist da", [=] {
+            const MapEntity* r = nullptr;
+            const MapEntity* n = nullptr;
+            for (const MapEntity& e : g_app->map.entities) {
+                if (e.classname == "target_scriptrunner" && e.targetname == "runner1") { r = &e; }
+                if (e.classname == "NPC_spawner" && mb::wert(&e, "NPC_targetname") == "npc1") { n = &e; }
+            }
+            diag::detail("Knopftest: Ansichten - runner1.target \"" + mb::wert(r, "target") + "\", npc1.targetname \"" +
+                         mb::wert(n, "targetname") + "\"");
+            return r != nullptr && n != nullptr && !n->targetname.empty() && mb::wert(r, "target") == n->targetname &&
+                   kanteDa((*schl)["runner1"], (*schl)["npc1"], "target");
+        }));
+        // Skript -> Entity: ein use ans Ende des Skripts.
+        add(tu("Graph: intro -> runner1 verbinden (use)", [=] {
+            const std::string t = graphVerbinden((*schl)["intro"], (*schl)["runner1"], std::string());
+            diag::detail("Knopftest: Ansichten - " + t);
+        }));
+        add(pause(0.3));
+        add(pruefe("intro hat am Ende use ( \"runner1\" ), die Kante ist da, Ansicht bleibt Graph", [=] {
+            const auto& nodes = g_app->doc.script().nodes;
+            const bool use = !nodes.empty() && nodes.back().name == "use" && !nodes.back().args.empty() &&
+                             nodes.back().args[0].text == "runner1";
+            return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "intro.txt" && use &&
+                   kanteDa((*schl)["intro"], (*schl)["runner1"], "use") && g_app->settings.flussAnsicht == 1;
+        }));
+        // Doppelklick auf das Skript runner1 oeffnet seinen Reiter.
+        add(tu("Graph: den Knoten runner1 (Skript) in die Mitte holen", [=] {
+            App::GraphZustand& gz = g_app->graph;
+            for (const GraphKnoten& k : gz.g.knoten) {
+                if (k.schluessel == (*schl)["runner1Skript"]) {
+                    const float s = ImGui::GetFontSize() / 13.0F;
+                    gz.panX = gz.groesse.x * 0.5F - (k.x + 95.0F * s) * gz.zoom;
+                    gz.panY = gz.groesse.y * 0.5F - (k.y + 31.0F * s) * gz.zoom;
+                }
+            }
+        }));
+        add(pause(0.2));
+        add(klickAn("Doppelklick auf runner1 (Skript)", [=] { return knotenPunkt((*schl)["runner1Skript"], false); }, 0, true));
+        add(pause(0.4));
+        add(pruefe("Doppelklick: der Reiter runner1.txt ist vorn", [] {
+            return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "runner1.txt";
+        }));
+        // --- Spuren ---
+        add(tu("zurueck ins intro", [] { mb::zumReiter("intro.txt"); }));
+        add(klick(tr(Str::FlowTracks)));
+        add(pause(0.8));
+        add(foto("ans_spuren"));
+        add(pruefe("Spuren: Ansicht aktiv, Bloecke gezeichnet", [] {
+            diag::detail("Knopftest: Ansichten - Spuren " + std::to_string(g_app->spurenBloecke.size()) + " Bloecke");
+            return g_app->settings.flussAnsicht == 2 && !g_app->spurenBloecke.empty();
+        }));
+        auto waitPfad = std::make_shared<Path>();
+        auto waitRect = std::make_shared<ImRect>();
+        add(tu("Spuren: den Block des wait suchen", [=] {
+            const auto& nodes = g_app->doc.script().nodes;
+            for (std::size_t i = 0; i < nodes.size(); ++i) {
+                if (nodes[i].name == "wait") { *waitPfad = Path{i}; }
+            }
+            for (const auto& [p, r] : g_app->spurenBloecke) {
+                if (p == *waitPfad) { *waitRect = r; }
+            }
+            diag::detail("Knopftest: Ansichten - wait-Block " + std::to_string(waitRect->Min.x) + ".." + std::to_string(waitRect->Max.x));
+        }));
+        add(klickAn("auf den wait-Block", [=] { return ImVec2{(waitRect->Min.x + waitRect->Max.x) * 0.5F, waitRect->GetCenter().y}; }));
+        add(pause(0.3));
+        add(pruefe("Spuren: Klick auf den Block waehlt seine Zeile", [=] { return !waitPfad->empty() && g_app->selectedPath == *waitPfad; }));
+        add({"Ziehe die rechte Kante des wait um 80 Punkte", [=](int b) {
+                 ImGuiIO& io = ImGui::GetIO();
+                 const ImVec2 start{waitRect->Max.x - 1.0F, waitRect->GetCenter().y};
+                 if (b == 0) { setzeMaus(start); return false; }
+                 if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+                 if (b >= 3 && b <= 14) {
+                     setzeMaus(ImVec2{start.x + 80.0F * static_cast<float>(b - 2) / 12.0F, start.y});
+                     return false;
+                 }
+                 if (b == 15) { io.AddMouseButtonEvent(0, false); return false; }
+                 return b >= 20;
+             }});
+        add(pause(0.3));
+        auto waitNeu = std::make_shared<double>(0.0);
+        add(pruefe("Spuren: das wait ist laenger geworden", [=] {
+            const Node* n = nodeAt(g_app->doc.script(), *waitPfad);
+            *waitNeu = n != nullptr && !n->args.empty() ? std::atof(n->args[0].text.c_str()) : 0.0;
+            diag::detail("Knopftest: Ansichten - wait jetzt " + std::to_string(*waitNeu));
+            return *waitNeu > 3000.5;
+        }));
+        // --- Classic: dieselbe Aenderung, Rueckgaengig wirkt ueberall ---
+        add(klick(tr(Str::FlowClassic)));
+        add(pause(0.4));
+        add(pruefe("Classic: Ansicht aktiv, die Zeile ist noch gewaehlt", [=] {
+            return g_app->settings.flussAnsicht == 0 && g_app->selectedPath == *waitPfad;
+        }));
+        add(tu("Maus weg von der Karte", [] { setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x - 30.0F, 200.0F}); }));
+        add(pause(0.2));
+        add(tasteKombi(ImGuiMod_Ctrl | ImGuiKey_Z, "Strg+Z in Classic"));
+        add(pause(0.3));
+        add(pruefe("Strg+Z nimmt die Aenderung aus den Spuren zurueck", [=] {
+            const Node* n = nodeAt(g_app->doc.script(), *waitPfad);
+            const double w = n != nullptr && !n->args.empty() ? std::atof(n->args[0].text.c_str()) : 0.0;
+            diag::detail("Knopftest: Ansichten - nach Strg+Z wait " + std::to_string(w));
+            return std::fabs(w - 3000.0) < 0.5;
+        }));
+        add(klick(tr(Str::FlowTracks)));
+        add(pause(0.4));
+        add(pruefe("Spuren zeigen den alten Stand", [=] {
+            for (const auto& [p, r] : g_app->spurenBloecke) {
+                if (p == *waitPfad) { return std::fabs(r.GetWidth() - waitRect->GetWidth()) < 3.0F; }
+            }
+            return false;
+        }));
+        // --- Schnell hin und her ---
+        auto vorher = std::make_shared<std::pair<std::size_t, Path>>();
+        add(tu("Stand vor dem schnellen Umschalten", [=] {
+            *vorher = {g_app->doc.undoDepth(), g_app->selectedPath};
+            std::vector<Schritt> folge;
+            for (int k = 0; k < 24; ++k) {
+                folge.push_back(tu("Umschalten " + std::to_string(k), [k] { g_app->settings.flussAnsicht = (k * 2 + 1) % 3; }));
+                folge.push_back(pause(0.03));
+            }
+            schritteEinfuegen(std::move(folge));
+        }));
+        add(pause(0.3));
+        add(pruefe("24 mal umgeschaltet: Dokument und Auswahl unveraendert", [=] {
+            return g_app->doc.undoDepth() == vorher->first && g_app->selectedPath == vorher->second;
+        }));
+        // --- Entity-Rueckgaengig wirkt auch im Graph ---
+        add(tu("Graph, zwei Entity-Schritte zurueck (target und targetname)", [] {
+            g_app->settings.flussAnsicht = 1;
+            entityRueckgaengig();
+            entityRueckgaengig();
+        }));
+        add(pause(0.4));
+        add(pruefe("Graph: die Verbindung runner1 -> npc1 ist wieder weg", [=] {
+            return !kanteDa((*schl)["runner1"], (*schl)["npc1"], "target");
+        }));
+        add(tu("zurueck zu Classic", [] { g_app->settings.flussAnsicht = 0; }));
+        add(pause(0.3));
+    }
     // ---------------- Save mission ----------------
     add(klick(tr(Str::MissionSave)));
     add(pause(0.4));

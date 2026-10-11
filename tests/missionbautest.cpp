@@ -6,10 +6,13 @@
 #include "bhed/commands.h"
 #include "bhed/entdefs.h"
 #include "bhed/missionbau.h"
+#include "bhed/missionsgraph.h"
 #include "bhed/pk3.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -278,6 +281,79 @@ int main(int argc, char** argv) {
         expect("Name mit Leerzeichen: Fehler S006", hatBefund(bef, "S006", true));
         expect("gueltige Namen", bhed::gueltigerMissionsName("md_tpa_jedi") && !bhed::gueltigerMissionsName("") &&
                                      !bhed::gueltigerMissionsName("a/b") && !bhed::gueltigerMissionsName(std::string(49, 'a')));
+    }
+
+    // --- Missionsgraph ------------------------------------------------------
+    std::printf("Missionsgraph\n");
+    {
+        std::vector<bhed::MapEntity> ents;
+        bhed::parseEntities(
+            "{\n\"classname\" \"worldspawn\"\n}\n"
+            "{\n\"classname\" \"info_player_start\"\n\"target\" \"intro\"\n}\n"
+            "{\n\"classname\" \"target_scriptrunner\"\n\"targetname\" \"intro\"\n\"usescript\" \"md/intro\"\n}\n"
+            "{\n\"classname\" \"NPC_spawner\"\n\"NPC_targetname\" \"maul\"\n\"NPC_type\" \"md_maul\"\n\"deathscript\" \"md/dead\"\n\"spawnscript\" \"idle\"\n}\n"
+            "{\n\"classname\" \"target_level_change\"\n\"targetname\" \"end_level\"\n\"mapname\" \"+credits\"\n}\n"
+            "{\n\"classname\" \"func_door\"\n\"targetname\" \"tuer\"\n}\n",
+            ents);
+        bhed::Script intro;
+        bhed::Script dead;
+        std::vector<bhed::Diag> d;
+        (void)bhed::readScript("affect ( \"maul\", FLUSH )\n{\nwait ( 1.000 );\n}\ncamera ( MOVE, < 0 0 0 >, 0 );\n", intro, d);
+        (void)bhed::readScript("use ( \"end_level\" );\nrun ( \"md/fehlt\" );\n", dead, d);
+        bhed::MissionsGraph g = bhed::baueMissionsGraph(ents, [&](const std::string& p) -> const bhed::Script* {
+            if (p == "md/intro") { return &intro; }
+            if (p == "md/dead") { return &dead; }
+            return nullptr;
+        });
+        const auto knoten = [&](const std::string& titel) {
+            for (std::size_t i = 0; i < g.knoten.size(); ++i) {
+                if (g.knoten[i].titel == titel) { return static_cast<int>(i); }
+            }
+            return -1;
+        };
+        const auto kante = [&](const std::string& a, const std::string& b, const std::string& label) {
+            for (const auto& k : g.kanten) {
+                if (k.von == knoten(a) && k.nach == knoten(b) && k.label == label) { return true; }
+            }
+            return false;
+        };
+        expect("Knoten: Start, Starter, intro, maul, dead, Kartenwechsel, fehlt (keine Tuer, kein worldspawn)",
+               g.knoten.size() == 7 && knoten("tuer") < 0 && knoten("worldspawn") < 0);
+        expect("Spielerstart --target--> Starter", kante("info_player_start", "intro", "target"));
+        expect("Starter --usescript--> Skript intro", kante("intro", "intro", "usescript") ||
+                                                        [&] {
+                                                            for (const auto& k : g.kanten) {
+                                                                if (k.label == "usescript") { return true; }
+                                                            }
+                                                            return false;
+                                                        }());
+        expect("Skript intro --affect--> maul (steuern)", [&] {
+            for (const auto& k : g.kanten) {
+                if (k.label == "affect" && g.knoten[static_cast<std::size_t>(k.nach)].titel == "maul" &&
+                    k.art == bhed::GraphKante::Art::Steuern) { return true; }
+            }
+            return false;
+        }());
+        expect("maul --deathscript--> dead, \"idle\" ist kein Skript", kante("maul", "dead", "deathscript") && knoten("idle") < 0);
+        expect("dead --use--> Kartenwechsel, --run--> fehlt (?)",
+               kante("dead", "end_level", "use") && kante("dead", "fehlt", "run") &&
+                   g.knoten[static_cast<std::size_t>(knoten("fehlt"))].unter == "?");
+        expect("Kurzfassung des Skripts", g.knoten[static_cast<std::size_t>(knoten("dead"))].unter.find("cmd") != std::string::npos);
+        bhed::ordneGraph(g, 180.0F, 70.0F, 80.0F, 40.0F);
+        const auto sp = [&](const std::string& t) { return g.knoten[static_cast<std::size_t>(knoten(t))].spalte; };
+        expect("Anordnung: Start links, dann Starter, Skript, maul, dead, Kartenwechsel",
+               sp("info_player_start") == 0 && sp("maul") > sp("info_player_start") && sp("dead") > sp("maul") &&
+                   sp("end_level") > sp("dead"));
+        bool ueberlappt = false;
+        for (std::size_t a = 0; a < g.knoten.size(); ++a) {
+            for (std::size_t b = a + 1; b < g.knoten.size(); ++b) {
+                ueberlappt = ueberlappt || (std::abs(g.knoten[a].x - g.knoten[b].x) < 180.0F &&
+                                            std::abs(g.knoten[a].y - g.knoten[b].y) < 70.0F);
+            }
+        }
+        expect("keine zwei Knoten uebereinander", !ueberlappt);
+        const bhed::MissionsGraph leer = bhed::baueMissionsGraph({}, nullptr);
+        expect("ohne Entities: leer", leer.knoten.empty() && leer.kanten.empty());
     }
 
     std::printf("%s (%d Fehler)\n", fails == 0 ? "missionbau: alles gut" : "missionbau: FEHLER", fails);

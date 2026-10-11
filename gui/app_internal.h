@@ -37,6 +37,7 @@
 #include "bhed/bsp.h"
 #include "bhed/camtrack.h"
 #include "bhed/mission.h"
+#include "bhed/missionsgraph.h"
 #include "bhed/scene.h"
 #include "bhed/timeline.h"
 #include "bhed/image.h"
@@ -160,6 +161,29 @@ struct App {
         std::string zielPk3;        // wohin "Save mission" packt
     };
     MissionsProjekt mission;
+    // --- Graph-Ansicht des Script Flow (gui/app_ansichten.cpp) -------------
+    struct GraphZustand {
+        MissionsGraph g;
+        std::string signatur;                 // geaendert -> neu bauen
+        float panX = 0.0F;
+        float panY = 0.0F;
+        float zoom = 1.0F;
+        bool angepasst = false;               // schon einmal eingepasst
+        std::map<std::string, ImVec2> pos;    // von Hand verschobene Knoten
+        std::string auswahl;
+        std::string zieht;                    // Knoten, der gerade gezogen wird
+        std::string verbindetVon;             // Verbindung, die gerade gezogen wird
+        std::string verbindungVon;            // fuer das Klappmenue "Verbinden als"
+        std::string verbindungNach;
+        std::map<std::string, std::shared_ptr<Script>> skriptCache;   // nicht offene Skripte
+        std::string cacheKarte;
+        ImVec2 ursprung{0.0F, 0.0F};          // linke obere Ecke der Flaeche (Bildschirm)
+        ImVec2 groesse{0.0F, 0.0F};           // Groesse der Flaeche
+    };
+    GraphZustand graph;
+    float spurenZoom = 1.0F;                  // Spuren-Ansicht: Zoom der Zeitachse
+    // Wo die Bloecke im letzten Bild standen (Pfad, Rechteck) - fuer den Selbsttest.
+    std::vector<std::pair<Path, ImRect>> spurenBloecke;
     // Kurze Einblendungen unten rechts (meldung / drawEinblendungen).
     struct Einblendung {
         std::string text;
@@ -1880,7 +1904,7 @@ enum class UiIcon {
     Neu, Oeffnen, Speichern, Mehr, Karte, Paket, Liste, Skript, Entity, Namen, Figur, Effekt,
     Leuchten, Licht, Nebel, Himmel, Kamera, Einstellungen, Statistik, Plus, Boden, Hinfliegen,
     Duplizieren, Loeschen, Rueckgaengig, Wiederholen, Explorer, Suche, Verschieben, Drehen,
-    Mission, Schliessen, Haken, Warnung,
+    Mission, Schliessen, Haken, Warnung, Abspielen, Pause,
 };
 void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe);
 // Quadratischer Icon-Knopf; der Text ist Kennung und Tooltip-Titel.
@@ -1916,6 +1940,14 @@ void missionAusGeladener(const Mission& m);
 bool missionSpeichernNach(const std::string& pk3, std::string* fehler);
 std::string missionStandardOrdner(const std::string& name);
 bool missionBeendenFrage();
+// Script Flow: Classic / Graph / Spuren (gui/app_ansichten.cpp)
+void ansichtsUmschalter();
+void drawFlussAnsicht(float breite, float hoehe, float kopfH);
+void drawGraphAnsicht();
+void drawSpurenAnsicht();
+void graphEinpassen(float breite, float hoehe);
+std::string graphVerbinden(const std::string& vonSchluessel, const std::string& nachSchluessel, const std::string& art);
+bool kantenGriff(const Path& pfad, double startMs, double endMs, const ImVec2& a, const ImVec2& b, double msJeBildpunkt);
 // Missionsordner (mission.txt), Startflaeche, Einblendungen (rc586)
 void missionsDateiSchreiben();
 std::vector<std::pair<std::string, std::string>> letzteMissionen();
@@ -1933,6 +1965,9 @@ float ansichtsSchalter(bool nurMessen);
 void drawKartenStatistik();
 bool entityFokus();
 int reiterFuerSkriptRef(const std::string& ref);
+std::string aktiverSkriptRef();
+bool skriptTextLaden(const std::string& ref, std::string& text);
+void skriptOeffnen(const std::string& ref, bool anlegen);
 // Einen Reiter speichern, auf Wunsch unter einem neuen Pfad (ohne Dialog).
 bool reiterSpeichernUnter(int reiter, const std::string& pfad);
 void selectByPath(const Path& p);

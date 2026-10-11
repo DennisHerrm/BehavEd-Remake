@@ -334,6 +334,37 @@ bool gibtEs(const std::string& pfad) {
     return !pfad.empty() && std::filesystem::exists(std::filesystem::u8path(pfad), ec);
 }
 
+}  // namespace
+
+// Der ICARUS-Pfad des aktiven Reiters ("md_x/intro").
+std::string aktiverSkriptRef() { return skriptRef(g_app->path, g_app->skriptPfad); }
+
+// Der Text eines Skripts, das nicht offen ist: Missionsordner, Archive (.txt,
+// sonst .IBI zurueckuebersetzt).
+bool skriptTextLaden(const std::string& ref, std::string& text) {
+    if (g_app->missionAktiv && !g_app->mission.projektOrdner.empty()) {
+        const std::string datei = pfadVerbinden(g_app->mission.projektOrdner, "scripts/" + ref + ".txt");
+        if (gibtEs(datei)) {
+            text = slurp(datei);
+            return true;
+        }
+    }
+    if (readFromArchives("scripts/" + ref + ".txt", text)) {
+        return true;
+    }
+    std::string ibi;
+    if (readFromArchives("scripts/" + ref + ".IBI", ibi)) {
+        std::vector<IbiBlock> bl;
+        std::vector<Diag> d;
+        Script sc;
+        if (readIbi(ibi, bl, d) && decompile(bl, g_app->db, sc, d)) {
+            text = writeScript(sc);
+            return true;
+        }
+    }
+    return false;
+}
+
 // Ein Skript zu einem Verweis oeffnen - offen, im Missionsordner, in den
 // Archiven - oder neu anlegen.
 void skriptOeffnen(const std::string& ref, bool anlegen) {
@@ -363,6 +394,8 @@ void skriptOeffnen(const std::string& ref, bool anlegen) {
         openScriptFromMemory(vorlage, "scripts/" + ref + ".txt");
     }
 }
+
+namespace {
 
 // --- NPC-Typen fuer die Auswahl ------------------------------------------------
 const std::vector<std::string>& npcTypen() {

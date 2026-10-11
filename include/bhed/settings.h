@@ -156,6 +156,8 @@ struct Settings {
     // Zielspiel: true = Multiplayer. Dann prueft der Pruefer zusaetzlich die
     // MP-Regeln (validate(..., mp), Codes M001...).
     bool mpZiel = false;
+    // Script Flow: 0 Classic (der Baum), 1 Graph (Missionsfluss), 2 Spuren.
+    int flussAnsicht = 0;
     // Die Trennlinien im Raster der geteilten Ansicht.
     float splitFracX = 0.5F;
     float splitFracY = 0.5F;

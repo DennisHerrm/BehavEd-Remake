@@ -30,6 +30,7 @@ add_library(bhed_core STATIC
   src/pk3write.cpp
   src/entdefs.cpp
   src/missionbau.cpp
+  src/missionsgraph.cpp
   src/sound.cpp
   src/timeline.cpp
   src/bspgeo.cpp
@@ -186,6 +187,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/app_view3d.cpp
     gui/app_mission.cpp
     gui/uiicons.cpp
+    gui/app_ansichten.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp

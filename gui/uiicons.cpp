@@ -94,6 +94,8 @@ ImVec4 uiIconFarbe(UiIcon icon) {
         case UiIcon::Explorer: c = ImVec4{0.98F, 0.75F, 0.30F, 1.0F}; break;
         case UiIcon::Warnung: c = ImVec4{1.00F, 0.75F, 0.30F, 1.0F}; break;
         case UiIcon::Haken: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
+        case UiIcon::Abspielen: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
+        case UiIcon::Pause: c = ImVec4{1.00F, 0.75F, 0.30F, 1.0F}; break;
         default: break;
     }
     // Helles Farbschema: dieselbe Farbe, dunkler.
@@ -293,6 +295,13 @@ void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe)
             break;
         case UiIcon::Haken:
             z.zug({ImVec2{2.5F, 8.5F}, ImVec2{6.5F, 12.5F}, ImVec2{13.5F, 4.0F}});
+            break;
+        case UiIcon::Abspielen:
+            z.flaeche({ImVec2{4.0F, 2.5F}, ImVec2{13.5F, 8.0F}, ImVec2{4.0F, 13.5F}});
+            break;
+        case UiIcon::Pause:
+            z.flaeche({ImVec2{3.5F, 2.5F}, ImVec2{6.5F, 2.5F}, ImVec2{6.5F, 13.5F}, ImVec2{3.5F, 13.5F}});
+            z.flaeche({ImVec2{9.5F, 2.5F}, ImVec2{12.5F, 2.5F}, ImVec2{12.5F, 13.5F}, ImVec2{9.5F, 13.5F}});
             break;
         case UiIcon::Warnung:
             z.zug({ImVec2{8.0F, 1.5F}, ImVec2{15.0F, 14.0F}, ImVec2{1.0F, 14.0F}}, true);

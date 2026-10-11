@@ -1,5 +1,31 @@
 # Änderungen seit rc94
 
+## rc587 — Script Flow: Classic, Graph und Spuren
+
+Gewünscht: „ich finde alle gut kannst du alle 3 modi einbauen und testen?“ und
+„das man wenn man will in alle 3 arbeiten kann durch umschalten“ (Entwurf im
+Artifact „BehavEd Missionsgraph Vorschau“).
+
+* **Umschalter** in der Kopfzeile von Script Flow (`ansichtsUmschalter`,
+  Einstellung `flussAnsicht`). Graph/Spuren nehmen den ganzen Bereich ein
+  (`drawFlowArea` → `drawFlussAnsicht`), Classic bleibt der Baum mit Feldern.
+* **Graph** (`missionsgraph.h/.cpp`, ctest `missionbau` +10 Proben): Knoten =
+  Spielerstart, Starter, Figuren, Kartenwechsel, Auslöser (immer), andere
+  Entities nur verbunden, Skripte; Kanten target*, *script, use, affect
+  (gestrichelt), run. Anordnung in Spalten nach längstem Weg, Teile
+  untereinander. UI: Bezier-Kanten, Zoom/Verschieben, Knoten ziehen, Verbinden
+  vom Ausgangspunkt (`graphVerbinden`: target + targetname, *script, use/run ans
+  Skriptende), Doppelklick, Details rechts oder (schmale Spalte) darunter.
+  Inhalt der Knoten mittig (shank).
+* **Spuren**: Kamera-Einstellungen (MOVE bis MOVE), je Figur eine Spur, Dialog
+  (CHAN_VOICE), Skript-Spur mit waits; Klick wählt die Zeile, rechte Kante
+  ändert die Dauer (`kantenGriff`, wie unter der Karte), Lineal, Abspielen
+  auch ohne Kartenansicht.
+* **Selbsttest** `missionsbau` 50 Prüfungen (neu: Graph-Kanten, Verbinden mit
+  der Maus, use ins Skript, Doppelklick, Spuren-Klick und Kante ziehen,
+  Strg+Z in Classic wirkt in den Spuren, 24× umschalten ohne Verlust,
+  Entity-Rückgängig entfernt die Graph-Kante).
+
 ## rc586 — Map-Tab modern: Icons, Inspektor, Hervorheben, Gizmo, Startfläche
 
 Gewünscht: „ja mach bitte alles. Ich will das es moderner und intuitiv aussieht
