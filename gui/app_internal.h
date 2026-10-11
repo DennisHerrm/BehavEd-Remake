@@ -373,6 +373,8 @@ struct App {
     // Himmel ganz und man sieht den Verlaufshintergrund. 589 Flaechen in den
     // 43 Karten sind betroffen.
     bool showSky = true;
+    bool zeigeSpuren = true;     // Schwertspuren (rc592), wie cg_saberTrail
+    int spurBaender = 0;         // gezeichnete Spurbaender, aufsummiert (Selbsttest)
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand

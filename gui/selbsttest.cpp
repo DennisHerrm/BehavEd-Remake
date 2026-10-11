@@ -10223,12 +10223,16 @@ std::vector<Schritt> szenenSchritte() {
                      double anteil = 0.0;
                      while (is >> anteil) {
                          const double an = anteil;
+                         // 150 ms VOR der Stelle anfangen und laufen lassen:
+                         // Schwertspuren (rc592) entstehen erst aus Bewegung.
                          neu.push_back(tu("Szene " + sk + ": zu " + std::to_string(an), [=] {
-                             g_app->playing = false;
                              g_app->throughCamera = true;
-                             g_app->playMs = st->dauer * an;
+                             g_app->playMs = std::max(0.0, st->dauer * an - 150.0);
+                             g_app->playing = true;
                              g_app->mapDirty = true;
                          }));
+                         neu.push_back(pause(0.15));
+                         neu.push_back(tu("Szene " + sk + ": anhalten", [] { g_app->playing = false; g_app->mapDirty = true; }));
                          neu.push_back(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
                          neu.push_back(pause(0.3));
                          std::string name = sk;
@@ -10300,12 +10304,15 @@ std::vector<Schritt> szenenSchritte() {
                      std::snprintf(z, sizeof(z),
                                    "Szenenlauf: %s [%s] | Traeger \"%s\" | Dauer %.1f s | %d Befehle aus %zu Skript(en) | "
                                    "Figuren %zu (ohne Modell %d%s) | Effekte %zu | Klaenge %zu (fehlen %d%s) | "
-                                   "Bild max %.0f ms, Mittel %.0f ms (%d Bilder) | D3D %zu | Hinweise %zu | GPU \"%s\"",
+                                   "Bild max %.0f ms, Mittel %.0f ms (%d Bilder) | D3D %zu | Hinweise %zu | GPU \"%s\" | "
+                                   "Schwertspuren %d",
                                    sk.c_str(), k.c_str(), ab.traeger.c_str(), st->dauer / 1000.0, ab.befehle,
                                    ab.skripte.size(), g_app->scene.actors.size(), ohneModell, ohneListe.c_str(),
                                    g_app->effectRunners.size(), klaenge.size(), fehlt, fehltListe.c_str(), st->bildMax,
                                    st->bilder > 0 ? st->bildSumme / st->bilder : 0.0, st->bilder,
-                                   g_app->d3dMeldungen.size() - st->meld, ab.hinweise.size(), g_app->gpuFehler.c_str());
+                                   g_app->d3dMeldungen.size() - st->meld, ab.hinweise.size(), g_app->gpuFehler.c_str(),
+                                   g_app->spurBaender);
+                     g_app->spurBaender = 0;
                      diag::detail(z);
                      for (const std::string& h : ab.hinweise) {
                          diag::detail("Szenenlauf: " + sk + " | Hinweis: " + h);

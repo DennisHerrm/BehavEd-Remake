@@ -147,6 +147,10 @@ struct KlingenQuad {
     float ecke[4][3]{};
     float farbe[3]{};                       // 0..255, wenn das Bild fehlt
     const TextureSet::Tex* tex = nullptr;   // blue_glow2 / blue_line
+    // Schwertspur (rc592): das Bild (saberBlur) wird mit `farbe` EINGEFAERBT
+    // und mit `staerke` ausgeblendet - wie die CTrail-Baender der Engine.
+    bool spur = false;
+    float staerke = 1.0F;
 };
 int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
                    std::string* fehler);

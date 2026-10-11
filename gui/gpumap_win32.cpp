@@ -31,6 +31,7 @@
 
 #ifdef BHED_WITH_D3D11
 
+#include <algorithm>
 #include <d3d11.h>
 #include <dxgi1_4.h>
 #include <psapi.h>
@@ -3642,6 +3643,14 @@ int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
             k.uv[1] = vv[e];
             for (int a = 0; a < 3; ++a) { k.farbe[a] = q.farbe[a] / 255.0F; }
             k.farbe[3] = mitBild ? 1.0F : 0.0F;
+            if (q.spur) {
+                // a >= 2: Bild x Farbe x (a - 2) - siehe klingePixelShaderHlsl.
+                if (mitBild) {
+                    k.farbe[3] = 2.0F + std::clamp(q.staerke, 0.0F, 1.0F);
+                } else {
+                    for (int a = 0; a < 3; ++a) { k.farbe[a] *= std::clamp(q.staerke, 0.0F, 1.0F) * 0.5F; }
+                }
+            }
             ecken.push_back(k);
         }
     }

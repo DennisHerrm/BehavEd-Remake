@@ -27,7 +27,9 @@
 #include <cstdio>
 #include <array>
 #include <atomic>
+#include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <set>
@@ -2621,6 +2623,103 @@ const TextureSet::Tex* bladeTexture(const std::string& farbe, bool glow) {
             std::chrono::steady_clock::now() - ladeBeginn).count());
     return put.first->second.empty() ? nullptr : &put.first->second;
 }
+
+// --- Schwertspur (rc592) -----------------------------------------------------------
+//
+// cg_players.cpp (CG_AddSaberBlade): solange das Schwert "in Aktion" ist,
+// entsteht je Bild ein Band vom alten zum neuen Stand der Klinge (Spitze 3
+// Einheiten verlaengert), mit gfx/effects/sabers/saberBlur in der Farbe der
+// Klinge; es lebt Dauer/5 (die Dauer kommt aus dem Schwertzug, 75 bis 300 ms -
+// hier 300/5 = 60). "In Aktion" setzt das Spiel bei Schwertzuegen; hier gilt:
+// die Spitze bewegt sich schnell (mehr als 150 Einheiten je Sekunde).
+namespace {
+struct SpurProbe {
+    double ms = 0.0;
+    float a[3]{};
+    float b[3]{};
+};
+std::map<std::uint64_t, std::deque<SpurProbe>> g_spuren;
+constexpr double kSpurLeben = 60.0;
+
+const TextureSet::Tex* spurBild() {
+    static const TextureSet::Tex* bild = nullptr;
+    static bool gesucht = false;
+    static const void* stand = nullptr;
+    if (gesucht && stand == &g_app->texCache) { return bild; }
+    gesucht = true;
+    stand = &g_app->texCache;
+    const std::string pfad = "gfx/effects/sabers/saberBlur";
+    const auto have = g_app->texCache.find(pfad);
+    if (have != g_app->texCache.end()) {
+        bild = have->second.empty() ? nullptr : &have->second;
+        return bild;
+    }
+    TextureSet::Tex t;
+    for (const std::string& versuch : textureCandidates(pfad)) {
+        std::string data;
+        if (!readFromArchives(versuch, data)) { continue; }
+        const image::Image im = image::decode(reinterpret_cast<const unsigned char*>(data.data()), data.size());
+        if (!im.ok || im.width <= 0 || im.height <= 0) { continue; }
+        t = shrink(im, 256);
+        break;
+    }
+    const auto put = g_app->texCache.emplace(pfad, std::move(t));
+    bild = put.first->second.empty() ? nullptr : &put.first->second;
+    return bild;
+}
+
+void schwertSpur(std::uint64_t schluessel, const float wurzel[3], const float spitze[3], const KlingeDraw& kd,
+                 std::vector<gpu::KlingenQuad>& aus) {
+    if (!g_app->zeigeSpuren) { return; }
+    const double ms = g_app->playMs;
+    float dir[3] = {spitze[0] - wurzel[0], spitze[1] - wurzel[1], spitze[2] - wurzel[2]};
+    const float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    if (len < 0.5F) { return; }
+    std::deque<SpurProbe>& d = g_spuren[schluessel];
+    // Zurueckgespult oder lange nichts: von vorn (cg_players.cpp: "lastTime >
+    // cg.time" und der 300-ms-Schnitt fuer alte Stuecke).
+    if (!d.empty() && (ms < d.back().ms - 0.5 || ms - d.back().ms > 300.0)) { d.clear(); }
+    if (d.empty() || ms - d.back().ms > 2.0) {
+        SpurProbe p;
+        p.ms = ms;
+        for (int k = 0; k < 3; ++k) {
+            p.a[k] = wurzel[k];
+            p.b[k] = spitze[k] + dir[k] / len * 3.0F;
+        }
+        d.push_back(p);
+    }
+    while (d.size() > 2U && ms - d[1].ms > kSpurLeben) { d.pop_front(); }
+    if (d.size() < 2U) { return; }
+    const TextureSet::Tex* bild = spurBild();
+    for (std::size_t i = 1; i < d.size(); ++i) {
+        const SpurProbe& alt = d[i - 1];
+        const SpurProbe& neu = d[i];
+        const double alter = ms - alt.ms;
+        if (alter > kSpurLeben || neu.ms - alt.ms <= 0.0) { continue; }
+        // In Aktion? Die Spitze muss sich schnell genug bewegen.
+        const float dx = neu.b[0] - alt.b[0];
+        const float dy = neu.b[1] - alt.b[1];
+        const float dz = neu.b[2] - alt.b[2];
+        const double tempo = std::sqrt(dx * dx + dy * dy + dz * dz) / (neu.ms - alt.ms);
+        if (tempo < 0.15) { continue; }
+        gpu::KlingenQuad q;
+        for (int k = 0; k < 3; ++k) {
+            q.ecke[0][k] = neu.b[k];
+            q.ecke[1][k] = alt.b[k];
+            q.ecke[2][k] = alt.a[k];
+            q.ecke[3][k] = neu.a[k];
+            // Die Farbe der Spur: wie CG_RGBForSaberColor (das Licht), nicht
+            // das Klingenbild.
+            q.farbe[k] = std::clamp(kd.licht[k] * 255.0F, 0.0F, 255.0F);
+        }
+        q.tex = bild;
+        q.spur = true;
+        q.staerke = static_cast<float>(1.0 - alter / kSpurLeben);
+        aus.push_back(q);
+        ++g_app->spurBaender;
+    }
+}
+}  // namespace
 
 void bladeColorFor(const std::string& name, std::uint8_t out[3]) {
     struct Eintrag {
@@ -10793,7 +10892,9 @@ void drawMapView() {
                     // Einmal je Bild neu, damit der Bericht den Stand von
                     // eben zeigt und nicht den vom Laden.
                     g_app->figurArten.clear();
+                    int figurNr = -1;   // Schluessel der Schwertspuren
                     for (const ActorDraw& a : gpuFiguren) {
+                        ++figurNr;
                         if (a.model == nullptr) {
                             continue;
                         }
@@ -11052,6 +11153,11 @@ void drawMapView() {
                                     // Erst der breite Glanz in der Klingen-
                                     // farbe, dann der schmale, fast weisse
                                     // Kern (Radius / 3) - CG_DoSaber.
+                                    // Die Spur zuerst (sie liegt hinter der Klinge).
+                                    schwertSpur((static_cast<std::uint64_t>(figurNr) << 16) ^
+                                                    (static_cast<std::uint64_t>(ai2) << 8) ^
+                                                    static_cast<std::uint64_t>(kn),
+                                                wA, wB, kd, klingen);
                                     const float radien[2] = {kd.radius, kd.radius / 3.0F};
                                     for (int lage2 = 0; lage2 < 2; ++lage2) {
                                         gpu::KlingenQuad q;

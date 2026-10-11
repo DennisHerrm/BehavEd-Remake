@@ -138,7 +138,8 @@ std::string vollbildVertexShaderHlsl() { return kVollbildVs; }
 // Zwei Baender je Klinge, schon in Weltkoordinaten und zur Kamera gedreht
 // (gpu::baueKlingenband). Die Farbe kommt aus der Textur (blue_glow2,
 // blue_line), und nur wenn sie fehlt, aus der Ersatzfarbe - genau wie im
-// Rasterer. gFarbe.a sagt, welches von beiden: 1 Textur, 0 Farbe.
+// Rasterer. gFarbe.a sagt, welches von beiden: 1 Textur, 0 Farbe. Ab 2 (rc592,
+// Schwertspur): das Bild EINGEFAERBT und mit (a - 2) ausgeblendet.
 std::string klingeVertexShaderHlsl() {
     std::string s;
     s += kKonstanten;
@@ -175,6 +176,9 @@ struct VSOut {
 };
 float4 main(VSOut ein) : SV_TARGET {
     float3 t = gBild.Sample(gSampler, ein.uv).rgb;
+    if (ein.farbe.a > 1.5) {
+        return float4(t * ein.farbe.rgb * (ein.farbe.a - 2.0), 1);
+    }
     return float4(lerp(ein.farbe.rgb, t, ein.farbe.a), 1);
 }
 )";
