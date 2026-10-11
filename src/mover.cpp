@@ -1878,3 +1878,73 @@ std::map<std::string, std::vector<std::string>> leseBmodelSets(const std::string
 }
 
 }  // namespace bhed
+
+namespace bhed {
+namespace {
+// Ein Buchstabe eines Lichtstilmusters zur Zeit: 'a' 0 bis 'z' 1, leer voll.
+float musterZuZeit(const std::string& m, double ms) {
+    if (m.empty()) { return 1.0F; }
+    const double schritt = std::floor(std::max(0.0, ms) / 50.0);
+    const auto i = static_cast<std::size_t>(std::fmod(schritt, static_cast<double>(m.size())));
+    const int w = std::clamp(static_cast<int>(std::tolower(static_cast<unsigned char>(m[i]))) - 'a', 0, 25);
+    return static_cast<float>(w) / 25.0F;
+}
+}  // namespace
+
+std::array<std::array<float, 3>, 256> lichtStilGewichteZuZeit(const std::vector<MapEntity>& ents,
+                                                              const std::vector<LichtSchaltung>& schaltungen,
+                                                              double ms) {
+    std::array<std::array<float, 3>, 256> g{};
+    for (auto& c : g) { c = {1.0F, 1.0F, 1.0F}; }
+    // Die Muster 1..31 (je Kanal) zur Zeit.
+    std::array<std::array<std::string, 3>, 32> muster{};
+    for (const MapEntity& e : ents) {
+        if (e.classname != "worldspawn") { continue; }
+        for (int i = 1; i < 32; ++i) {
+            static const char* kKanal[3] = {"r", "g", "b"};
+            for (int c = 0; c < 3; ++c) {
+                if (const std::string* v = e.find("ls_" + std::to_string(i) + kKanal[c])) {
+                    muster[static_cast<std::size_t>(i)][static_cast<std::size_t>(c)] = *v;
+                }
+            }
+        }
+        break;
+    }
+    const auto musterGewicht = [&](int stil) {
+        std::array<float, 3> w{1.0F, 1.0F, 1.0F};
+        if (stil > 0 && stil < 32) {
+            for (std::size_t c = 0; c < 3U; ++c) { w[c] = musterZuZeit(muster[static_cast<std::size_t>(stil)][c], ms); }
+        }
+        return w;
+    };
+    for (int i = 1; i < 32; ++i) { g[static_cast<std::size_t>(i)] = musterGewicht(i); }
+    const auto zustand = [&](int stil, bool an, int musterVon) {
+        if (stil <= 0 || stil > 255) { return; }
+        if (musterVon > 0 && musterVon < 256) {
+            g[static_cast<std::size_t>(stil)] = musterGewicht(musterVon);
+        } else {
+            const float v = an ? 1.0F : 0.0F;
+            g[static_cast<std::size_t>(stil)] = {v, v, v};
+        }
+    };
+    // Der Zustand der Karte (SP_light) ...
+    for (const MapEntity& e : ents) {
+        if (e.classname != "light" || e.find("targetname") == nullptr) { continue; }
+        const std::string* st = e.find("style");
+        const int stil = st != nullptr ? std::atoi(st->c_str()) : 0;
+        const std::string* sf = e.find("spawnflags");
+        const bool an = ((sf != nullptr ? std::atoi(sf->c_str()) : 0) & 4) == 0;
+        const std::string* sw = e.find(an ? "switch_style" : "style_off");
+        zustand(stil, an, sw != nullptr ? std::atoi(sw->c_str()) : 0);
+    }
+    // ... und jede Schaltung bis jetzt, in ihrer Reihenfolge.
+    std::vector<const LichtSchaltung*> bis;
+    for (const LichtSchaltung& l : schaltungen) {
+        if (l.ms <= ms) { bis.push_back(&l); }
+    }
+    std::stable_sort(bis.begin(), bis.end(), [](const LichtSchaltung* a, const LichtSchaltung* b) { return a->ms < b->ms; });
+    for (const LichtSchaltung* l : bis) { zustand(l->stil, l->an, l->musterVon); }
+    return g;
+}
+
+}  // namespace bhed

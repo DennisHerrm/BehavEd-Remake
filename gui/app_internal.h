@@ -2002,6 +2002,9 @@ CameraState camStateAt(double ms);
 bool vorschauKamera(Camera& vc, float aspekt);
 // Die Vorschau ueber die Kartenansicht legen (nach dem Kartenbild).
 void kameraVorschauZeigen();
+// Schaltbare und flackernde Lichter zur Zeit der Zeitleiste in die Lightmaps
+// mischen (rc593). Billig, wenn sich nichts geaendert hat.
+void lichtStileZuZeit();
 // Die MOVE-Schluessel des Skripts, in der Reihenfolge, in der App::selectedKey
 // zaehlt: Ort, Winkel (erstes PAN danach, sonst das vorige) und Zeile.
 struct KameraSchluessel {

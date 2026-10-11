@@ -1349,6 +1349,18 @@ struct ShotView {
 
 bool shotAtSelection(ShotView& out);
 
+void lichtStileZuZeit() {
+    if (g_app->geo.stilSchichten.empty()) { return; }
+    // Die Schaltungen kommen aus dem Nachbau des Skripts (use auf ein light,
+    // auch ueber Relais und Ausloeser - MoverSim::lichtSchaltungen).
+    const int seiten = stileAnwenden(g_app->geo,
+                                     lichtStilGewichteZuZeit(g_app->map.entities, g_app->moverSim.lichtSchaltungen(),
+                                                             g_app->playMs));
+    if (seiten > 0) {
+        g_app->mapDirty = true;
+    }
+}
+
 bool vorschauKamera(Camera& vc, float aspekt) {
     const bool spielt = g_app->playing && g_app->followCam && g_app->camTrackValid &&
                         !g_app->camTrack.segments.empty();
@@ -10933,6 +10945,8 @@ void drawMapView() {
         // Block, und das Effektnetz existierte noch gar nicht.
         //
         if (gpuBereit) {
+            // Lichtschalter und Flackern zur Zeit des Bildes (rc593).
+            lichtStileZuZeit();
             const auto tGpu0 = std::chrono::steady_clock::now();
             // --- Ein GPU-Bild aus einer Kamera (rc592) -----------------------
             //

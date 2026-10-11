@@ -159,6 +159,14 @@ struct LichtSchaltung {
     int musterVon = 0;           // 0: fest "z"/"a", sonst das Muster dieses Stils
 };
 
+// Die Helligkeit jedes Lichtstils zur Zeit `ms` (rc593): die ls_-Muster des
+// worldspawn laufen mit 50 ms je Buchstabe (CG_RunLightStyles: cg.time / 50),
+// ein light mit targetname steht, wie die letzte Schaltung bis dahin es sagt
+// (misc_lightstyle_set: an "z" oder das Muster von switch_style, aus "a" oder
+// das von style_off). Vor der ersten Schaltung gilt der Zustand der Karte.
+[[nodiscard]] std::array<std::array<float, 3>, 256> lichtStilGewichteZuZeit(
+    const std::vector<MapEntity>& ents, const std::vector<LichtSchaltung>& schaltungen, double ms);
+
 // Ein Bruch, fuer Proben und Protokoll.
 struct Bruch {
     std::size_t entity = 0;

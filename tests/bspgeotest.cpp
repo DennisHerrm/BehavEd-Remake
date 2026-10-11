@@ -8,6 +8,7 @@
 #include "bhed/bsp.h"
 #include "bhed/gpuskin.h"
 #include "bhed/mapview.h"
+#include "bhed/mover.h"
 
 #include <algorithm>
 #include <array>
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
         g.surfaces.push_back(s);   // teilt sich den Block
         std::array<std::array<float, 3>, 256> an{};
         for (auto& c : an) { c = {1.0F, 1.0F, 1.0F}; }
+        const bhed::BspGeometry roh = g;   // fuer die schaltbare Fassung unten
         const int n = bhed::stileEinrechnen(g, an);
         expect("Stile: zwei Flaechen eingerechnet", n == 2);
         expect("Stile: Block auf Seite 0 traegt Stil 0 + Stil 32",
@@ -137,6 +139,53 @@ int main(int argc, char** argv) {
         std::vector<std::uint8_t> vor = g2.lightmaps[0];
         (void)bhed::stileEinrechnen(g2, an);
         expect("Stile: Unsinnskoordinaten aendern keine Lightmap", g2.lightmaps[0] == vor);
+
+        // --- Schaltbare Lichter ueber die Zeit (rc593) ----------------------
+        //
+        // Ein Stil, der sich im Ablauf aendern kann (Licht mit targetname,
+        // flackerndes ls_-Muster), wird NICHT fest eingerechnet, sondern als
+        // Schicht gemerkt; stileAnwenden mischt die Seite mit dem Gewicht der
+        // Zeit neu - und zaehlt den Stand der Seite hoch, damit die
+        // Grafikkarte neu laedt.
+        bhed::BspGeometry dg = roh;
+        std::array<bool, 256> dyn{};
+        dyn[32] = true;
+        (void)bhed::stileEinrechnen(dg, an, &dyn);
+        auto dpx = [&](int x, int y) -> std::uint8_t* {
+            return &dg.lightmaps[0][static_cast<std::size_t>((y * w + x) * 3)];
+        };
+        expect("Schaltbar: nach dem Laden steht nur Stil 0 in der Seite", dpx(40, 40)[0] == 50 && dpx(40, 40)[1] == 0);
+        std::array<std::array<float, 3>, 256> aus = an;
+        aus[32] = {0.0F, 0.0F, 0.0F};
+        const auto stand0 = dg.lightmapStand.empty() ? 0U : dg.lightmapStand[0];
+        const int geaendert = bhed::stileAnwenden(dg, an);
+        expect("Schaltbar: Licht an - Seite 0 traegt Stil 0 + Stil 32, Stand hoch",
+               geaendert == 1 && dpx(40, 40)[0] == 150 && dpx(40, 40)[1] == 200 && dg.lightmapStand[0] != stand0);
+        expect("Schaltbar: dasselbe Gewicht noch einmal aendert nichts", bhed::stileAnwenden(dg, an) == 0);
+        (void)bhed::stileAnwenden(dg, aus);
+        expect("Schaltbar: Licht aus - wieder nur Stil 0", dpx(40, 40)[0] == 50 && dpx(40, 40)[1] == 0 &&
+                                                            dpx(10, 10)[0] == 50);
+        expect("Schaltbar: das Lichtgitter bekommt das Gewicht mit", dg.stilGewicht[32][0] == 0.0F);
+
+        // Gewichte zur Zeit: Schalter aus dem Skript und ls_-Muster (50 ms je
+        // Buchstabe, CG_RunLightStyles).
+        std::vector<bhed::MapEntity> e2(2);
+        e2[0].classname = "worldspawn";
+        e2[0].keys = {{"ls_1r", "az"}, {"ls_1g", "az"}, {"ls_1b", "az"}};
+        e2[1].classname = "light";
+        e2[1].targetname = "schalter";
+        e2[1].keys = {{"targetname", "schalter"}, {"style", "33"}};
+        const std::array<bool, 256> d2 = bhed::lichtStilDynamisch(e2);
+        expect("Dynamisch: flackerndes Muster und Licht mit targetname, Stil 0 und unbenutzte nicht",
+               d2[1] && d2[33] && !d2[0] && !d2[2]);
+        std::vector<bhed::LichtSchaltung> sch;
+        sch.push_back(bhed::LichtSchaltung{1, 33, 0.0, true, 0});
+        sch.push_back(bhed::LichtSchaltung{1, 33, 1000.0, false, 0});
+        const auto w0 = bhed::lichtStilGewichteZuZeit(e2, sch, 0.0);
+        const auto w1 = bhed::lichtStilGewichteZuZeit(e2, sch, 1500.0);
+        const auto w2 = bhed::lichtStilGewichteZuZeit(e2, sch, 60.0);
+        expect("Zur Zeit: Licht an bei 0, aus nach dem use bei 1000", w0[33][0] == 1.0F && w1[33][0] == 0.0F);
+        expect("Zur Zeit: ls_1 'az' - bei 0 ms a (0), bei 60 ms z (1)", w0[1][0] == 0.0F && w2[1][0] == 1.0F);
     }
 
     if (argc < 2) {

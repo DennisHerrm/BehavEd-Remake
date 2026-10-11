@@ -223,6 +223,8 @@ int g_veraltet = 0;
 // Ein Bild, auf dem genau ein Ding stimmt, ist der beste Hinweis: es zeigt,
 // welche Eigenschaft die schwarzen Flaechen von der richtigen unterscheidet.
 std::map<int, ID3D11ShaderResourceView*> g_lightmaps;
+// Der Inhaltsstand je hochgeladener Lightmap (BspGeometry::lightmapStand).
+std::map<int, std::uint32_t> g_lightmapStandGpu;
 
 ID3D11Device* dev() {
     return static_cast<ID3D11Device*>(render::d3dDevice());
@@ -978,9 +980,14 @@ ID3D11ShaderResourceView* holeLightmap(const BspGeometry* geo, int platz) {
         geo->lightmaps[static_cast<std::size_t>(platz)];
     const BildQuelle quelle{src.data(), geo->lightmapW(static_cast<std::size_t>(platz)),
                             geo->lightmapH(static_cast<std::size_t>(platz))};
+    // Der Stand zaehlt jede Aenderung des INHALTS (schaltbare Lichter, rc593)
+    // - die Adresse bleibt dabei dieselbe.
+    const std::uint32_t stand = (static_cast<std::size_t>(platz) < geo->lightmapStand.size())
+                                    ? geo->lightmapStand[static_cast<std::size_t>(platz)]
+                                    : 0U;
     const auto it = g_lightmaps.find(platz);
     if (it != g_lightmaps.end()) {
-        if (g_lightmapQuelle[platz] == quelle) {
+        if (g_lightmapQuelle[platz] == quelle && g_lightmapStandGpu[platz] == stand) {
             return it->second;
         }
         ++g_veraltet;
@@ -1024,6 +1031,7 @@ ID3D11ShaderResourceView* holeLightmap(const BspGeometry* geo, int platz) {
     d->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
     g_lightmaps[platz] = srv;
+    g_lightmapStandGpu[platz] = stand;
     g_lightmapQuelle[platz] = quelle;
     return srv;
 }

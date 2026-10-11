@@ -12433,7 +12433,6 @@ bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out) {
 // ziehenden Schichten da. Jede Stufe wird ein eigener Eintrag hinter der
 // Box, mit ihrer Mischart, ihrer tcMod-Kette und der Wolkenhoehe.
 void wolkenLaden(const ShaderInfo& info, const std::string& name, TextureSet::Tex& himmel) {
-    if (std::getenv("BHED_MESSAUS") != nullptr && std::string(std::getenv("BHED_MESSAUS")).find("wolken") != std::string::npos) { return; }
     int zahl = 0;
     for (const ShaderInfo::Stage& st : info.stages) {
         if (st.lightmap || st.image.empty() || st.alphaGen == AlphaGen::Unsupported) {
@@ -13186,7 +13185,15 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
             // Stufe 0 einrechnen - VOR dem Netz, das die Eckenfarben kopiert
             // (rc592, siehe stileEinrechnen).
             {
-                const int stilFlaechen = stileEinrechnen(geo, lichtStilGewichte(g_app->map.entities));
+                // Schaltbare und flackernde Stile bleiben Schichten und werden
+                // je Bild zur Zeit gemischt (rc593, lichtStileZuZeit).
+                const std::array<bool, 256> dyn = lichtStilDynamisch(g_app->map.entities);
+                const int stilFlaechen = stileEinrechnen(geo, lichtStilGewichte(g_app->map.entities), &dyn);
+                (void)stileAnwenden(geo, lichtStilGewichteZuZeit(g_app->map.entities, {}, 0.0));
+                if (!geo.stilSchichten.empty()) {
+                    diag::detail("Lightmap-Stile: " + std::to_string(geo.stilSchichten.size()) +
+                                 " Schichten schaltbarer oder flackernder Lichter");
+                }
                 if (stilFlaechen > 0) {
                     diag::detail("Lightmap-Stile: " + std::to_string(stilFlaechen) +
                                  " Flaechen mit zusaetzlichen Lichtstufen eingerechnet");

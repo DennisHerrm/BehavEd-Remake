@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -142,6 +143,25 @@ struct BspGeometry {
         for (auto& c : g) { c = {1.0F, 1.0F, 1.0F}; }
         return g;
     }();
+    // --- Schaltbare Lichter ueber die Zeit (rc593) ----------------------
+    //
+    // Stile, die sich im Ablauf aendern koennen, stehen nicht fest in der
+    // Seite, sondern als Schicht: die Werte der Stilseite, schon an die Stelle
+    // der Stufe-0-Seite gelegt. stileAnwenden mischt die Seite aus
+    // `stilBasis` (alles Feste) und den Schichten mit ihrem Gewicht neu.
+    struct StilSchicht {
+        int seite = -1;
+        int stil = 0;
+        std::vector<std::uint8_t> wert;   // RGB, so gross wie die Seite
+    };
+    std::vector<StilSchicht> stilSchichten;
+    std::map<int, std::vector<std::uint8_t>> stilBasis;
+    // Mit welchem Gewicht die Schichten gerade in den Seiten stehen (am
+    // Anfang mit keinem).
+    std::array<std::array<float, 3>, 256> stilAngewandt{};
+    // Zaehlt je Seite jede Aenderung des Inhalts - die Grafikkarte laedt neu,
+    // wenn er sich aendert (holeLightmap).
+    std::vector<std::uint32_t> lightmapStand;
     // Breite und Hoehe je Lightmap. Die aus der .bsp sind 128x128; externe
     // (ladeExterneLightmaps) haben die Groesse ihres Bildes - q3map2 schreibt
     // sie mit -lightmapsize oft 512 oder 1024 gross. Fehlt ein Eintrag,
@@ -596,7 +616,23 @@ void setzeSpurVorlage(bool an) noexcept;
 // teilen, wird nur einmal addiert. Gibt die Zahl der Flaechen zurueck, die
 // etwas bekommen haben. Ein Lichtschalter im Skript (use auf ein light)
 // schaltet danach nichts mehr um - das Bild zeigt den Anfangszustand.
-int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht);
+//
+// `dynamisch[stil]` (rc593): dieser Stil kann sich im Ablauf aendern - er wird
+// nicht eingerechnet, sondern als Schicht gemerkt (BspGeometry::stilSchichten).
+// Die Eckenfarben bekommen auch dann das Gewicht aus `gewicht`.
+struct MapEntity;
+int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht,
+                    const std::array<bool, 256>* dynamisch = nullptr);
+
+// Die Schichten mit neuen Gewichten in ihre Seiten mischen. Nur Seiten mit
+// einem Stil, dessen Gewicht sich geaendert hat; gibt deren Zahl zurueck.
+// Setzt auch stilGewicht (Lichtgitter).
+int stileAnwenden(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht);
+
+// Welche Stile koennen sich im Ablauf aendern? 1..31 mit einem flackernden
+// ls_-Muster (verschiedene Buchstaben), 32.. jedes light mit targetname (ein
+// use schaltet es).
+[[nodiscard]] std::array<bool, 256> lichtStilDynamisch(const std::vector<MapEntity>& ents);
 
 // Die Helligkeit jedes Stils zu Beginn, wie CG_SetLightstyle sie aus den
 // CS_LIGHT_STYLES liest ('a' = 0 bis 'z' = 1, leer = voll):

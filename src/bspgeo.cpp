@@ -839,9 +839,14 @@ BspMesh buildMesh(const BspGeometry& geo, int level, bool skipSky) {
     return buildRange(geo, level, skipSky, 0, geo.surfaces.size());
 }
 
-int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht) {
+int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht,
+                    const std::array<bool, 256>* dynamisch) {
     geo.stilGewicht = gewicht;   // auch fuers Lichtgitter (sampleLightGrid)
-    if (std::getenv("BHED_MESSAUS") != nullptr && std::string(std::getenv("BHED_MESSAUS")).find("stile") != std::string::npos) { return 0; }
+    geo.stilSchichten.clear();
+    geo.stilBasis.clear();
+    geo.stilAngewandt = {};
+    geo.lightmapStand.assign(geo.lightmaps.size(), 0U);
+    std::map<std::pair<int, int>, std::size_t> schichtVon;   // (Seite, Stil) -> Nummer
     // Quellseiten unveraendert lesen: liegt eine Stilseite zugleich als
     // Stufe-0-Seite in Gebrauch, darf das Einrechnen sie nicht vorher
     // veraendern. Kopiert wird nur, was als Quelle dient.
@@ -863,7 +868,8 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
             // --- Die Lightmap dieser Stufe ---------------------------------
             const int stil = s.stile[k];
             const auto& w = gewicht[static_cast<std::size_t>(stil)];
-            const bool hell = w[0] > 0.0F || w[1] > 0.0F || w[2] > 0.0F;
+            const bool dyn = stil != 255 && dynamisch != nullptr && (*dynamisch)[static_cast<std::size_t>(stil)];
+            const bool hell = dyn || w[0] > 0.0F || w[1] > 0.0F || w[2] > 0.0F;
             const int p0 = s.lightmap;
             const int pk = s.stilLightmap[k];
             if (stil != 255 && hell && p0 >= 0 && pk >= 0 &&
@@ -921,6 +927,21 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
                             maske.assign(static_cast<std::size_t>(bw) * static_cast<std::size_t>(bh), 0);
                         }
                         std::vector<std::uint8_t>& ziel = geo.lightmaps[static_cast<std::size_t>(p0)];
+                        // Ein schaltbarer Stil geht in seine Schicht, nicht in
+                        // die Seite (Gewicht 1 - es kommt erst beim Anwenden).
+                        std::vector<std::uint8_t>* schicht = nullptr;
+                        if (dyn) {
+                            auto sv = schichtVon.find({p0, stil});
+                            if (sv == schichtVon.end()) {
+                                BspGeometry::StilSchicht neu;
+                                neu.seite = p0;
+                                neu.stil = stil;
+                                neu.wert.assign(bytes, 0U);
+                                geo.stilSchichten.push_back(std::move(neu));
+                                sv = schichtVon.emplace(std::make_pair(p0, stil), geo.stilSchichten.size() - 1U).first;
+                            }
+                            schicht = &geo.stilSchichten[sv->second].wert;
+                        }
                         for (int y = y0; y < y1; ++y) {
                             const int ys = y + dy;
                             if (ys < 0 || ys >= bh) { continue; }
@@ -934,6 +955,13 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
                                 const std::size_t zi = m * 3U;
                                 const std::size_t qi = (static_cast<std::size_t>(ys) * static_cast<std::size_t>(bw) +
                                                         static_cast<std::size_t>(xs)) * 3U;
+                                if (schicht != nullptr) {
+                                    for (int c = 0; c < 3; ++c) {
+                                        (*schicht)[zi + static_cast<std::size_t>(c)] =
+                                            qseite[qi + static_cast<std::size_t>(c)];
+                                    }
+                                    continue;
+                                }
                                 for (int c = 0; c < 3; ++c) {
                                     const float summe = static_cast<float>(ziel[zi + static_cast<std::size_t>(c)]) +
                                                         w[static_cast<std::size_t>(c)] *
@@ -969,6 +997,71 @@ int stileEinrechnen(BspGeometry& geo, const std::array<std::array<float, 3>, 256
         }
         if (etwas) { ++zahl; }
     }
+    // Die feste Seite (Stil 0 und alles Unveraenderliche) als Basis der
+    // Seiten, auf denen Schichten liegen.
+    for (const BspGeometry::StilSchicht& sch : geo.stilSchichten) {
+        if (geo.stilBasis.find(sch.seite) == geo.stilBasis.end()) {
+            geo.stilBasis.emplace(sch.seite, geo.lightmaps[static_cast<std::size_t>(sch.seite)]);
+        }
+    }
+    return zahl;
+}
+
+int stileAnwenden(BspGeometry& geo, const std::array<std::array<float, 3>, 256>& gewicht) {
+    geo.stilGewicht = gewicht;
+    if (geo.stilSchichten.empty()) { return 0; }
+    std::array<bool, 256> anders{};
+    bool irgendwas = false;
+    for (const BspGeometry::StilSchicht& sch : geo.stilSchichten) {
+        const auto st = static_cast<std::size_t>(sch.stil);
+        if (gewicht[st] != geo.stilAngewandt[st]) {
+            anders[st] = true;
+            irgendwas = true;
+        }
+    }
+    if (!irgendwas) { return 0; }
+    std::map<int, std::vector<std::size_t>> jeSeite;
+    std::set<int> neu;
+    for (std::size_t i = 0; i < geo.stilSchichten.size(); ++i) {
+        const BspGeometry::StilSchicht& sch = geo.stilSchichten[i];
+        jeSeite[sch.seite].push_back(i);
+        if (anders[static_cast<std::size_t>(sch.stil)]) { neu.insert(sch.seite); }
+    }
+    if (geo.lightmapStand.size() < geo.lightmaps.size()) { geo.lightmapStand.resize(geo.lightmaps.size(), 0U); }
+    int zahl = 0;
+    for (const int seite : neu) {
+        const auto b = geo.stilBasis.find(seite);
+        if (b == geo.stilBasis.end() || static_cast<std::size_t>(seite) >= geo.lightmaps.size()) { continue; }
+        const std::vector<std::uint8_t>& basis = b->second;
+        std::vector<std::uint8_t>& ziel = geo.lightmaps[static_cast<std::size_t>(seite)];
+        if (ziel.size() != basis.size()) { continue; }
+        std::vector<float> summe(basis.begin(), basis.end());
+        for (const std::size_t i : jeSeite[seite]) {
+            const BspGeometry::StilSchicht& sch = geo.stilSchichten[i];
+            const auto& w = gewicht[static_cast<std::size_t>(sch.stil)];
+            if (sch.wert.size() != summe.size() || (w[0] <= 0.0F && w[1] <= 0.0F && w[2] <= 0.0F)) { continue; }
+            for (std::size_t q = 0; q < summe.size(); q += 3U) {
+                for (std::size_t kk = 0; kk < 3U; ++kk) {
+                    summe[q + kk] += w[kk] * static_cast<float>(sch.wert[q + kk]);
+                }
+            }
+        }
+        bool geaendert = false;
+        for (std::size_t q = 0; q < summe.size(); ++q) {
+            const auto v = static_cast<std::uint8_t>(std::min(255.0F, summe[q] + 0.5F));
+            if (ziel[q] != v) {
+                ziel[q] = v;
+                geaendert = true;
+            }
+        }
+        if (geaendert) {
+            ++geo.lightmapStand[static_cast<std::size_t>(seite)];
+            ++zahl;
+        }
+    }
+    for (std::size_t st = 0; st < 256U; ++st) {
+        if (anders[st]) { geo.stilAngewandt[st] = gewicht[st]; }
+    }
     return zahl;
 }
 
@@ -989,6 +1082,29 @@ int ganzVon(const MapEntity& e, const char* key) {
     return (v != nullptr) ? std::atoi(v->c_str()) : 0;
 }
 }  // namespace
+
+std::array<bool, 256> lichtStilDynamisch(const std::vector<MapEntity>& ents) {
+    std::array<bool, 256> d{};
+    for (const MapEntity& e : ents) {
+        if (e.classname == "worldspawn") {
+            for (int i = 1; i < 32; ++i) {
+                for (const char* kanal : {"r", "g", "b"}) {
+                    const std::string* m = e.find("ls_" + std::to_string(i) + kanal);
+                    if (m == nullptr || m->size() < 2) { continue; }
+                    for (const char z : *m) {
+                        if (std::tolower(static_cast<unsigned char>(z)) != std::tolower(static_cast<unsigned char>((*m)[0]))) {
+                            d[static_cast<std::size_t>(i)] = true;
+                        }
+                    }
+                }
+            }
+        } else if (e.classname == "light" && e.find("targetname") != nullptr) {
+            const int stil = ganzVon(e, "style");
+            if (stil > 0 && stil < 256) { d[static_cast<std::size_t>(stil)] = true; }
+        }
+    }
+    return d;
+}
 
 std::array<std::array<float, 3>, 256> lichtStilGewichte(const std::vector<MapEntity>& ents) {
     std::array<std::array<float, 3>, 256> g{};
