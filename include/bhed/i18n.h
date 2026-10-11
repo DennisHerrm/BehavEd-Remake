@@ -705,6 +705,8 @@ enum class Str {
     AnimNoKeys,
     AnimTime,
     AnimDragHint,
+    MapFlares,
+    MapWeather,
     FlowFollowsHint,
     GraphFit,
     GraphRelayout,

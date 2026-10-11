@@ -299,4 +299,72 @@ int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
     return n;
 }
 
+// --- Lens-Flares (rc592) -------------------------------------------------------------
+//
+// Bis rc591 uebersprungen ("Flares und Unfug"). Im Spiel (tr_surface.cpp,
+// RB_SurfaceFlare; r_flares steht auf 1): ein Schild zur Kamera, 3 Einheiten
+// vor der Flaeche entlang ihrer Normalen, Radius 30 (oder portalRange des
+// Shaders), naeher als 512 Einheiten entsprechend kleiner, mindestens 5; hell
+// nach dem Winkel zur Flaeche; nur, wenn der Punkt nicht verdeckt ist
+// (RB_TestZFlare - hier ein Strahl von der Kamera).
+int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
+    if (!g_app->zeigeFlares || g_app->geo.empty()) { return 0; }
+    float links[3];
+    float oben[3];
+    cam.right(links);
+    cam.up(oben);
+    static const TextureSet::Tex* ersatz = nullptr;
+    static const void* ersatzStand = nullptr;
+    if (ersatzStand != &g_app->texCache) {
+        ersatz = bild("gfx/misc/flare");
+        ersatzStand = &g_app->texCache;
+    }
+    int n = 0;
+    for (std::size_t i = 0; i < g_app->geo.surfaces.size(); ++i) {
+        const BspSurface& s = g_app->geo.surfaces[i];
+        if (s.type != BspSurface::Type::Flare) { continue; }
+        float o[3];
+        for (int k = 0; k < 3; ++k) { o[k] = s.flareOrt[k] + s.flareNormale[k] * 3.0F; }
+        float dir[3] = {o[0] - cam.pos[0], o[1] - cam.pos[1], o[2] - cam.pos[2]};
+        const float dist = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+        if (dist < 1.0F || dist > 16384.0F) { continue; }
+        for (float& v : dir) { v /= dist; }
+        // vor der Kamera?
+        float f[3];
+        cam.forward(f);
+        if (dir[0] * f[0] + dir[1] * f[1] + dir[2] * f[2] < 0.05F) { continue; }
+        // verdeckt?
+        const TraceTreffer t = traceRay(g_app->geo, cam.pos, o);
+        if (t.hit && t.fraction < 0.98F) { continue; }
+        float d = -(dir[0] * s.flareNormale[0] + dir[1] * s.flareNormale[1] + dir[2] * s.flareNormale[2]);
+        if (d < 0.0F) { d = -d; }
+        float radius = 30.0F;
+        if (dist < 512.0F) { radius = radius * dist / 512.0F; }
+        radius = std::max(radius, 5.0F);
+        gpu::KlingenQuad q;
+        for (int k = 0; k < 3; ++k) {
+            q.ecke[0][k] = o[k] - links[k] * radius + oben[k] * radius;
+            q.ecke[1][k] = o[k] + links[k] * radius + oben[k] * radius;
+            q.ecke[2][k] = o[k] + links[k] * radius - oben[k] * radius;
+            q.ecke[3][k] = o[k] - links[k] * radius - oben[k] * radius;
+            // Das Bild des Flare-Shaders (rgbGen vertex): grau nach Winkel,
+            // dazu die Farbe der Flaeche, wo q3map2 sie gesetzt hat.
+            const float fc = (s.flareFarbe[0] + s.flareFarbe[1] + s.flareFarbe[2]) > 0.01F ? s.flareFarbe[k] : 1.0F;
+            q.farbe[k] = std::clamp(d * fc * 255.0F, 0.0F, 255.0F);
+        }
+        const TextureSet::Tex* tex = nullptr;
+        if (s.shader >= 0 && static_cast<std::size_t>(s.shader) < g_app->textures.byShader.size() &&
+            !g_app->textures.byShader[static_cast<std::size_t>(s.shader)].empty()) {
+            tex = &g_app->textures.byShader[static_cast<std::size_t>(s.shader)];
+        }
+        q.tex = tex != nullptr ? tex : ersatz;
+        q.spur = true;
+        q.staerke = 1.0F;
+        aus.push_back(q);
+        ++n;
+    }
+    g_app->flareZahl = n;
+    return n;
+}
+
 }  // namespace bhed::gui

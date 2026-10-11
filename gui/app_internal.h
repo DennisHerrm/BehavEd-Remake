@@ -381,6 +381,8 @@ struct App {
     int spurBaender = 0;         // gezeichnete Spurbaender, aufsummiert (Selbsttest)
     bool zeigeWetter = true;     // Regen, Schnee, Staub, Nebelwolken (rc592)
     int wetterTeilchenZahl = 0;  // im letzten Bild gezeichnet (Selbsttest)
+    bool zeigeFlares = true;     // Lens-Flares (rc592), wie r_flares 1
+    int flareZahl = 0;           // im letzten Bild gezeichnet
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand
@@ -2092,6 +2094,7 @@ void drawAnimFenster();
 // --- Wetter (gui/app_wetter.cpp, rc592) ----------------------------------------
 // (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
 int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
+int flareSchilde(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);

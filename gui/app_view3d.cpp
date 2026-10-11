@@ -11426,6 +11426,7 @@ void drawMapView() {
                 // das sie nicht verdeckt - wie im Rasterer.
                 // Das Wetter im selben Durchgang: additiv, tiefengetestet.
                 wetterTeilchen(klingen, useCam);
+                flareSchilde(klingen, useCam);
                 if (!klingen.empty()) {
                     std::string fk;
                     const int nk2 = gpu::zeichneKlingen(klingen, vp, &fk);
@@ -12685,6 +12686,8 @@ void drawKartenStatistik() {
     if (g_app->showGlow) { ImGui::TextDisabled("%s: %d", tr(Str::MapGlow), g_app->gpuGluehen); }
     if (g_app->schattenArt != 0) { ImGui::TextDisabled("%s: %d", tr(Str::MapShadows), g_app->schattenAnzahl); }
     if (g_app->showFog) { ImGui::TextDisabled("%s: %d", tr(Str::MapFog), static_cast<int>(g_app->geo.nebel.size())); }
+    if (g_app->flareZahl > 0) { ImGui::TextDisabled("%s: %d", tr(Str::MapFlares), g_app->flareZahl); }
+    if (g_app->wetterTeilchenZahl > 0) { ImGui::TextDisabled("%s: %d", tr(Str::MapWeather), g_app->wetterTeilchenZahl); }
     if (g_app->showDynLights) { ImGui::TextDisabled("%s: %d", tr(Str::MapDynLights), g_app->lichtAufrufe); }
     if (g_app->throughCamera) {
         if (g_app->camViewActive) {

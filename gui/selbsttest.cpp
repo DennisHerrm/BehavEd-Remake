@@ -10305,13 +10305,13 @@ std::vector<Schritt> szenenSchritte() {
                                    "Szenenlauf: %s [%s] | Traeger \"%s\" | Dauer %.1f s | %d Befehle aus %zu Skript(en) | "
                                    "Figuren %zu (ohne Modell %d%s) | Effekte %zu | Klaenge %zu (fehlen %d%s) | "
                                    "Bild max %.0f ms, Mittel %.0f ms (%d Bilder) | D3D %zu | Hinweise %zu | GPU \"%s\" | "
-                                   "Schwertspuren %d",
+                                   "Schwertspuren %d | Flares %d | Wetter %d",
                                    sk.c_str(), k.c_str(), ab.traeger.c_str(), st->dauer / 1000.0, ab.befehle,
                                    ab.skripte.size(), g_app->scene.actors.size(), ohneModell, ohneListe.c_str(),
                                    g_app->effectRunners.size(), klaenge.size(), fehlt, fehltListe.c_str(), st->bildMax,
                                    st->bilder > 0 ? st->bildSumme / st->bilder : 0.0, st->bilder,
                                    g_app->d3dMeldungen.size() - st->meld, ab.hinweise.size(), g_app->gpuFehler.c_str(),
-                                   g_app->spurBaender);
+                                   g_app->spurBaender, g_app->flareZahl, g_app->wetterTeilchenZahl);
                      g_app->spurBaender = 0;
                      diag::detail(z);
                      for (const std::string& h : ab.hinweise) {

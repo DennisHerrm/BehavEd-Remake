@@ -55,6 +55,12 @@ struct BspSurface {
     int lightmap = -1;
     int patchWidth = 0;       // nur bei Patch
     int patchHeight = 0;
+    // Nur bei Flare (rc592): dsurface_t.lightmapOrigin ist der Ort,
+    // lightmapVecs[0] die Farbe, lightmapVecs[2] die Normale (q3map2,
+    // R_LoadFlare in tr_bsp.cpp).
+    float flareOrt[3]{};
+    float flareFarbe[3]{};
+    float flareNormale[3]{};
     // In welchem Nebel die Flaeche liegt - dsurface_t.fogNum, -1 keiner.
     // Die Engine nimmt fogNum + 1 (tr_bsp.cpp, `surf->fogIndex`), weil bei
     // ihr Platz 0 "kein Nebel" heisst; hier zeigt die Zahl direkt in

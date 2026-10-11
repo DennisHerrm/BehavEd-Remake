@@ -402,6 +402,13 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         s.fog = i32(b, at + 4);                // fogNum, -1 = keiner
         s.patchWidth = i32(b, at + 140);
         s.patchHeight = i32(b, at + 144);
+        if (s.type == BspSurface::Type::Flare) {
+            for (int k = 0; k < 3; ++k) {
+                s.flareOrt[k] = f32(b, at + 92 + static_cast<std::size_t>(k) * 4);
+                s.flareFarbe[k] = f32(b, at + 104 + static_cast<std::size_t>(k) * 4);
+                s.flareNormale[k] = f32(b, at + 128 + static_cast<std::size_t>(k) * 4);
+            }
+        }
 
         // Alles pruefen, was spaeter als Zeiger benutzt wird.
         // In 64 Bit rechnen: firstVert + numVerts lief in int ueber

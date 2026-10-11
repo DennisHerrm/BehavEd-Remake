@@ -1341,6 +1341,8 @@ S = [
     ("AnimNoKeys", "No keys yet. Put the timeline where the movement should start and press Key at playhead, then move on in time, add another key and drag its diamond in the view.", "Noch keine Schlüssel. Die Zeitleiste dorthin stellen, wo die Bewegung beginnt, und Schlüssel am Zeiger drücken - dann weiter in der Zeit, noch einen Schlüssel setzen und seine Raute in der Ansicht ziehen.", "还没有关键帧。把时间轴移到运动开始处并按“在播放头添加关键帧”,然后向后移动时间,再添加一个关键帧,在视图中拖动其菱形。", "まだキーがありません。動きの開始位置にタイムラインを置き「再生位置にキー」を押し、時間を進めてもう一つキーを置き、ビューでその菱形をドラッグします。"),
     ("AnimTime", "Time", "Zeit", "时间", "時間"),
     ("AnimDragHint", "In the view: drag a diamond to move a key (Shift: only up and down).", "In der Ansicht: eine Raute ziehen verschiebt den Schlüssel (Umschalt: nur hoch und runter).", "在视图中:拖动菱形移动关键帧(Shift:仅上下)。", "ビューで菱形をドラッグしてキーを移動 (Shift: 上下のみ)。"),
+    ("MapFlares", "Lens flares", "Lens-Flares", "镜头光晕", "レンズフレア"),
+    ("MapWeather", "Weather particles", "Wetterteilchen", "天气粒子", "天候パーティクル"),
     ("FlowFollowsHint", "In a split view, Graph and Tracks follow the script you are working on.",
      "In der geteilten Ansicht folgen Graph und Spuren dem Skript, an dem du gerade arbeitest.",
      "在分屏视图中,图表和轨道会跟随你正在编辑的脚本。",
