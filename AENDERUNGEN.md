@@ -1,5 +1,55 @@
 # Änderungen seit rc94
 
+## rc592 — Wegpunkte, Mehrfachauswahl, eigene Mover-Animationen, Kameravorschau, mehr Spielgrafik, Code-Prüfung
+
+Gewünscht: „mach das alles was du vorschlägst“, „ist alles supported das das
+game darstellen kann? auch sowas wie das fliegende schiff … das man solche
+sachen selbst animieren kann“ und zum Schluss „schau dir den kompletten code an
+was probleme machen könnte … stabiler, schneller und optimierter“.
+
+* **NPC-Wegpunkte** (`gui/app_wegpunkte.cpp`, `src/wegpunkte.cpp`, neu):
+  `baueWegNetz` nach den Regeln der Engine (nur point_combat/navgoal verbinden
+  sich selbst, target..target4/targetJump), Draufsicht mit Schnitthöhe,
+  Setzen/Ketten/Verbinden, `erzeugeWegpunkte` (Flutfüllung mit Wand-, Stufen-,
+  Kopf- und 21er-Abstandsprüfung), `pruefeWegNetz`. Probe `wegpunkttest`.
+* **Karten-Tab**: Mehrfachauswahl (`entAuswahl`, Rahmen), Gruppenzug/-drehung,
+  Alt-Kopie, Raster, Platzierleiste, Ansichtsmarken.
+* **Modell-Tab** (`gui/app_modell.cpp`): Animationsliste, SET_ANIM ins Skript,
+  NPC-Browser, Drehteller, Knochen.
+* **Eigene Mover-Animationen** (`gui/app_animation.cpp`, `src/moveranim.cpp`):
+  Schlüssel → `affect`/`move`-Block mit Marke `//(BehavEd) animation`, Bahn mit
+  ziehbaren Rauten. Probe `moveranimtest`.
+* **Kameravorschau**: zweiter GPU-Zielsatz (`waehleZiel`, `zielTexturSatz`),
+  der GPU-Durchgang als `gpuBild(kamera, b, h, nebenbild)`; das Nebenbild misst,
+  glüht und zählt nicht. Eigenes Kindfenster, damit Klicks nicht durchgehen.
+* **Spielgrafik**: Schwertspuren (saberBlur), Wetter wie tr_WorldEffects (nur
+  draußen, Strahl zum Himmel), Lens-Flares wie RB_SurfaceFlare, model2 an
+  Brush-Movern, verdeckte Icons blass, alphaGen wave/entity/oneMinusVertex,
+  deformVertexes autosprite2/bulge/move/normal (neue Merkmalsbits, Puffer 36
+  float), Wolkenschichten wie R_InitSkyTexCoords (`kWolke`), Lightmap-Stile
+  beim Laden in Stufe 0 eingerechnet (`stileEinrechnen`,
+  `lichtStilGewichte`; auch das Lichtgitter gewichtet), ROFF-Notizen spielen
+  Effekte und Klänge (`roffEffektStarts`). Probe `hlslprobe` übersetzt jede
+  Shadervariante mit D3DCompile.
+* **Behoben (je erst nachgestellt)**: Missionsname in der Kartenleiste bei
+  fremder Karte (Missionsbau 1 FEHLER → 0); veraltete Entity-Nummern in
+  Wegnetz, Auswahl, Animationsfenster und Wegkette (Wegpunkt-Modus 3 FEHLER →
+  0); kaputte Karten (Knotenkreis hing, Flächennummern verschoben, Index hinter
+  den Ecken), skyParms ohne Höhe, alphaGen-Reste (Proben vorher FEHL).
+* **Code-Prüfung**: hängende `Tex*` nach `rescanGamePaths` (`texCacheStand`),
+  Spurschlüssel je Figur der Szene, Graph mit einem Rückgängig-Schritt je
+  Verbindung und Signatur über `entStand`/`stand()`, Wetter-Cache an
+  `entStand`/Geometrie, Glühen mit wiederholendem Sampler, dynamischer
+  Effektpuffer im Bild des Anlegens gefüllt, gescheiterte Shader gemerkt,
+  Kastensätze vergessen, Leser gegen NaN/Überlauf (Lichtgitter, Stile, ROFF,
+  Zug-Winkel, Bruchradius, Nebelseiten).
+* **Schneller, gleiches Bild**: Flares nur im Sichtkegel mit Strahl (hoth2
+  23 → 13 ms je Bild), Klingen/Wetter in Läufen gleicher Textur gezeichnet,
+  `baueAutosprites` linear, Auswahlprüfung O(k), Kameraschlüssel einmal je
+  Bild, kein Verdeckt-Strahl für Wegpunkte. Fotos vorher/nachher bitgleich.
+* **Zeilenenden** wieder LF wie bis rc586 (Patch-Skripte hatten CRLF
+  eingeschleppt); Fixtures und Raven-Header bleiben CRLF (`.gitattributes`).
+
 ## rc588 — Kamera wie die Entities, moderne Zeitleiste, Entity-Icons
 
 Gewünscht: „passen die Kamera sachen eigentlich? ist die Kamera editieren und

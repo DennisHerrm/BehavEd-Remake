@@ -6,7 +6,7 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
-## rc588 2026-10-11
+## rc592 2026-10-12
 [en]
 - Camera editing like the entities: select the camera and the gizmo is there right away; releasing a drag writes the shot into the script, Ctrl+Z undoes each drag (no more "Write to script" button). Hovering the camera highlights it and shows the shot.
 - Camera bar in the view: move / rotate, world / local, previous / next shot, Set to view (puts the shot where you are looking - position and direction in one step), Pilot (sit in the shot, fly it, Apply or Esc), look through, new shot, delete shot.
@@ -15,6 +15,14 @@
 - Modern timeline: icon buttons instead of checkboxes (start, play, loop, speed, sound, follow, zoom out / in, character rows, idle tracks, new camera shot), a large time display (click: seconds / frames), track heads with icons and readable names (Camera move, Camera pan ...), rounded blocks that light up under the mouse, the selected line outlined, an orange playhead with the time in it, m:ss in the ruler and the time under the mouse. Overlapping camera moves are marked calmly with a warning sign instead of red hatching.
 - Entity icons in the list and in the map: camera marks, walk targets, look targets, characters, script runners, effects, sound, movers, breakables - each with its own icon and colour; an eye instead of "O" / "-" to show and hide.
 - Entity list: + to expand a group, - to collapse it, an eye beside it to show or hide it in the map. An empty timeline says what is missing and has a button for the first camera shot.
+- NPC waypoints: a top view with an adjustable cut height, the waypoint net drawn the way the game connects it, click to set or chain waypoints and to connect them (Ctrl: jump), Generate fills the walkable floor with a net in one undo step, Check finds waypoints in solid, floating, alone or with missing targets.
+- Map tab: select several entities (Ctrl+click or drag a box), move and rotate them together, Alt+drag copies, snap to a grid (Ctrl switches it for one drag), a placement bar to drag new entities into the view, view bookmarks (Ctrl+1..9 to save, 1..9 to jump).
+- Model tab: an animation list with search and groups, copy an animation or put it into the script as SET_ANIM, an NPC browser, turntable, bones, fit to view.
+- Animate movers yourself: keys over time for func_* movers, misc_model_breakable and fx_runner become an affect / move block in the script; the path is shown in the view with keys you can drag.
+- Camera preview: while a camera is selected, a small picture of what it sees sits in the corner of the view and follows the gizmo; click it to look through the camera.
+- More of what the game shows: saber trails, weather (rain, snow, space dust, fog, wind - only outside), lens flares, models on brush movers ride with them (model2, e.g. ships), sky cloud layers, switchable and flickering lights (lightmap styles - the Kamino interiors are lit again), pulsing and inverted transparency (alphaGen wave / entity / oneMinusVertex), chains and light beams that turn to the camera (autosprite2), bulge / move / normal surface deforms, effects and sounds from ROFF notes. Entity icons behind walls are drawn faint.
+- Fixed: the map toolbar showed the mission name while another map was in front; the playhead jumped back after script changes.
+- Code review: no more crashes from entity numbers after deleting or switching maps (waypoint net, selection, animation, graph) or from textures after changing game folders; broken maps and ROFFs can no longer hang or crash the reader; glow on scrolling screens is right again next to sabers and weather; faster drawing (lens flares only checked on screen - hoth2 about twice as fast - weather in batches, selection and camera checks once per frame).
 [de]
 - Kamera bearbeiten wie die Entities: Kamera wählen, und das Gizmo ist sofort da; Loslassen schreibt die Einstellung ins Skript, Strg+Z nimmt jeden Zug zurück (kein Knopf "Ins Skript schreiben" mehr). Überfahren hebt die Kamera hervor und nennt die Einstellung.
 - Kameraleiste in der Ansicht: Verschieben / Drehen, Welt / Lokal, vorige / nächste Einstellung, Auf Ansicht setzen (setzt die Einstellung dorthin, wo du hinschaust - Ort und Blick in einem Schritt), Steuern (in der Einstellung sitzen, fliegen, Übernehmen oder Esc), Durchblick, neue Einstellung, Einstellung löschen.
@@ -23,6 +31,14 @@
 - Moderne Zeitleiste: Icon-Knöpfe statt Häkchen (Anfang, Abspielen, Schleife, Tempo, Klang, Mitfahren, Zoom heraus / hinein, Figurenzeilen, ruhige Spuren, neue Kameraeinstellung), eine große Zeitanzeige (Klick: Sekunden / Bilder), Spurköpfe mit Icons und lesbaren Namen (Kamerafahrt, Kameraschwenk ...), abgerundete Blöcke, die unter der Maus aufleuchten, die gewählte Zeile umrandet, ein oranger Zeiger mit der Zeit darin, m:ss im Lineal und die Zeit unter der Maus. Überlappende Kamerafahrten sind ruhig mit einem Warnzeichen markiert statt rot schraffiert.
 - Entity-Icons in der Liste und in der Karte: Kameramarken, Laufziele, Blickziele, Figuren, Skriptstarter, Effekte, Klang, Mover, Zerbrechliches - jedes mit eigenem Icon und eigener Farbe; ein Auge statt "O" / "-" zum Ein- und Ausblenden.
 - Entity-Liste: + klappt eine Gruppe auf, - wieder zu, daneben ein Auge zum Ein- und Ausblenden in der Karte. Eine leere Zeitleiste sagt, was fehlt, und hat einen Knopf für die erste Kameraeinstellung.
+- NPC-Wegpunkte: Draufsicht mit einstellbarer Schnitthöhe, das Wegnetz so gezeichnet, wie das Spiel es verbindet, Wegpunkte per Klick setzen, aneinanderreihen und verbinden (Strg: Sprung), Erzeugen legt ein Netz über den begehbaren Boden in einem Rückgängig-Schritt, Prüfen findet Wegpunkte im Festen, schwebende, einzelne und fehlende Ziele.
+- Karten-Tab: mehrere Entities wählen (Strg+Klick oder Rahmen ziehen), gemeinsam verschieben und drehen, Alt+Ziehen kopiert, Einrasten am Raster (Strg schaltet es für einen Zug um), eine Platzierleiste zum Hineinziehen neuer Entities, Ansichtsmarken (Strg+1..9 merken, 1..9 springen).
+- Modell-Tab: Animationsliste mit Suche und Gruppen, eine Animation kopieren oder als SET_ANIM ins Skript setzen, NPC-Browser, Drehteller, Knochen, Einpassen.
+- Mover selbst animieren: Schlüssel über die Zeit für func_*-Mover, misc_model_breakable und fx_runner werden ein affect-/move-Block im Skript; die Bahn steht in der Ansicht, die Schlüssel lassen sich ziehen.
+- Kameravorschau: Solange eine Kamera gewählt ist, steht in der Ecke der Ansicht ein kleines Bild aus ihrer Sicht und läuft beim Ziehen am Gizmo mit; ein Klick schaut durch die Kamera.
+- Mehr von dem, was das Spiel zeigt: Schwertspuren, Wetter (Regen, Schnee, Weltraumstaub, Nebel, Wind - nur draußen), Lens-Flares, Modelle an Brush-Movern fahren mit (model2, z. B. Schiffe), Wolkenschichten am Himmel, schaltbare und flackernde Lichter (Lightmap-Stile - die Innenräume von Kamino sind wieder hell), pulsierende und umgekehrte Durchsichtigkeit (alphaGen wave / entity / oneMinusVertex), Ketten und Lichtstrahlen, die sich zur Kamera drehen (autosprite2), Beulen-, Verschiebe- und Normalen-Verformung, Effekte und Klänge aus ROFF-Notizen. Entity-Icons hinter Wänden erscheinen blass.
+- Behoben: Die Kartenleiste zeigte den Missionsnamen, obwohl vorn eine andere Karte lag; der Zeitzeiger sprang nach Skriptänderungen zurück.
+- Code-Prüfung: keine Abstürze mehr durch Entity-Nummern nach Löschen oder Kartenwechsel (Wegnetz, Auswahl, Animation, Graph) oder durch Texturen nach dem Ändern der Spielordner; kaputte Karten und ROFFs können den Leser nicht mehr aufhängen oder abstürzen lassen; das Glühen scrollender Bildschirme stimmt neben Schwertern und Wetter wieder; schneller gezeichnet (Lens-Flares nur noch im Bild geprüft - hoth2 etwa doppelt so schnell - Wetter gebündelt, Auswahl- und Kameraprüfungen einmal je Bild).
 [zh]
 - 像编辑实体一样编辑摄像机:选中摄像机即出现操纵器;松开拖动即写入脚本,Ctrl+Z 可逐次撤销(不再需要“写入脚本”按钮)。鼠标悬停会高亮摄像机并显示镜头。
 - 视图中的摄像机工具栏:移动 / 旋转、世界 / 本地、上一个 / 下一个镜头、设为当前视角(一步设置位置和方向)、驾驶(坐进镜头飞行,应用或 Esc)、透过摄像机观看、新建镜头、删除镜头。
@@ -31,6 +47,14 @@
 - 现代化时间轴:图标按钮取代复选框(开头、播放、循环、速度、声音、跟随、缩小 / 放大、角色行、空闲轨道、新建镜头),大号时间显示(单击切换秒 / 帧),带图标和易读名称的轨道头,圆角块在鼠标下高亮,所选行加框,橙色播放头内显示时间,标尺显示 m:ss 及鼠标处时间。重叠的摄像机移动以警告标志平静地标出,不再使用红色斜线。
 - 列表和地图中的实体图标:摄像机标记、行走目标、注视目标、角色、脚本运行器、特效、声音、可动物体、可破坏物 - 各有图标和颜色;用眼睛图标代替 "O" / "-" 显示和隐藏。
 - 实体列表:+ 展开分组,- 折叠,旁边的眼睛图标在地图中显示或隐藏。空的时间轴会说明缺少什么,并提供添加第一个镜头的按钮。
+- NPC 路径点:可调剖切高度的俯视图,按游戏的连接方式绘制路径网,单击放置、串联和连接路径点(Ctrl:跳跃),"生成"一步(可撤销)在可行走地面上铺设路径网,"检查"可找出嵌在实体中、悬空、孤立或缺少目标的路径点。
+- 地图标签页:选择多个实体(Ctrl+单击或拖框),一起移动和旋转,Alt+拖动复制,吸附网格(Ctrl 在一次拖动中切换),放置栏可将新实体拖入视图,视图书签(Ctrl+1..9 保存,1..9 跳转)。
+- 模型标签页:带搜索和分组的动画列表,复制动画或作为 SET_ANIM 插入脚本,NPC 浏览器,转台,骨骼,适应视图。
+- 自己制作移动体动画:func_* 移动体、misc_model_breakable 和 fx_runner 随时间设置的关键帧会成为脚本中的 affect / move 块;路径显示在视图中,关键帧可拖动。
+- 摄像机预览:选中摄像机时,视图角落会显示它所看到的小画面,并随操纵器拖动更新;单击即可通过该摄像机观看。
+- 更多游戏中的效果:光剑拖尾、天气(雨、雪、太空尘埃、雾、风,仅在室外)、镜头光晕、刷子移动体上的模型随之移动(model2,如飞船)、天空云层、可开关和闪烁的灯光(光照贴图样式,Kamino 的室内重新变亮)、脉动和反转的透明度(alphaGen wave / entity / oneMinusVertex)、面向摄像机旋转的锁链和光束(autosprite2)、bulge / move / normal 表面变形、ROFF 注释触发的特效和声音。墙后的实体图标显示为半透明。
+- 已修复:前面显示的是另一张地图时,地图工具栏仍显示任务名称;脚本修改后播放头会跳回。
+- 代码审查:删除或切换地图后不再因实体编号崩溃(路径网、选择、动画、图),更改游戏文件夹后不再因纹理崩溃;损坏的地图和 ROFF 不再使读取器卡死或崩溃;光剑和天气旁边滚动屏幕的辉光恢复正确;绘制更快(镜头光晕只检查屏幕内的 - hoth2 约快一倍 - 天气批量绘制,选择和摄像机检查每帧一次)。
 [ja]
 - エンティティと同じようにカメラを編集: カメラを選ぶとすぐにギズモが出ます。ドラッグを離すとスクリプトに書き込み、Ctrl+Z で 1 回ずつ元に戻せます(「スクリプトに書き込む」ボタンは廃止)。カメラにマウスを乗せると強調表示とショット名が出ます。
 - ビュー内のカメラバー: 移動 / 回転、ワールド / ローカル、前 / 次のショット、ビューに合わせる(位置と向きを 1 回で設定)、操縦(ショットに乗って飛び、適用か Esc)、カメラから見る、新しいショット、ショット削除。
@@ -39,6 +63,14 @@
 - モダンなタイムライン: チェックボックスの代わりにアイコンボタン(先頭、再生、ループ、速度、サウンド、追従、ズームアウト / イン、キャラクター行、動きのないトラック、新しいショット)、大きな時間表示(クリックで秒 / フレーム)、アイコンと読みやすい名前のトラックヘッダー、マウスで光る角丸ブロック、選択行の枠、時間入りのオレンジの再生ヘッド、ルーラーの m:ss とマウス位置の時間。重なったカメラ移動は赤い斜線ではなく警告マークで穏やかに表示。
 - リストとマップのエンティティアイコン: カメラマーク、歩行目標、注視目標、キャラクター、スクリプトランナー、エフェクト、サウンド、可動物、破壊可能物 - それぞれ専用のアイコンと色。表示 / 非表示は "O" / "-" の代わりに目のアイコン。
 - エンティティリスト: + でグループを展開、- で折りたたみ、横の目のアイコンでマップでの表示 / 非表示。空のタイムラインには何が足りないかと最初のショットを作るボタンが出ます。
+- NPC ウェイポイント:断面の高さを調整できる上面図、ゲームの接続どおりに描くウェイポイントネット、クリックでウェイポイントを配置・連結・接続(Ctrl:ジャンプ)、「生成」は歩ける床にネットを一度の取り消し単位で敷き、「チェック」は固体内・浮遊・孤立・ターゲット欠落のウェイポイントを見つけます。
+- マップタブ:複数のエンティティを選択(Ctrl+クリックまたは矩形ドラッグ)してまとめて移動・回転、Alt+ドラッグでコピー、グリッドにスナップ(Ctrl で一回のドラッグだけ切り替え)、新しいエンティティをビューにドラッグする配置バー、ビューブックマーク(Ctrl+1..9 で保存、1..9 でジャンプ)。
+- モデルタブ:検索とグループ付きのアニメーション一覧、アニメーションをコピーまたは SET_ANIM としてスクリプトに挿入、NPC ブラウザー、ターンテーブル、ボーン、ビューに合わせる。
+- ムーバーを自分でアニメーション:func_* ムーバー、misc_model_breakable、fx_runner の時間ごとのキーがスクリプトの affect / move ブロックになります。軌道はビューに表示され、キーはドラッグできます。
+- カメラプレビュー:カメラを選択している間、ビューの隅にそのカメラから見た小さな画像が表示され、ギズモのドラッグに追従します。クリックするとカメラを通して見ます。
+- ゲームの表示をさらに再現:セーバーの軌跡、天候(雨、雪、宇宙塵、霧、風 - 屋外のみ)、レンズフレア、ブラシムーバー上のモデルが一緒に動く(model2、例:宇宙船)、空の雲レイヤー、切り替えや点滅するライト(ライトマップスタイル - Kamino の室内が再び明るく)、脈動・反転する透明度(alphaGen wave / entity / oneMinusVertex)、カメラの方を向く鎖や光線(autosprite2)、bulge / move / normal の変形、ROFF ノートによるエフェクトとサウンド。壁の向こうのエンティティアイコンは薄く表示されます。
+- 修正:別のマップが前面にあるのにマップツールバーにミッション名が表示されていた問題、スクリプト変更後に再生ヘッドが戻る問題。
+- コードレビュー:削除やマップ切り替え後のエンティティ番号(ウェイポイントネット、選択、アニメーション、グラフ)やゲームフォルダー変更後のテクスチャによるクラッシュを解消。壊れたマップや ROFF でリーダーが固まったりクラッシュしたりしなくなりました。セーバーや天候の横でスクロールする画面のグローが正しく戻りました。描画が高速化(レンズフレアは画面内のみ判定 - hoth2 で約 2 倍 - 天候はまとめて描画、選択とカメラの判定は 1 フレームに 1 回)。
 
 ## rc587 2026-10-11
 [en]
