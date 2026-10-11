@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -64,7 +65,35 @@ int markenEntity(const std::string& name) {
     return -1;
 }
 
-std::vector<KameraSchluessel> schluessel() { return kameraSchluessel(g_app->doc.script()); }
+// Je Bild einmal: Ueberlagerung, Vorschau und Inspektor fragten jede fuer
+// sich - und jede Frage geht ueber alle Kamerabefehle samt Markensuche in den
+// Entities (Code-Pruefung rc592). Eine Aenderung im selben Bild (Skript- oder
+// Entity-Stand) rechnet sofort neu.
+std::vector<KameraSchluessel> schluessel() {
+    struct Merk {
+        int bild = -1;
+        std::uint64_t skript = 0;
+        std::uint64_t ents = 0;
+        int reiter = -2;
+        const Script* wo = nullptr;
+        std::vector<KameraSchluessel> ks;
+    };
+    static Merk m;
+    const int bild = ImGui::GetCurrentContext() != nullptr ? ImGui::GetFrameCount() : -1;
+    const std::uint64_t skript = g_app->doc.stand();
+    const std::uint64_t ents = static_cast<std::uint64_t>(g_app->entStand);
+    const Script* wo = &g_app->doc.script();
+    if (bild < 0 || bild != m.bild || skript != m.skript || ents != m.ents || g_app->activeTab != m.reiter ||
+        wo != m.wo) {
+        m.ks = kameraSchluessel(g_app->doc.script());
+        m.bild = bild;
+        m.skript = skript;
+        m.ents = ents;
+        m.reiter = g_app->activeTab;
+        m.wo = wo;
+    }
+    return m.ks;
+}
 
 bool gueltig(const std::vector<KameraSchluessel>& ks, int k) {
     return k >= 0 && static_cast<std::size_t>(k) < ks.size();

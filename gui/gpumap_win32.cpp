@@ -4584,7 +4584,11 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     std::size_t spriteZeichen = 0;
     if (textures != nullptr) {
         for (std::size_t b = 0; b < mesh.batches.size(); ++b) {
-            const BatchState sb = batchStateFor(textures, mesh.batches[b].shader, 0.0F);
+            // Nur zwei Merker - direkt aus dem Eintrag statt eines ganzen
+            // BatchState je Stapel und Aufruf (Code-Pruefung rc592).
+            const int platz = mesh.batches[b].shader;
+            if (platz < 0 || static_cast<std::size_t>(platz) >= textures->byShader.size()) { continue; }
+            const TextureSet::Tex& sb = textures->byShader[static_cast<std::size_t>(platz)];
             if (sb.autosprite) {
                 istSprite[b] = 1;
                 spriteZeichen += (b + 1U) * 7919U + 1U;

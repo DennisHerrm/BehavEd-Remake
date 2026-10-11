@@ -168,6 +168,11 @@ std::vector<SpriteEcke> baueAutosprites(const BspMesh& mesh,
     if (indizes.size() != mesh.indexes.size()) {
         return aus;
     }
+    // Schon gesehene Ecken als Marke je Ecke statt einer Suche in der Liste:
+    // die lief quadratisch, und das Effektnetz baut das in jedem Bild
+    // mehrmals (Code-Pruefung rc592). Reihenfolge und Ergebnis bleiben.
+    std::vector<std::uint32_t> marke(mesh.verts.size(), 0U);
+    std::uint32_t runde = 0;
     // Ein Abschnitt: die verschiedenen Ecken in der Reihenfolge ihres
     // ersten Auftretens, je vier ein Viereck - dieselbe Sammlung wie im
     // Rasterer.
@@ -176,15 +181,13 @@ std::vector<SpriteEcke> baueAutosprites(const BspMesh& mesh,
             static_cast<std::size_t>(first) + count > mesh.indexes.size()) {
             return;
         }
+        ++runde;
         std::vector<std::uint32_t> ids;
         for (std::uint32_t q = 0; q < count; ++q) {
             const std::uint32_t id = mesh.indexes[first + q];
-            bool schon = false;
-            for (const std::uint32_t w : ids) {
-                if (w == id) { schon = true; break; }
-            }
-            if (!schon) {
-                if (id >= mesh.verts.size()) { return; }
+            if (id >= mesh.verts.size()) { return; }
+            if (marke[id] != runde) {
+                marke[id] = runde;
                 ids.push_back(id);
             }
         }

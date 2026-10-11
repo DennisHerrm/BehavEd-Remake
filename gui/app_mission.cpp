@@ -652,8 +652,12 @@ std::vector<int> entityAuswahl() {
 }
 
 bool entityIstGewaehlt(int i) {
-    const auto a = entityAuswahl();
-    return std::find(a.begin(), a.end(), i) != a.end();
+    // Dasselbe wie die Suche in entityAuswahl(), ohne die Liste je Aufruf neu
+    // zu bauen - das lief je Markierung und Listenzeile in jedem Bild,
+    // quadratisch in der Auswahl (Code-Pruefung rc592).
+    if (i < 0 || i >= static_cast<int>(g_app->map.entities.size())) { return false; }
+    if (i == g_app->pickedEntity) { return true; }
+    return std::find(g_app->entAuswahl.begin(), g_app->entAuswahl.end(), i) != g_app->entAuswahl.end();
 }
 
 void entityAuswahlSetzen(int i) {
