@@ -196,6 +196,10 @@ using TagLookup =
 [[nodiscard]] CameraTrack buildCameraTrack(const Script& s,
                                            const TagLookup& tags = nullptr);
 
+// Steht in einem Argument eine Marke - tag( "cam1b", ORIGIN ) - statt Zahlen?
+// Dann Name und ob die Blickrichtung (ANGLES) gemeint ist.
+[[nodiscard]] bool kameraMarke(const std::string& text, std::string& name, bool& angles);
+
 // Der kuerzeste Weg von a nach b in Grad, wie CGCam_Pan ihn waehlt.
 [[nodiscard]] float shortestAngleDelta(float from, float to) noexcept;
 

@@ -96,6 +96,20 @@ ImVec4 uiIconFarbe(UiIcon icon) {
         case UiIcon::Haken: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
         case UiIcon::Abspielen: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;
         case UiIcon::Pause: c = ImVec4{1.00F, 0.75F, 0.30F, 1.0F}; break;
+        case UiIcon::Zielen: c = ImVec4{0.36F, 0.82F, 0.95F, 1.0F}; break;
+        case UiIcon::Steuern: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;
+        case UiIcon::ZumAnfang: c = ImVec4{0.80F, 0.82F, 0.86F, 1.0F}; break;
+        case UiIcon::Schleife: c = ImVec4{0.45F, 0.75F, 1.00F, 1.0F}; break;
+        case UiIcon::Ton: c = ImVec4{0.42F, 0.85F, 0.78F, 1.0F}; break;
+        case UiIcon::Folgen: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;
+        case UiIcon::Zeilen: c = ImVec4{0.98F, 0.86F, 0.38F, 1.0F}; break;
+        case UiIcon::Ruhig: c = ImVec4{0.62F, 0.66F, 0.75F, 1.0F}; break;
+        case UiIcon::Einpassen: c = ImVec4{0.36F, 0.82F, 0.95F, 1.0F}; break;
+        case UiIcon::Marke: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;     // Kameramarke: magenta wie die Kamera
+        case UiIcon::Blitz: c = ImVec4{1.00F, 0.62F, 0.30F, 1.0F}; break;     // Ausloeser
+        case UiIcon::Tuer: c = ImVec4{0.55F, 0.70F, 1.00F, 1.0F}; break;      // Mover
+        case UiIcon::Wegpunkt: c = ImVec4{0.42F, 0.85F, 0.45F, 1.0F}; break;  // Laufziel
+        case UiIcon::Bruch: c = ImVec4{0.85F, 0.66F, 0.42F, 1.0F}; break;
         default: break;
     }
     // Helles Farbschema: dieselbe Farbe, dunkler.
@@ -302,6 +316,104 @@ void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe)
         case UiIcon::Pause:
             z.flaeche({ImVec2{3.5F, 2.5F}, ImVec2{6.5F, 2.5F}, ImVec2{6.5F, 13.5F}, ImVec2{3.5F, 13.5F}});
             z.flaeche({ImVec2{9.5F, 2.5F}, ImVec2{12.5F, 2.5F}, ImVec2{12.5F, 13.5F}, ImVec2{9.5F, 13.5F}});
+            break;
+        case UiIcon::Zurueck:   // Winkel nach links
+            z.zug({ImVec2{10.0F, 3.0F}, ImVec2{5.0F, 8.0F}, ImVec2{10.0F, 13.0F}});
+            break;
+        case UiIcon::Vor:   // Winkel nach rechts
+            z.zug({ImVec2{6.0F, 3.0F}, ImVec2{11.0F, 8.0F}, ImVec2{6.0F, 13.0F}});
+            break;
+        case UiIcon::Zielen:   // Fadenkreuz: auf die Ansicht setzen
+            z.kreis(8.0F, 8.0F, 5.0F);
+            z.linie(8.0F, 0.8F, 8.0F, 4.5F);
+            z.linie(8.0F, 11.5F, 8.0F, 15.2F);
+            z.linie(0.8F, 8.0F, 4.5F, 8.0F);
+            z.linie(11.5F, 8.0F, 15.2F, 8.0F);
+            z.punkt(8.0F, 8.0F, 1.2F);
+            break;
+        case UiIcon::Steuern:   // Steuerknueppel: in der Kamera sitzen
+            z.rahmen(2.5F, 11.0F, 13.5F, 14.5F, 1.2F);
+            z.linie(8.0F, 11.0F, 8.0F, 5.5F);
+            z.kreis(8.0F, 3.8F, 2.0F);
+            z.punkt(11.2F, 12.8F, 0.9F);
+            break;
+        case UiIcon::ZumAnfang:   // Strich und Dreieck nach links
+            z.linie(3.5F, 3.0F, 3.5F, 13.0F);
+            z.flaeche({ImVec2{13.0F, 3.0F}, ImVec2{13.0F, 13.0F}, ImVec2{5.5F, 8.0F}});
+            break;
+        case UiIcon::Schleife:   // zwei Pfeile im Kreis
+            z.bogen(8.0F, 8.0F, 5.5F, kPi * 1.15F, kPi * 1.95F);
+            z.spitze(13.3F, 6.4F, 0.4F, 1.0F);
+            z.bogen(8.0F, 8.0F, 5.5F, kPi * 0.15F, kPi * 0.95F);
+            z.spitze(2.7F, 9.6F, -0.4F, -1.0F);
+            break;
+        case UiIcon::Ton:   // Lautsprecher mit Wellen
+            z.zug({ImVec2{2.0F, 6.0F}, ImVec2{5.0F, 6.0F}, ImVec2{9.0F, 2.5F}, ImVec2{9.0F, 13.5F}, ImVec2{5.0F, 10.0F},
+                   ImVec2{2.0F, 10.0F}}, true);
+            z.bogen(9.5F, 8.0F, 3.0F, -kPi * 0.3F, kPi * 0.3F);
+            z.bogen(9.5F, 8.0F, 5.5F, -kPi * 0.3F, kPi * 0.3F);
+            break;
+        case UiIcon::Folgen:   // Kamera mit Pfeil: die Ansicht faehrt mit
+            z.rahmen(1.5F, 3.0F, 10.0F, 9.5F, 1.2F);
+            z.zug({ImVec2{10.0F, 5.0F}, ImVec2{14.5F, 3.2F}, ImVec2{14.5F, 9.3F}, ImVec2{10.0F, 7.5F}});
+            z.linie(2.5F, 13.0F, 13.0F, 13.0F);
+            z.spitze(14.0F, 13.0F, 1.0F, 0.0F, 2.2F);
+            break;
+        case UiIcon::Zeilen:   // Personen-Zeilen
+            z.punkt(3.0F, 4.0F, 1.6F);
+            z.linie(6.0F, 4.0F, 14.5F, 4.0F);
+            z.punkt(3.0F, 8.0F, 1.6F);
+            z.linie(6.0F, 8.0F, 12.0F, 8.0F);
+            z.punkt(3.0F, 12.0F, 1.6F);
+            z.linie(6.0F, 12.0F, 13.5F, 12.0F);
+            break;
+        case UiIcon::Ruhig:   // Mond: ruhige Spuren
+            z.bogen(8.0F, 8.0F, 6.0F, kPi * 0.35F, kPi * 1.65F);
+            z.bogen(11.0F, 6.5F, 4.8F, kPi * 0.62F, kPi * 1.25F);
+            break;
+        case UiIcon::ZoomPlus:
+        case UiIcon::ZoomMinus:   // Lupe mit Plus / Minus
+            z.kreis(6.8F, 6.8F, 4.8F);
+            z.linie(10.3F, 10.3F, 14.5F, 14.5F);
+            z.linie(4.6F, 6.8F, 9.0F, 6.8F);
+            if (icon == UiIcon::ZoomPlus) { z.linie(6.8F, 4.6F, 6.8F, 9.0F); }
+            break;
+        case UiIcon::Einpassen:   // vier Ecken nach aussen
+            z.zug({ImVec2{1.5F, 5.5F}, ImVec2{1.5F, 1.5F}, ImVec2{5.5F, 1.5F}});
+            z.zug({ImVec2{10.5F, 1.5F}, ImVec2{14.5F, 1.5F}, ImVec2{14.5F, 5.5F}});
+            z.zug({ImVec2{14.5F, 10.5F}, ImVec2{14.5F, 14.5F}, ImVec2{10.5F, 14.5F}});
+            z.zug({ImVec2{5.5F, 14.5F}, ImVec2{1.5F, 14.5F}, ImVec2{1.5F, 10.5F}});
+            z.linie(5.5F, 8.0F, 10.5F, 8.0F);
+            break;
+        case UiIcon::Marke:   // Fahne auf Stab (ref_tag)
+            z.linie(4.0F, 1.5F, 4.0F, 14.5F);
+            z.flaeche({ImVec2{4.0F, 2.0F}, ImVec2{13.0F, 4.8F}, ImVec2{4.0F, 7.6F}});
+            break;
+        case UiIcon::Blitz:   // Ausloeser
+            z.zug({ImVec2{9.5F, 1.0F}, ImVec2{3.5F, 9.0F}, ImVec2{8.0F, 9.0F}, ImVec2{6.5F, 15.0F}, ImVec2{12.5F, 7.0F},
+                   ImVec2{8.0F, 7.0F}}, true);
+            break;
+        case UiIcon::Tuer:   // Tuer mit Klinke
+            z.rahmen(3.5F, 1.5F, 12.5F, 14.5F, 0.8F);
+            z.punkt(10.3F, 8.5F, 1.0F);
+            break;
+        case UiIcon::Wegpunkt:   // Stecknadel
+            z.zug({ImVec2{8.0F, 15.0F}, ImVec2{3.6F, 8.6F}, ImVec2{3.2F, 5.5F}, ImVec2{5.0F, 2.4F}, ImVec2{8.0F, 1.3F},
+                   ImVec2{11.0F, 2.4F}, ImVec2{12.8F, 5.5F}, ImVec2{12.4F, 8.6F}}, true);
+            z.kreis(8.0F, 5.8F, 1.8F);
+            break;
+        case UiIcon::Sichtbar:   // offenes Auge
+            z.zug({ImVec2{1.0F, 8.0F}, ImVec2{4.5F, 4.2F}, ImVec2{8.0F, 3.2F}, ImVec2{11.5F, 4.2F}, ImVec2{15.0F, 8.0F},
+                   ImVec2{11.5F, 11.8F}, ImVec2{8.0F, 12.8F}, ImVec2{4.5F, 11.8F}}, true);
+            z.punkt(8.0F, 8.0F, 2.2F);
+            break;
+        case UiIcon::Versteckt:   // geschlossenes Auge, durchgestrichen
+            z.zug({ImVec2{1.0F, 8.0F}, ImVec2{4.5F, 10.8F}, ImVec2{8.0F, 11.8F}, ImVec2{11.5F, 10.8F}, ImVec2{15.0F, 8.0F}});
+            z.linie(2.5F, 13.5F, 13.5F, 2.5F);
+            break;
+        case UiIcon::Bruch:   // Kiste mit Riss
+            z.rahmen(2.0F, 3.0F, 14.0F, 14.0F, 0.8F);
+            z.zug({ImVec2{7.5F, 3.0F}, ImVec2{6.0F, 7.0F}, ImVec2{9.0F, 9.0F}, ImVec2{7.0F, 14.0F}});
             break;
         case UiIcon::Warnung:
             z.zug({ImVec2{8.0F, 1.5F}, ImVec2{15.0F, 14.0F}, ImVec2{1.0F, 14.0F}}, true);

@@ -216,6 +216,7 @@ void aenderung(std::vector<MapEntity> vorher) {
         g_app->entUndo.erase(g_app->entUndo.begin());
     }
     g_app->entRedo.clear();
+    g_app->kameraSchriebSkript = false;
     nachAenderung();
 }
 
@@ -645,6 +646,7 @@ bool missionUngespeichert() {
 }
 
 bool entityFokus() {
+    if (g_app->cameraSelected && g_app->kameraSchriebSkript) { return false; }
     return g_app->leftMode == 1 && (g_app->entFokusBild || g_app->entFokusListe) && !ImGui::GetIO().WantTextInput;
 }
 
@@ -965,7 +967,6 @@ bool entityGizmoPunkt(int griff, ImVec2& out) {
 }
 
 void entityUeberlagerung(float rasterSkal) {
-    (void)rasterSkal;
     if (!g_app->showEntities || g_app->camViewActive) {
         return;
     }
@@ -974,6 +975,30 @@ void entityUeberlagerung(float rasterSkal) {
                      ImVec2{g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]}, true);
     const Proj p = projektion();
     const float px = std::max(1.0F, ImGui::GetFontSize() / 13.0F);
+    // --- Icons ueber den Entities (rc588) ------------------------------------
+    //
+    // shank: "vielleicht auch verschiedene map icons fuer die entities so das
+    // man die schon beim unterscheiden kann sowohl links als auch auf der
+    // map". Wie die Sprites in Unreal: ein kleines Schild mit dem Icon der
+    // Gruppe in ihrer Farbe, ueber dem Kreuz am Ursprung. Dieselben Icons
+    // stehen links in der Liste.
+    {
+        const float skal = rasterSkal > 0.0F ? rasterSkal : 1.0F;
+        const float g = std::floor(ImGui::GetFontSize() * 0.95F);
+        const float r = g * 0.72F;
+        for (const App::PickedMarker& mk : g_app->markers) {
+            if (mk.entity >= g_app->map.entities.size()) { continue; }
+            const MapEntity& e = g_app->map.entities[mk.entity];
+            const int kat = entityKategorie(e);
+            if (kat < 0) { continue; }
+            const EntityKat& ek = entityKategorieInfo(kat);
+            const ImVec2 c{g_app->kartenAnsicht[0] + mk.sx / skal, g_app->kartenAnsicht[1] + mk.sy / skal - r * 1.6F};
+            dl->AddCircleFilled(c, r, IM_COL32(18, 20, 26, 190));
+            dl->AddCircle(c, r, IM_COL32(ek.r, ek.g, ek.b, 150), 0, 1.2F * px);
+            uiIcon(dl, ek.icon, ImVec2{std::floor(c.x - g * 0.5F), std::floor(c.y - g * 0.5F)}, g,
+                   IM_COL32(ek.r, ek.g, ek.b, 255));
+        }
+    }
     const auto zeichneKasten = [&](const MapEntity& e, ImU32 farbe, float dicke) {
         float o[3];
         if (!entityOrt(e, o)) { return false; }

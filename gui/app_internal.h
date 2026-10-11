@@ -502,7 +502,10 @@ struct App {
     // Mit Verschieben als Vorgabe ist jeder Klick in die Naehe einer Achse
     // ein Verschieben, bevor man ueberhaupt etwas ausgewaehlt hat. Max
     // startet ebenfalls mit dem Auswahlwerkzeug.
-    GizmoMode gizmoMode = GizmoMode::Select;
+    // Seit rc588 VERSCHIEBEN: das Gizmo erscheint erst, wenn die Kamera
+    // gewaehlt ist - wie bei den Entities; ein Klick daneben waehlt nicht aus
+    // Versehen etwas anderes.
+    GizmoMode gizmoMode = GizmoMode::Move;
     // Verschieben in Weltachsen - so war es bisher, und so erwartet man es
     // beim Setzen eines Ortes.
     GizmoSpace gizmoMoveSpace = GizmoSpace::World;
@@ -1044,6 +1047,18 @@ struct App {
     // Nach dem Schreiben: wie lange steht die Bestaetigung noch, und wie
     // hell? Sekunden, laeuft herunter.
     float gizmoDoneFade = 0.0F;
+    // Kamera wie die Entities (gui/app_kamera.cpp, rc588): Maus ueber der
+    // Kamera, und "Steuern" (Pilot) - man sitzt in einer Einstellung und
+    // fliegt sie frei, bis man uebernimmt oder abbricht.
+    bool kameraHover = false;
+    // Ging die letzte Aenderung an der gewaehlten Kamera ins SKRIPT? Dann
+    // gehoert Strg+Z ueber der Karte dem Skript, nicht den Entities
+    // (entityFokus) - sonst naehme es nach einem Kamerazug eine aeltere
+    // Entity-Aenderung zurueck.
+    bool kameraSchriebSkript = false;
+    bool kameraPilot = false;
+    int pilotSchluessel = -1;
+    Camera pilotVorher;
     bool pk3Open = false;
     // 0 = Skripte, 1 = Karten, 2 = Modelle
     int pk3Kind = 0;
@@ -1855,15 +1870,20 @@ AblaufWelt ablaufWelt();
 void pfadeAufsSkript();
 void kinoSkeletteAbgleichen();
 // Gruppen der Entity-Liste (und Farben der Marken in der Ansicht).
+enum class UiIcon;
 struct EntityKat {
     Str titel;
     std::uint8_t r;
     std::uint8_t g;
     std::uint8_t b;
+    UiIcon icon;   // in der Liste und in der Karte (rc588)
 };
 int entityKategorien();
 const EntityKat& entityKategorieInfo(int k);
 int entityKategorie(const MapEntity& e);
+// Das Icon einer Entity: das ihrer Gruppe, sonst nach Klasse (Ausloeser,
+// Spielerstart, Kartenwechsel, Licht ...), sonst das allgemeine.
+UiIcon entityIcon(const MapEntity& e);
 std::string entitySkriptName(const MapEntity& e);
 bool entityOrt(const MapEntity& e, float out[3]);
 void zurEntityFliegen(std::size_t i);
@@ -1887,7 +1907,13 @@ struct KameraSchluessel {
     float ang[3]{};
     bool hasAng = false;
     Path path;
+    Path panPath;             // das PAN dieser Einstellung (leer: keins, Winkel vom vorigen)
+    std::string marke;        // MOVE steht auf tag( "name", ORIGIN ) - dann der ref_tag
+    std::string panMarke;     // PAN steht auf tag( "name", ANGLES )
 };
+// Eine Kameramarke (ref_tag, waypoint_navgoal) in der Karte aufloesen - Ort und
+// Winkel, wie das Spiel sie sieht (ein target dreht den ref_tag zum Ziel).
+bool kameraMarkeOrt(const std::string& name, float* o, float* a);
 std::vector<KameraSchluessel> kameraSchluessel(const Script& script);
 // Der Schluessel, der zur Zeit ms gilt (letzter begonnener MOVE), oder -1.
 int schluesselFuerZeit(double ms);
@@ -1907,11 +1933,18 @@ void vergissEntities(const std::string& kennung);
 inline constexpr float kEntitySpalte = 18.0F;
 
 // --- Bedien-Icons (gui/uiicons.cpp) ----------------------------------------
-enum class UiIcon {
+enum class UiIcon : int {
     Neu, Oeffnen, Speichern, Mehr, Karte, Paket, Liste, Skript, Entity, Namen, Figur, Effekt,
     Leuchten, Licht, Nebel, Himmel, Kamera, Einstellungen, Statistik, Plus, Boden, Hinfliegen,
     Duplizieren, Loeschen, Rueckgaengig, Wiederholen, Explorer, Suche, Verschieben, Drehen,
     Mission, Schliessen, Haken, Warnung, Abspielen, Pause,
+    Zurueck, Vor, Zielen, Steuern,
+    // Zeitleiste (rc588)
+    ZumAnfang, Schleife, Ton, Folgen, Zeilen, Ruhig, ZoomPlus, ZoomMinus, Einpassen,
+    // Entity-Arten in Liste und Karte (rc588)
+    Marke, Blitz, Tuer, Wegpunkt, Bruch,
+    // Sichtbarkeit in der Entity-Liste (rc588, statt "O" und "-")
+    Sichtbar, Versteckt,
 };
 void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe);
 // Quadratischer Icon-Knopf; der Text ist Kennung und Tooltip-Titel.
@@ -1921,6 +1954,22 @@ bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an = fal
 ImVec4 uiIconFarbe(UiIcon icon);
 // Icon und Text nebeneinander.
 bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool aktiv = true);
+
+// --- Kamera (gui/app_kamera.cpp) -------------------------------------------
+// Die Vorschau am Gizmo (gizmoOffset/gizmoAngles) ins Skript schreiben - beim
+// Loslassen. Einstellungen auf einem ref_tag verschieben den ref_tag.
+bool kameraVorschauSchreiben();
+bool kameraOrtSetzen(int key, const float ort[3]);
+bool kameraWinkelSetzen(int key, const float ang[3]);
+bool kameraDauerSetzen(int key, double ms);
+bool kameraAufAnsicht(int key);
+void kameraSchluesselWaehlen(int key, bool zeitMit);
+void kameraNeueEinstellung();
+bool kameraEinstellungLoeschen(int key);
+void kameraPilotStarten();
+void kameraPilotBeenden(bool uebernehmen);
+void kameraUeberlagerung(float rasterSkal);
+void drawKameraInspector(float hoehe);
 
 // --- Missionsbau (gui/app_mission.cpp) -----------------------------------
 void drawEntityInspector(float hoehe);
@@ -1981,7 +2030,6 @@ void skriptOeffnen(const std::string& ref, bool anlegen);
 // Einen Reiter speichern, auf Wunsch unter einem neuen Pfad (ohne Dialog).
 bool reiterSpeichernUnter(int reiter, const std::string& pfad);
 void selectByPath(const Path& p);
-void drawMapPanel();
 void drawMapSidebar();
 void drawMapView();
 void drawModelToolbar();

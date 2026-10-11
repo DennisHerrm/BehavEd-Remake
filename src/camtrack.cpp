@@ -682,4 +682,8 @@ const CamSegment* CameraTrack::activeAt(double ms) const {
     return (laufend != nullptr) ? laufend : letzterFertig;
 }
 
+bool kameraMarke(const std::string& text, std::string& name, bool& angles) {
+    return istMarke(text, name, angles);
+}
+
 }  // namespace bhed

@@ -15256,8 +15256,10 @@ void draw() {
             // Die Ebenenliste steht NICHT hier, sondern als eigene Spalte
             // links neben der Karte - sie ist eine Gliederung und gehoert
             // neben das Bild, nicht darunter.
-            drawMapPanel();
-            drawPickedEntity();
+            // Seit rc588 nur noch die Zeitleiste: Koordinaten und "Insert
+            // camera here" standen in einer eigenen Zeile darueber - die
+            // Kamera-Einstellung ist jetzt ein Knopf der Transportleiste, die
+            // angeklickte Entity steht an deren Ende (drawPickedEntity).
             drawTimeline();
         }
         ImGui::EndChild();

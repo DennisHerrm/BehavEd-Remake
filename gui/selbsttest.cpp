@@ -3705,8 +3705,25 @@ std::vector<Schritt> kartenBreitSchritte() {
                      std::to_string(*zielEntity));
         return g_app->pickedEntity == static_cast<int>(*zielEntity);
     }));
+    add(tu("Maus auf die Kamera", [] { setzeMaus(bildZuSchirm(g_app->cameraSx, g_app->cameraSy)); }));
+    add(pause(0.3));
+    add(tu("Was liegt unter der Maus?", [] {
+        const ImVec2 m = ImGui::GetIO().MousePos;
+        diag::detail("Knopftest: Maus " + std::to_string(m.x) + "/" + std::to_string(m.y) + ", Fenster " +
+                     std::string(GImGui->HoveredWindow != nullptr ? GImGui->HoveredWindow->Name : "-") + ", Bild " +
+                     std::to_string(g_app->kartenAnsicht[0]) + ".." + std::to_string(g_app->kartenAnsicht[2]) + " / " +
+                     std::to_string(g_app->kartenAnsicht[1]) + ".." + std::to_string(g_app->kartenAnsicht[3]) +
+                     ", Hover " + std::to_string(g_app->entHover) + "/" + std::to_string(g_app->kameraHover) +
+                     ", Griff " + std::to_string(g_app->entGizmoHover));
+    }));
     add(klickAn("auf die Kamera", [] { return bildZuSchirm(g_app->cameraSx, g_app->cameraSy); }));
     add(pruefe("Klick auf die Kamera waehlt sie (Bahn und Schluessel)", [] {
+        diag::detail("Knopftest: Kamera gewaehlt " + std::to_string(g_app->cameraSelected) + ", Entity " +
+                     std::to_string(g_app->pickedEntity) + ", Figur " + std::to_string(g_app->selectedActor) +
+                     ", Kamera bei " + std::to_string(g_app->cameraSx) + "/" + std::to_string(g_app->cameraSy) +
+                     ", Schluessel " + std::to_string(g_app->keyMarks.size()) + ", Zug " +
+                     std::to_string(g_app->entZug.kandidat) + ", Hover " + std::to_string(g_app->entHover) + "/" +
+                     std::to_string(g_app->kameraHover));
         return g_app->cameraSelected && !g_app->keyMarks.empty();
     }));
     add(gezeichnet("Kamera gewaehlt"));
@@ -3739,7 +3756,7 @@ std::vector<Schritt> kartenBreitSchritte() {
         g_app->mapDirty = true;
     }));
     add(gezeichnet("Gizmo-Vorschau"));
-    add(klick(tr(Str::GizmoApply)));
+    add(tu("Schreiben wie beim Loslassen (rc588: kein Apply-Knopf mehr)", [] { kameraVorschauSchreiben(); }));
     add(pruefe("Write to script: der MOVE-Vektor ist geaendert", [=] {
         const Path w = g_app->keyMarks.empty() || g_app->selectedKey < 0 ? Path{}
                        : g_app->keyMarks[static_cast<std::size_t>(g_app->selectedKey)].path;
@@ -3757,7 +3774,8 @@ std::vector<Schritt> kartenBreitSchritte() {
     }));
     add(klickAn("rechts kurz (Gizmomenue)", ansichtMitte, 1));
     add(klick(tr(Str::GizmoSelect), "##Popup"));
-    add(klickAn("ins Leere", [] { return ImVec2{g_app->kartenAnsicht[0] + 20.0F, g_app->kartenAnsicht[1] + 20.0F}; }));
+    // Unten links: oben links steht seit rc588 die Kameraleiste.
+    add(klickAn("ins Leere", [] { return ImVec2{g_app->kartenAnsicht[0] + 20.0F, g_app->kartenAnsicht[3] - 20.0F}; }));
     add(pruefe("Klick ins Leere hebt Kamera- und Entitywahl auf",
                [] { return !g_app->cameraSelected && g_app->pickedEntity < 0; }));
 
@@ -3830,10 +3848,10 @@ std::vector<Schritt> kartenBreitSchritte() {
     add(klick(g_app->timelineFrames ? tr(Str::TlUnitFrames) : tr(Str::TlUnitSeconds), "###main"));
     add(pruefe("Frames/Seconds schaltet die Anzeige um", [=] { return g_app->timelineFrames != *einheit0; }));
     add(tu("Einheit zurueck", [=] { g_app->timelineFrames = *einheit0; }));
-    add(klick(tr(Str::TlZoomMenu), "###main", 0, true));
+    add(klick(std::string(tr(Str::TlZoomMenu)) + ":", "###main", 0, true));
     add(klick("4x", "##Popup", 0, true));
     add(pruefe("Zoom-Menue: 4x", [] { return std::fabs(g_app->timelineZoom - 4.0F) < 0.01F; }));
-    add(klick(tr(Str::TlZoomMenu), "###main", 0, true));
+    add(klick(std::string(tr(Str::TlZoomMenu)) + ":", "###main", 0, true));
     add(klick(tr(Str::TlFit), "##Popup"));
     add(pruefe("Zoom-Menue: All", [] { return std::fabs(g_app->timelineZoom - 1.0F) < 0.01F; }));
     // Der Zeiger steht seit 27.09. im Lineal: dort ziehen setzt die Zeit.
@@ -3965,6 +3983,27 @@ std::vector<Schritt> kartenBreitSchritte() {
         }
         g_app->pickedEntity = -1;
     }));
+    // Das + vor der Gruppe (rc588) klappt auf, das - wieder zu.
+    add(klickAn("+/- vor \"Laufziele\"", [] {
+        const Element* gruppe = finde(tr(Str::EntityKatNav), "", 0, false);
+        for (int k = 0; gruppe != nullptr; ++k) {
+            const Element* e = finde("##klapp", "", k, false);
+            if (e == nullptr) { break; }
+            if (std::fabs(e->rect.GetCenter().y - gruppe->rect.GetCenter().y) < 4.0F) { return e->rect.GetCenter(); }
+        }
+        return ImVec2{0.0F, 0.0F};
+    }));
+    add(pruefe("+ vor \"Laufziele\" klappt die Gruppe auf", [] { return g_app->expandedClass == "kat1"; }));
+    add(klickAn("+/- vor \"Laufziele\"", [] {
+        const Element* gruppe = finde(tr(Str::EntityKatNav), "", 0, false);
+        for (int k = 0; gruppe != nullptr; ++k) {
+            const Element* e = finde("##klapp", "", k, false);
+            if (e == nullptr) { break; }
+            if (std::fabs(e->rect.GetCenter().y - gruppe->rect.GetCenter().y) < 4.0F) { return e->rect.GetCenter(); }
+        }
+        return ImVec2{0.0F, 0.0F};
+    }));
+    add(pruefe("- klappt sie wieder zu", [] { return g_app->expandedClass.empty(); }));
     add(klick(tr(Str::EntityKatNav), "", 0, true));
     add(pruefe("Klick auf die Gruppe \"Laufziele\" klappt sie auf",
                [] { return g_app->expandedClass == "kat1"; }));
@@ -4061,7 +4100,7 @@ std::vector<Schritt> kartenBreitSchritte() {
         g_app->mapDirty = true;
     }));
     add(gezeichnet("Drehvorschau"));
-    add(klick(tr(Str::GizmoApply)));
+    add(tu("Schreiben wie beim Loslassen (rc588: kein Apply-Knopf mehr)", [] { kameraVorschauSchreiben(); }));
     add(pruefe("Write to script (Drehung): das PAN nach dem Schluessel ist geaendert", [=] {
         const Node* n = panWeg->empty() ? nullptr : nodeAt(g_app->doc.script(), *panWeg);
         const std::string jetzt = (n != nullptr && n->args.size() > 1) ? n->args[1].text : "";
@@ -8857,6 +8896,10 @@ std::vector<Schritt> kameraSchritte() {
 
     // ---- Echte Zuege mit der Maus am Gizmo ---------------------------------
     //
+    // Seit rc588 schreibt das LOSLASSEN ins Skript (wie bei den Entities) -
+    // vorher stand die Verschiebung als Vorschau da, bis man "Write to script"
+    // fand. Jeder Zug ist ein Rueckgaengig-Schritt.
+    //
     // Gegriffen wird bei zwei Dritteln der Achse (nicht an der Spitze, dort
     // liegt der Ring des Drehmodus nicht, aber der Rand des Kaestchens).
     auto achsenGriff = [](int ax) {
@@ -8866,78 +8909,86 @@ std::vector<Schritt> kameraSchritte() {
             return bildZuSchirm(x, y);
         };
     };
+    // Ein Wert des dritten MOVE (Zeile 6): 0 x, 1 y, 2 z.
+    const auto wert3 = [](int k) {
+        float v[3] = {0.0F, 0.0F, 0.0F};
+        std::sscanf(kameraVektor(6).c_str(), "%f %f %f", &v[0], &v[1], &v[2]);
+        return v[k];
+    };
+    auto tiefe0 = std::make_shared<std::size_t>(0);
+    add(tu("Rueckgaengig-Tiefe merken", [=] { *tiefe0 = g_app->doc.undoDepth(); }));
     auto zVorher = std::make_shared<float>(0.0F);
     add(ziehenAn("an der Z-Achse 60 Punkte hoch", achsenGriff(2), 0.0F, -60.0F, 0));
     add(pause(0.2));
-    add(pruefe("Zug an Z: nur Z bewegt sich, nach oben", [=] {
-        diag::detail("Knopftest: nach Zug Z Versatz " + std::to_string(g_app->gizmoOffset[0]) + " " +
-                     std::to_string(g_app->gizmoOffset[1]) + " " + std::to_string(g_app->gizmoOffset[2]));
-        *zVorher = g_app->gizmoOffset[2];
-        return g_app->gizmoOffset[2] > 5.0F && g_app->gizmoOffset[0] == 0.0F && g_app->gizmoOffset[1] == 0.0F &&
-               g_app->gizmoAxis < 0;
+    add(pruefe("Zug an Z: beim Loslassen steht der neue Ort im Skript - nur Z, nach oben, ein Schritt", [=] {
+        diag::detail("Knopftest: nach Zug Z MOVE3 \"" + kameraVektor(6) + "\", Versatz " +
+                     std::to_string(g_app->gizmoOffset[2]) + ", Tiefe " + std::to_string(g_app->doc.undoDepth()));
+        *zVorher = wert3(2);
+        return wert3(2) > 105.0F && std::fabs(wert3(0) - 400.0F) < 0.01F && std::fabs(wert3(1) - 6400.0F) < 0.01F &&
+               g_app->gizmoOffset[2] == 0.0F && g_app->gizmoAxis < 0 && g_app->doc.undoDepth() == *tiefe0 + 1;
     }));
     add(gezeichnet("nach dem ersten Zug"));
     add(ziehenAn("noch einmal an Z, 40 Punkte hoch", achsenGriff(2), 0.0F, -40.0F, 0));
     add(pause(0.2));
-    add(pruefe("Zweiter Zug addiert sich (kein Zuruecksetzen, kein Wegdriften)", [=] {
-        return g_app->gizmoOffset[2] > *zVorher + 3.0F && g_app->gizmoOffset[0] == 0.0F &&
-               g_app->gizmoOffset[1] == 0.0F;
+    add(pruefe("Zweiter Zug setzt dort an, wo der erste aufhoerte (zweiter Schritt)", [=] {
+        return wert3(2) > *zVorher + 3.0F && std::fabs(wert3(0) - 400.0F) < 0.01F &&
+               g_app->doc.undoDepth() == *tiefe0 + 2;
     }));
     add(gezeichnet("nach dem zweiten Zug"));
+    auto zHoch = std::make_shared<float>(0.0F);
+    add(tu("Stand merken", [=] { *zHoch = wert3(2); }));
     add(ziehenAn("an Z wieder 100 Punkte hinunter", achsenGriff(2), 0.0F, 100.0F, 0));
     add(pause(0.2));
-    add(pruefe("Zurueckziehen fuehrt zurueck (etwa auf null, nicht darueber hinaus gesperrt)", [=] {
-        diag::detail("Knopftest: nach Zurueckziehen Z " + std::to_string(g_app->gizmoOffset[2]));
-        return g_app->gizmoOffset[2] < *zVorher;
+    add(pruefe("Zurueckziehen fuehrt zurueck (nicht gesperrt)", [=] {
+        diag::detail("Knopftest: nach Zurueckziehen MOVE3 \"" + kameraVektor(6) + "\"");
+        return wert3(2) < *zHoch;
     }));
     add(gezeichnet("zurueckgezogen"));
-    auto xyVorher = std::make_shared<float>(0.0F);
-    add(tu("Stand merken", [=] { *xyVorher = g_app->gizmoOffset[2]; }));
-    add(ziehenAn("an der X-Achse entlang", [=] {
-            const float dx = g_app->gizmoSx[0][1] - g_app->gizmoSx[0][0];
-            const float dy = g_app->gizmoSy[0][1] - g_app->gizmoSy[0][0];
-            (void)dx; (void)dy;
-            return achsenGriff(0)();
-        }, 50.0F, 0.0F, 0));
+    auto zStand = std::make_shared<float>(0.0F);
+    add(tu("Stand merken", [=] { *zStand = wert3(2); }));
+    add(ziehenAn("an der X-Achse entlang", achsenGriff(0), 50.0F, 0.0F, 0));
     add(pause(0.2));
-    add(pruefe("Zug an X: X bewegt sich, Y bleibt, Z bleibt stehen", [=] {
-        diag::detail("Knopftest: nach Zug X Versatz " + std::to_string(g_app->gizmoOffset[0]) + " " +
-                     std::to_string(g_app->gizmoOffset[1]) + " " + std::to_string(g_app->gizmoOffset[2]));
-        return std::fabs(g_app->gizmoOffset[0]) > 1.0F && g_app->gizmoOffset[1] == 0.0F &&
-               g_app->gizmoOffset[2] == *xyVorher;
+    add(pruefe("Zug an X: X bewegt sich, Y und Z bleiben", [=] {
+        diag::detail("Knopftest: nach Zug X MOVE3 \"" + kameraVektor(6) + "\"");
+        return std::fabs(wert3(0) - 400.0F) > 1.0F && std::fabs(wert3(1) - 6400.0F) < 0.01F &&
+               std::fabs(wert3(2) - *zStand) < 0.01F;
     }));
     add(gezeichnet("nach Zug an X"));
+    auto vorKaestchen = std::make_shared<std::string>();
+    add(tu("Stand merken", [=] { *vorKaestchen = kameraVektor(6); }));
     add(ziehenAn("am Kaestchen in der Mitte (frei in der Bildebene)",
                  [] { return bildZuSchirm(g_app->gizmoSx[0][0], g_app->gizmoSy[0][0]); }, 30.0F, -30.0F, 0));
     add(pause(0.2));
     add(pruefe("Das Kaestchen verschiebt in der Bildebene, der Zug endet sauber", [=] {
-        diag::detail("Knopftest: nach Zug Kaestchen " + std::to_string(g_app->gizmoOffset[0]) + " " +
-                     std::to_string(g_app->gizmoOffset[1]) + " " + std::to_string(g_app->gizmoOffset[2]));
-        return g_app->gizmoAxis < 0 && (g_app->gizmoOffset[1] != 0.0F || g_app->gizmoOffset[2] != *xyVorher);
+        diag::detail("Knopftest: nach Zug Kaestchen MOVE3 \"" + kameraVektor(6) + "\"");
+        return g_app->gizmoAxis < 0 && kameraVektor(6) != *vorKaestchen && g_app->doc.undoDepth() == *tiefe0 + 5;
     }));
     add(gezeichnet("nach Zug am Kaestchen"));
-    add(klick(tr(Str::GizmoReset)));
-    add(pause(0.2));
-    add(pruefe("Reset verwirft die Vorschau ganz", [] {
-        return g_app->gizmoOffset[0] == 0.0F && g_app->gizmoOffset[1] == 0.0F && g_app->gizmoOffset[2] == 0.0F;
-    }));
-    add(pruefe("... und am Skript hat sich nichts geaendert", [] {
-        return kameraVektor(6) == "400.000 6400.000 100.000";
+    add(tu("Maus weg von der Karte", [] { setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x - 30.0F, 200.0F}); }));
+    for (int k = 0; k < 5; ++k) {
+        add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+        add(pause(0.1));
+    }
+    add(pruefe("Fuenf Zuege, fuenfmal Strg+Z - der Ort ist wieder der alte", [=] {
+        return kameraVektor(6) == "400.000 6400.000 100.000" && g_app->doc.undoDepth() == *tiefe0;
     }));
 
-    // ---- Eine ungeschriebene Aenderung bleibt am Schluessel -------------
-    add(tu("Dritten Schluessel um 50 nach oben ziehen (Vorschau)", [] {
+    // ---- Eine Vorschau bleibt am Schluessel, bis sie geschrieben wird -----
+    //
+    // (Waehrend eines Zuges steht sie in gizmoOffset; hier von Hand gesetzt,
+    // geschrieben wie beim Loslassen.)
+    add(tu("Dritten Schluessel um 50 nach oben (Vorschau)", [] {
         g_app->gizmoOffset[2] = 50.0F;
         g_app->mapDirty = true;
     }));
     add(tu("Zeitleiste zurueck auf 500 ms", [] { g_app->playMs = 500.0; g_app->mapDirty = true; }));
     add(pause(0.3));
-    add(pruefe("Mit ungeschriebener Aenderung bleibt der Schluessel (nichts geht verloren)", [] {
+    add(pruefe("Mit offener Vorschau bleibt der Schluessel (nichts geht verloren)", [] {
         return g_app->selectedKey == 2 && g_app->gizmoOffset[2] == 50.0F;
     }));
-    add(klick(tr(Str::GizmoApply)));
+    add(tu("Vorschau schreiben (wie beim Loslassen)", [] { kameraVorschauSchreiben(); }));
     add(pause(0.2));
-    add(pruefe("Write to script trifft den DRITTEN MOVE, die anderen bleiben", [] {
+    add(pruefe("Geschrieben in den DRITTEN MOVE, die anderen bleiben", [] {
         diag::detail("Knopftest: MOVE1 \"" + kameraVektor(1) + "\", MOVE2 \"" + kameraVektor(4) + "\", MOVE3 \"" +
                      kameraVektor(6) + "\"");
         return kameraVektor(6) == "400.000 6400.000 150.000" && kameraVektor(1) == "0.000 6400.000 100.000" &&
@@ -8947,9 +8998,14 @@ std::vector<Schritt> kameraSchritte() {
     add(pause(0.3));
     add(pruefe("Nach dem Schreiben geht der Schluessel wieder mit der Zeit (zweiter)",
                [] { return g_app->selectedKey == 1; }));
+    add(tu("Maus in die Karte (Strg+Z dort gehoert nach einer Kameraaenderung dem Skript)",
+           [] { setzeMaus(ansichtMitte()); }));
+    add(pause(0.1));
     add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
     add(pause(0.2));
-    add(pruefe("Strg+Z nimmt das Schreiben zurueck", [] { return kameraVektor(6) == "400.000 6400.000 100.000"; }));
+    add(pruefe("Strg+Z ueber der Karte nimmt das Schreiben zurueck", [] {
+        return kameraVektor(6) == "400.000 6400.000 100.000";
+    }));
 
     // ---- Ein Schluessel HINTER der Kamera verschiebt die Nummern nicht ----
     // Schraeg zur Bahn, damit der zweite und dritte Schluessel nicht auf
@@ -8976,9 +9032,10 @@ std::vector<Schritt> kameraSchritte() {
                      std::to_string(g_app->gizmoSx[0][0]) + ", Schluessel " + std::to_string(k.sx));
         return g_app->selectedKey == 2 && std::fabs(g_app->gizmoSx[0][0] - k.sx) < 3.0F;
     }));
-    add(tu("Vorschau: 30 nach oben", [] { g_app->gizmoOffset[2] = 30.0F; g_app->mapDirty = true; }));
-    add(pause(0.2));
-    add(klick(tr(Str::GizmoApply)));
+    add(tu("Vorschau: 30 nach oben, schreiben", [] {
+        g_app->gizmoOffset[2] = 30.0F;
+        kameraVorschauSchreiben();
+    }));
     add(pause(0.2));
     add(pruefe("Geschrieben in den DRITTEN MOVE (vorher: in einen anderen oder gar nicht)", [] {
         return kameraVektor(6) == "400.000 6400.000 130.000" && kameraVektor(4) == "200.000 6400.000 100.000";
@@ -8990,14 +9047,12 @@ std::vector<Schritt> kameraSchritte() {
     add(klickAn("rechts kurz (Gizmomenue)", ansichtMitte, 1));
     add(klick(tr(Str::GizmoRotate), "##Popup"));
     add(pause(0.2));
-    add(tu("Dritter Schluessel, 30 Grad gieren (Vorschau)", [] {
+    add(tu("Dritter Schluessel, 30 Grad gieren, schreiben", [] {
         g_app->selectedKey = 2;
         g_app->gizmoZeitBezug = g_app->playMs;
         g_app->gizmoAngles[1] = 30.0F;
-        g_app->mapDirty = true;
+        kameraVorschauSchreiben();
     }));
-    add(pause(0.2));
-    add(klick(tr(Str::GizmoApply)));
     add(pause(0.2));
     add(pruefe("Ohne eigenes PAN: eins direkt hinter dem MOVE, Blick 90 + 30 = 120", [] {
         const auto& ns = g_app->doc.script().nodes;
@@ -9012,26 +9067,211 @@ std::vector<Schritt> kameraSchritte() {
     add(pruefe("Strg+Z nimmt das eingefuegte PAN wieder heraus", [] {
         return g_app->doc.script().nodes.size() == 8U;
     }));
-    add(tu("Erster Schluessel, 10 Grad nicken (hat ein eigenes PAN)", [] {
+    add(tu("Erster Schluessel, 10 Grad nicken (hat ein eigenes PAN), schreiben", [] {
         g_app->selectedKey = 0;
         g_app->gizmoZeitBezug = g_app->playMs;
         g_app->gizmoAngles[0] = 10.0F;
-        g_app->mapDirty = true;
+        kameraVorschauSchreiben();
     }));
-    add(pause(0.2));
-    add(klick(tr(Str::GizmoApply)));
     add(pause(0.2));
     add(pruefe("Mit eigenem PAN: genau dieses PAN wird geaendert", [] {
         return kameraVektor(2) == "10.000 90.000 0.000" && g_app->doc.script().nodes.size() == 8U;
     }));
     add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
     add(pause(0.2));
-    add(klickAn("rechts kurz (Gizmomenue)", ansichtMitte, 1));
-    add(klick(tr(Str::GizmoMove), "##Popup"));
+
+    // ---- Die Leiste in der Ansicht (rc588) ---------------------------------
+    add(pruefe("Kamera gewaehlt: Leiste in der Ansicht und Kamera-Inspektor links", [] {
+        return finde(tr(Str::CamSetToView), "", 0, false) != nullptr &&
+               finde(tr(Str::CamNextShot), "", 0, false) != nullptr &&
+               finde(tr(Str::CamShots), "", 0, false) != nullptr;
+    }));
+    add(foto("kam_leiste"));
+    add(klick(tr(Str::GizmoMove), "##kameraleiste"));
+    add(pause(0.2));
+    add(pruefe("Leiste: Verschieben", [] { return g_app->gizmoMode == App::GizmoMode::Move; }));
+    add(tu("Erster Schluessel gewaehlt", [] { kameraSchluesselWaehlen(0, true); }));
+    add(pause(0.3));
+    add(klick(tr(Str::CamNextShot), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Naechste Einstellung: Schluessel 2, die Zeit steht am Ende seiner Fahrt", [] {
+        diag::detail("Knopftest: nach Naechste Schluessel " + std::to_string(g_app->selectedKey) + ", Zeit " +
+                     std::to_string(static_cast<int>(g_app->playMs)));
+        return g_app->selectedKey == 1 && g_app->playMs > 2900.0 && g_app->playMs < 3100.0 &&
+               g_app->selectedPath == Path{4};
+    }));
+    add(klick(tr(Str::CamPrevShot), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Vorige Einstellung: wieder Schluessel 1", [] { return g_app->selectedKey == 0; }));
+    // Auf Ansicht setzen: MOVE und PAN in EINEM Schritt.
+    auto tiefeA = std::make_shared<std::size_t>(0);
+    add(tu("Freie Kamera woanders hin", [=] {
+        *tiefeA = g_app->doc.undoDepth();
+        g_app->cam.pos[0] = 50.0F; g_app->cam.pos[1] = 6300.0F; g_app->cam.pos[2] = 180.0F;
+        g_app->cam.angles[0] = 5.0F; g_app->cam.angles[1] = 80.0F; g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(klick(tr(Str::CamSetToView), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Auf Ansicht setzen: Ort und Blick der ersten Einstellung, ein Schritt", [=] {
+        diag::detail("Knopftest: nach Auf Ansicht MOVE1 \"" + kameraVektor(1) + "\", PAN \"" + kameraVektor(2) + "\"");
+        return kameraVektor(1) == "50.000 6300.000 180.000" && kameraVektor(2) == "5.000 80.000 0.000" &&
+               g_app->doc.undoDepth() == *tiefeA + 1;
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(pruefe("Ein Strg+Z nimmt beides zurueck", [] {
+        return kameraVektor(1) == "0.000 6400.000 100.000" && kameraVektor(2) == "0.000 90.000 0.000";
+    }));
+    // Steuern (Pilot): in der Einstellung sitzen, fliegen, uebernehmen.
+    add(klick(tr(Str::CamPilot), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Steuern: man sitzt in der ersten Einstellung, das Band ist da", [] {
+        return g_app->kameraPilot && std::fabs(g_app->cam.pos[0] - 0.0F) < 0.01F &&
+               std::fabs(g_app->cam.pos[1] - 6400.0F) < 0.01F && finde(tr(Str::CamPilotApply), "", 0, false) != nullptr;
+    }));
+    add(tu("Fliegen: 40 nach oben", [] { g_app->cam.pos[2] += 40.0F; g_app->mapDirty = true; }));
+    add(pause(0.2));
+    add(klick(tr(Str::CamPilotApply)));
+    add(pause(0.3));
+    add(pruefe("Uebernehmen schreibt die geflogene Stellung", [] {
+        return !g_app->kameraPilot && kameraVektor(1) == "0.000 6400.000 140.000";
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    // Nach dem Uebernehmen bleibt die Ansicht an der geflogenen Stelle (wie
+    // in Unreal) - das ist der Stand, zu dem Esc zurueckkehren muss.
+    auto vorPilot = std::make_shared<std::array<float, 3>>();
+    add(tu("Ansicht vor dem Steuern merken", [=] {
+        for (int k = 0; k < 3; ++k) { (*vorPilot)[static_cast<std::size_t>(k)] = g_app->cam.pos[k]; }
+    }));
+    add(klick(tr(Str::CamPilot), "##kameraleiste"));
+    add(pause(0.2));
+    add(tu("Fliegen, dann Esc", [] { g_app->cam.pos[0] += 300.0F; }));
+    add(taste(ImGuiKey_Escape, "Esc"));
+    add(pause(0.3));
+    add(pruefe("Esc bricht ab: nichts geschrieben, die Ansicht steht wieder wie vorher", [=] {
+        diag::detail("Knopftest: nach Esc Pilot " + std::to_string(g_app->kameraPilot) + ", MOVE1 \"" +
+                     kameraVektor(1) + "\", Ansicht x " + std::to_string(g_app->cam.pos[0]));
+        return !g_app->kameraPilot && kameraVektor(1) == "0.000 6400.000 100.000" &&
+               std::fabs(g_app->cam.pos[0] - (*vorPilot)[0]) < 0.01F;
+    }));
+    // Neue Einstellung und loeschen - je ein Schritt.
+    add(tu("Ansicht fuer die neue Einstellung", [] {
+        g_app->cam.pos[0] = 50.0F; g_app->cam.pos[1] = 6300.0F; g_app->cam.pos[2] = 180.0F;
+        g_app->kameraPilot = false;
+        kameraSchluesselWaehlen(0, false);
+    }));
+    add(klick(tr(Str::CamNewShot), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Neue Einstellung: MOVE und PAN hinter der ersten, sie ist gewaehlt", [] {
+        const auto& ns = g_app->doc.script().nodes;
+        diag::detail("Knopftest: nach Neu " + std::to_string(ns.size()) + " Zeilen, Schluessel " +
+                     std::to_string(g_app->selectedKey) + ", Zeile 3 \"" + kameraVektor(3) + "\"");
+        return ns.size() == 10U && ns[3].args.size() > 1 && ns[3].args[0].text == "MOVE" &&
+               ns[3].args[1].text == "50.000 6300.000 180.000" && ns[4].args[0].text == "PAN" &&
+               g_app->selectedKey == 1 && kameraSchluessel(g_app->doc.script()).size() == 4U;
+    }));
+    add(klick(tr(Str::CamDeleteShot), "##kameraleiste"));
+    add(pause(0.3));
+    add(pruefe("Einstellung loeschen nimmt MOVE und PAN heraus", [] {
+        return g_app->doc.script().nodes.size() == 8U && kameraSchluessel(g_app->doc.script()).size() == 3U;
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(pruefe("Strg+Z holt die geloeschte Einstellung zurueck (ein Schritt)", [] {
+        return g_app->doc.script().nodes.size() == 10U;
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+    add(pruefe("... und das zweite Strg+Z die eingefuegte", [] {
+        return g_app->doc.script().nodes.size() == 8U;
+    }));
+    // Inspektor: Fahrzeit eintragen.
+    add(tu("Zweiter Schluessel, Fahrzeit 2,5 s (wie im Inspektor)", [] { kameraDauerSetzen(1, 2500.0); }));
+    add(pause(0.2));
+    add(pruefe("Fahrzeit steht im MOVE", [] {
+        const auto& ns = g_app->doc.script().nodes;
+        return ns.size() > 4 && ns[4].args.size() > 2 && ns[4].args[2].text == "2500.000";
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.2));
+
+    // ---- Ueberfahren hebt die Kamera hervor -------------------------------
+    add(tu("Kamera abwaehlen", [] {
+        g_app->cameraSelected = false;
+        g_app->selectedKey = -1;
+        g_app->playMs = 6000.0;
+        g_app->cam.pos[0] = 200.0F; g_app->cam.pos[1] = 6000.0F; g_app->cam.pos[2] = 260.0F;
+        g_app->cam.angles[0] = 20.0F; g_app->cam.angles[1] = 90.0F; g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    add(tu("Maus auf die Kamera", [] { setzeMaus(bildZuSchirm(g_app->cameraSx, g_app->cameraSy)); }));
+    add(pause(0.3));
+    add(pruefe("Ueberfahren: die Kamera ist hervorgehoben", [] { return g_app->kameraHover && !g_app->cameraSelected; }));
+    add(tu("Maus weg", [] { setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x - 30.0F, 200.0F}); }));
+    add(pause(0.3));
+    add(pruefe("Maus weg: nicht mehr hervorgehoben", [] { return !g_app->kameraHover; }));
+
+    // ---- Eine Einstellung auf einem ref_tag --------------------------------
+    //
+    // camera ( MOVE, tag( "kamtag", ORIGIN ) ) steht dort, wo der ref_tag
+    // steht - bis rc587 las das hier 0 0 0. Verschieben verschiebt den ref_tag.
+    auto tagIndex = std::make_shared<int>(-1);
+    add(tu("ref_tag \"kamtag\" anlegen, ein MOVE darauf", [=] {
+        const float ort[3] = {300.0F, 6500.0F, 150.0F};
+        *tagIndex = neueEntityAn("ref_tag", ort);
+        if (*tagIndex >= 0) {
+            entityKeySetzen(*tagIndex, "targetname", "kamtag");
+            entityKeySetzen(*tagIndex, "origin", "300 6500 150");
+        }
+        Node n = g_app->doc.script().nodes[6];
+        n.args[1].kind = Arg::Kind::Expr;
+        n.args[1].text = "tag( \"kamtag\", ORIGIN )";
+        (void)g_app->doc.replaceAt(Path{6}, n);
+        rebuildTree();
+        prepareScene();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    add(pruefe("Die Einstellung auf dem ref_tag steht an dessen Ort", [=] {
+        const auto ks = kameraSchluessel(g_app->doc.script());
+        return *tagIndex >= 0 && ks.size() == 3U && ks[2].marke == "kamtag" && std::fabs(ks[2].pos[0] - 300.0F) < 0.01F &&
+               std::fabs(ks[2].pos[1] - 6500.0F) < 0.01F && std::fabs(ks[2].pos[2] - 150.0F) < 0.01F;
+    }));
+    add(tu("Diese Einstellung 20 nach oben schieben", [] {
+        kameraSchluesselWaehlen(2, true);
+        g_app->gizmoOffset[2] = 20.0F;
+        kameraVorschauSchreiben();
+    }));
+    add(pause(0.3));
+    add(pruefe("Verschoben wurde der ref_tag, das Skript bleibt beim tag(...)", [=] {
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(*tagIndex)];
+        diag::detail("Knopftest: ref_tag jetzt bei \"" + e.origin + "\", MOVE3 \"" + kameraVektor(6) + "\"");
+        return e.origin == "300 6500 170" && kameraVektor(6).find("kamtag") != std::string::npos;
+    }));
+    add(tu("ref_tag und MOVE zurueck", [=] {
+        entityRueckgaengig();
+        entityRueckgaengig();
+        entityRueckgaengig();
+        entityRueckgaengig();
+        g_app->doc.undo();
+        rebuildTree();
+        prepareScene();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(pruefe("Aufgeraeumt: MOVE3 wieder mit Zahlen", [] { return kameraVektor(6) == "400.000 6400.000 100.000"; }));
+    add(tu("Wieder Verschieben, Kamera gewaehlt", [] {
+        g_app->gizmoMode = App::GizmoMode::Move;
+        kameraSchluesselWaehlen(1, false);
+    }));
     add(pause(0.2));
 
     // ---- Zurueckschreiben beim Blick durch die Kamera ---------------------
-    add(tu("Through camera an, zweiter Schluessel, Vorschau 20 nach +y", [] {
+    add(tu("Through camera an, zweiter Schluessel, 20 nach +y schreiben", [] {
         g_app->throughCamera = true;
         g_app->selectedKey = 1;
         g_app->gizmoZeitBezug = g_app->playMs;
@@ -9040,9 +9280,9 @@ std::vector<Schritt> kameraSchritte() {
     }));
     add(pause(0.3));
     add(gezeichnet("durch die Kamera"));
-    add(klick(tr(Str::GizmoApply)));
+    add(tu("schreiben", [] { kameraVorschauSchreiben(); }));
     add(pause(0.2));
-    add(pruefe("Write to script geht auch beim Blick durch die Kamera (keyMarks sind dort leer)", [] {
+    add(pruefe("Schreiben geht auch beim Blick durch die Kamera (keyMarks sind dort leer)", [] {
         diag::detail("Knopftest: durch die Kamera, keyMarks " + std::to_string(g_app->keyMarks.size()) +
                      ", MOVE2 \"" + kameraVektor(4) + "\"");
         return kameraVektor(4) == "200.000 6420.000 100.000";

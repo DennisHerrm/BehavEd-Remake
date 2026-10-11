@@ -1,5 +1,48 @@
 # Änderungen seit rc94
 
+## rc588 — Kamera wie die Entities, moderne Zeitleiste, Entity-Icons
+
+Gewünscht: „passen die Kamera sachen eigentlich? ist die Kamera editieren und
+erstellen intuitiv und modern?“ – „mach das bitte“, dazu „kann man die timeline
+unten auch modernisieren … ich habe da noch hässliche checkboxen“ und
+„verschiedene map icons für die entities … sowohl links als auch auf der map“.
+
+* **Kamera** (`gui/app_kamera.cpp`, neu): Vorgabe ist Verschieben; Loslassen
+  schreibt (`kameraVorschauSchreiben`, ein Rückgängig-Schritt je Zug), der
+  Knopf „Write to script“ ist weg. Überfahren hebt hervor (`kameraHover`),
+  Schild mit Einstellung und Ort. Leiste in der Ansicht (Verschieben/Drehen,
+  Welt/Lokal, vorige/nächste, `kameraAufAnsicht` mit `replaceMany` in einem
+  Schritt, Steuern/Pilot mit Übernehmen/Esc, Durchblick, neu, löschen).
+  Kamera-Inspektor links (`drawKameraInspector`): Einstellungen mit Zeit und
+  Fahrzeit, Ort/Blick/Fahrzeit zum Eintippen.
+* **ref_tag-Einstellungen**: `kameraSchluessel` löst tag( "x", ORIGIN/ANGLES )
+  über `kameraMarkeOrt` auf (aus prepareScene herausgezogen) – vorher 0 0 0.
+  Verschieben setzt den origin des ref_tag (Entity-Rückgängig); einen ref_tag
+  mit target zu drehen meldet, dass sein Blick vom Ziel kommt.
+* **Strg+Z über der Karte** gehört nach einer Kameraänderung dem Skript
+  (`kameraSchriebSkript` in `entityFokus`).
+* **Fehler behoben (nachgestellt im Kartentest):** Gizmo-Griffe und
+  Schlüsselmarken blieben nach dem Abwählen der Kamera als unsichtbare Griffe
+  stehen; mit Verschieben als Vorgabe fing ein solcher den nächsten Klick ab
+  („Klick auf die Kamera wählt sie“ – 4 Fehler). `drawCameraGizmos` setzt sie
+  jetzt je Bild zurück, der Griff fragt `cameraSelected`.
+* **Zeitleiste**: Transportleiste mit Icons statt Häkchen und Textknöpfen,
+  große Zeit (Klick: Sekunden/Bilder), Zoom −/Stufen/+, Figurenzeilen und
+  ruhige Spuren als Schalter, „Insert camera here“ als Knopf in der Leiste (die
+  Zeile mit den Koordinaten darüber ist weg – Ort und Bedienung stehen im
+  Statistikfenster). Spurköpfe mit Icon und lesbarem Namen, abgerundete Blöcke
+  mit Hervorhebung, gewählte Zeile umrandet, oranger Zeiger mit Zeit, m:ss im
+  Lineal, Zeit unter der Maus; Überlappung mit Warnzeichen statt Schraffur.
+  Leerer Zustand mit Knopf für die erste Einstellung.
+* **Entity-Icons**: `EntityKat::icon`, `entityIcon`; in der Liste vor jeder
+  Gruppe und jedem Mitglied, in der Karte als Schild über der Marke
+  (`entityUeberlagerung`). + / − zum Klappen, Auge statt „O“/„-“ (Kennungen
+  bleiben für den Selbsttest).
+* 18 neue Icons (`gui/uiicons.cpp`).
+* Selbsttest Kamera: 51 Prüfungen (vorher 42; Züge prüfen jetzt das Skript,
+  dazu Leiste, Auf Ansicht, Steuern/Esc, neu/löschen, Fahrzeit, Überfahren,
+  ref_tag). Kartentest 145.
+
 ## rc587 — Script Flow: Classic, Graph und Spuren
 
 Gewünscht: „ich finde alle gut kannst du alle 3 modi einbauen und testen?“ und

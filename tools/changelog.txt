@@ -6,6 +6,40 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc588 2026-10-11
+[en]
+- Camera editing like the entities: select the camera and the gizmo is there right away; releasing a drag writes the shot into the script, Ctrl+Z undoes each drag (no more "Write to script" button). Hovering the camera highlights it and shows the shot.
+- Camera bar in the view: move / rotate, world / local, previous / next shot, Set to view (puts the shot where you are looking - position and direction in one step), Pilot (sit in the shot, fly it, Apply or Esc), look through, new shot, delete shot.
+- Camera details on the left: all shots with time and travel time, the selected shot's position, direction and travel time to type in. Right-click in the view: New camera shot here.
+- Shots on a ref_tag (tag( "cam1", ORIGIN )) now sit where the ref_tag is, and moving them moves the ref_tag in the map.
+- Modern timeline: icon buttons instead of checkboxes (start, play, loop, speed, sound, follow, zoom out / in, character rows, idle tracks, new camera shot), a large time display (click: seconds / frames), track heads with icons and readable names (Camera move, Camera pan ...), rounded blocks that light up under the mouse, the selected line outlined, an orange playhead with the time in it, m:ss in the ruler and the time under the mouse. Overlapping camera moves are marked calmly with a warning sign instead of red hatching.
+- Entity icons in the list and in the map: camera marks, walk targets, look targets, characters, script runners, effects, sound, movers, breakables - each with its own icon and colour; an eye instead of "O" / "-" to show and hide.
+- Entity list: + to expand a group, - to collapse it, an eye beside it to show or hide it in the map. An empty timeline says what is missing and has a button for the first camera shot.
+[de]
+- Kamera bearbeiten wie die Entities: Kamera wählen, und das Gizmo ist sofort da; Loslassen schreibt die Einstellung ins Skript, Strg+Z nimmt jeden Zug zurück (kein Knopf "Ins Skript schreiben" mehr). Überfahren hebt die Kamera hervor und nennt die Einstellung.
+- Kameraleiste in der Ansicht: Verschieben / Drehen, Welt / Lokal, vorige / nächste Einstellung, Auf Ansicht setzen (setzt die Einstellung dorthin, wo du hinschaust - Ort und Blick in einem Schritt), Steuern (in der Einstellung sitzen, fliegen, Übernehmen oder Esc), Durchblick, neue Einstellung, Einstellung löschen.
+- Kamera-Inspektor links: alle Einstellungen mit Zeit und Fahrzeit, Ort, Blickrichtung und Fahrzeit der gewählten zum Eintippen. Rechtsklick in die Ansicht: Neue Kameraeinstellung hier.
+- Einstellungen auf einem ref_tag (tag( "cam1", ORIGIN )) stehen jetzt dort, wo der ref_tag steht, und Verschieben verschiebt den ref_tag in der Karte.
+- Moderne Zeitleiste: Icon-Knöpfe statt Häkchen (Anfang, Abspielen, Schleife, Tempo, Klang, Mitfahren, Zoom heraus / hinein, Figurenzeilen, ruhige Spuren, neue Kameraeinstellung), eine große Zeitanzeige (Klick: Sekunden / Bilder), Spurköpfe mit Icons und lesbaren Namen (Kamerafahrt, Kameraschwenk ...), abgerundete Blöcke, die unter der Maus aufleuchten, die gewählte Zeile umrandet, ein oranger Zeiger mit der Zeit darin, m:ss im Lineal und die Zeit unter der Maus. Überlappende Kamerafahrten sind ruhig mit einem Warnzeichen markiert statt rot schraffiert.
+- Entity-Icons in der Liste und in der Karte: Kameramarken, Laufziele, Blickziele, Figuren, Skriptstarter, Effekte, Klang, Mover, Zerbrechliches - jedes mit eigenem Icon und eigener Farbe; ein Auge statt "O" / "-" zum Ein- und Ausblenden.
+- Entity-Liste: + klappt eine Gruppe auf, - wieder zu, daneben ein Auge zum Ein- und Ausblenden in der Karte. Eine leere Zeitleiste sagt, was fehlt, und hat einen Knopf für die erste Kameraeinstellung.
+[zh]
+- 像编辑实体一样编辑摄像机:选中摄像机即出现操纵器;松开拖动即写入脚本,Ctrl+Z 可逐次撤销(不再需要“写入脚本”按钮)。鼠标悬停会高亮摄像机并显示镜头。
+- 视图中的摄像机工具栏:移动 / 旋转、世界 / 本地、上一个 / 下一个镜头、设为当前视角(一步设置位置和方向)、驾驶(坐进镜头飞行,应用或 Esc)、透过摄像机观看、新建镜头、删除镜头。
+- 左侧摄像机详情:所有镜头及时间和移动时间,可输入所选镜头的位置、方向和移动时间。在视图中右键:在此新建镜头。
+- 位于 ref_tag 上的镜头(tag( "cam1", ORIGIN ))现在显示在 ref_tag 的位置,移动它会移动地图中的 ref_tag。
+- 现代化时间轴:图标按钮取代复选框(开头、播放、循环、速度、声音、跟随、缩小 / 放大、角色行、空闲轨道、新建镜头),大号时间显示(单击切换秒 / 帧),带图标和易读名称的轨道头,圆角块在鼠标下高亮,所选行加框,橙色播放头内显示时间,标尺显示 m:ss 及鼠标处时间。重叠的摄像机移动以警告标志平静地标出,不再使用红色斜线。
+- 列表和地图中的实体图标:摄像机标记、行走目标、注视目标、角色、脚本运行器、特效、声音、可动物体、可破坏物 - 各有图标和颜色;用眼睛图标代替 "O" / "-" 显示和隐藏。
+- 实体列表:+ 展开分组,- 折叠,旁边的眼睛图标在地图中显示或隐藏。空的时间轴会说明缺少什么,并提供添加第一个镜头的按钮。
+[ja]
+- エンティティと同じようにカメラを編集: カメラを選ぶとすぐにギズモが出ます。ドラッグを離すとスクリプトに書き込み、Ctrl+Z で 1 回ずつ元に戻せます(「スクリプトに書き込む」ボタンは廃止)。カメラにマウスを乗せると強調表示とショット名が出ます。
+- ビュー内のカメラバー: 移動 / 回転、ワールド / ローカル、前 / 次のショット、ビューに合わせる(位置と向きを 1 回で設定)、操縦(ショットに乗って飛び、適用か Esc)、カメラから見る、新しいショット、ショット削除。
+- 左側のカメラ詳細: 全ショットと時刻・移動時間、選択中のショットの位置・向き・移動時間を入力可能。ビューで右クリック: ここに新しいショット。
+- ref_tag 上のショット(tag( "cam1", ORIGIN ))が ref_tag の位置に表示され、動かすとマップの ref_tag が動きます。
+- モダンなタイムライン: チェックボックスの代わりにアイコンボタン(先頭、再生、ループ、速度、サウンド、追従、ズームアウト / イン、キャラクター行、動きのないトラック、新しいショット)、大きな時間表示(クリックで秒 / フレーム)、アイコンと読みやすい名前のトラックヘッダー、マウスで光る角丸ブロック、選択行の枠、時間入りのオレンジの再生ヘッド、ルーラーの m:ss とマウス位置の時間。重なったカメラ移動は赤い斜線ではなく警告マークで穏やかに表示。
+- リストとマップのエンティティアイコン: カメラマーク、歩行目標、注視目標、キャラクター、スクリプトランナー、エフェクト、サウンド、可動物、破壊可能物 - それぞれ専用のアイコンと色。表示 / 非表示は "O" / "-" の代わりに目のアイコン。
+- エンティティリスト: + でグループを展開、- で折りたたみ、横の目のアイコンでマップでの表示 / 非表示。空のタイムラインには何が足りないかと最初のショットを作るボタンが出ます。
+
 ## rc587 2026-10-11
 [en]
 - Script Flow has three views, switched at the top: Classic (the list as before), Graph and Tracks. All three work on the same script and mission - switch any time, edits, selection and undo carry over.
