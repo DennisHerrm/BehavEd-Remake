@@ -576,6 +576,14 @@ void drawCameraGizmos(MapImage& img) {
             float p[3] = {0, 0, 0};
             std::istringstream is(e.origin);
             is >> p[0] >> p[1] >> p[2];
+            // Draufsicht: was ueber dem Schnitt liegt, ist nicht zu sehen.
+            if (g_app->draufsicht && p[2] - 24.0F > g_app->draufSchnitt) {
+                continue;
+            }
+            // Wegpunkte gibt es zu Hunderten - nur mit sichtbarem Wegnetz.
+            if (kat == 9 && !g_app->zeigeWegnetz) {
+                continue;
+            }
             const P2 c0 = project(p);
             if (!c0.ok) {
                 continue;
@@ -7290,6 +7298,7 @@ const EntityKat kKategorien[] = {
     {Str::EntityKatSound, 150, 170, 255, UiIcon::Ton},
     {Str::EntityKatMover, 150, 165, 190, UiIcon::Tuer},
     {Str::EntityKatBreak, 190, 130, 80, UiIcon::Bruch},
+    {Str::EntityKatWaypoints, 110, 220, 240, UiIcon::Pfad},
 };
 }  // namespace
 
@@ -7310,6 +7319,7 @@ int entityKategorie(const MapEntity& e) {
     if (c == "target_speaker" || c == "target_play_music") { return 6; }
     if (c == "func_breakable" || c == "misc_model_breakable") { return 8; }
     if (c.rfind("func_", 0) == 0 && (!e.targetname.empty() || e.find("script_targetname") != nullptr)) { return 7; }
+    if (c == "waypoint" || c == "waypoint_small" || c == "point_combat") { return 9; }
     return -1;
 }
 
@@ -9688,7 +9698,37 @@ void drawMapView() {
     // Zum SETZEN einer Kamera will man ein Ziel umkreisen und sehen, wie es
     // aus verschiedenen Richtungen aussieht. Fliegen ist gut, um irgendwo
     // hinzukommen, aber umstaendlich, um sich um etwas herumzubewegen.
-    if (hovered && ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+    // Draufsicht (rc589): schieben statt drehen, das Rad hebt und senkt die
+    // Kamera (die Schnitthoehe bleibt), WASD schiebt in Bildrichtung.
+    if (g_app->draufsicht) {
+        g_app->cam.angles[0] = 89.0F;
+        g_app->cam.angles[2] = 0.0F;
+        const float bodenZ = g_app->draufSchnitt - 160.0F;
+        const float hoehe = std::max(64.0F, g_app->cam.pos[2] - bodenZ);
+        const float bildH = std::max(1.0F, g_app->kartenAnsicht[3] - g_app->kartenAnsicht[1]);
+        const float jePunkt = 2.0F * hoehe * std::tan(g_app->cam.fovY * 3.14159265F / 360.0F) / bildH;
+        const float gier = g_app->cam.angles[1] * 3.14159265F / 180.0F;
+        const float vx = std::cos(gier);   // "oben" im Bild
+        const float vy = std::sin(gier);
+        const auto schiebe = [&](float rechts, float vor) {
+            g_app->cam.pos[0] += vx * vor + vy * rechts;
+            g_app->cam.pos[1] += vy * vor - vx * rechts;
+        };
+        if (hovered && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
+            schiebe(-io.MouseDelta.x * jePunkt, io.MouseDelta.y * jePunkt);
+        }
+        if (hovered && io.MouseWheel != 0.0F) {
+            g_app->cam.pos[2] = std::max(g_app->draufSchnitt + 64.0F,
+                                         g_app->cam.pos[2] - io.MouseWheel * hoehe * 0.15F);
+        }
+        if (hovered) {
+            const float schritt = (io.KeyShift ? 3.0F : 1.0F) * hoehe * 1.2F * std::max(io.DeltaTime, 0.001F);
+            if (ImGui::IsKeyDown(ImGuiKey_W)) { schiebe(0.0F, schritt); }
+            if (ImGui::IsKeyDown(ImGuiKey_S)) { schiebe(0.0F, -schritt); }
+            if (ImGui::IsKeyDown(ImGuiKey_D)) { schiebe(schritt, 0.0F); }
+            if (ImGui::IsKeyDown(ImGuiKey_A)) { schiebe(-schritt, 0.0F); }
+        }
+    } else if (hovered && ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
         if (io.KeyAlt) {
             g_app->orbit.turn(g_app->cam, -io.MouseDelta.x * 0.3F,
                               -io.MouseDelta.y * 0.3F);
@@ -9696,15 +9736,15 @@ void drawMapView() {
             g_app->orbit.pan(g_app->cam, io.MouseDelta.x, io.MouseDelta.y);
         }
     }
-    if (hovered && io.MouseWheel != 0.0F) {
+    if (hovered && io.MouseWheel != 0.0F && !g_app->draufsicht) {
         g_app->orbit.zoom(g_app->cam, io.MouseWheel);
     }
-    if (hovered && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+    if (hovered && ImGui::IsMouseDown(ImGuiMouseButton_Right) && !g_app->draufsicht) {
         g_app->cam.angles[1] -= io.MouseDelta.x * 0.25F;
         g_app->cam.angles[0] = std::clamp(
             g_app->cam.angles[0] - io.MouseDelta.y * 0.25F, -89.0F, 89.0F);
     }
-    if (hovered) {
+    if (hovered && !g_app->draufsicht) {
         const float base = io.KeyShift ? 40.0F : 12.0F;
         const float step = base * std::max(io.DeltaTime, 0.001F) * 60.0F;
         float fwd = 0.0F;
@@ -10767,7 +10807,12 @@ void drawMapView() {
             gpu::setzeSchritt("Ziel anlegen");
             if (gpu::bereiteZiel(gw, gh)) {
                 float vp[16];
-                gpu::baueViewProj(useCam, gw, gh, 4.0F, kartenFern(), vp);
+                // Draufsicht: die vordere Ebene liegt auf der Schnitthoehe -
+                // alles darueber (Decken, Daecher) faellt weg.
+                const float nah = (g_app->draufsicht && !g_app->throughCamera)
+                                      ? std::max(4.0F, useCam.pos[2] - g_app->draufSchnitt)
+                                      : 4.0F;
+                gpu::baueViewProj(useCam, gw, gh, nah, kartenFern() + (nah > 4.0F ? nah : 0.0F), vp);
                 // Die Kameraachsen fuer den Himmel - aus derselben Quelle
                 // wie der Rasterer, sonst zeigt der Himmel woandershin.
                 float gvorn[3];
@@ -11564,7 +11609,9 @@ void drawMapView() {
         }
         // Eine gewaehlte Entity ueber den Boden ziehen (gui/app_mission.cpp).
         entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
+        wegWerkzeugMaus(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         entityUeberlagerung(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
+        wegUeberlagerung();
         // --- Namen an Entities und Figuren -------------------------------
         if (g_app->zeigeNamen) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -12074,7 +12121,7 @@ g_app->gizmoAxis = g_app->gizmoHover;
 
         // Angefasst zum Ziehen (entityZiehen)? Dann bleibt die Auswahl, wie
         // sie ist - ein Klick auf das Gewaehlte waehlt nicht ab.
-        if (g_app->gizmoAxis < 0 && !g_app->entZug.kandidat && ImGui::IsItemHovered() &&
+        if (g_app->gizmoAxis < 0 && !g_app->entZug.kandidat && !g_app->wegKlickVerbraucht && ImGui::IsItemHovered() &&
             ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             const ImVec2 m = ImGui::GetIO().MousePos;
             // Siehe die Notiz weiter oben zur Rastergroesse.
@@ -12350,6 +12397,29 @@ g_app->gizmoAxis = g_app->gizmoHover;
         const float bildB = g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0];
         kameraUeberlagerung(bildB > 0.0F ? static_cast<float>(g_app->mapImage.width) / bildB : 1.0F);
     }
+    // Draufsicht: die Schnitthoehe oben rechts (rc589).
+    if (g_app->draufsicht && !g_app->geo.empty()) {
+        const ImVec2 merk = ImGui::GetCursorScreenPos();
+        const float fs = ImGui::GetFontSize();
+        ImGui::SetCursorScreenPos(ImVec2{g_app->kartenAnsicht[2] - fs * 15.5F, g_app->kartenAnsicht[1] + fs * 0.5F});
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4{0.10F, 0.11F, 0.14F, 0.88F});
+        if (ImGui::BeginChild("##draufsicht", ImVec2{fs * 15.0F, 0.0F},
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar)) {
+            ImGui::SetNextItemWidth(-1.0F);
+            float schnitt = g_app->draufSchnitt;
+            if (ImGui::DragFloat("##schnitt", &schnitt, 4.0F, -16384.0F, 16384.0F, tr(Str::MapTopCut))) {
+                const float d = schnitt - g_app->draufSchnitt;
+                g_app->draufSchnitt = schnitt;
+                g_app->cam.pos[2] += d;   // Abstand zur Kamera bleibt
+                g_app->mapDirty = true;
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::MapTopCutHint)); }
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        ImGui::SetCursorScreenPos(merk);
+        ImGui::Dummy(ImVec2{0.0F, 0.0F});   // Anker: ImGui will nach dem Cursorsprung ein Element
+    }
 }
 
 // Die Bedienung der Karte - UNTER allen Spalten, ueber die volle Breite.
@@ -12462,9 +12532,11 @@ float ansichtsSchalter(bool nurMessen) {
     const float h = ImGui::GetFrameHeight();
     const float sp = ImGui::GetStyle().ItemSpacing.x;
     const int anzahl = static_cast<int>(sizeof(schalter) / sizeof(schalter[0]));
-    // Acht Schalter, dann Kamera, Einstellungen, Statistik.
+    // Acht Schalter, dann Kamera, Draufsicht, Wegpunkte (rc589, je mit vollem
+    // Abstand), Einstellungen, Statistik. Fehlt hier ein Knopf, laeuft die
+    // Leiste rechts ueber den Rand (Wegpunkttest: "nicht ganz sichtbar").
     const float breite = static_cast<float>(anzahl) * h + static_cast<float>(anzahl - 1) * sp * 0.5F +
-                         sp + 3.0F * h + 2.0F * sp * 0.5F;
+                         sp + 3.0F * h + 2.0F * sp * 0.5F + 2.0F * (h + sp);
     if (nurMessen) {
         return breite;
     }
@@ -12497,6 +12569,16 @@ float ansichtsSchalter(bool nurMessen) {
             g_app->throughCamera = !g_app->throughCamera;
             g_app->mapDirty = true;
         }
+    }
+    ImGui::SameLine();
+    if (iconKnopf(tr(Str::MapTopView), UiIcon::Oben, tr(Str::MapTopViewHint), g_app->draufsicht, true, true)) {
+        draufsichtSchalten(!g_app->draufsicht);
+    }
+    ImGui::SameLine();
+    if (iconKnopf(tr(Str::WegTitel), UiIcon::Pfad, tr(Str::WegZeigenHint), g_app->wegFensterOffen, true, true)) {
+        g_app->wegFensterOffen = !g_app->wegFensterOffen;
+        if (g_app->wegFensterOffen) { g_app->zeigeWegnetz = true; }
+        g_app->mapDirty = true;
     }
     ImGui::SameLine(0.0F, sp * 0.5F);
     if (iconKnopf(tr(Str::MapViewSettings), UiIcon::Einstellungen, tr(Str::MapViewSettingsHint)) ||

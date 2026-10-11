@@ -10745,6 +10745,269 @@ std::vector<Schritt> endeSchritte(bool voll) {
     return s;
 }
 
+// --- Wegnetz der NPCs und Draufsicht (BHED_EDITORTEST=wegpunkte, rc589) -------
+//
+// "npc waypoints erstellen ... bzw. er die automatisch erstellt". Nach dem
+// Laden der Karte: Fenster oeffnen, Netz erzeugen (es muss so gebaut sein, wie
+// das Spiel es liest: zusammenhaengend, keine fehlenden targets, nichts im
+// Festen), Rueckgaengig, von Hand setzen, verbinden und trennen, pruefen,
+// Draufsicht mit Schnitthoehe.
+std::size_t zaehleKlasse(const char* klasse) {
+    std::size_t n = 0;
+    for (const MapEntity& e : g_app->map.entities) { n += e.classname == klasse ? 1U : 0U; }
+    return n;
+}
+
+int entityIndex(const std::string& name) {
+    for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+        if (g_app->map.entities[i].targetname == name) { return static_cast<int>(i); }
+    }
+    return -1;
+}
+
+std::vector<Schritt> wegSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto wp0 = std::make_shared<std::size_t>(0);
+    auto tiefe0 = std::make_shared<std::size_t>(0);
+    add(tu("Wegnetz: Ausgangslage", [=] {
+        *wp0 = zaehleKlasse("waypoint");
+        *tiefe0 = g_app->entUndo.size();
+        g_app->throughCamera = false;
+        g_app->playing = false;
+        diag::detail("Knopftest: Wegnetz - Karte " + g_app->map.path + ", " + std::to_string(*wp0) + " Wegpunkte");
+    }));
+    add(klick(tr(Str::WegTitel), "###main"));
+    add(pause(0.4));
+    add(pruefe("Leiste: Wegpunkte oeffnet das Fenster und zeigt das Netz", [] {
+        return g_app->wegFensterOffen && g_app->zeigeWegnetz && finde(tr(Str::WegErzeugen), "###wegpunkte", 0, false) != nullptr;
+    }));
+    auto dauer = std::make_shared<double>(0.0);
+    add(tu("Uhr", [=] { *dauer = ImGui::GetTime(); }));
+    add(klick(tr(Str::WegErzeugen), "###wegpunkte"));
+    add(pause(0.5));
+    auto erzeugt = std::make_shared<std::vector<std::string>>();
+    add(pruefe("Netz erzeugen: Wegpunkte mit targets, ein Rueckgaengig-Schritt", [=] {
+        erzeugt->clear();
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.targetname.rfind("wpauto_", 0) == 0) { erzeugt->push_back(e.targetname); }
+        }
+        diag::detail("Knopftest: Wegnetz - " + g_app->wegMeldung + ", " + std::to_string(erzeugt->size()) + " wpauto");
+        return erzeugt->size() >= 20U && g_app->entUndo.size() == *tiefe0 + 1 &&
+               zaehleKlasse("waypoint") == *wp0 + erzeugt->size();
+    }));
+    add(foto("weg_netz"));
+    add(pruefe("Wie das Spiel es liest: alle erzeugten erreichbar, kein target fehlt, nichts im Festen oder schwebend", [=] {
+        std::vector<MapEntity> nur;
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.targetname.rfind("wpauto_", 0) == 0) { nur.push_back(e); }
+        }
+        const WegNetz n = baueWegNetz(nur);
+        std::vector<std::vector<int>> adj(n.knoten.size());
+        for (const WegKante& k : n.kanten) {
+            adj[static_cast<std::size_t>(k.a)].push_back(k.b);
+            adj[static_cast<std::size_t>(k.b)].push_back(k.a);
+        }
+        // Mehrere Startpunkte koennen getrennte Inseln ergeben - die groesste
+        // muss den Grossteil tragen.
+        std::vector<int> komp(n.knoten.size(), -1);
+        std::size_t groesste = 0;
+        for (std::size_t i = 0; i < n.knoten.size(); ++i) {
+            if (komp[i] >= 0) { continue; }
+            std::vector<int> st{static_cast<int>(i)};
+            komp[i] = static_cast<int>(i);
+            std::size_t g = 0;
+            while (!st.empty()) {
+                const int a = st.back();
+                st.pop_back();
+                ++g;
+                for (const int b : adj[static_cast<std::size_t>(a)]) {
+                    if (komp[static_cast<std::size_t>(b)] < 0) {
+                        komp[static_cast<std::size_t>(b)] = static_cast<int>(i);
+                        st.push_back(b);
+                    }
+                }
+            }
+            groesste = std::max(groesste, g);
+        }
+        int fest = 0;
+        int schwebt = 0;
+        for (const WegBefund& b : pruefeWegNetz(n, nur, [](const std::array<float, 3>& a, const std::array<float, 3>& b2,
+                                                           std::array<float, 3>& t, std::array<float, 3>& nn) {
+                 const TraceTreffer r = traceRay(g_app->geo, a.data(), b2.data());
+                 for (int k = 0; k < 3; ++k) {
+                     t[static_cast<std::size_t>(k)] = r.point[k];
+                     nn[static_cast<std::size_t>(k)] = r.normal[k];
+                 }
+                 return r.hit;
+             })) {
+            fest += b.art == WegBefund::Art::ImFesten ? 1 : 0;
+            schwebt += b.art == WegBefund::Art::Schwebend ? 1 : 0;
+        }
+        diag::detail("Knopftest: Wegnetz - " + std::to_string(n.knoten.size()) + " Knoten, " +
+                     std::to_string(n.kanten.size()) + " Kanten, groesste Insel " + std::to_string(groesste) +
+                     ", im Festen " + std::to_string(fest) + ", schwebend " + std::to_string(schwebt) +
+                     ", fehlende targets " + std::to_string(n.fehlendeZiele.size()));
+        return n.fehlendeZiele.empty() && fest == 0 && schwebt == 0 && groesste * 2 >= n.knoten.size() &&
+               n.kanten.size() >= n.knoten.size();
+    }));
+    add(pruefe("Im Fenster: die Zahlen und das Ergebnis", [] {
+        return g_app->wegMeldung.find(std::to_string(zaehleKlasse("waypoint"))) != std::string::npos ||
+               !g_app->wegMeldung.empty();
+    }));
+    // Von Hand setzen: zwei Klicks auf den Boden (dort, wo ein erzeugter steht -
+    // da ist sicher Boden), der zweite haengt am ersten.
+    auto ziel = std::make_shared<std::array<ImVec2, 2>>();
+    add(tu("Zwei Bodenpunkte im Bild suchen (bei erzeugten Wegpunkten)", [=] {
+        int n = 0;
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.targetname.rfind("wpauto_", 0) != 0 || n >= 2) { continue; }
+            float o[3];
+            if (!entityOrt(e, o)) { continue; }
+            const float boden[3] = {o[0] + 30.0F, o[1] + 30.0F, o[2] - 25.0F};
+            ImVec2 sp;
+            if (!kartenPunktAufSchirm(boden, sp)) { continue; }
+            if (sp.x < g_app->kartenAnsicht[0] + 40 || sp.x > g_app->kartenAnsicht[2] - 40 ||
+                sp.y < g_app->kartenAnsicht[1] + 80 || sp.y > g_app->kartenAnsicht[3] - 40) {
+                continue;
+            }
+            if (n == 1 && std::fabs(sp.x - (*ziel)[0].x) + std::fabs(sp.y - (*ziel)[0].y) < 40.0F) { continue; }
+            TraceTreffer t;
+            if (!kartenStrahlUnterMaus(sp.x, sp.y, t) || t.normal[2] < 0.5F) { continue; }
+            (*ziel)[static_cast<std::size_t>(n++)] = sp;
+        }
+        diag::detail("Knopftest: Wegnetz - Bodenpunkte " + std::to_string(n));
+    }));
+    add(klick(tr(Str::WegSetzen), "###wegpunkte"));
+    add(pause(0.2));
+    auto vorSetzen = std::make_shared<std::size_t>(0);
+    add(tu("Stand vor dem Setzen", [=] { *vorSetzen = g_app->map.entities.size(); }));
+    add(klickAn("Wegpunkt 1 setzen", [=] { return (*ziel)[0]; }));
+    add(pause(0.2));
+    add(klickAn("Wegpunkt 2 setzen", [=] { return (*ziel)[1]; }));
+    add(pause(0.3));
+    add(pruefe("Setzen: zwei neue Wegpunkte, der erste nennt den zweiten als target, keiner gewaehlt geaendert", [=] {
+        const auto& v = g_app->map.entities;
+        if (v.size() != *vorSetzen + 2) { return false; }
+        const MapEntity& a = v[v.size() - 2];
+        const MapEntity& b = v[v.size() - 1];
+        const std::string* t = a.find("target");
+        diag::detail("Knopftest: Wegnetz - gesetzt " + a.targetname + " (" + a.origin + ") -> " +
+                     (t != nullptr ? *t : std::string("-")) + ", " + b.targetname + " (" + b.origin + ")");
+        return a.classname == "waypoint" && b.classname == "waypoint" && t != nullptr && *t == b.targetname &&
+               g_app->pickedEntity == static_cast<int>(v.size()) - 1;
+    }));
+    // Verbinden: der zweite gesetzte mit dem ersten erzeugten - und wieder trennen.
+    add(klick(tr(Str::WegVerbinden), "###wegpunkte"));
+    add(pause(0.2));
+    auto paar = std::make_shared<std::array<int, 2>>();
+    auto paarOrt = std::make_shared<std::array<ImVec2, 2>>();
+    add(tu("Zwei Punkte zum Verbinden", [=] {
+        const int b = static_cast<int>(g_app->map.entities.size()) - 1;
+        (*paar)[0] = b;
+        (*paar)[1] = -1;
+        float ob[3];
+        entityOrt(g_app->map.entities[static_cast<std::size_t>(b)], ob);
+        const float wb[3] = {ob[0], ob[1], ob[2] - 20.0F};
+        kartenPunktAufSchirm(wb, (*paarOrt)[0]);
+        float best = 1.0e9F;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            if (e.targetname.rfind("wpauto_", 0) != 0) { continue; }
+            float o[3];
+            entityOrt(e, o);
+            const float w[3] = {o[0], o[1], o[2] - 20.0F};
+            ImVec2 sp;
+            if (!kartenPunktAufSchirm(w, sp)) { continue; }
+            const float d = std::fabs(sp.x - (*paarOrt)[0].x) + std::fabs(sp.y - (*paarOrt)[0].y);
+            if (d > 60.0F && d < best && sp.x > g_app->kartenAnsicht[0] + 30 && sp.x < g_app->kartenAnsicht[2] - 30 &&
+                sp.y > g_app->kartenAnsicht[1] + 80 && sp.y < g_app->kartenAnsicht[3] - 30) {
+                best = d;
+                (*paar)[1] = static_cast<int>(i);
+                (*paarOrt)[1] = sp;
+            }
+        }
+    }));
+    add(klickAn("Verbinden: erster Punkt", [=] { return (*paarOrt)[0]; }));
+    add(pause(0.2));
+    add(klickAn("Verbinden: zweiter Punkt", [=] { return (*paarOrt)[1]; }));
+    add(pause(0.3));
+    const auto verbunden = [](int a, int b) {
+        if (a < 0 || b < 0) { return false; }
+        const MapEntity& ea = g_app->map.entities[static_cast<std::size_t>(a)];
+        const MapEntity& eb = g_app->map.entities[static_cast<std::size_t>(b)];
+        for (const char* f : {"target", "target2", "target3", "target4", "targetJump"}) {
+            if (const std::string* t = ea.find(f); t != nullptr && *t == eb.targetname) { return true; }
+            if (const std::string* t = eb.find(f); t != nullptr && *t == ea.targetname) { return true; }
+        }
+        return false;
+    };
+    add(pruefe("Verbinden: die beiden Punkte sind verbunden", [=] { return verbunden((*paar)[0], (*paar)[1]); }));
+    add(klickAn("Trennen: zweiter Punkt (Kette geht von ihm weiter)", [=] { return (*paarOrt)[0]; }));
+    add(pause(0.3));
+    add(pruefe("Noch einmal dieselben zwei: getrennt", [=] { return !verbunden((*paar)[0], (*paar)[1]); }));
+    add(taste(ImGuiKey_Escape, "Esc beendet das Werkzeug"));
+    add(pause(0.2));
+    add(pruefe("Esc: kein Werkzeug mehr", [] { return g_app->wegWerkzeug == 0 && g_app->wegVon < 0; }));
+    // Pruefen
+    add(klick(tr(Str::WegPruefen), "###wegpunkte"));
+    add(pause(0.3));
+    add(pruefe("Pruefen: Ergebnis steht da", [] {
+        diag::detail("Knopftest: Wegnetz - " + std::to_string(g_app->wegBefunde.size()) + " Befunde");
+        for (std::size_t i = 0; i < g_app->wegBefunde.size() && i < 5; ++i) {
+            diag::detail("Knopftest: Wegnetz -   " + g_app->wegBefunde[i].text);
+        }
+        return g_app->wegGeprueft;
+    }));
+    // Draufsicht
+    auto vorher = std::make_shared<Camera>();
+    add(tu("Ansicht merken", [=] { *vorher = g_app->cam; }));
+    add(klick(tr(Str::MapTopView), "###main"));
+    add(pause(0.6));
+    add(foto("weg_draufsicht"));
+    add(pruefe("Draufsicht: senkrecht nach unten, Schnitthoehe unter der Kamera, Regler da", [] {
+        diag::detail("Knopftest: Draufsicht - Kamera z " + std::to_string(g_app->cam.pos[2]) + ", Schnitt " +
+                     std::to_string(g_app->draufSchnitt));
+        return g_app->draufsicht && g_app->cam.angles[0] > 88.0F && g_app->draufSchnitt < g_app->cam.pos[2] &&
+               finde("##schnitt", "", 0, false) != nullptr;
+    }));
+    add(pruefe("Draufsicht: ein Klick trifft unter der Schnitthoehe (nicht das Dach)", [] {
+        TraceTreffer t;
+        const float x = (g_app->kartenAnsicht[0] + g_app->kartenAnsicht[2]) * 0.5F;
+        const float y = (g_app->kartenAnsicht[1] + g_app->kartenAnsicht[3]) * 0.5F;
+        const bool hit = kartenStrahlUnterMaus(x, y, t);
+        diag::detail("Knopftest: Draufsicht - Treffer " + std::to_string(hit) + " bei z " + std::to_string(t.point[2]));
+        return !hit || t.point[2] <= g_app->draufSchnitt + 0.5F;
+    }));
+    add(radAn("Draufsicht: Rad zoomt", ansichtMitte, 2.0F));
+    add(pause(0.2));
+    add(pruefe("Rad: die Kamera kommt naeher, bleibt ueber dem Schnitt, schaut weiter nach unten", [] {
+        return g_app->cam.pos[2] > g_app->draufSchnitt + 63.0F && g_app->cam.angles[0] > 88.0F;
+    }));
+    add(klick(tr(Str::MapTopView), "###main"));
+    add(pause(0.3));
+    add(pruefe("Draufsicht aus: die Ansicht steht wie vorher", [=] {
+        return !g_app->draufsicht && std::fabs(g_app->cam.pos[0] - vorher->pos[0]) < 0.01F &&
+               std::fabs(g_app->cam.pos[2] - vorher->pos[2]) < 0.01F && std::fabs(g_app->cam.angles[0] - vorher->angles[0]) < 0.01F;
+    }));
+    // Erzeugte entfernen, Rueckgaengig bis zum Anfang
+    add(klick(tr(Str::WegEntfernen), "###wegpunkte"));
+    add(pause(0.3));
+    add(pruefe("Erzeugte entfernen: keine wpauto mehr, die von Hand gesetzten bleiben", [=] {
+        std::size_t auto_ = 0;
+        for (const MapEntity& e : g_app->map.entities) { auto_ += e.targetname.rfind("wpauto_", 0) == 0 ? 1U : 0U; }
+        return auto_ == 0U && zaehleKlasse("waypoint") == *wp0 + 2;
+    }));
+    add(tu("Alles zurueck", [=] {
+        while (g_app->entUndo.size() > *tiefe0) { entityRueckgaengig(); }
+    }));
+    add(pause(0.3));
+    add(pruefe("Rueckgaengig bis zum Anfang: so viele Wegpunkte wie vorher", [=] { return zaehleKlasse("waypoint") == *wp0; }));
+    add(tu("Fenster zu", [] { g_app->wegFensterOffen = false; g_app->zeigeWegnetz = false; }));
+    add(pause(0.2));
+    return s;
+}
+
 // --- Teil 1: Ruhe beim Oeffnen --------------------------------------------
 
 struct RuheFall {
@@ -10988,6 +11251,7 @@ void selbsttest() {
     static const bool nurHolo = std::strcmp(modus, "holo") == 0;
     static const bool nurOrt = std::strcmp(modus, "ort") == 0;
     static const bool nurKamera = std::strcmp(modus, "kamera") == 0;
+    static const bool nurWeg = std::strcmp(modus, "wegpunkte") == 0;
     static const bool nurAlleKarten = std::strcmp(modus, "allekarten") == 0;
     static const bool nurAblauf = std::strcmp(modus, "ablauf") == 0;
     static const bool nurZeitleiste = std::strcmp(modus, "zeitleiste") == 0;
@@ -11118,14 +11382,14 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg) {
                 a.schritte = karteSchritte();
-                if (nurLava || nurHolo || nurOrt || nurKamera) {
+                if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg) {
                     // Nur laden (die ersten Schritte von karteSchritte bis
                     // "Kartenansicht gezeichnet"), dann Lava oder Holotisch.
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
                     for (Schritt& x : (nurLava ? lavaSchritte() : nurHolo ? holoSchritte()
-                                       : nurKamera ? kameraSchritte() : ortSchritte())) {
+                                       : nurKamera ? kameraSchritte() : nurWeg ? wegSchritte() : ortSchritte())) {
                         a.schritte.push_back(std::move(x));
                     }
                 } else {

@@ -193,10 +193,17 @@ void strahlDurch(float sx, float sy, float start[3], float ende[3]) {
         start[k] = c.pos[k];
         ende[k] = c.pos[k] + (fwd[k] + a * rgt[k] + b * upv[k]) * 8192.0F;
     }
+    // Draufsicht: was ueber der Schnitthoehe liegt, ist weggeschnitten - der
+    // Strahl beginnt erst dort, sonst traefe ein Klick das unsichtbare Dach.
+    if (g_app->draufsicht && start[2] > g_app->draufSchnitt && ende[2] < start[2]) {
+        const float t = (start[2] - g_app->draufSchnitt) / (start[2] - ende[2]);
+        for (int k = 0; k < 3; ++k) { start[k] += (ende[k] - start[k]) * t; }
+    }
 }
 
 // --- Aendern mit Rueckgaengig -----------------------------------------------
 void nachAenderung() {
+    ++g_app->entStand;
     collectNames(g_app->map);
     merkeEntities();
     g_app->entitiesUngespeichert.insert(g_app->map.path);
@@ -990,7 +997,9 @@ void entityUeberlagerung(float rasterSkal) {
             if (mk.entity >= g_app->map.entities.size()) { continue; }
             const MapEntity& e = g_app->map.entities[mk.entity];
             const int kat = entityKategorie(e);
-            if (kat < 0) { continue; }
+            // Wegpunkte (Gruppe 9) zeichnet das Wegnetz selbst - ein Schild
+            // ueber jedem von Hunderten waere nur Unruhe.
+            if (kat < 0 || kat == 9) { continue; }
             const EntityKat& ek = entityKategorieInfo(kat);
             const ImVec2 c{g_app->kartenAnsicht[0] + mk.sx / skal, g_app->kartenAnsicht[1] + mk.sy / skal - r * 1.6F};
             dl->AddCircleFilled(c, r, IM_COL32(18, 20, 26, 190));
@@ -2344,5 +2353,23 @@ bool missionBeendenFrage() {
           });
     return false;
 }
+
+// --- Fuer andere Teile der Oberflaeche (Wegpunkte, Draufsicht) ----------------
+
+bool kartenPunktAufSchirm(const float w[3], ImVec2& out) {
+    const Proj p = projektion();
+    return aufSchirm(p, w, out);
+}
+
+bool kartenStrahlUnterMaus(float sx, float sy, TraceTreffer& t) {
+    float a[3];
+    float b[3];
+    strahlDurch(sx, sy, a, b);
+    return spur(a, b, t);
+}
+
+void entitiesGeaendert(std::vector<MapEntity> vorher) { aenderung(std::move(vorher)); }
+
+std::string freierEntityName(const std::string& prefix) { return freierName(prefix); }
 
 }  // namespace bhed::gui

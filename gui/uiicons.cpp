@@ -98,6 +98,9 @@ ImVec4 uiIconFarbe(UiIcon icon) {
         case UiIcon::Pause: c = ImVec4{1.00F, 0.75F, 0.30F, 1.0F}; break;
         case UiIcon::Zielen: c = ImVec4{0.36F, 0.82F, 0.95F, 1.0F}; break;
         case UiIcon::Steuern: c = ImVec4{0.95F, 0.40F, 0.95F, 1.0F}; break;
+        case UiIcon::Pfad: c = ImVec4{0.43F, 0.86F, 0.94F, 1.0F}; break;      // Wegnetz: tuerkis
+        case UiIcon::Oben: c = ImVec4{0.55F, 0.80F, 1.00F, 1.0F}; break;
+        case UiIcon::Erzeugen: c = ImVec4{1.00F, 0.80F, 0.30F, 1.0F}; break;
         case UiIcon::ZumAnfang: c = ImVec4{0.80F, 0.82F, 0.86F, 1.0F}; break;
         case UiIcon::Schleife: c = ImVec4{0.45F, 0.75F, 1.00F, 1.0F}; break;
         case UiIcon::Ton: c = ImVec4{0.42F, 0.85F, 0.78F, 1.0F}; break;
@@ -401,6 +404,25 @@ void uiIcon(ImDrawList* dl, UiIcon icon, ImVec2 pos, float groesse, ImU32 farbe)
             z.zug({ImVec2{8.0F, 15.0F}, ImVec2{3.6F, 8.6F}, ImVec2{3.2F, 5.5F}, ImVec2{5.0F, 2.4F}, ImVec2{8.0F, 1.3F},
                    ImVec2{11.0F, 2.4F}, ImVec2{12.8F, 5.5F}, ImVec2{12.4F, 8.6F}}, true);
             z.kreis(8.0F, 5.8F, 1.8F);
+            break;
+        case UiIcon::Pfad:   // drei Punkte, verbunden
+            z.linie(3.0F, 12.5F, 8.0F, 4.0F);
+            z.linie(8.0F, 4.0F, 13.0F, 11.0F);
+            z.punkt(3.0F, 12.5F, 2.0F);
+            z.punkt(8.0F, 4.0F, 2.0F);
+            z.punkt(13.0F, 11.0F, 2.0F);
+            break;
+        case UiIcon::Oben:   // Raute von oben mit Pfeil nach unten
+            z.zug({ImVec2{8.0F, 7.0F}, ImVec2{15.0F, 10.5F}, ImVec2{8.0F, 14.5F}, ImVec2{1.0F, 10.5F}}, true);
+            z.linie(8.0F, 1.0F, 8.0F, 8.5F);
+            z.spitze(8.0F, 8.5F, 0.0F, 1.0F, 2.4F);
+            break;
+        case UiIcon::Erzeugen:   // Zauberstab mit Funken
+            z.linie(2.0F, 14.0F, 10.0F, 6.0F);
+            z.linie(11.5F, 1.5F, 11.5F, 4.5F);
+            z.linie(10.0F, 3.0F, 13.0F, 3.0F);
+            z.linie(14.0F, 6.5F, 14.0F, 8.5F);
+            z.linie(13.0F, 7.5F, 15.0F, 7.5F);
             break;
         case UiIcon::Sichtbar:   // offenes Auge
             z.zug({ImVec2{1.0F, 8.0F}, ImVec2{4.5F, 4.2F}, ImVec2{8.0F, 3.2F}, ImVec2{11.5F, 4.2F}, ImVec2{15.0F, 8.0F},

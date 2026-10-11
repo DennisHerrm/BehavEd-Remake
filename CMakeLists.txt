@@ -30,6 +30,7 @@ add_library(bhed_core STATIC
   src/pk3write.cpp
   src/entdefs.cpp
   src/missionbau.cpp
+  src/wegpunkte.cpp
   src/missionsgraph.cpp
   src/sound.cpp
   src/timeline.cpp
@@ -189,6 +190,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/uiicons.cpp
     gui/app_ansichten.cpp
     gui/app_kamera.cpp
+    gui/app_wegpunkte.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp
@@ -320,6 +322,11 @@ if(BEHAVED_TESTS)
     target_link_libraries(pruefung PRIVATE psapi)
   endif()
   add_test(NAME pruefung COMMAND pruefung ${BEHAVED_BHC} ${BEHAVED_DATA} ${BEHAVED_SUPP})
+  # Das Wegnetz der NPCs: lesen wie die Engine, erzeugen, pruefen (wegpunkte.h).
+  add_executable(wegpunkttest tests/wegpunkttest.cpp)
+  target_link_libraries(wegpunkttest PRIVATE bhed_core)
+  add_test(NAME wegpunkte COMMAND wegpunkttest)
+
   # Eine Mission anlegen und packen (missionbau.h, entdefs.h, writePk3).
   add_executable(missionbautest tests/missionbautest.cpp)
   target_link_libraries(missionbautest PRIVATE bhed_core)

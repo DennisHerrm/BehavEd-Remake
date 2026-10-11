@@ -36,6 +36,7 @@
 #include "bhed/ablauf.h"
 #include "bhed/bsp.h"
 #include "bhed/camtrack.h"
+#include "bhed/wegpunkte.h"
 #include "bhed/mission.h"
 #include "bhed/missionsgraph.h"
 #include "bhed/scene.h"
@@ -1051,6 +1052,26 @@ struct App {
     // Kamera, und "Steuern" (Pilot) - man sitzt in einer Einstellung und
     // fliegt sie frei, bis man uebernimmt oder abbricht.
     bool kameraHover = false;
+    // --- Wegnetz der NPCs (gui/app_wegpunkte.cpp, rc589) ------------------
+    bool zeigeWegnetz = false;        // Netz in der Ansicht
+    bool wegFensterOffen = false;     // Fenster "Waypoints"
+    int wegWerkzeug = 0;              // 0 keins, 1 setzen (Kette), 2 verbinden
+    int wegVon = -1;                  // verbinden: Entity des ersten Klicks
+    int wegLetzter = -1;              // setzen: zuletzt gesetzter (Kette)
+    float wegAbstand = 192.0F;        // Rasterweite beim Erzeugen
+    bool wegKlickVerbraucht = false;  // ein Werkzeugklick waehlt nichts aus
+    WegNetz wegNetz;
+    std::size_t wegNetzSchl = 0;      // Pruefsumme der Wegentities beim Bau
+    std::vector<WegBefund> wegBefunde;
+    bool wegGeprueft = false;
+    std::string wegMeldung;           // Ergebnis des letzten Erzeugens
+    int entStand = 0;                 // zaehlt jede Entity-Aenderung (nachAenderung)
+    // --- Draufsicht (rc589) ----------------------------------------------
+    // Senkrecht nach unten; was hoeher liegt als draufSchnitt, schneidet die
+    // vordere Ebene weg (Decken verdecken sonst den Boden).
+    bool draufsicht = false;
+    float draufSchnitt = 0.0F;
+    Camera vorDraufsicht;
     // Ging die letzte Aenderung an der gewaehlten Kamera ins SKRIPT? Dann
     // gehoert Strg+Z ueber der Karte dem Skript, nicht den Entities
     // (entityFokus) - sonst naehme es nach einem Kamerazug eine aeltere
@@ -1939,6 +1960,8 @@ enum class UiIcon : int {
     Duplizieren, Loeschen, Rueckgaengig, Wiederholen, Explorer, Suche, Verschieben, Drehen,
     Mission, Schliessen, Haken, Warnung, Abspielen, Pause,
     Zurueck, Vor, Zielen, Steuern,
+    // Wegnetz und Draufsicht (rc589)
+    Pfad, Oben, Erzeugen,
     // Zeitleiste (rc588)
     ZumAnfang, Schleife, Ton, Folgen, Zeilen, Ruhig, ZoomPlus, ZoomMinus, Einpassen,
     // Entity-Arten in Liste und Karte (rc588)
@@ -1969,6 +1992,23 @@ bool kameraEinstellungLoeschen(int key);
 void kameraPilotStarten();
 void kameraPilotBeenden(bool uebernehmen);
 void kameraUeberlagerung(float rasterSkal);
+
+// --- Wegnetz (gui/app_wegpunkte.cpp) -----------------------------------------
+void wegNetzAktuell();                       // neu bauen, wenn sich etwas geaendert hat
+void wegUeberlagerung();                     // Netz in der Ansicht
+void wegWerkzeugMaus(float rasterSkal);      // Setzen/Verbinden; setzt wegKlickVerbraucht
+void drawWegFenster();                       // Fenster "Waypoints"
+int wegErzeugen(float abstand, bool alteWeg, std::string* meldung);
+int wegGenerierteEntfernen();
+bool wegVerbinden(int vonEntity, int nachEntity, bool sprung);
+int wegSetzen(const float boden[3], int verbindeMit);
+// --- Draufsicht ---
+void draufsichtSchalten(bool an);
+// Fuer beide aus app_mission.cpp:
+bool kartenPunktAufSchirm(const float w[3], ImVec2& out);
+bool kartenStrahlUnterMaus(float sx, float sy, TraceTreffer& t);
+void entitiesGeaendert(std::vector<MapEntity> vorher);
+std::string freierEntityName(const std::string& prefix);
 void drawKameraInspector(float hoehe);
 
 // --- Missionsbau (gui/app_mission.cpp) -----------------------------------

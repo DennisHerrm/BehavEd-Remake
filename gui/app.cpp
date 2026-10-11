@@ -15397,6 +15397,7 @@ void draw() {
         drawNeueMission();
         drawMissionSpeichern();
         drawKartenStatistik();
+        drawWegFenster();
         drawEinblendungen();
         drawAbout();
     }
