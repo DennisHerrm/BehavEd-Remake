@@ -32,6 +32,7 @@
 #ifdef BHED_WITH_D3D11
 
 #include <algorithm>
+#include <set>
 #include <utility>
 #include <d3d11.h>
 #include <dxgi1_4.h>
@@ -464,6 +465,13 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
     if (it != g_shader.end()) {
         return &it->second;
     }
+    // Einmal gescheitert, immer gescheitert: sonst lief D3DCompile fuer
+    // jeden Zeichenaufruf dieser Art in jedem Bild neu (Code-Pruefung rc592).
+    static std::set<std::string> kaputt;
+    if (kaputt.count(name) != 0U) {
+        if (fehler != nullptr) { *fehler = "Shader nicht uebersetzbar (" + name + ")"; }
+        return nullptr;
+    }
     ID3D11Device* d = dev();
     if (d == nullptr) {
         return nullptr;
@@ -489,14 +497,18 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
                           nullptr, "main", "vs_4_0", uebersetzFahnen(), 0, &vsBlob, &err))) {
         meldung("Vertex-Shader nicht uebersetzbar");
         if (err != nullptr) { err->Release(); }
+        kaputt.insert(name);
         return nullptr;
     }
+    // Auch nach einem Erfolg kann err Warnungen tragen - freigeben.
+    if (err != nullptr) { err->Release(); err = nullptr; }
     if ((features & kDeform) != 0U) {
         pruefeStapelLagen(vsBlob);
     }
     if (FAILED(D3DCompile(psSrc.data(), psSrc.size(), name.c_str(), nullptr,
                           nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &psBlob, &err))) {
         meldung("Pixel-Shader nicht uebersetzbar");
+        kaputt.insert(name);
         if (err != nullptr) { err->Release(); }
         vsBlob->Release();
         return nullptr;
@@ -541,9 +553,14 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
 
     vsBlob->Release();
     psBlob->Release();
+    if (err != nullptr) { err->Release(); err = nullptr; }
 
     if (p.vs == nullptr || p.ps == nullptr || p.layout == nullptr) {
         meldung("Shader angelegt, aber unvollstaendig");
+        if (p.vs != nullptr) { p.vs->Release(); }
+        if (p.ps != nullptr) { p.ps->Release(); }
+        if (p.layout != nullptr) { p.layout->Release(); }
+        kaputt.insert(name);
         return nullptr;
     }
     g_shader[name] = p;
@@ -2165,6 +2182,11 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
         c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     }
     setzeSchritt("Gluehen: zeichnen");
+    // Der WIEDERHOLENDE Sampler wie im Kartendurchgang. Vorher galt, was
+    // zuletzt gebunden war - nach den Klingen (Wetter, Flares) der
+    // klemmende, und gluehende Laufschriften verschmierten am Rand
+    // (Code-Pruefung rc592).
+    c->PSSetSamplers(0, 1, &g_sampler);
     const int n = zeichneAufrufe(gluehend, mesh, textures, geo, zeitSekunden,
                                  fehler);
     if (n == 0) {
@@ -2281,6 +2303,10 @@ struct KastenSatz {
     std::size_t batches = 0;
 };
 std::map<const BspMesh*, KastenSatz> g_kastenSaetze;
+// Nach Adresse abgelegt - mit den Netzen vergessen, sonst waechst es mit
+// jedem Szenenaufbau, und ein neues Netz an alter Adresse bekaeme alte
+// Kaesten (Code-Pruefung rc592).
+void vergissKastenSaetze() { g_kastenSaetze.clear(); }
 
 const std::vector<StapelKasten>& stapelKaesten(const BspMesh& mesh) {
     KastenSatz& satz = g_kastenSaetze[&mesh];
@@ -3748,12 +3774,23 @@ int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
     if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
     ID3D11RasterizerState* rs = holeRaster(kCullNone);
     if (rs != nullptr) { c->RSSetState(rs); }
+    // Aufeinanderfolgende Vierecke mit demselben Bild in EINEM Aufruf - die
+    // Reihenfolge bleibt, also auch das Bild. Bei Schnee und Regen waren es
+    // sonst Hunderte bis Tausende Aufrufe je Bild (Code-Pruefung rc592).
     int n = 0;
-    for (std::size_t i = 0; i < quads.size(); ++i) {
-        ID3D11ShaderResourceView* bild = holeTexBild(quads[i].tex);
-        c->PSSetShaderResources(0, 1, &bild);
-        c->Draw(6, static_cast<UINT>(i * 6U));
-        ++n;
+    std::size_t lauf = 0;
+    ID3D11ShaderResourceView* laufBild = nullptr;
+    for (std::size_t i = 0; i <= quads.size(); ++i) {
+        ID3D11ShaderResourceView* bild = (i < quads.size()) ? holeTexBild(quads[i].tex) : nullptr;
+        if (i == quads.size() || (i > lauf && bild != laufBild)) {
+            if (i > lauf) {
+                c->PSSetShaderResources(0, 1, &laufBild);
+                c->Draw(static_cast<UINT>((i - lauf) * 6U), static_cast<UINT>(lauf * 6U));
+                n += static_cast<int>(i - lauf);
+            }
+            lauf = i;
+        }
+        laufBild = bild;
     }
     ID3D11ShaderResourceView* nichts = nullptr;
     c->PSSetShaderResources(0, 1, &nichts);
@@ -3953,6 +3990,7 @@ void vergissNetz(const BspMesh* netz) {
 }
 
 void vergissMoverNetze() {
+    vergissKastenSaetze();
     // Schluessel ist die Adresse des Netzes in brushMeshes. Wird das geleert
     // (Kartenwechsel, Detail, Himmel an/aus), blieben die Puffer bis zum
     // Beenden liegen - mit jeder Karte mehr Grafikspeicher.
@@ -3964,6 +4002,7 @@ void vergissMoverNetze() {
 }
 
 void vergissKarte() {
+    vergissKastenSaetze();
     // Kartenwechsel (Kartenpruefung 27.09., shank: "es waren einfach alle
     // Texturen oder UV-Maps falsch, von jeder Map"): beide Speicher waren
     // nach Nummer abgelegt und wurden nur beim Beenden geleert. Die zweite
@@ -4707,7 +4746,12 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
                        : netzId == 1 ? "Ecken: Effekte"
                                      : "Ecken: Mover");
         np.dynamisch = dyn;
-    } else if (dyn) {
+    }
+    // Ein DYNAMISCHER Puffer wird ohne Inhalt angelegt - also auch im Bild
+    // des Anlegens fuellen. Vorher stand hier `else if`, und im ersten Bild
+    // (und bei jedem Wachsen) zeichnete der deckende Durchgang aus einem
+    // leeren Puffer (Code-Pruefung rc592).
+    if (dyn) {
         // Gleiche Groesse, neuer Inhalt: ueberschreiben statt neu anlegen.
         D3D11_MAPPED_SUBRESOURCE m{};
         if (SUCCEEDED(c->Map(np.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
