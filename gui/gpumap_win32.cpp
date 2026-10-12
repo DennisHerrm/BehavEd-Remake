@@ -186,6 +186,11 @@ ID3D11RenderTargetView* g_zielRtv = nullptr;
 ID3D11ShaderResourceView* g_zielSrv = nullptr;
 ID3D11Texture2D* g_tiefeTex = nullptr;
 ID3D11Texture2D* g_tiefeLesen = nullptr;   // Kopie zum Zuruecklesen (leseTiefe)
+// Die Tiefe des VORIGEN Bildes der Ansicht (rc594, leseTiefe mit
+// vorigesBild): beim Bewegen der Kamera ist sie laengst fertig, und die
+// Gizmos muessen nicht auf die Karte warten.
+ID3D11Texture2D* g_tiefeVorig = nullptr;
+bool g_tiefeVorigDa = false;
 ID3D11DepthStencilView* g_tiefeDsv = nullptr;
 int g_zielW = 0;
 int g_zielH = 0;
@@ -1281,26 +1286,41 @@ int g_glowH = 0;
 int g_glowVollW = 0;
 int g_glowVollH = 0;
 
-ID3D11ShaderResourceView* g_himmel = nullptr;
-// Die sechs Plaetze, aus denen der Himmel gebaut wurde - als INHALT, nicht
+// Je Himmel die sechs Plaetze, aus denen er gebaut wurde - als INHALT, nicht
 // als Zeiger auf den Vektor: nach einem Kartenwechsel kann der neue Vektor
 // an derselben Adresse liegen, und der alte Himmel blieb stehen.
-std::vector<int> g_himmelQuelle;
+//
+// Mehrere, nicht nur einer (rc594): md_jt hat zwei Himmel-Shader, und mit
+// nur einem Platz wurde jedes Bild zweimal eine Textur aus sechs Seiten
+// angelegt und weggeworfen - gemessen 602 Mal in 301 Bildern, ein Viertel
+// der Bildzeit.
+struct HimmelEintrag {
+    std::vector<int> quelle;
+    ID3D11ShaderResourceView* srv = nullptr;
+};
+std::vector<HimmelEintrag> g_himmelListe;
+void vergissHimmel() {
+    for (HimmelEintrag& e : g_himmelListe) {
+        if (e.srv != nullptr) { e.srv->Release(); }
+    }
+    g_himmelListe.clear();
+}
 
 ID3D11ShaderResourceView* holeHimmel(const TextureSet* textures,
                                      const std::vector<int>* faces) {
     if (textures == nullptr || faces == nullptr || faces->size() != 6U) {
         return nullptr;
     }
-    if (g_himmel != nullptr && g_himmelQuelle == *faces) {
-        return g_himmel;
+    for (const HimmelEintrag& e : g_himmelListe) {
+        if (e.quelle == *faces) {
+            return e.srv;
+        }
     }
     // Hier stand (schon in rc567) ein Block, der bei JEDEM Himmelswechsel
     // alle Figurenpuffer, den Figuren-Shader und die Gluehen-Ziele freigab -
     // offenbar ein verrutschtes Stueck aus shutdown(). Mit zwei Himmel-
     // Shadern in einer Karte geschah das in jedem Bild. Die Karte vergisst
     // jetzt vergissKarte(); Figuren haengen nicht an der Karte.
-    if (g_himmel != nullptr) { g_himmel->Release(); g_himmel = nullptr; }
     ID3D11Device* d = dev();
     if (d == nullptr) {
         return nullptr;
@@ -1348,10 +1368,14 @@ ID3D11ShaderResourceView* holeHimmel(const TextureSet* textures,
     if (FAILED(d->CreateTexture2D(&td, sd, &tex)) || tex == nullptr) {
         return nullptr;
     }
-    d->CreateShaderResourceView(tex, nullptr, &g_himmel);
+    ID3D11ShaderResourceView* srv = nullptr;
+    d->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
-    g_himmelQuelle = *faces;
-    return g_himmel;
+    if (srv == nullptr) {
+        return nullptr;
+    }
+    g_himmelListe.push_back({*faces, srv});
+    return srv;
 }
 
 // Die Ecken eines Modells hochladen - einmal je Modell.
@@ -2180,7 +2204,7 @@ void setzeHimmelPortal(int satz) {
     }
 }
 
-bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, float fern) {
+bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, float fern, bool vorigesBild) {
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (d == nullptr || c == nullptr || g_tiefeTex == nullptr || breite <= 0 || hoehe <= 0) {
@@ -2199,20 +2223,48 @@ bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, fl
             g_tiefeLesen = nullptr;
         }
     }
+    D3D11_TEXTURE2D_DESC ld = td;
+    ld.Usage = D3D11_USAGE_STAGING;
+    ld.BindFlags = 0;
+    ld.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ld.MiscFlags = 0;
     if (g_tiefeLesen == nullptr) {
-        D3D11_TEXTURE2D_DESC ld = td;
-        ld.Usage = D3D11_USAGE_STAGING;
-        ld.BindFlags = 0;
-        ld.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        ld.MiscFlags = 0;
         if (FAILED(d->CreateTexture2D(&ld, nullptr, &g_tiefeLesen))) {
             g_tiefeLesen = nullptr;
             return false;
         }
     }
-    c->CopyResource(g_tiefeLesen, g_tiefeTex);
+    // Die Kopie fuer das naechste Bild, in der Groesse dieses Ziels.
+    if (g_tiefeVorig != nullptr) {
+        D3D11_TEXTURE2D_DESC vd{};
+        g_tiefeVorig->GetDesc(&vd);
+        if (vd.Width != td.Width || vd.Height != td.Height) {
+            g_tiefeVorig->Release();
+            g_tiefeVorig = nullptr;
+            g_tiefeVorigDa = false;
+        }
+    }
+    if (g_tiefeVorig == nullptr && FAILED(d->CreateTexture2D(&ld, nullptr, &g_tiefeVorig))) {
+        g_tiefeVorig = nullptr;
+        g_tiefeVorigDa = false;
+    }
+    // --- Welches Bild? ---------------------------------------------------
+    //
+    // Das aktuelle zu lesen heisst warten, bis die Grafikkarte das ganze
+    // Bild gezeichnet hat - beim Fliegen ueber die Karte war das die
+    // Haelfte der Bildzeit. Bewegt sich die Kamera, nimmt der Aufrufer die
+    // Tiefe des vorigen Bildes (ein Bild alt, laengst fertig); steht sie,
+    // wird wie bisher das aktuelle gelesen - nach dem Anhalten zeichnet die
+    // Ansicht ohnehin ein Bild nach, und das ist dann genau.
+    ID3D11Texture2D* quelle = g_tiefeLesen;
+    const bool vorig = vorigesBild && g_tiefeVorigDa && g_tiefeVorig != nullptr;
+    if (vorig) {
+        quelle = g_tiefeVorig;
+    } else {
+        c->CopyResource(g_tiefeLesen, g_tiefeTex);
+    }
     D3D11_MAPPED_SUBRESOURCE m{};
-    if (FAILED(c->Map(g_tiefeLesen, 0, D3D11_MAP_READ, 0, &m))) {
+    if (FAILED(c->Map(quelle, 0, D3D11_MAP_READ, 0, &m))) {
         return false;
     }
     abstand.resize(static_cast<std::size_t>(breite) * static_cast<std::size_t>(hoehe));
@@ -2231,7 +2283,11 @@ bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, fl
             aus[x] = (t >= 0.999999F) ? 1.0e30F : nah * fern / (fern - t * fn);
         }
     }
-    c->Unmap(g_tiefeLesen, 0);
+    c->Unmap(quelle, 0);
+    if (g_tiefeVorig != nullptr) {
+        c->CopyResource(g_tiefeVorig, g_tiefeTex);
+        g_tiefeVorigDa = true;
+    }
     return true;
 }
 
@@ -4227,8 +4283,7 @@ void vergissKarte() {
     for (auto& [k, s2] : g_lightmaps) { if (s2 != nullptr) { s2->Release(); } }
     g_lightmaps.clear();
     g_lightmapQuelle.clear();
-    if (g_himmel != nullptr) { g_himmel->Release(); g_himmel = nullptr; }
-    g_himmelQuelle.clear();
+    vergissHimmel();
     vergissMoverNetze();
 }
 
@@ -4334,14 +4389,15 @@ void shutdown() {
     // meldet die Debugschicht beim Beenden lebende Objekte - und beim
     // naechsten Geraet zeigten sie auf ein totes.
     gibMessungenFrei();
-    if (g_himmel != nullptr) { g_himmel->Release(); g_himmel = nullptr; }
-    g_himmelQuelle.clear();
+    vergissHimmel();
     if (g_zielSrv != nullptr) { g_zielSrv->Release(); g_zielSrv = nullptr; }
     if (g_zielRtv != nullptr) { g_zielRtv->Release(); g_zielRtv = nullptr; }
     if (g_zielTex != nullptr) { g_zielTex->Release(); g_zielTex = nullptr; }
     if (g_tiefeDsv != nullptr) { g_tiefeDsv->Release(); g_tiefeDsv = nullptr; }
     if (g_tiefeTex != nullptr) { g_tiefeTex->Release(); g_tiefeTex = nullptr; }
     if (g_tiefeLesen != nullptr) { g_tiefeLesen->Release(); g_tiefeLesen = nullptr; }
+    if (g_tiefeVorig != nullptr) { g_tiefeVorig->Release(); g_tiefeVorig = nullptr; }
+    g_tiefeVorigDa = false;
     g_zielW = 0;
     g_zielH = 0;
     for (ZielFelder& z : g_geparkt) {
@@ -5290,7 +5346,7 @@ void setzeHimmelPortal(int) {}
 void setzeSpiegelBild(int) {}
 void setzeSpiegelung(bool, const float*, bool) {}
 void* zielTexturSatz(int) { return nullptr; }
-bool leseTiefe(std::vector<float>&, int, int, float, float) { return false; }
+bool leseTiefe(std::vector<float>&, int, int, float, float, bool) { return false; }
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }
 const char* abschnittName(Abschnitt) { return "?"; }
 void bildBeginnt() {}

@@ -553,6 +553,15 @@ void drawCameraGizmos(MapImage& img) {
     // Stellen stehen, und ein Klick ins scheinbar Leere waehlte eine
     // unsichtbare Entity (Kartentest 27.09.).
     g_app->markers.clear();
+    // Die Verdeckt-Strahlen erst nach der Schleife, auf alle Kerne verteilt
+    // (rc594): je sichtbarer Entity ein Strahl quer durch die Karte, das war
+    // beim Fliegen ueber die Karte bis zur Haelfte der Bildzeit. Das
+    // Ergebnis ist dasselbe - `verdeckt` liest erst entityUeberlagerung.
+    struct VerdecktStrahl {
+        std::size_t marke;
+        float ziel[3];
+    };
+    std::vector<VerdecktStrahl> strahlen;
     if (g_app->showEntities) {
         for (std::size_t ei = 0; ei < g_app->map.entities.size(); ++ei) {
             const MapEntity& e = g_app->map.entities[ei];
@@ -594,10 +603,7 @@ void drawCameraGizmos(MapImage& img) {
             // Wegpunkte (9) bekommen kein Schild, `verdeckt` liest dort
             // niemand - der Strahl je Wegpunkt war vergebens.
             if (!g_app->geo.empty() && kat != 9) {
-                const float* kp = g_app->gezeigteKamera.pos;
-                const float ziel[3] = {p[0], p[1], p[2] + 8.0F};
-                const TraceTreffer tt = traceRay(g_app->geo, kp, ziel);
-                marke.verdeckt = tt.hit && tt.fraction < 0.97F;
+                strahlen.push_back({g_app->markers.size(), {p[0], p[1], p[2] + 8.0F}});
             }
             g_app->markers.push_back(marke);
             const float es = sizeAt(p) * 0.30F;
@@ -618,6 +624,13 @@ void drawCameraGizmos(MapImage& img) {
             line(project(l1), project(l2), er, eg, eb, false);
             line(project(l3), project(l4), er, eg, eb, false);
         }
+    }
+    if (!strahlen.empty()) {
+        const float* kp = g_app->gezeigteKamera.pos;
+        spurenVerteilt(strahlen.size(), [&](std::size_t i) {
+            const TraceTreffer tt = traceRay(g_app->geo, kp, strahlen[i].ziel);
+            g_app->markers[strahlen[i].marke].verdeckt = tt.hit && tt.fraction < 0.97F;
+        });
     }
 
     // --- Wo die Figuren gerade stehen (fuer ihre Namen) ------------------
@@ -10047,6 +10060,59 @@ void schluesselMitZeit() {
     }
 }
 
+void spurenVerteilt(std::size_t n, const std::function<void(std::size_t)>& je) {
+    if (n == 0U) {
+        return;
+    }
+    // Der erste vorweg: beim ersten Strahl entsteht die Spurhilfe der Karte,
+    // und darauf sollen nicht alle Faeden zugleich warten.
+    je(0U);
+    const unsigned kerne = std::max(1U, std::thread::hardware_concurrency());
+    const std::size_t faeden = std::min<std::size_t>(kerne, n / 16U);
+    if (faeden <= 1U) {
+        for (std::size_t i = 1U; i < n; ++i) { je(i); }
+        return;
+    }
+    // Jeder holt sich den naechsten Platz selbst: die Strahlen sind sehr
+    // verschieden teuer (quer durch die Karte oder gleich vor der Wand), und
+    // mit festen Stuecken wartete der Hauptfaden auf den langsamsten.
+    std::atomic<std::size_t> naechster{1U};
+    const auto lauf = [&je, &naechster, n] {
+        for (std::size_t i = naechster.fetch_add(1U); i < n; i = naechster.fetch_add(1U)) { je(i); }
+    };
+    std::vector<std::thread> mannschaft;
+    mannschaft.reserve(faeden - 1U);
+    for (std::size_t f = 1U; f < faeden; ++f) { mannschaft.emplace_back(lauf); }
+    lauf();
+    for (std::thread& th : mannschaft) { th.join(); }
+}
+
+// Balken und Vollbild-Blende ueber das GPU-Bild (rc594). Dieselben Zahlen
+// wie drawLetterbox/drawVollblende (bhed/mapview.h): Balken je ein Zehntel
+// der Bildhoehe mal Anteil, schwarz mit Deckung Anteil; die Blende darueber.
+// ImGui mischt "Quelle ueber Ziel" - nacheinander gezeichnet ergibt das
+// dasselbe wie vorher das vorgemischte Ueberlagerungsbild.
+void blendeUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b, int bildHoehe) {
+    if (bildHoehe <= 0 || b.y <= a.y) {
+        return;
+    }
+    const float skal = (b.y - a.y) / static_cast<float>(bildHoehe);
+    const float anteil = std::clamp(g_app->blendeBalken, 0.0F, 1.0F);
+    if (anteil > 0.0F) {
+        const int bar = std::max(1, static_cast<int>(static_cast<float>(bildHoehe / 10) * anteil + 0.5F));
+        const auto deck = static_cast<int>(std::lround(255.0F * anteil));
+        const float hoch = static_cast<float>(bar) * skal;
+        dl->AddRectFilled(a, ImVec2{b.x, a.y + hoch}, IM_COL32(0, 0, 0, deck));
+        dl->AddRectFilled(ImVec2{a.x, b.y - hoch}, b, IM_COL32(0, 0, 0, deck));
+    }
+    const float* f = g_app->blendeFarbe;
+    const float al = std::clamp(f[3], 0.0F, 1.0F);
+    if (al > 0.0F) {
+        const auto kanal = [](float v) { return static_cast<int>(std::lround(255.0F * std::clamp(v, 0.0F, 1.0F))); };
+        dl->AddRectFilled(a, b, IM_COL32(kanal(f[0]), kanal(f[1]), kanal(f[2]), kanal(al)));
+    }
+}
+
 void drawMapView() {
     schluesselMitZeit();
     // OHNE Karte kein frueher Ausstieg mehr.
@@ -12102,41 +12168,53 @@ void drawMapView() {
         // Jetzt zeichnet es in ein durchsichtiges Bild derselben Groesse,
         // das ueber das GPU-Bild gelegt wird. Verdeckt wird wie beim
         // Rasterer: die Tiefe kommt aus dem GPU-Tiefenpuffer zurueck.
-        if (gpuBereit && g_app->gpuAufrufe > 0) {
+        g_app->blendeZeigen = false;
+        if (gpuBereit && g_app->gpuAufrufe > 0 && blende) {
+            // Balken und Vollbild-Blende aus dem Kamerastand, wie im Spiel:
+            // nach ENABLE blenden die Balken in einer Sekunde ein, nach
+            // DISABLE aus; FADE ueberdeckt alles (CGCam_DrawWideScreen).
+            // Beim Blick auf eine einzelne Einstellung (Auswahl) - oder in
+            // einem Skript ganz ohne ENABLE - volle Balken wie bisher.
+            //
+            // Bis rc593 wurden sie hier Bildpunkt fuer Bildpunkt in ein
+            // durchsichtiges Bild in Fenstergroesse gemalt und das jedes Bild
+            // hochgeladen - bei 2500 x 1300 ein Fuenftel bis die Haelfte der
+            // Bildzeit einer Kamerafahrt. Gizmos gibt es beim Blick durch die
+            // Kamera nicht, das Bild trug also nur diese Rechtecke; die
+            // zeichnet jetzt die Grafikkarte (blendeUeberlagern), mit
+            // derselben Mischung "Quelle ueber Ziel".
+            float balken = 1.0F;
+            float vollblende[4] = {0, 0, 0, 0};
+            const bool zeitleiste = playingNow || (g_app->camViewActive && g_app->selectedPath.empty());
+            bool hatEnable = false;
+            for (const CamSegment& sg : g_app->camTrack.segments) {
+                if (sg.kind == CamSegment::Kind::Enable) { hatEnable = true; break; }
+            }
+            if (zeitleiste && hatEnable) {
+                const CameraState cs = g_app->camTrack.at(g_app->playMs);
+                balken = cs.bars;
+                for (int k = 0; k < 4; ++k) { vollblende[k] = cs.fadeColor[k]; }
+            }
+            g_app->blendeZeigen = true;
+            g_app->blendeBalken = balken;
+            for (int k = 0; k < 4; ++k) { g_app->blendeFarbe[k] = vollblende[k]; }
+            g_app->gizmoZeigen = false;
+            g_app->gizmoBild.rgba.clear();
+            g_app->gizmoBild.depth.clear();
+        } else if (gpuBereit && g_app->gpuAufrufe > 0) {
             MapImage& ov = g_app->gizmoBild;
             ov.width = g_app->mapImage.width;
             ov.height = g_app->mapImage.height;
             const std::size_t n = static_cast<std::size_t>(ov.width) *
                                   static_cast<std::size_t>(ov.height);
             ov.rgba.assign(n * 4U, 0);
-            const bool gizmos = !g_app->camViewActive && !playingNow;
-            if (!gizmos || !gpu::leseTiefe(ov.depth, ov.width, ov.height, 4.0F, kartenFern())) {
+            // Ohne Blende (die hat ihren eigenen Zweig oben) ist das die
+            // freie Ansicht - mit Gizmos.
+            // Beim Bewegen die Tiefe des vorigen Bildes (siehe gpu::leseTiefe).
+            if (!gpu::leseTiefe(ov.depth, ov.width, ov.height, 4.0F, kartenFern(), kameraBewegt)) {
                 ov.depth.clear();   // ohne Tiefe: alles obenauf
             }
-            if (blende) {
-                // Balken und Vollbild-Blende aus dem Kamerastand, wie im
-                // Spiel: nach ENABLE blenden die Balken in einer Sekunde ein,
-                // nach DISABLE aus; FADE ueberdeckt alles (CGCam_DrawWideScreen).
-                // Beim Blick auf eine einzelne Einstellung (Auswahl) - oder in
-                // einem Skript ganz ohne ENABLE - volle Balken wie bisher.
-                float balken = 1.0F;
-                float vollblende[4] = {0, 0, 0, 0};
-                const bool zeitleiste = playingNow || (g_app->camViewActive && g_app->selectedPath.empty());
-                bool hatEnable = false;
-                for (const CamSegment& sg : g_app->camTrack.segments) {
-                    if (sg.kind == CamSegment::Kind::Enable) { hatEnable = true; break; }
-                }
-                if (zeitleiste && hatEnable) {
-                    const CameraState cs = g_app->camTrack.at(g_app->playMs);
-                    balken = cs.bars;
-                    for (int k = 0; k < 4; ++k) { vollblende[k] = cs.fadeColor[k]; }
-                }
-                drawLetterbox(ov, balken);
-                drawVollblende(ov, vollblende);
-            }
-            if (gizmos) {
-                drawCameraGizmos(ov);
-            }
+            drawCameraGizmos(ov);
             g_app->gizmoZeigen = true;
             if (g_app->gizmoTexture == nullptr || g_app->gizmoTexW != ov.width ||
                 g_app->gizmoTexH != ov.height) {
@@ -12211,6 +12289,10 @@ void drawMapView() {
         if (g_app->gizmoZeigen && g_app->gizmoTexture != nullptr) {
             ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_app->gizmoTexture),
                                                  ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        }
+        if (g_app->blendeZeigen) {
+            blendeUeberlagern(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                              g_app->mapImage.height);
         }
         {
             const ImVec2 a = ImGui::GetItemRectMin();

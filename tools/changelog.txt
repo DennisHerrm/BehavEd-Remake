@@ -6,6 +6,28 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc594 2026-10-12
+[en]
+- Much smoother camera playback: letterbox bars and fades are now drawn by the graphics card instead of pixel by pixel on the processor (md_am_sith 17 to 7 ms per frame, same image).
+- Flying around the map is smoother: entity and flare visibility checks run on all processor cores, the gizmos no longer wait for the graphics card while the camera moves, and maps with two skies no longer rebuild them every frame (hoth2 29 to 9 ms per frame).
+- No more stutter on the first sound: the sound devices are opened in the background at startup.
+- The Direct3D debug layer now only runs in self-tests (BHED_D3D_DEBUG=1 turns it on); it cost about 40 % of the frame time.
+[de]
+- Kamerafahrten laufen deutlich flüssiger: Balken und Blenden zeichnet jetzt die Grafikkarte statt der Prozessor Punkt für Punkt (md_am_sith 17 auf 7 ms je Bild, gleiches Bild).
+- Herumfliegen in der Karte ist flüssiger: die Sichtprüfungen für Entities und Flares laufen auf allen Prozessorkernen, die Gizmos warten beim Bewegen nicht mehr auf die Grafikkarte, und Karten mit zwei Himmeln bauen sie nicht mehr in jedem Bild neu (hoth2 29 auf 9 ms je Bild).
+- Kein Ruckler mehr beim ersten Klang: die Tongeräte werden beim Start im Hintergrund geöffnet.
+- Die Direct3D-Debugschicht läuft nur noch in den Selbsttests (BHED_D3D_DEBUG=1 schaltet sie ein); sie kostete rund 40 % der Bildzeit.
+[zh]
+- 摄像机播放明显更流畅:宽银幕黑边和淡入淡出现在由显卡绘制,而不是由处理器逐像素绘制(md_am_sith 每帧从 17 毫秒降到 7 毫秒,画面相同)。
+- 在地图中飞行更流畅:实体和镜头光晕的可见性检查在所有处理器核心上运行,移动摄像机时控件不再等待显卡,有两个天空的地图也不再每帧重建天空(hoth2 每帧从 29 毫秒降到 9 毫秒)。
+- 第一次播放声音时不再卡顿:声音设备在启动时于后台打开。
+- Direct3D 调试层现在只在自检中运行(BHED_D3D_DEBUG=1 可开启);它曾占用约 40% 的帧时间。
+[ja]
+- カメラ再生が大幅に滑らかになりました:レターボックスの黒帯とフェードを、プロセッサが 1 ピクセルずつ描くのではなくグラフィックカードが描画します(md_am_sith で 1 フレーム 17 ミリ秒から 7 ミリ秒、画像は同じ)。
+- マップ内の飛行が滑らかになりました:エンティティとフレアの可視判定をすべてのプロセッサコアで実行し、カメラ移動中のギズモはグラフィックカードを待たなくなり、空が 2 つあるマップでも毎フレーム空を作り直さなくなりました(hoth2 で 1 フレーム 29 ミリ秒から 9 ミリ秒)。
+- 最初のサウンドでカクつかなくなりました:サウンドデバイスを起動時にバックグラウンドで開きます。
+- Direct3D デバッグレイヤーはセルフテストでのみ動作します(BHED_D3D_DEBUG=1 で有効化)。フレーム時間の約 40% を占めていました。
+
 ## rc593 2026-10-12
 [en]
 - Switchable and flickering lights follow the timeline: a use on a light in the script switches it at that moment, ls_ patterns flicker like in the game (20 letters a second), and characters are lit accordingly.

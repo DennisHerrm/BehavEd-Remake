@@ -307,8 +307,10 @@ void setzeSpiegelung(bool an, const float ebene[4], bool umkehren);
 // MapImage::depth ablegt. Fuer die Ueberlagerung (Gizmos, Entitykreuze), die
 // auf dem GPU-Weg sonst durch Waende scheinen wuerde. false, wenn nichts da
 // ist oder die Groesse nicht passt.
+// vorigesBild: die Tiefe des vorigen Bildes nehmen, wenn es eines gibt -
+// ohne auf die Grafikkarte zu warten (beim Bewegen der Kamera, rc594).
 [[nodiscard]] bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe,
-                             float nah, float fern);
+                             float nah, float fern, bool vorigesBild = false);
 
 // Das Farbbild des letzten Kartenbildes lesen (RGBA, Zeile fuer Zeile). Fuer
 // den Selbsttest (ablauf), der das Bild nach einer Folge von Schritten mit

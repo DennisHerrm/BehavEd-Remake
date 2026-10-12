@@ -341,7 +341,17 @@ int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam, float as
         ersatz = bild("gfx/misc/flare");
         ersatzStand = g_app->texCacheStand;
     }
-    int n = 0;
+    // Erst die Kandidaten (im Bild, vor der Kamera), dann ihre Strahlen auf
+    // alle Kerne verteilt (rc594), dann die Schilde in derselben Reihenfolge
+    // wie vorher.
+    struct Kandidat {
+        std::size_t flaeche;
+        float o[3];
+        float dir[3];
+        float radius;
+        bool frei;
+    };
+    std::vector<Kandidat> kandidaten;
     for (std::size_t i = 0; i < g_app->geo.surfaces.size(); ++i) {
         const BspSurface& s = g_app->geo.surfaces[i];
         if (s.type != BspSurface::Type::Flare) { continue; }
@@ -371,9 +381,20 @@ int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam, float as
             const float rand = radius * 1.05F + 1.0F;
             if (std::fabs(x) - rand > z * tanX || std::fabs(y) - rand > z * tanY) { continue; }
         }
-        // verdeckt?
-        const TraceTreffer t = traceRay(g_app->geo, cam.pos, o);
-        if (t.hit && t.fraction < 0.98F) { continue; }
+        kandidaten.push_back({i, {o[0], o[1], o[2]}, {dir[0], dir[1], dir[2]}, radius, false});
+    }
+    // verdeckt?
+    spurenVerteilt(kandidaten.size(), [&](std::size_t k) {
+        const TraceTreffer t = traceRay(g_app->geo, cam.pos, kandidaten[k].o);
+        kandidaten[k].frei = !(t.hit && t.fraction < 0.98F);
+    });
+    int n = 0;
+    for (const Kandidat& kd : kandidaten) {
+        if (!kd.frei) { continue; }
+        const BspSurface& s = g_app->geo.surfaces[kd.flaeche];
+        const float* o = kd.o;
+        const float* dir = kd.dir;
+        const float radius = kd.radius;
         float d = -(dir[0] * s.flareNormale[0] + dir[1] * s.flareNormale[1] + dir[2] * s.flareNormale[2]);
         if (d < 0.0F) { d = -d; }
         gpu::KlingenQuad q;

@@ -68,6 +68,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <functional>
+#include <future>
 #include <utility>
 #include <cmath>
 #include <cstdio>
@@ -1098,6 +1099,11 @@ struct App {
     void* gizmoTexture = nullptr;
     int gizmoTexW = 0;
     int gizmoTexH = 0;
+    // Balken und Vollbild-Blende beim Blick durch die Kamera: als Rechtecke
+    // ueber dem GPU-Bild (rc594) statt als Bild in Fenstergroesse.
+    bool blendeZeigen = false;
+    float blendeBalken = 0.0F;
+    float blendeFarbe[4] = {0.0F, 0.0F, 0.0F, 0.0F};
     bool gizmoZeigen = false;   // im letzten Bild ueber das GPU-Bild gelegt?   // Selbsttest: Klaenge verarbeiten, aber nicht ausgeben
     double audioUpTo = -1.0;
     float lastCam[7]{};
@@ -1140,6 +1146,15 @@ struct App {
     // (S_StartBackgroundTrack, cg_main.cpp:2965). Windows mischt zwei
     // offene WAVE_MAPPER-Geraete selbst.
     Audio musicAudio;
+    // Beide Geraete, beim Start im Hintergrund geoeffnet (rc594): waveOutOpen
+    // braucht beim ersten Mal rund 200 ms, und das stand als Ruckler mitten
+    // in der ersten Kamerafahrt mit Klang. Uebernommen wird im Hauptfaden
+    // (tonUebernehmen) - vorher fasst niemand audio/musicAudio an.
+    struct TonVorab {
+        Audio ton;
+        Audio musik;
+    };
+    std::future<TonVorab> tonVorab;
     // Laenge je Klangdatei in Millisekunden, -1 = nicht gefunden.
     std::unordered_map<std::string, double> soundLen;
     // Nach dem Schreiben: wie lange steht die Bestaetigung noch, und wie
@@ -2150,6 +2165,9 @@ void drawAnimFenster();
 // (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
 int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
 int flareSchilde(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam, float aspekt);
+// je(i) fuer i in [0, n), auf die Kerne verteilt, sobald es sich lohnt (rc594).
+// Fuer Strahltests (traceRay ist fadenfest); je(i) darf nur Platz i schreiben.
+void spurenVerteilt(std::size_t n, const std::function<void(std::size_t)>& je);
 void drawNeueMission();
 void drawMissionSpeichern();
 void entityNeuMenue(bool amMauspunkt);

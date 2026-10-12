@@ -11887,6 +11887,23 @@ const std::vector<std::int16_t>* klangFuerWiedergabe(const std::string& name) {
     return &put.first->second;
 }
 
+// Die im Hintergrund geoeffneten Tongeraete uebernehmen (siehe
+// App::tonVorab). `warten`: vor dem ersten Klang - dann blockiert es nur,
+// wenn der Klang in den ersten Sekundenbruchteilen nach dem Start kommt.
+// Ein Geraet, das schon offen ist, bleibt; das vorab geoeffnete schliesst
+// dann sein Destruktor.
+void tonUebernehmen(bool warten) {
+    if (!g_app->tonVorab.valid()) {
+        return;
+    }
+    if (!warten && g_app->tonVorab.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+    App::TonVorab t = g_app->tonVorab.get();
+    if (!g_app->audio.ready() && t.ton.ready()) { g_app->audio = std::move(t.ton); }
+    if (!g_app->musicAudio.ready() && t.musik.ready()) { g_app->musicAudio = std::move(t.musik); }
+}
+
 void playSound(const std::string& name, double abMs, bool background,
                float lautstaerke, float rechts, std::uint64_t schluessel) {
     if (name.empty()) {
@@ -11926,6 +11943,7 @@ void playSound(const std::string& name, double abMs, bool background,
     // Musik auf ein EIGENES Geraet - siehe musicAudio in app_internal.h.
     // Auf einem gemeinsamen Geraet reiht waveOut die Puffer hintereinander,
     // und eine minutenlange Musik haelt jede Stimme dahinter auf.
+    tonUebernehmen(true);
     Audio& geraet = background ? g_app->musicAudio : g_app->audio;
     if (!geraet.open(kRate, kChannels)) {
         addStatus(tr(Str::SoundNoDevice));
@@ -12015,6 +12033,7 @@ void spieleMusik(const std::string& spec, double abMs) {
     }
     constexpr int kRate = 44100;
     constexpr int kChannels = 2;
+    tonUebernehmen(true);
     Audio& geraet = g_app->musicAudio;
     if (!geraet.open(kRate, kChannels)) {
         addStatus(tr(Str::SoundNoDevice));
@@ -12055,6 +12074,7 @@ void playSoundSchleife(const std::string& name, double dauerMs, float lautstaerk
     }
     constexpr int kRate = 44100;
     constexpr int kChannels = 2;
+    tonUebernehmen(true);
     Audio& geraet = g_app->audio;
     if (!geraet.open(kRate, kChannels)) {
         addStatus(tr(Str::SoundNoDevice));
@@ -14116,6 +14136,18 @@ void draw() {
     // gestartet wird.
     //
     // Beide Geraete, nicht nur eines - Musik laeuft ueber ein eigenes.
+    static bool tonGestartet = false;
+    if (!tonGestartet) {
+        tonGestartet = true;
+        g_app->tonVorab = std::async(std::launch::async, [] {
+            App::TonVorab t;
+            // Dasselbe feste Format wie playSound (kRate, kChannels).
+            (void)t.ton.open(44100, 2);
+            (void)t.musik.open(44100, 2);
+            return t;
+        });
+    }
+    tonUebernehmen(false);
     g_app->audio.update();
     g_app->musicAudio.update();
 

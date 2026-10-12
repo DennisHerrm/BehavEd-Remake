@@ -125,10 +125,18 @@ bool initD3D11(HWND hwnd) {
         //
         // Auf Rechnern ohne "Grafiktools" gibt es sie nicht - dann wird
         // stillschweigend ohne sie wiederholt.
-        UINT flags = D3D11_CREATE_DEVICE_DEBUG;
+        //
+        // rc594: nur noch im Selbsttest (BHED_EDITORTEST) oder mit
+        // BHED_D3D_DEBUG=1. Gemessen an den Kamerafahrten: mit der Schicht
+        // 33 statt 18 ms je Bild in md_am_sith, 19 statt 11 in kor1 - die
+        // "800 fps" oben stammen aus einer Zeit mit weit weniger Aufrufen.
+        // shank: "Nur in Tests an". Die Selbsttests finden D3D-Fehler damit
+        // weiter von selbst; BHED_D3D_DEBUG=0 schaltet sie auch dort ab.
         const char* dbg = std::getenv("BHED_D3D_DEBUG");
-        if (dbg != nullptr && dbg[0] == '0') {
-            flags = 0;
+        const bool imTest = std::getenv("BHED_EDITORTEST") != nullptr;
+        UINT flags = 0;
+        if (dbg != nullptr ? dbg[0] == '1' : imTest) {
+            flags = D3D11_CREATE_DEVICE_DEBUG;
         }
         HRESULT hr = D3D11CreateDeviceAndSwapChain(
             nullptr, driver, nullptr, flags, wanted,

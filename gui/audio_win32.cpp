@@ -18,8 +18,30 @@ struct Audio::Buffer {
 // dieser Datei und nicht im Kopf.
 Audio::Audio() = default;
 Audio::~Audio() { close(); }
-Audio::Audio(Audio&&) noexcept = default;
-Audio& Audio::operator=(Audio&&) noexcept = default;
+// Verschieben gibt das Geraet AB: voreingestellt wurde `handle_` nur
+// kopiert, und der alte Halter schloss beim Aufraeumen das Geraet des neuen
+// (rc594, seit die Geraete im Hintergrund geoeffnet und dann verschoben
+// werden).
+Audio::Audio(Audio&& o) noexcept
+    : mixer_(std::move(o.mixer_)),
+      handle_(std::exchange(o.handle_, nullptr)),
+      sampleRate_(std::exchange(o.sampleRate_, 0)),
+      channels_(std::exchange(o.channels_, 0)),
+      error_(o.error_),
+      buffers_(std::move(o.buffers_)) {}
+
+Audio& Audio::operator=(Audio&& o) noexcept {
+    if (this != &o) {
+        close();
+        mixer_ = std::move(o.mixer_);
+        handle_ = std::exchange(o.handle_, nullptr);
+        sampleRate_ = std::exchange(o.sampleRate_, 0);
+        channels_ = std::exchange(o.channels_, 0);
+        error_ = o.error_;
+        buffers_ = std::move(o.buffers_);
+    }
+    return *this;
+}
 
 bool Audio::open(int sampleRate, int channels) {
     if (handle_ && sampleRate == sampleRate_ && channels == channels_) return true;

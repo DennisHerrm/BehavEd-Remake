@@ -1,5 +1,40 @@
 # Änderungen seit rc94
 
+## rc594 — Leistung: Kamerafahrten und Herumfliegen
+
+Gemeldet: „bei kamerafahrten ab und an nur 20 fps“, „frame drops wenn ich mit
+der Kamera auf der Map rum fahre von einem ende zum anderen“; getestet auf
+mehreren Karten, besonders md_am_sith (Mustafar). Gemessen mit einem
+Stichproben-Profiler (vorübergehend eingebaut, wieder entfernt) über
+Kamerafahrten und einen neuen freien Flug im Szenenlauf (`-flug`).
+
+* **Balken und Blende** (`blendeUeberlagern`): bis rc593 Bildpunkt für
+  Bildpunkt in ein Bild in Fenstergröße gemalt und jedes Bild hochgeladen –
+  ein Fünftel bis die Hälfte der Bildzeit. Jetzt Rechtecke über dem GPU-Bild,
+  dieselbe Mischung; Fotovergleich mit `BHED_FOTO_GENAU` ohne Abweichung in
+  der Ansicht.
+* **Himmel** (`holeHimmel`): mehrere Himmel im Zwischenspeicher statt einem –
+  md_jt legte 602 Himmel in 301 Bildern an.
+* **Strahltests**: `flaecheEinfach` prüft Typ und Shader nicht mehr, wenn die
+  Spurhilfe sie schon als spurbar kennt (isDrawn vergleicht zehn
+  Zeichenketten); Verdeckt-Strahlen der Entity-Symbole und Flares verteilt
+  auf alle Kerne (`spurenVerteilt`), gleiche Ergebnisse.
+* **Tiefe für die Gizmos** (`leseTiefe(..., vorigesBild)`): beim Bewegen der
+  Kamera die Tiefe des vorigen Bildes, ohne auf die Grafikkarte zu warten;
+  steht sie, wie bisher die aktuelle (das Nachzeichnen nach dem Anhalten ist
+  genau).
+* **Ton**: beide Geräte beim Start im Hintergrund geöffnet (`tonVorab`,
+  `tonUebernehmen`) – waveOutOpen kostete beim ersten Klang rund 200 ms.
+  Dabei gefunden: das voreingestellte Verschieben von `Audio` kopierte den
+  Gerätezeiger, der alte Halter schloss das Gerät des neuen. Nachgestellt im
+  Kartentest (vorher 1 FEHLER), behoben.
+* **Direct3D-Debugschicht** nur noch im Selbsttest oder mit
+  `BHED_D3D_DEBUG=1` (shank: „Nur in Tests an“) – sie kostete rund 40 %.
+
+Bildzeit im Mittel (ohne Debugschicht, vorher → nachher): Kamerafahrt
+md_am_sith 17 → 7–8 ms, kor1 11 → 7–8, md_jt 13 → 8–11; Flug md_am_sith
+16 → 10, hoth2 29 → 9, md_ga_jedi 17 → 8, kor1 23 → 15, md_jt 15 → 10.
+
 ## rc593 — Lichtschalter im Ablauf, Himmelsportale, Spiegel und Portalkameras
 
 Gewünscht: „okay mach weiter mit dem fehlenden zeug“ – das waren die offenen

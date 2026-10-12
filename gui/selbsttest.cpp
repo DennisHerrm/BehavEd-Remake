@@ -10231,6 +10231,64 @@ std::vector<Schritt> szenenSchritte() {
                      }
                  }));
                  neu.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 1200));
+                 // "-flug" statt eines Skripts (rc594): frei von der Startstelle
+                 // zur entferntesten Entity fliegen, 300 Bilder, mit Gizmos und
+                 // Entity-Symbolen - die Bildzeit beim Herumfahren in der Karte.
+                 if (sk == "-flug") {
+                     auto weg = std::make_shared<std::array<float, 6>>();
+                     neu.push_back({"Flug " + k, [=](int b) {
+                                        if (b == 0) {
+                                            std::vector<std::array<float, 3>> orte;
+                                            for (const MapEntity& e : g_app->map.entities) {
+                                                float p[3];
+                                                if (entityOrt(e, p)) { orte.push_back({p[0], p[1], p[2]}); }
+                                            }
+                                            if (orte.size() < 2) { return true; }
+                                            std::array<float, 3> a0 = orte[0];
+                                            for (const MapEntity& e : g_app->map.entities) {
+                                                float p[3];
+                                                if (e.classname.rfind("info_player_start", 0) == 0 && entityOrt(e, p)) {
+                                                    a0 = {p[0], p[1], p[2]};
+                                                    break;
+                                                }
+                                            }
+                                            std::array<float, 3> z = a0;
+                                            float best = -1.0F;
+                                            for (const auto& o : orte) {
+                                                const float d = (o[0] - a0[0]) * (o[0] - a0[0]) + (o[1] - a0[1]) * (o[1] - a0[1]);
+                                                if (d > best) { best = d; z = o; }
+                                            }
+                                            *weg = {a0[0], a0[1], a0[2] + 64.0F, z[0], z[1], z[2] + 64.0F};
+                                            g_app->playing = false;
+                                            g_app->throughCamera = false;
+                                            g_app->camViewActive = false;
+                                            st->seit = std::chrono::steady_clock::now();
+                                        } else {
+                                            const double ms = std::chrono::duration<double, std::milli>(
+                                                                  std::chrono::steady_clock::now() - st->seit).count();
+                                            st->bildMax = std::max(st->bildMax, ms);
+                                            st->bildSumme += ms;
+                                            ++st->bilder;
+                                            st->seit = std::chrono::steady_clock::now();
+                                        }
+                                        if (b > 300) {
+                                            char z[200];
+                                            std::snprintf(z, sizeof(z), "Szenenlauf: Flug [%s] | Bild max %.0f ms, Mittel %.1f ms (%d Bilder)",
+                                                          k.c_str(), st->bildMax, st->bilder > 0 ? st->bildSumme / st->bilder : 0.0, st->bilder);
+                                            diag::detail(z);
+                                            return true;
+                                        }
+                                        const float t = static_cast<float>(b) / 300.0F;
+                                        const auto& w = *weg;
+                                        for (int i = 0; i < 3; ++i) { g_app->cam.pos[i] = w[i] + (w[i + 3] - w[i]) * t; }
+                                        const float ziel[3] = {w[3], w[4], w[5]};
+                                        aimAngles(g_app->cam.pos, ziel, g_app->cam.angles);
+                                        g_app->cam.angles[0] = 0.0F;
+                                        g_app->mapDirty = true;
+                                        return false;
+                                    }});
+                     continue;
+                 }
                  neu.push_back(tu("Szene " + sk + ": Skript oeffnen", [=] {
                      std::string data;
                      std::string gefunden;
@@ -10306,13 +10364,16 @@ std::vector<Schritt> szenenSchritte() {
                          const double an = anteil;
                          // 150 ms VOR der Stelle anfangen und laufen lassen:
                          // Schwertspuren (rc592) entstehen erst aus Bewegung.
+                         // BHED_FOTO_GENAU=1: ohne Vorlauf genau an der Stelle (fuer
+                         // Bildvergleiche zweier Fassungen).
+                         const bool genau = std::getenv("BHED_FOTO_GENAU") != nullptr;
                          neu.push_back(tu("Szene " + sk + ": zu " + std::to_string(an), [=] {
                              g_app->throughCamera = true;
-                             g_app->playMs = std::max(0.0, st->dauer * an - 150.0);
-                             g_app->playing = true;
+                             g_app->playMs = genau ? st->dauer * an : std::max(0.0, st->dauer * an - 150.0);
+                             g_app->playing = !genau;
                              g_app->mapDirty = true;
                          }));
-                         neu.push_back(pause(0.15));
+                         neu.push_back(pause(genau ? 0.0 : 0.15));
                          neu.push_back(tu("Szene " + sk + ": anhalten", [] { g_app->playing = false; g_app->mapDirty = true; }));
                          neu.push_back(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
                          neu.push_back(pause(0.3));
@@ -10448,6 +10509,25 @@ std::vector<Schritt> karteSchritte() {
     auto archiv = std::make_shared<std::string>();
     auto reiter = std::make_shared<ImRect>();
 
+    // rc594: die Tongeraete werden beim Start im Hintergrund geoeffnet und
+    // dann in die App verschoben. Das voreingestellte Verschieben kopierte
+    // den Geraetezeiger - der alte Halter schloss beim Aufraeumen das Geraet
+    // des neuen. Geoeffnet wird nur, gespielt nichts (stumm).
+    add(pruefe("Tongeraet: nach dem Verschieben haelt nur der neue Halter das Geraet", [] {
+        Audio a;
+        if (!a.open(44100, 2)) {
+            diag::detail("Knopftest: kein Tongeraet - Probe ohne Aussage");
+            return true;
+        }
+        Audio b = std::move(a);
+        const bool bau = !a.ready() && b.ready();   // NOLINT(bugprone-use-after-move)
+        Audio c;
+        c = std::move(b);
+        const bool zuweisung = !b.ready() && c.ready();   // NOLINT(bugprone-use-after-move)
+        diag::detail(std::string("Knopftest: Verschieben - Bau ") + (bau ? "ok" : "beide halten") +
+                     ", Zuweisung " + (zuweisung ? "ok" : "beide halten"));
+        return bau && zuweisung;
+    }));
     add(tu("Archiv mit maps/md_am_sith.bsp suchen", [=] {
         for (const GamePath& gp : g_app->gamePaths) {
             for (const Pk3& arc : gp.archives) {

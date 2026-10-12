@@ -1538,9 +1538,12 @@ namespace {
 // dann jedes Dreieck in seiner Reihenfolge. Herausgezogen, damit
 // traceRayEinfach und traceRay (fuer kleine Flaechen) DENSELBEN Text
 // ausfuehren - zwei Kopien liefen beim naechsten Eingriff auseinander.
+// `spurbar`: Typ und Shader sind schon geprueft (SpurHilfe::spurbar, rc594) -
+// isDrawn() vergleicht zehn Zeichenketten und lag beim Fliegen ueber die
+// Karte mit 15-20 % der Bildzeit vorn, fuer eine Antwort, die vorab feststand.
 void flaecheEinfach(const BspGeometry& geo, int sf, const float start[3],
                     const float end[3], const float d[3],
-                    float& besteFraktion, TraceTreffer& out) {
+                    float& besteFraktion, TraceTreffer& out, bool spurbar = false) {
     const BspSurface& s = geo.surfaces[static_cast<std::size_t>(sf)];
     // --- Trifft der Strahl den Kasten der Flaeche ueberhaupt? ---
     //
@@ -1567,12 +1570,12 @@ void flaecheEinfach(const BspGeometry& geo, int sf, const float start[3],
         }
     }
     // Flares sind Lichtpunkte ohne Koerper.
-    if (s.type != BspSurface::Type::Planar &&
+    if (!spurbar && s.type != BspSurface::Type::Planar &&
         s.type != BspSurface::Type::TriangleSoup &&
         s.type != BspSurface::Type::Patch) {
         return;
     }
-    if (s.shader >= 0 &&
+    if (!spurbar && s.shader >= 0 &&
         s.shader < static_cast<int>(geo.shaders.size()) &&
         !geo.shaders[static_cast<std::size_t>(s.shader)].isDrawn()) {
         return;   // Clip, Trigger, Caulk: kein Einschlag
@@ -2577,7 +2580,8 @@ TraceTreffer traceRay(const BspGeometry& geo, const float start[3],
                 if (fl.baum) {
                     flaecheMitBaum(geo, *h, fl, sf, st, besteFraktion, out, merk.kand);
                 } else {
-                    flaecheEinfach(geo, sf, start, end, d, besteFraktion, out);
+                    // In blattEintraege stehen nur spurbare Flaechen.
+                    flaecheEinfach(geo, sf, start, end, d, besteFraktion, out, true);
                 }
             }
             continue;
