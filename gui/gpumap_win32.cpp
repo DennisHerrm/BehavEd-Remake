@@ -33,6 +33,8 @@
 
 #include <algorithm>
 #include <set>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <d3d11.h>
 #include <dxgi1_4.h>
@@ -73,6 +75,11 @@ struct ShaderPaar {
 };
 
 std::map<std::string, ShaderPaar> g_shader;
+// Schneller Weg (Code-Pruefung rc593): Merkmale + tcMod-Zahl -> Eintrag in
+// g_shader. Der Name (eine Zeichenkette je Zeichenaufruf) wird nur noch beim
+// ersten Mal gebaut. Die Zeiger bleiben gueltig, solange g_shader nicht
+// geleert wird - dann wird auch dies geleert.
+std::unordered_map<std::uint64_t, ShaderPaar*> g_shaderSchnell;
 // --- Puffer je NETZ, nicht global ------------------------------------
 //
 // Es gibt zwei: die Karte (aendert sich nur beim Kartenwechsel) und das
@@ -82,6 +89,9 @@ std::map<std::string, ShaderPaar> g_shader;
 struct Netzpuffer {
     ID3D11Buffer* vb = nullptr;
     ID3D11Buffer* ib = nullptr;
+    // In welchem Bild (neuesBild) das dynamische Netz zuletzt hochgeladen
+    // wurde - im selben Bild ist sein Inhalt derselbe (Code-Pruefung rc593).
+    std::uint64_t dynBild = ~std::uint64_t{0};
     std::size_t vbGroesse = 0;
     std::size_t ibGroesse = 0;
     // Die Schrittweite einer Ecke.
@@ -200,6 +210,8 @@ struct ZielFelder {
 constexpr int kZielSaetze = 4;
 ZielFelder g_geparkt[kZielSaetze];
 int g_zielSatz = 0;
+// Zaehlt die Bilder der Ansicht (neuesBild) - siehe Netzpuffer::dynBild.
+std::uint64_t g_bildNummer = 1;
 // Himmelsportal (rc593): >= 0 heisst, Himmelsflaechen zeigen das Bild dieses
 // Satzes statt der Himmelsbox, und die Wolkenschichten fallen weg.
 int g_himmelPortalSatz = -1;
@@ -479,9 +491,15 @@ void pruefeStapelLagen(ID3DBlob* vsBlob) {
 
 ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
                        std::string* fehler) {
+    const std::uint64_t schnell = static_cast<std::uint64_t>(features) |
+                                  (static_cast<std::uint64_t>(static_cast<std::uint32_t>(numTexMods)) << 32);
+    if (const auto sch = g_shaderSchnell.find(schnell); sch != g_shaderSchnell.end()) {
+        return sch->second;
+    }
     const std::string name = shaderName(features, numTexMods);
     const auto it = g_shader.find(name);
     if (it != g_shader.end()) {
+        g_shaderSchnell[schnell] = &it->second;
         return &it->second;
     }
     // Einmal gescheitert, immer gescheitert: sonst lief D3DCompile fuer
@@ -583,7 +601,9 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
         return nullptr;
     }
     g_shader[name] = p;
-    return &g_shader[name];
+    ShaderPaar* neu = &g_shader[name];
+    g_shaderSchnell[schnell] = neu;
+    return neu;
 }
 
 // Die Mischformel als Zustand. Nach Blend abgelegt, damit jeder nur einmal
@@ -1123,7 +1143,10 @@ int g_figurFlaechenOhneBild = 0;
 // Gesammelt wird nur, was auffaellt: autosprite, gluehend, oder eine
 // Mischart ausserhalb der sieben bekannten. Alles andere fuellt den Bericht
 // nur.
-std::map<std::string, int> g_auffaellig;
+// (Shadernummer, Art) -> Anzahl; die Namen werden einmal je neuem Schluessel
+// gemerkt (Code-Pruefung rc593: vorher eine Zeichenkette je Zeichenaufruf).
+std::map<std::pair<int, int>, int> g_auffaellig;
+std::map<int, std::string> g_auffaelligName;
 
 // --- Jedem Direct3D-Gegenstand einen Namen geben -----------------------
 //
@@ -1639,6 +1662,40 @@ bool bereiteGluehpuffer(int breite, int hoehe) {
 
 // Die Aufrufe einer Liste absetzen - gemeinsam von Haupt- und
 // Gluehdurchgang benutzt, damit beide dieselbe Bindung machen.
+// --- Die Zeichenliste je Netz einmal je Bild (Code-Pruefung rc593) ---------
+//
+// buildDrawCalls lief je Netz und Bild bis zu fuenfmal (Deckend, Gemischt,
+// Licht, Nebel, Gluehen) und in jedem Nebenbild noch einmal - jedes Mal mit
+// batchStateFor fuer jeden Stapel und einer stabilen Sortierung. Das Ergebnis
+// haengt nur am Netz und an den Texturen (Merkmale, Mischart), nicht an der
+// Zeit: die zeitabhaengigen WERTE packt erst zeichneAufrufe.
+struct ListenSchluessel {
+    const BspMesh* netz = nullptr;
+    const std::uint32_t* idx = nullptr;
+    std::size_t stapel = 0;
+    const TextureSet* tex = nullptr;
+    std::size_t texZahl = 0;
+    bool operator<(const ListenSchluessel& o) const {
+        return std::tie(netz, idx, stapel, tex, texZahl) < std::tie(o.netz, o.idx, o.stapel, o.tex, o.texZahl);
+    }
+};
+std::map<ListenSchluessel, std::vector<DrawCall>> g_listen;
+std::uint64_t g_listenBild = 0;
+
+const std::vector<DrawCall>& zeichenliste(const BspMesh& mesh, const TextureSet* textures, float zeitSekunden) {
+    if (g_listenBild != g_bildNummer) {
+        g_listen.clear();
+        g_listenBild = g_bildNummer;
+    }
+    const ListenSchluessel k{&mesh, mesh.indexes.data(), mesh.batches.size(), textures,
+                             textures != nullptr ? textures->byShader.size() : 0U};
+    auto it = g_listen.find(k);
+    if (it == g_listen.end()) {
+        it = g_listen.emplace(k, buildDrawCalls(mesh, textures, zeitSekunden)).first;
+    }
+    return it->second;
+}
+
 int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
                    const TextureSet* textures, const BspGeometry* geo,
                    float zeitSekunden, std::string* fehler) {
@@ -1657,18 +1714,16 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         if (geo != nullptr && call.batch < mesh.batches.size()) {
             const int si = mesh.batches[call.batch].shader;
             if (si >= 0 && static_cast<std::size_t>(si) < geo->shaders.size()) {
-                const std::string& nm = geo->shaders[
-                    static_cast<std::size_t>(si)].name;
                 const std::uint32_t f = call.state.features;
-                if ((f & kAutosprite) != 0U) {
-                    ++g_auffaellig[nm + "  autosprite"];
+                const bool sprite = (f & kAutosprite) != 0U;
+                const bool gluehend = (f & kGlow) != 0U;
+                const bool unbekannt = call.state.blend == Blend::Unbekannt;
+                if ((sprite || gluehend || unbekannt) && g_auffaelligName.find(si) == g_auffaelligName.end()) {
+                    g_auffaelligName.emplace(si, geo->shaders[static_cast<std::size_t>(si)].name);
                 }
-                if ((f & kGlow) != 0U) {
-                    ++g_auffaellig[nm + "  glow"];
-                }
-                if (call.state.blend == Blend::Unbekannt) {
-                    ++g_auffaellig[nm + "  unbekannte Mischart"];
-                }
+                if (sprite) { ++g_auffaellig[{si, 0}]; }
+                if (gluehend) { ++g_auffaellig[{si, 1}]; }
+                if (unbekannt) { ++g_auffaellig[{si, 2}]; }
             }
         }
         // Im Spiegeldurchgang (rc593) die Spiegelflaechen selbst nicht: sie
@@ -2059,6 +2114,8 @@ bool bereiteZiel(int breite, int hoehe) {
 
 void* zielTextur() { return g_zielSrv; }
 
+void neuesBild() { ++g_bildNummer; }
+
 void waehleZiel(int satz) {
     if (satz == g_zielSatz || satz < 0 || satz >= kZielSaetze) {
         return;
@@ -2259,8 +2316,7 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
 
     // Nur die leuchtenden Stapel - aus der geprueften Liste gefiltert
     // (gpudraw.cpp), damit die Reihenfolge dieselbe bleibt.
-    const std::vector<DrawCall> alle =
-        buildDrawCalls(mesh, textures, zeitSekunden);
+    const std::vector<DrawCall>& alle = zeichenliste(mesh, textures, zeitSekunden);
     const std::vector<DrawCall> gluehend = nurGluehende(alle);
     // --- Die Puffer HIER binden ---------------------------------------
     //
@@ -2758,7 +2814,7 @@ int zeichneLichtUndSchatten(const BspMesh& mesh, const TextureSet* textures,
     const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
 
     setzeSchritt("Licht: Zeichenliste");
-    const std::vector<DrawCall> calls = buildDrawCalls(mesh, textures, zeitSekunden);
+    const std::vector<DrawCall>& calls = zeichenliste(mesh, textures, zeitSekunden);
     const std::vector<StapelKasten>& kaesten = stapelKaesten(mesh);
     std::vector<int> lichtNr;
     std::vector<int> schattenNr;
@@ -3607,7 +3663,7 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
         c->IASetInputLayout(g_nebelLayout);
         c->VSSetShader(g_nebelVs, nullptr, 0);
         setzeSchritt("Nebel: Karte");
-        const std::vector<DrawCall> calls = buildDrawCalls(mesh, textures, zeitSekunden);
+        const std::vector<DrawCall>& calls = zeichenliste(mesh, textures, zeitSekunden);
         for (const DrawCall& call : calls) {
             // Nur Shader bis SS_SEE_THROUGH bekommen den Nebeldurchgang
             // (GeneratePermanentShader: fogPass = FP_EQUAL). Durchscheinendes
@@ -4155,6 +4211,8 @@ void vergissMoverNetze() {
 
 void vergissKarte() {
     vergissKastenSaetze();
+    g_auffaellig.clear();
+    g_auffaelligName.clear();
     // Kartenwechsel (Kartenpruefung 27.09., shank: "es waren einfach alle
     // Texturen oder UV-Maps falsch, von jeder Map"): beide Speicher waren
     // nach Nummer abgelegt und wurden nur beim Beenden geleert. Die zweite
@@ -4217,6 +4275,7 @@ void shutdown() {
         if (p.layout != nullptr) { p.layout->Release(); }
     }
     g_shader.clear();
+    g_shaderSchnell.clear();
     for (auto& [k, s] : g_blend) { if (s != nullptr) { s->Release(); } }
     g_blend.clear();
     for (auto& [k, s] : g_depth) { if (s != nullptr) { s->Release(); } }
@@ -4499,18 +4558,19 @@ std::string geraetInfo() {
 std::vector<StapelNotiz> auffaelligeStapel() {
     std::vector<StapelNotiz> aus;
     aus.reserve(g_auffaellig.size());
+    static const char* kArt[3] = {"autosprite", "glow", "unbekannte Mischart"};
     for (const auto& [schluessel, n] : g_auffaellig) {
-        const std::size_t trenn = schluessel.rfind("  ");
         StapelNotiz notiz;
-        notiz.shader = (trenn != std::string::npos)
-                           ? schluessel.substr(0, trenn)
-                           : schluessel;
-        notiz.was = (trenn != std::string::npos)
-                        ? schluessel.substr(trenn + 2)
-                        : std::string();
+        const auto nm = g_auffaelligName.find(schluessel.first);
+        notiz.shader = (nm != g_auffaelligName.end()) ? nm->second : std::to_string(schluessel.first);
+        notiz.was = kArt[std::clamp(schluessel.second, 0, 2)];
         notiz.anzahl = n;
         aus.push_back(notiz);
     }
+    // Die alte Fassung sortierte nach dem Namen (std::map ueber Zeichenketten).
+    std::sort(aus.begin(), aus.end(), [](const StapelNotiz& a, const StapelNotiz& b) {
+        return (a.shader + "  " + a.was) < (b.shader + "  " + b.was);
+    });
     return aus;
 }
 
@@ -4790,7 +4850,11 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
                             // es ist IMMUTABLE und laesst sich nicht
                             // ueberschreiben.
                             (!dyn && anderesNetz));
-    const bool brauchtEcken = (vbZuKlein || dyn);
+    // Das Effektnetz ist im selben Bild dasselbe - Deckend, Gemischt und die
+    // Nebenbilder (Spiegel, Portal, Vorschau) laden es nicht noch einmal hoch.
+    const bool schonDiesesBild = dyn && !vbZuKlein && np.ib != nullptr && np.dynBild == g_bildNummer &&
+                                 !anderesNetz && np.ibGroesse >= ibBytes;
+    const bool brauchtEcken = (vbZuKlein || (dyn && !schonDiesesBild));
     if (brauchtEcken) {
         setzeSchritt("Karte: Ecken umsortieren");
         // --- Zeiger und Anzahl ZUSAMMEN festhalten ------------------------
@@ -4832,7 +4896,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     std::vector<std::uint32_t> spriteIdx;
     const bool ibNeu = (np.ib == nullptr || np.ibGroesse < ibBytes ||
                         (!dyn && anderesNetz));
-    if (spriteZeichen != 0U && (brauchtEcken || ibNeu || dyn)) {
+    if (spriteZeichen != 0U && (brauchtEcken || ibNeu || (dyn && !schonDiesesBild))) {
         setzeSchritt("Karte: Autosprite");
         spriteIdx = mesh.indexes;
         const std::vector<SpriteEcke> sp = baueAutosprites(mesh, istSprite, spriteIdx);
@@ -4911,7 +4975,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     // des Anlegens fuellen. Vorher stand hier `else if`, und im ersten Bild
     // (und bei jedem Wachsen) zeichnete der deckende Durchgang aus einem
     // leeren Puffer (Code-Pruefung rc592).
-    if (dyn) {
+    if (dyn && !schonDiesesBild) {
         // Gleiche Groesse, neuer Inhalt: ueberschreiben statt neu anlegen.
         D3D11_MAPPED_SUBRESOURCE m{};
         if (SUCCEEDED(c->Map(np.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
@@ -4949,14 +5013,16 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     np.nVerts = nVerts;
     np.nIdx = nIdx;
     np.spriteZeichen = spriteZeichen;
-    if (dyn) {
+    if (dyn && !schonDiesesBild) {
         // Immer schreiben - auch direkt nach dem Anlegen, weil der
-        // dynamische Puffer leer erzeugt wird.
+        // dynamische Puffer leer erzeugt wird. Nur nicht ein zweites Mal im
+        // selben Bild (schonDiesesBild).
         D3D11_MAPPED_SUBRESOURCE m{};
         if (SUCCEEDED(c->Map(np.ib, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
             std::memcpy(m.pData, idxDaten, ibBytes);
             c->Unmap(np.ib, 0);
         }
+        np.dynBild = g_bildNummer;
     }
 
     // --- Die beiden Konstantenpuffer -------------------------------------
@@ -5075,8 +5141,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
 
     // --- Die geprüfte Liste abarbeiten ------------------------------------
     setzeSchritt("Karte: Zeichenliste bauen");
-    const std::vector<DrawCall> alleCalls =
-        buildDrawCalls(mesh, textures, zeitSekunden);
+    const std::vector<DrawCall>& alleCalls = zeichenliste(mesh, textures, zeitSekunden);
     const std::vector<DrawCall> calls = nurLage(alleCalls, lage);
     if (calls.empty()) {
         // Eine LEERE LAGE ist kein Fehler.
@@ -5216,6 +5281,7 @@ int zeichneModellAnsicht(const GlmModel&, const ModelTextures*, const std::vecto
 bool bereiteZiel(int, int) { return false; }
 void* zielTextur() { return nullptr; }
 void waehleZiel(int) {}
+void neuesBild() {}
 void setzeHimmelPortal(int) {}
 void setzeSpiegelBild(int) {}
 void setzeSpiegelung(bool, const float*) {}

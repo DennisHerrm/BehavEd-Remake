@@ -277,6 +277,10 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
 // leseFarbe und alles Zeichnen gelten danach fuer den gewaehlten Satz. Nach
 // der Vorschau zurueck auf 0 - der Rest des Programms kennt nur den einen.
 void waehleZiel(int satz);
+// Ein neues Bild der Ansicht beginnt (Code-Pruefung rc593): was je Bild nur
+// einmal hochgeladen werden muss (das Effektnetz), gilt bis zum naechsten
+// Aufruf.
+void neuesBild();
 // Die Textur eines Satzes, unabhaengig davon, welcher gerade gewaehlt ist.
 [[nodiscard]] void* zielTexturSatz(int satz);
 // Himmelsportal (rc593, misc_skyportal): ab jetzt zeigen Himmelsflaechen das

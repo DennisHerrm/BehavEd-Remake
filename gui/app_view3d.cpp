@@ -11061,6 +11061,7 @@ void drawMapView() {
         if (gpuBereit) {
             // Lichtschalter und Flackern zur Zeit des Bildes (rc593).
             lichtStileZuZeit();
+            gpu::neuesBild();
             const auto tGpu0 = std::chrono::steady_clock::now();
             // --- Ein GPU-Bild aus einer Kamera (rc592) -----------------------
             //
