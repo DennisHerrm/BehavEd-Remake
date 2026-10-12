@@ -1362,7 +1362,45 @@ struct SpiegelFlaeche {
     float d = 0.0F;
     float mitte[3]{};
     float radius = 0.0F;
+    // Portal mit misc_portal_camera (rc593): Ort der Flaeche (surface->origin)
+    // und die Kamera aus CG_Portal.
+    bool portal = false;
+    float flOrt[3]{};
+    float kamOrt[3]{};
+    float kamAchse0[3]{};
+    float roll = 0.0F;
+    int drehTempo = 0;      // frame: 25 / 75 (spawnflags 1 / 2)
+    bool bewegt = false;    // oldframe / powerups: ohne spawnflags 4
 };
+
+// PerpendicularVector (q_math.cpp): auf die kleinste Achse projiziert.
+void senkrecht(const float src[3], float dst[3]) {
+    int pos = 0;
+    float minelem = 1.0F;
+    for (int i = 0; i < 3; ++i) {
+        if (std::fabs(src[i]) < minelem) {
+            pos = i;
+            minelem = std::fabs(src[i]);
+        }
+    }
+    float t[3] = {0.0F, 0.0F, 0.0F};
+    t[pos] = 1.0F;
+    const float nn = src[0] * src[0] + src[1] * src[1] + src[2] * src[2];
+    const float dd = (src[0] * t[0] + src[1] * t[1] + src[2] * t[2]) / (nn > 0.0F ? nn : 1.0F);
+    for (int i = 0; i < 3; ++i) { dst[i] = t[i] - dd * src[i]; }
+    const float l = std::sqrt(dst[0] * dst[0] + dst[1] * dst[1] + dst[2] * dst[2]);
+    if (l > 0.0F) { for (int i = 0; i < 3; ++i) { dst[i] /= l; } }
+}
+
+// RotatePointAroundVector: v um die Achse a (Einheit) um grad drehen.
+void drehe(const float a[3], float v[3], float grad) {
+    const float w = grad * 3.14159265F / 180.0F;
+    const float c = std::cos(w);
+    const float s = std::sin(w);
+    const float d = a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
+    const float k[3] = {a[1] * v[2] - a[2] * v[1], a[2] * v[0] - a[0] * v[2], a[0] * v[1] - a[1] * v[0]};
+    for (int i = 0; i < 3; ++i) { v[i] = v[i] * c + k[i] * s + a[i] * d * (1.0F - c); }
+}
 const std::vector<SpiegelFlaeche>& spiegelKandidaten() {
     static std::vector<SpiegelFlaeche> liste;
     static const void* geoStand = nullptr;
@@ -1376,11 +1414,68 @@ const std::vector<SpiegelFlaeche>& spiegelKandidaten() {
     entStand = g_app->entStand;
     texStand = g_app->textures.byShader.size();
     liste.clear();
-    std::vector<std::array<float, 3>> orte;
+    // misc_portal_surface: ohne target ein Spiegel, mit target eine Portal-
+    // kamera (locateCamera, g_misc.cpp).
+    struct Ziel {
+        std::array<float, 3> ort{};
+        bool portal = false;
+        float kamOrt[3]{};
+        float achse0[3]{};
+        float roll = 0.0F;
+        int drehTempo = 0;
+        bool bewegt = false;
+    };
+    std::vector<Ziel> orte;
+    const auto ortVon = [](const MapEntity& e, float o[3]) {
+        return !e.origin.empty() && std::sscanf(e.origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]) == 3;
+    };
+    const auto mitName = [](const std::string& n) -> const MapEntity* {
+        if (n.empty()) { return nullptr; }
+        for (const MapEntity& x : g_app->map.entities) {
+            if (x.targetname == n) { return &x; }
+        }
+        return nullptr;
+    };
     for (const MapEntity& e : g_app->map.entities) {
-        if (e.classname != "misc_portal_surface" || e.find("target") != nullptr || e.origin.empty()) { continue; }
-        std::array<float, 3> o{};
-        if (std::sscanf(e.origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]) == 3) { orte.push_back(o); }
+        if (e.classname != "misc_portal_surface") { continue; }
+        Ziel z;
+        if (!ortVon(e, z.ort.data())) { continue; }
+        if (const std::string* t = e.find("target"); t != nullptr) {
+            const MapEntity* kam = mitName(*t);
+            if (kam == nullptr || !ortVon(*kam, z.kamOrt)) { continue; }
+            z.portal = true;
+            const std::string* sf = kam->find("spawnflags");
+            const int flags = sf != nullptr ? std::atoi(sf->c_str()) : 0;
+            z.drehTempo = (flags & 1) != 0 ? 25 : ((flags & 2) != 0 ? 75 : 0);
+            z.bewegt = (flags & 4) == 0;
+            if (const std::string* r = kam->find("roll")) {
+                // clientNum = roll/360*256, skinNum = clientNum/256*360 (gekuerzt)
+                z.roll = static_cast<float>(static_cast<int>(std::atof(r->c_str()) / 360.0 * 256.0)) / 256.0F * 360.0F;
+            }
+            float dir[3] = {1.0F, 0.0F, 0.0F};
+            float zielOrt[3];
+            const MapEntity* ziel = kam->find("target") != nullptr ? mitName(*kam->find("target")) : nullptr;
+            if (ziel != nullptr && ortVon(*ziel, zielOrt)) {
+                for (int k = 0; k < 3; ++k) { dir[k] = zielOrt[k] - z.kamOrt[k]; }
+            } else {
+                // G_SetMovedir aus angle/angles
+                float ang[3] = {0.0F, 0.0F, 0.0F};
+                if (const std::string* a = kam->find("angles")) {
+                    (void)std::sscanf(a->c_str(), "%f %f %f", &ang[0], &ang[1], &ang[2]);
+                } else if (const std::string* a1 = kam->find("angle")) {
+                    ang[1] = static_cast<float>(std::atof(a1->c_str()));
+                }
+                const float pr = ang[0] * 3.14159265F / 180.0F;
+                const float yr = ang[1] * 3.14159265F / 180.0F;
+                dir[0] = std::cos(pr) * std::cos(yr);
+                dir[1] = std::cos(pr) * std::sin(yr);
+                dir[2] = -std::sin(pr);
+            }
+            const float l = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+            if (l < 1e-6F) { continue; }
+            for (int k = 0; k < 3; ++k) { z.achse0[k] = dir[k] / l; }
+        }
+        orte.push_back(z);
     }
     if (orte.empty()) { return liste; }
     for (const BspSurface& s : g_app->geo.surfaces) {
@@ -1405,12 +1500,29 @@ const std::vector<SpiegelFlaeche>& spiegelKandidaten() {
             for (float& q : n) { q = -q; }
         }
         const float d = n[0] * v[0].xyz[0] + n[1] * v[0].xyz[1] + n[2] * v[0].xyz[2];
-        bool mitEntity = false;
-        for (const auto& o : orte) {
-            if (std::fabs(n[0] * o[0] + n[1] * o[1] + n[2] * o[2] - d) <= 64.0F) { mitEntity = true; break; }
+        const Ziel* naechstes = nullptr;
+        float besteAbst = 64.0F;
+        for (const Ziel& o : orte) {
+            const float abst = std::fabs(n[0] * o.ort[0] + n[1] * o.ort[1] + n[2] * o.ort[2] - d);
+            if (abst <= besteAbst) {
+                besteAbst = abst;
+                naechstes = &o;
+            }
         }
-        if (!mitEntity) { continue; }
+        if (naechstes == nullptr) { continue; }
         SpiegelFlaeche f;
+        if (naechstes->portal) {
+            f.portal = true;
+            const float ad = n[0] * naechstes->ort[0] + n[1] * naechstes->ort[1] + n[2] * naechstes->ort[2] - d;
+            for (int k = 0; k < 3; ++k) {
+                f.flOrt[k] = naechstes->ort[k] - ad * n[k];
+                f.kamOrt[k] = naechstes->kamOrt[k];
+                f.kamAchse0[k] = naechstes->achse0[k];
+            }
+            f.roll = naechstes->roll;
+            f.drehTempo = naechstes->drehTempo;
+            f.bewegt = naechstes->bewegt;
+        }
         float lo[3] = {1e30F, 1e30F, 1e30F};
         float hi[3] = {-1e30F, -1e30F, -1e30F};
         for (int q = 0; q < s.numVerts; ++q) {
@@ -1436,9 +1548,9 @@ bool spiegelFuer(const Camera& cam, float ebene[4]) {
     float vorn[3];
     cam.forward(vorn);
     float besteWeite = 1e30F;
-    bool gefunden = false;
+    const SpiegelFlaeche* beste = nullptr;
     for (const SpiegelFlaeche& f : spiegelKandidaten()) {
-        // Die Kamera muss vor dem Spiegel stehen ...
+        // Die Kamera muss vor der Flaeche stehen ...
         const float seite = f.n[0] * cam.pos[0] + f.n[1] * cam.pos[1] + f.n[2] * cam.pos[2] - f.d;
         if (seite <= 1.0F) { continue; }
         // ... und die Flaeche vor der Kamera liegen.
@@ -1447,12 +1559,98 @@ bool spiegelFuer(const Camera& cam, float ebene[4]) {
         if (zu[0] * vorn[0] + zu[1] * vorn[1] + zu[2] * vorn[2] < -f.radius) { continue; }
         if (weite - f.radius < besteWeite) {
             besteWeite = weite - f.radius;
-            for (int k = 0; k < 3; ++k) { ebene[k] = f.n[k]; }
-            ebene[3] = f.d;
-            gefunden = true;
+            beste = &f;
         }
     }
-    return gefunden;
+    if (beste == nullptr) { return false; }
+    const SpiegelFlaeche& f = *beste;
+    for (int k = 0; k < 3; ++k) { ebene[k] = f.n[k]; }
+    ebene[3] = f.d;
+    App::NebenSicht& ns = g_app->nebenSicht;
+    ns = App::NebenSicht{};
+    if (!f.portal) {
+        // Spiegel: R = I - 2nn^T, Verschiebung 2dn; die Wicklung kehrt sich um.
+        for (int z = 0; z < 3; ++z) {
+            for (int sp = 0; sp < 3; ++sp) {
+                const float wert = (z == sp ? 1.0F : 0.0F) - 2.0F * f.n[z] * f.n[sp];
+                ns.welt[z * 4 + sp] = wert;
+                ns.achsen[z * 3 + sp] = wert;
+            }
+            ns.welt[z * 4 + 3] = 2.0F * f.d * f.n[z];
+        }
+        ns.welt[15] = 1.0F;
+        // Eine Einheit vor dem Spiegel schneiden: was genau auf der Ebene
+        // liegt (der Boden um den Spiegel), gehoert nicht ins Bild.
+        for (int k = 0; k < 3; ++k) { ns.schnitt[k] = f.n[k]; }
+        ns.schnitt[3] = -f.d - 1.0F;
+        ns.umkehren = true;
+        return true;
+    }
+    // --- Portalkamera (R_GetPortalOrientations, CG_Portal) -----------------
+    //
+    // Flaeche: Achse 0 die Normale, 1 senkrecht dazu, 2 das Kreuzprodukt.
+    // Kamera: Achse 0 zum Ziel, 1 die NEGIERTE Senkrechte ("negating this
+    // tends to get the directions like they want"), 2 das Kreuzprodukt; dann
+    // 0 und 1 umgedreht, und gegebenenfalls um Achse 0 gedreht. Die Ansicht
+    // ist M(x) = C_o + sum_i <x - S_o, S_i> C_i - hier wird die Welt mit der
+    // Umkehrung transformiert und von der echten Kamera aus gezeichnet.
+    float sa[3][3];
+    for (int k = 0; k < 3; ++k) { sa[0][k] = f.n[k]; }
+    senkrecht(sa[0], sa[1]);
+    sa[2][0] = sa[0][1] * sa[1][2] - sa[0][2] * sa[1][1];
+    sa[2][1] = sa[0][2] * sa[1][0] - sa[0][0] * sa[1][2];
+    sa[2][2] = sa[0][0] * sa[1][1] - sa[0][1] * sa[1][0];
+    float ea[3][3];
+    for (int k = 0; k < 3; ++k) { ea[0][k] = f.kamAchse0[k]; }
+    senkrecht(ea[0], ea[1]);
+    for (float& q : ea[1]) { q = -q; }
+    ea[2][0] = ea[0][1] * ea[1][2] - ea[0][2] * ea[1][1];
+    ea[2][1] = ea[0][2] * ea[1][0] - ea[0][0] * ea[1][2];
+    ea[2][2] = ea[0][0] * ea[1][1] - ea[0][1] * ea[1][0];
+    float ca[3][3];
+    for (int k = 0; k < 3; ++k) {
+        ca[0][k] = -ea[0][k];
+        ca[1][k] = -ea[1][k];
+        ca[2][k] = ea[2][k];
+    }
+    const auto neueAchse2 = [&]() {
+        ca[2][0] = ca[0][1] * ca[1][2] - ca[0][2] * ca[1][1];
+        ca[2][1] = ca[0][2] * ca[1][0] - ca[0][0] * ca[1][2];
+        ca[2][2] = ca[0][0] * ca[1][1] - ca[0][1] * ca[1][0];
+    };
+    const double t = g_app->playMs;
+    if (f.bewegt) {
+        if (f.drehTempo != 0) {
+            drehe(ca[0], ca[1], static_cast<float>(t / 1000.0 * f.drehTempo));
+        } else {
+            drehe(ca[0], ca[1], f.roll + static_cast<float>(std::sin(t * 0.003)) * 4.0F);
+        }
+        neueAchse2();
+    } else if (f.roll != 0.0F) {
+        drehe(ca[0], ca[1], f.roll);
+        neueAchse2();
+    }
+    // Umkehrung: L = sum_i S_i C_i^T, t = S_o - L C_o.
+    float lin[3][3];
+    for (int z = 0; z < 3; ++z) {
+        for (int sp = 0; sp < 3; ++sp) {
+            lin[z][sp] = sa[0][z] * ca[0][sp] + sa[1][z] * ca[1][sp] + sa[2][z] * ca[2][sp];
+        }
+    }
+    for (int z = 0; z < 3; ++z) {
+        for (int sp = 0; sp < 3; ++sp) { ns.welt[z * 4 + sp] = lin[z][sp]; }
+        ns.welt[z * 4 + 3] = f.flOrt[z] - (lin[z][0] * f.kamOrt[0] + lin[z][1] * f.kamOrt[1] + lin[z][2] * f.kamOrt[2]);
+        // Richtungen der Ansicht: M_lin(v) = sum_i <v, S_i> C_i = L^T v.
+        for (int sp = 0; sp < 3; ++sp) { ns.achsen[z * 3 + sp] = lin[sp][z]; }
+    }
+    ns.welt[15] = 1.0F;
+    // Schnittebene: vor der Portalkamera (portalPlane = -C_0).
+    const float pn[3] = {-ca[0][0], -ca[0][1], -ca[0][2]};
+    for (int k = 0; k < 3; ++k) { ns.schnitt[k] = pn[k]; }
+    ns.schnitt[3] = -(pn[0] * f.kamOrt[0] + pn[1] * f.kamOrt[1] + pn[2] * f.kamOrt[2]);
+    ns.umkehren = false;
+    ns.portal = true;
+    return true;
 }
 
 bool himmelPortalOrt(float ort[3]) {
@@ -11085,28 +11283,17 @@ void drawMapView() {
                 // An die Zeichner geht weiter die ECHTE Kameraposition: sie
                 // waehlen damit auch die sichtbaren Blaetter (PVS), und die
                 // gespiegelte liegt hinter dem Spiegel im Leeren.
-                float kamOrt[3] = {bildCam.pos[0], bildCam.pos[1], bildCam.pos[2]};
                 const bool spiegeln = nebenbild && g_app->imSpiegelDurchgang;
-                const float* sn = g_app->spiegelEbene;
-                auto spiegle = [&](float* v3, bool ort) {
-                    const float abst = sn[0] * v3[0] + sn[1] * v3[1] + sn[2] * v3[2] - (ort ? sn[3] : 0.0F);
-                    for (int k = 0; k < 3; ++k) { v3[k] -= 2.0F * abst * sn[k]; }
+                const App::NebenSicht& ns = g_app->nebenSicht;
+                auto spiegle = [&](float* v3) {
+                    const float alt[3] = {v3[0], v3[1], v3[2]};
+                    for (int z = 0; z < 3; ++z) {
+                        v3[z] = ns.achsen[z * 3 + 0] * alt[0] + ns.achsen[z * 3 + 1] * alt[1] + ns.achsen[z * 3 + 2] * alt[2];
+                    }
                 };
                 if (spiegeln) {
-                    float r[16] = {0.0F};
-                    for (int z = 0; z < 3; ++z) {
-                        for (int sp2 = 0; sp2 < 3; ++sp2) {
-                            r[z * 4 + sp2] = (z == sp2 ? 1.0F : 0.0F) - 2.0F * sn[z] * sn[sp2];
-                        }
-                        r[z * 4 + 3] = 2.0F * sn[3] * sn[z];
-                    }
-                    r[15] = 1.0F;
-                    gpu::multipliziere(vp, r, vp);
-                    spiegle(kamOrt, true);
-                    // Eine Einheit vor dem Spiegel schneiden: was genau auf der
-                    // Ebene liegt (der Boden um den Spiegel), gehoert nicht ins Bild.
-                    const float clip[4] = {sn[0], sn[1], sn[2], -sn[3] - 1.0F};
-                    gpu::setzeSpiegelung(true, clip);
+                    gpu::multipliziere(vp, ns.welt, vp);
+                    gpu::setzeSpiegelung(true, ns.schnitt, ns.umkehren);
                 }
                 // Die Kameraachsen fuer den Himmel - aus derselben Quelle
                 // wie der Rasterer, sonst zeigt der Himmel woandershin.
@@ -11118,10 +11305,10 @@ void drawMapView() {
                 hc.right(grechts);
                 hc.up(ghoch);
                 if (spiegeln) {
-                    // Der Himmel blickt im Spiegel in die gespiegelte Richtung.
-                    spiegle(gvorn, false);
-                    spiegle(grechts, false);
-                    spiegle(ghoch, false);
+                    // Der Himmel blickt im Spiegel/Portal in die abgebildete Richtung.
+                    spiegle(gvorn);
+                    spiegle(grechts);
+                    spiegle(ghoch);
                 }
                 const float gfokus =
                     1.0F / std::tan(bildCam.fovY * 3.14159265F / 180.0F * 0.5F);
@@ -11769,7 +11956,7 @@ void drawMapView() {
                         g_app->d3dMeldungen.push_back(m);
                     }
                 }
-                if (spiegeln) { gpu::setzeSpiegelung(false, nullptr); }
+                if (spiegeln) { gpu::setzeSpiegelung(false, nullptr, false); }
                 g_app->gpuFehler = f;
                 if (g_app->gpuAufrufe <= 0 && g_app->gpuFehler.empty()) {
                     g_app->gpuFehler = "kein Zeichenaufruf abgesetzt";

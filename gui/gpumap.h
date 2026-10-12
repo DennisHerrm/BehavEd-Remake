@@ -290,10 +290,11 @@ void setzeHimmelPortal(int satz);
 // Spiegel (rc593): Portalflaechen bekommen das Bild von Satz `satz` unter
 // ihre Stufen gelegt; -1 schaltet ab.
 void setzeSpiegelBild(int satz);
-// Im Spiegeldurchgang: umgedrehte Wicklung und die Schnittebene
-// (nx, ny, nz, -d) - was dahinter liegt, wird verworfen. `an` false stellt
+// Im Spiegel- oder Portaldurchgang: die Schnittebene (nx, ny, nz, -d) - was
+// dahinter liegt, wird verworfen -, die Portalflaechen selbst fallen weg,
+// und `umkehren` (nur beim Spiegel) dreht die Wicklung. `an` false stellt
 // zurueck.
-void setzeSpiegelung(bool an, const float ebene[4]);
+void setzeSpiegelung(bool an, const float ebene[4], bool umkehren);
 
 // Die Textur des Renderziels, zum Anzeigen. nullptr, wenn keins da ist.
 //

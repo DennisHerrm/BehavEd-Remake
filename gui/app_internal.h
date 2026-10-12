@@ -408,6 +408,18 @@ struct App {
     bool imSpiegelDurchgang = false;
     float spiegelEbene[4]{0.0F, 0.0F, 1.0F, 0.0F};
     bool spiegelGezeichnet = false;
+    // Die Abbildung des Spiegel- oder Portaldurchgangs (rc593): die Welt
+    // wird mit `welt` (4x4, zeilenweise) transformiert, Richtungen (Himmel)
+    // mit `achsen` (3x3); `schnitt` ist die Schnittebene, `umkehren` die
+    // Wicklung (nur Spiegel). Siehe spiegelFuer.
+    struct NebenSicht {
+        float welt[16]{};
+        float achsen[9]{};
+        float schnitt[4]{0.0F, 0.0F, 0.0F, 1.0F};
+        bool umkehren = false;
+        bool portal = false;
+    };
+    NebenSicht nebenSicht;
     // Durch die gewaehlte Kamera schauen statt frei zu fliegen.
     bool throughCamera = false;
     // Kamerabahn und Abspielzustand

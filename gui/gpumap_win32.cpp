@@ -218,8 +218,10 @@ int g_himmelPortalSatz = -1;
 // Spiegel (rc593): >= 0 heisst, Portalflaechen bekommen das Bild dieses
 // Satzes unter ihre Stufen gelegt.
 int g_spiegelSatz = -1;
-// Im Spiegeldurchgang: umgedrehte Wicklung und die Schnittebene.
+// Im Spiegel- oder Portaldurchgang (g_nebenSicht): die Schnittebene, beim
+// Spiegel dazu die umgedrehte Wicklung (g_spiegelnd).
 bool g_spiegelnd = false;
+bool g_nebenSicht = false;
 float g_clip[4] = {0.0F, 0.0F, 0.0F, 1.0F};
 
 // Hochgeladene Karten-Texturen, nach Platz im Texturensatz.
@@ -1729,7 +1731,7 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         // Im Spiegeldurchgang (rc593) die Spiegelflaechen selbst nicht: sie
         // liegen auf der Spiegelebene, bleiben unter der Spiegelung stehen und
         // deckten das ganze Spiegelbild zu.
-        if (g_spiegelnd && textures != nullptr) {
+        if (g_nebenSicht && textures != nullptr) {
             const int pz = (call.bild >= 0) ? call.bild : mesh.batches[call.batch].shader;
             if (pz >= 0 && static_cast<std::size_t>(pz) < textures->byShader.size() &&
                 textures->byShader[static_cast<std::size_t>(pz)].istPortal) {
@@ -2157,8 +2159,9 @@ void setzeSpiegelBild(int satz) {
     }
 }
 
-void setzeSpiegelung(bool an, const float ebene[4]) {
-    g_spiegelnd = an;
+void setzeSpiegelung(bool an, const float ebene[4], bool umkehren) {
+    g_nebenSicht = an;
+    g_spiegelnd = an && umkehren;
     for (int k = 0; k < 4; ++k) {
         g_clip[k] = (an && ebene != nullptr) ? ebene[k] : ((k == 3) ? 1.0F : 0.0F);
     }
@@ -4354,6 +4357,7 @@ void shutdown() {
     g_himmelPortalSatz = -1;
     g_spiegelSatz = -1;
     g_spiegelnd = false;
+    g_nebenSicht = false;
     for (Netzpuffer& n : g_netz) {
         if (n.vb != nullptr) { n.vb->Release(); n.vb = nullptr; }
         if (n.ib != nullptr) { n.ib->Release(); n.ib = nullptr; }
@@ -5284,7 +5288,7 @@ void waehleZiel(int) {}
 void neuesBild() {}
 void setzeHimmelPortal(int) {}
 void setzeSpiegelBild(int) {}
-void setzeSpiegelung(bool, const float*) {}
+void setzeSpiegelung(bool, const float*, bool) {}
 void* zielTexturSatz(int) { return nullptr; }
 bool leseTiefe(std::vector<float>&, int, int, float, float) { return false; }
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }
