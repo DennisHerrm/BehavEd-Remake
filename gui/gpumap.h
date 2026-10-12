@@ -176,10 +176,17 @@ int zeichneModellAnsicht(const GlmModel& model, const ModelTextures* textures,
 // anderen kommen.
 //
 // `weich` entspricht dem `soft` des Rasterers (src/glow.cpp:255).
+//
+// `rauch` (rc597): das Effektnetz dieses Bildes. Seine durchscheinenden
+// Teilchen (Mischart ... ONE_MINUS_SRC_ALPHA) dunkeln das Gluehen ab, wie sie
+// das Bild abdunkeln - sonst leuchtete die Lava hinter dem Rauch verwaschen
+// durch. Muss das Netz sein, das gerade als Netz 1 hochgeladen ist.
 int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                    const BspGeometry* geo, const float* viewProj,
                    float zeitSekunden, int breite, int hoehe, bool weich,
-                   std::string* fehler);
+                   std::string* fehler, const BspMesh* rauch = nullptr);
+// Wie viele Rauchaufrufe das letzte Gluehen abgedunkelt haben (Selbsttest).
+int gluehenRauchAufrufe();
 
 // --- Dynamisches Licht und Blobschatten auf der Karte ----------------------
 //
@@ -335,6 +342,13 @@ struct TiefenSicht {
 // anlegen (rc596) - sonst entstehen sie beim ersten Gebrauch mitten im Bild.
 // Liefert, wie viele Shader dabei neu angelegt wurden.
 int vorwaermen(const BspMesh& karte, const TextureSet* textures, const std::vector<int>& effektPlaetze);
+
+// Umriss der Auswahl (rc597): umrissBeginnen schaltet auf eine Maske (mit dem
+// Tiefenpuffer der Ansicht) und in einen Modus, in dem zeichneMover und
+// zeichneFigur nur weiss hineinzeichnen; umrissBeenden legt um den Rand der
+// Maske eine Linie in `farbe` (RGBA 0..1), `dicke` in Bildpunkten (1..4).
+[[nodiscard]] bool umrissBeginnen();
+void umrissBeenden(const float farbe[4], float dicke);
 void tiefeFreigeben();
 
 // Ein roher Tiefenwert als Abstand: Tiefe d = a + b / z mit a = f/(f-n),

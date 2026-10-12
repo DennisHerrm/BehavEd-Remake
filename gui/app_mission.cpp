@@ -305,6 +305,77 @@ std::string skriptRef(const std::string& pfad, const std::string& skriptPfad) {
 
 }  // namespace
 
+int moverUnterMaus(float sx, float sy) {
+    float a[3];
+    float b[3];
+    strahlDurch(sx, sy, a, b);
+    const float d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    float bestT = 2.0F;
+    int best = -1;
+    for (const App::PickMover& pm : g_app->pickMover) {
+        if (pm.mesh == nullptr || pm.entity < 0) { continue; }
+        const float* m = pm.welt;
+        const auto& v = pm.mesh->verts;
+        const auto& ix = pm.mesh->indexes;
+        auto welt = [&](std::uint32_t i, float o[3]) {
+            const float* p = v[i].xyz;
+            for (int r = 0; r < 3; ++r) { o[r] = m[r * 4] * p[0] + m[r * 4 + 1] * p[1] + m[r * 4 + 2] * p[2] + m[r * 4 + 3]; }
+        };
+        for (std::size_t t = 0; t + 2 < ix.size(); t += 3) {
+            if (ix[t] >= v.size() || ix[t + 1] >= v.size() || ix[t + 2] >= v.size()) { continue; }
+            float p0[3];
+            float p1[3];
+            float p2[3];
+            welt(ix[t], p0);
+            welt(ix[t + 1], p1);
+            welt(ix[t + 2], p2);
+            // Moeller-Trumbore, beidseitig.
+            const float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
+            const float e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+            const float h[3] = {d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2], d[0] * e2[1] - d[1] * e2[0]};
+            const float det = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
+            if (std::fabs(det) < 1e-9F) { continue; }
+            const float f = 1.0F / det;
+            const float s[3] = {a[0] - p0[0], a[1] - p0[1], a[2] - p0[2]};
+            const float u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
+            if (u < 0.0F || u > 1.0F) { continue; }
+            const float q[3] = {s[1] * e1[2] - s[2] * e1[1], s[2] * e1[0] - s[0] * e1[2], s[0] * e1[1] - s[1] * e1[0]};
+            const float w = f * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
+            if (w < 0.0F || u + w > 1.0F) { continue; }
+            const float tt = f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
+            if (tt > 0.0F && tt < bestT) {
+                bestT = tt;
+                best = pm.entity;
+            }
+        }
+    }
+    if (best < 0) { return -1; }
+    // Eine Wand davor? Dann gilt der Klick ihr, nicht dem Modell dahinter.
+    // Himmel und Unsichtbares verdecken nichts - steht die Kamera ausserhalb
+    // der Himmelskiste (md_am_sith), traf der Strahl sonst zuerst den Himmel.
+    float von[3] = {a[0], a[1], a[2]};
+    float schon = 0.0F;
+    for (int versuch = 0; versuch < 8; ++versuch) {
+        TraceTreffer tr;
+        if (!spur(von, b, tr)) { break; }
+        const float anteil = schon + (1.0F - schon) * tr.fraction;
+        if (anteil >= bestT - 0.002F) { break; }
+        bool zaehlt = true;
+        if (tr.surface >= 0 && static_cast<std::size_t>(tr.surface) < g_app->geo.surfaces.size()) {
+            const int si = g_app->geo.surfaces[static_cast<std::size_t>(tr.surface)].shader;
+            if (si >= 0 && static_cast<std::size_t>(si) < g_app->geo.shaders.size()) {
+                const BspShader& sh = g_app->geo.shaders[static_cast<std::size_t>(si)];
+                zaehlt = !sh.isSky() && sh.isDrawn();
+            }
+        }
+        if (zaehlt) { return -1; }
+        // Ein Stueck hinter der Flaeche weiter.
+        schon = std::min(1.0F, anteil + 0.0005F);
+        for (int k = 0; k < 3; ++k) { von[k] = a[k] + d[k] * schon; }
+    }
+    return best;
+}
+
 // Der Reiter mit dem Skript "md_x/intro" - aus einem Archiv ODER von der
 // Platte (scripts/md_x/intro.txt im Missionsordner). -1 = keiner.
 int reiterFuerSkriptRef(const std::string& ref) {
@@ -942,6 +1013,19 @@ constexpr float kGizmoPx = 70.0F;
 
 }  // namespace
 
+bool zugVersatz(int ei, float d[3], float& dGier) {
+    const App::EntZug& z = g_app->entZug;
+    d[0] = d[1] = d[2] = 0.0F;
+    dGier = 0.0F;
+    if (!z.aktiv || ei < 0 || z.index != ei || static_cast<std::size_t>(ei) >= g_app->map.entities.size()) { return false; }
+    const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(ei)];
+    float o[3];
+    if (!entityOrt(e, o)) { return false; }
+    for (int k = 0; k < 3; ++k) { d[k] = o[k] - z.startOrt[k]; }
+    dGier = winkelVon(e) - z.startWinkel;
+    return true;
+}
+
 void entityZiehen(float rasterSkal) {
     App::EntZug& z = g_app->entZug;
     const ImGuiIO& io = ImGui::GetIO();
@@ -955,7 +1039,10 @@ void entityZiehen(float rasterSkal) {
     g_app->entHover = -1;
     g_app->entGizmoHover = 0;
     float zielOrt[3] = {0.0F, 0.0F, 0.0F};
-    const bool zielHatOrt = ziel >= 0 && entityOrt(g_app->map.entities[static_cast<std::size_t>(ziel)], zielOrt);
+    // Gezeigt (und angefasst) wird, wo die Entity gerade steht (rc597).
+    const bool zielHatOrt = ziel >= 0 && entityOrtAnzeige(g_app->map.entities[static_cast<std::size_t>(ziel)], zielOrt);
+    float zielVersatz[3] = {0.0F, 0.0F, 0.0F};
+    if (ziel >= 0) { entityVersatz(ziel, zielVersatz); }
     const bool gizmoDa = zielHatOrt && g_app->showEntities && !g_app->camViewActive;
     const float L = gizmoDa ? laengeFuerPx(p, zielOrt, kGizmoPx) : 0.0F;
     if (g_app->entFokusBild && !z.kandidat && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
@@ -1048,7 +1135,11 @@ void entityZiehen(float rasterSkal) {
                 z.gruppe.emplace_back(i, std::array<float, 3>{o[0], o[1], o[2]});
                 z.gruppeWinkel.push_back(winkelVon(g_app->map.entities[static_cast<std::size_t>(i)]));
             }
-            for (int k = 0; k < 3; ++k) { z.startOrt[k] = zielOrt[k]; }
+            for (int k = 0; k < 3; ++k) {
+                z.versatz[k] = zielVersatz[k];
+                z.startOrt[k] = zielOrt[k] - zielVersatz[k];
+            }
+            z.gierVersatz = entityGierVersatz(ziel);
             z.startWinkel = winkelVon(g_app->map.entities[static_cast<std::size_t>(ziel)]);
             z.startMaus[0] = io.MousePos.x;
             z.startMaus[1] = io.MousePos.y;
@@ -1112,8 +1203,39 @@ void entityZiehen(float rasterSkal) {
     }
     if (!z.aktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left, z.modus == 0 ? -1.0F : 1.0F)) {
         z.aktiv = true;
+        // Mitten in einer Bewegung: ein neuer Bahnpunkt statt den Ursprung zu
+        // verschieben (rc597, "wenn ich das Schiff mittendrin bewege, macht
+        // er keinen neuen Punkt, sondern aendert immer den Anfangspunkt").
+        if (z.modus <= 3 && z.gruppe.empty() &&
+            bahnPunktMoeglich(z.index, g_app->playMs, z.zwFigur, z.zwPfad, z.zwLauf)) {
+            z.zwischen = true;
+            z.zwT = g_app->playMs;
+            z.zwSteps = g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)].steps;
+            for (int k = 0; k < 3; ++k) { z.zwOrt[k] = z.startOrt[k] + z.versatz[k]; }
+        }
     }
     MapEntity& e = g_app->map.entities[static_cast<std::size_t>(z.index)];
+    // Der neue Bahnpunkt folgt der Maus: die Bahn der Figur im Speicher teilen.
+    const auto zwischenVorschau = [&](const float ort[3]) {
+        for (int k = 0; k < 3; ++k) { z.zwOrt[k] = ort[k]; }
+        z.zwBewegt = true;
+        Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)];
+        a.steps = z.zwSteps;
+        for (std::size_t i = 0; i < a.steps.size(); ++i) {
+            ActorStep& st = a.steps[i];
+            if (st.path != z.zwPfad || (st.kind != ActorStep::Kind::WalkTo && st.kind != ActorStep::Kind::Glide)) { continue; }
+            ActorStep zweiter = st;
+            for (int k = 0; k < 3; ++k) {
+                st.to[k] = ort[k];
+                zweiter.from[k] = ort[k];
+            }
+            st.endMs = z.zwT;
+            zweiter.startMs = z.zwT;
+            a.steps.insert(a.steps.begin() + static_cast<std::ptrdiff_t>(i) + 1, zweiter);
+            break;
+        }
+        g_app->mapDirty = true;
+    };
     if (z.aktiv && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         if (z.modus == 0) {
             // Ueber die Flaeche unter der Maus.
@@ -1124,23 +1246,39 @@ void entityZiehen(float rasterSkal) {
             if (spur(a, b, t)) {
                 float o[3];
                 aufFlaeche(e.classname, t, o);
+                for (int k = 0; k < 3; ++k) { o[k] -= z.versatz[k]; }
                 if (g_app->rasterSchritt > 0 && !io.KeyCtrl) {
                     const float r = static_cast<float>(g_app->rasterSchritt);
                     o[0] = std::round(o[0] / r) * r;
                     o[1] = std::round(o[1] / r) * r;
                 }
-                setKey(e, "origin", ortText(o));
-                g_app->mapDirty = true;
+                if (z.zwischen && z.zwLauf) {
+                    const float k2[3] = {o[0] + z.versatz[0], o[1] + z.versatz[1], o[2] + z.versatz[2]};
+                    zwischenVorschau(k2);
+                } else if (!z.zwischen) {
+                    setKey(e, "origin", ortText(o));
+                    g_app->mapDirty = true;
+                }
+            }
+            // Ein Schiff mitten im Flug: in der waagrechten Ebene, in der es
+            // gerade fliegt - nicht auf den Boden.
+            if (z.zwischen && !z.zwLauf && std::fabs(b[2] - a[2]) > 1e-3F) {
+                const float tt = (z.zwOrt[2] - a[2]) / (b[2] - a[2]);
+                if (tt > 0.0F && tt < 1.0F) {
+                    const float k2[3] = {a[0] + (b[0] - a[0]) * tt, a[1] + (b[1] - a[1]) * tt, z.zwOrt[2]};
+                    zwischenVorschau(k2);
+                }
             }
         } else if (z.modus <= 3) {
             // Entlang einer Achse: die Mausbewegung auf die Achse auf dem
             // Schirm abbilden, dann in Welteinheiten.
             const int k = z.modus - 1;
-            float ende[3] = {z.startOrt[0], z.startOrt[1], z.startOrt[2]};
+            const float gezeigt[3] = {z.startOrt[0] + z.versatz[0], z.startOrt[1] + z.versatz[1], z.startOrt[2] + z.versatz[2]};
+            float ende[3] = {gezeigt[0], gezeigt[1], gezeigt[2]};
             ende[k] += z.achsLaenge;
             ImVec2 s0;
             ImVec2 s1;
-            if (aufSchirm(p, z.startOrt, s0) && aufSchirm(p, ende, s1)) {
+            if (aufSchirm(p, gezeigt, s0) && aufSchirm(p, ende, s1)) {
                 const float ax = s1.x - s0.x;
                 const float ay = s1.y - s0.y;
                 const float l2 = ax * ax + ay * ay;
@@ -1153,14 +1291,20 @@ void entityZiehen(float rasterSkal) {
                     const float r = g_app->rasterSchritt > 0 ? (io.KeyCtrl ? 0.0F : static_cast<float>(g_app->rasterSchritt))
                                                              : (io.KeyCtrl ? 8.0F : 0.0F);
                     if (r > 0.0F) { o[k] = std::round(o[k] / r) * r; }
-                    setKey(e, "origin", ortText(o));
-                    g_app->mapDirty = true;
+                    if (z.zwischen) {
+                        const float k2[3] = {o[0] + z.versatz[0], o[1] + z.versatz[1], o[2] + z.versatz[2]};
+                        zwischenVorschau(k2);
+                    } else {
+                        setKey(e, "origin", ortText(o));
+                        g_app->mapDirty = true;
+                    }
                 }
             }
         } else {
             // Ring: der Winkel der Maus um den Mittelpunkt auf dem Schirm.
             ImVec2 s0;
-            if (aufSchirm(p, z.startOrt, s0)) {
+            const float gezeigt[3] = {z.startOrt[0] + z.versatz[0], z.startOrt[1] + z.versatz[1], z.startOrt[2] + z.versatz[2]};
+            if (aufSchirm(p, gezeigt, s0)) {
                 const float a0 = std::atan2(-(z.startMaus[1] - s0.y), z.startMaus[0] - s0.x);
                 const float a1 = std::atan2(-(io.MousePos.y - s0.y), io.MousePos.x - s0.x);
                 // Von oben gesehen dreht die Maus im Uhrzeigersinn = Winkel kleiner;
@@ -1204,6 +1348,13 @@ void entityZiehen(float rasterSkal) {
             }
         }
     }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && z.zwischen) {
+        if (z.zwBewegt) { (void)bahnPunktSchreiben(z.zwFigur, z.zwPfad, z.zwLauf, z.zwOrt, z.zwT); }
+        g_app->camTrackValid = false;   // die Bahn aus dem Skript neu
+        g_app->mapDirty = true;
+        z = App::EntZug{};
+        return;
+    }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         const bool geaendert = z.vorher.size() != g_app->map.entities.size() ||
                                (z.index < static_cast<int>(z.vorher.size()) &&
@@ -1221,12 +1372,818 @@ void entityZiehen(float rasterSkal) {
     }
 }
 
+// =============================================================================
+// Griffe auf der Bahn (rc597)
+// =============================================================================
+//
+// shank: "kann ich irgendwie den Anfangspunkt und den Endpunkt des bewegten
+// Characters setzen, im Editor selbst beim Ziehen? ... das ich den Endpunkt
+// nur anders setzen will oder den Startpunkt, und das auch bei den Schiffen".
+//
+// Auf der Bahn der gewaehlten Figur (oder des Schiffs) liegen Griffe:
+//   gruen  der Start   - der Spawner bzw. der Ursprung des Schiffs
+//   gelb   Laufziele   - die Entity, die ein SET_NAVGOAL ansteuert
+//   blau   Flugziele   - der Ort eines move ( <ort>, ... )
+// Ziehen verschiebt nur diesen einen Punkt. Start und Laufziele sind
+// Entities: die Szene rechnet waehrend des Ziehens laufend neu, die Figur
+// laeuft im Bild mit. Ein Flugziel steht im Skript und wird beim Loslassen
+// geschrieben. Benutzt noch jemand ein Laufziel, bekommt dieser Lauf eine
+// eigene Kopie (gewaehlt: "Eigenes Ziel anlegen").
+namespace {
+
+struct BahnGriff {
+    int art = 0;
+    float ort[3] = {0.0F, 0.0F, 0.0F};
+    float von[3] = {0.0F, 0.0F, 0.0F};
+    Path pfad;
+    int entity = -1;
+    double startMs = 0.0;
+    double endMs = 0.0;
+    bool gehen = false;
+    std::string name;
+};
+
+int bahnFigur() {
+    if (g_app->camViewActive || !g_app->showEntities) { return -1; }
+    int f = g_app->selectedActor;
+    if (f < 0 || static_cast<std::size_t>(f) >= g_app->scene.actors.size()) {
+        f = g_app->pickedEntity >= 0 ? figurFuerEntity(g_app->pickedEntity) : -1;
+    }
+    return f;
+}
+
+// Wie findEntity in src/scene.cpp: erst targetname, dann NPC_targetname, nur
+// mit Ursprung.
+int zielEntity(const std::string& name) {
+    if (name.empty()) { return -1; }
+    const auto& ents = g_app->map.entities;
+    for (int durchgang = 0; durchgang < 2; ++durchgang) {
+        for (std::size_t i = 0; i < ents.size(); ++i) {
+            const MapEntity& e = ents[i];
+            if (e.origin.empty()) { continue; }
+            const std::string* n = durchgang == 0 ? &e.targetname : e.find("NPC_targetname");
+            if (n != nullptr && *n == name) { return static_cast<int>(i); }
+        }
+    }
+    return -1;
+}
+
+bool istBrushEntity(int ei) {
+    if (ei < 0 || static_cast<std::size_t>(ei) >= g_app->map.entities.size()) { return false; }
+    const std::string* mdl = g_app->map.entities[static_cast<std::size_t>(ei)].find("model");
+    return mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*';
+}
+
+std::vector<BahnGriff> bahnGriffe() {
+    std::vector<BahnGriff> g;
+    const int f = bahnFigur();
+    if (f < 0) { return g; }
+    const Actor& a = g_app->scene.actors[static_cast<std::size_t>(f)];
+    if (!a.haveStart) { return g; }
+    BahnGriff s;
+    s.art = 0;
+    for (int k = 0; k < 3; ++k) { s.ort[k] = s.von[k] = a.start[k]; }
+    if (a.brushModel > 0) {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* mdl = g_app->map.entities[i].find("model");
+            if (mdl != nullptr && *mdl == "*" + std::to_string(a.brushModel)) { s.entity = static_cast<int>(i); }
+        }
+    } else {
+        s.entity = entityFuerFigur(f);
+    }
+    if (s.entity >= 0) { g.push_back(s); }
+    for (const ActorStep& st : a.steps) {
+        if (st.path.empty() || !st.fremd.empty()) { continue; }
+        const Node* n = nodeAt(g_app->doc.script(), st.path);
+        if (n == nullptr) { continue; }
+        BahnGriff z;
+        for (int k = 0; k < 3; ++k) {
+            z.ort[k] = st.to[k];
+            z.von[k] = st.from[k];
+        }
+        z.pfad = st.path;
+        z.startMs = st.startMs;
+        z.endMs = st.endMs;
+        if (st.kind == ActorStep::Kind::WalkTo && n->args.size() >= 2) {
+            z.art = 1;
+            z.name = n->args[1].text;
+            z.entity = zielEntity(z.name);
+            z.gehen = st.text == "BOTH_WALK1";
+            if (z.entity >= 0) { g.push_back(z); }
+        } else if (st.kind == ActorStep::Kind::Glide && n->name == "move" && !n->args.empty() &&
+                   n->args[0].kind == Arg::Kind::Vector) {
+            z.art = 2;
+            g.push_back(z);
+        }
+    }
+    return g;
+}
+
+// Wie oft kommt der Name vor - in allen offenen Skripten (jedes Argument) und
+// als Ziel einer Entity (target..target4)?
+int namensNutzung(const std::string& name) {
+    const std::string k = klein(name);
+    int n = 0;
+    std::function<void(const std::vector<Node>&)> zaehle = [&](const std::vector<Node>& knoten) {
+        for (const Node& nd : knoten) {
+            for (const Arg& a : nd.args) {
+                if (klein(a.text) == k) { ++n; }
+            }
+            zaehle(nd.children);
+        }
+    };
+    zaehle(g_app->doc.script().nodes);
+    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+        if (static_cast<int>(i) != g_app->activeTab) { zaehle(g_app->tabs[i].doc.script().nodes); }
+    }
+    for (const MapEntity& e : g_app->map.entities) {
+        for (const char* key : {"target", "target2", "target3", "target4"}) {
+            const std::string* t = e.find(key);
+            if (t != nullptr && klein(*t) == k) { ++n; }
+        }
+    }
+    return n;
+}
+
+void nachSkriptGeaendert() {
+    rebuildTree();
+    g_app->camTrackValid = false;
+    g_app->mapDirty = true;
+}
+
+// Eine eigene Kopie des Laufziels fuer diesen SET_NAVGOAL.
+int zielKopieren(int ei, const Path& pfad) {
+    const Node* alt = nodeAt(g_app->doc.script(), pfad);
+    if (alt == nullptr || alt->args.size() < 2 || ei < 0) { return ei; }
+    MapEntity neuE = g_app->map.entities[static_cast<std::size_t>(ei)];
+    std::string stamm = neuE.targetname;
+    while (!stamm.empty() && std::isdigit(static_cast<unsigned char>(stamm.back())) != 0) { stamm.pop_back(); }
+    if (stamm.empty()) { stamm = "navgoal"; }
+    const std::string neuName = freierEntityName(stamm);
+    const std::string altName = neuE.targetname;
+    setKey(neuE, "targetname", neuName);
+    g_app->map.entities.push_back(std::move(neuE));
+    Node n = *alt;
+    n.args[1].text = neuName;
+    g_app->doc.replaceAt(pfad, n);
+    nachSkriptGeaendert();
+    char t[300];
+    std::snprintf(t, sizeof(t), tr(Str::BahnZielKopie), altName.c_str(), neuName.c_str());
+    addStatus(t);
+    return static_cast<int>(g_app->map.entities.size()) - 1;
+}
+
+}  // namespace
+
+int bahnGriffZahl() { return static_cast<int>(bahnGriffe().size()); }
+
+int bahnGriffArt(int nr) {
+    const auto g = bahnGriffe();
+    return nr >= 0 && static_cast<std::size_t>(nr) < g.size() ? g[static_cast<std::size_t>(nr)].art : -1;
+}
+
+bool bahnGriffPunkt(int nr, ImVec2& out) {
+    const auto g = bahnGriffe();
+    if (nr < 0 || static_cast<std::size_t>(nr) >= g.size()) { return false; }
+    return aufSchirm(projektion(), g[static_cast<std::size_t>(nr)].ort, out);
+}
+
+namespace {
+// set-Zeilen direkt vor einem SET_NAVGOAL setzen: vorhandene umstellen, sonst
+// neu davor. Ein Rueckgaengig-Schritt.
+void setzeVorNavgoal(const Path& navgoal, const std::vector<std::pair<std::string, std::string>>& werte, const char* was) {
+    if (navgoal.empty()) { return; }
+    Script s = g_app->doc.script();
+    std::vector<Node>* geschw = &s.nodes;
+    for (std::size_t k = 0; k + 1 < navgoal.size(); ++k) {
+        if (navgoal[k] >= geschw->size()) { return; }
+        geschw = &(*geschw)[navgoal[k]].children;
+    }
+    std::size_t i = navgoal.back();
+    if (i >= geschw->size()) { return; }
+    for (const auto& [typ, wert] : werte) {
+        bool da = false;
+        for (std::size_t j = i; j > 0 && !da; --j) {
+            Node& v = (*geschw)[j - 1];
+            if (v.kind != Node::Kind::Command || v.name != "set") { break; }
+            if (v.args.size() >= 2 && v.args[0].text == typ) {
+                v.args[1].text = wert;
+                da = true;
+            }
+        }
+        if (da) { continue; }
+        Node n;
+        n.kind = Node::Kind::Command;
+        n.name = "set";
+        Arg a0;
+        a0.kind = Arg::Kind::String;
+        a0.text = typ;
+        a0.typeset = "SET_TYPES";
+        Arg a1;
+        a1.kind = Arg::Kind::String;
+        a1.text = wert;
+        n.args = {a0, a1};
+        geschw->insert(geschw->begin() + static_cast<std::ptrdiff_t>(i), std::move(n));
+        ++i;
+    }
+    g_app->doc.ersetzeSkript(std::move(s), was);
+    nachSkriptGeaendert();
+}
+}  // namespace
+
+void blickSetzen(const Path& navgoal, const std::string& ziel) {
+    setzeVorNavgoal(navgoal, {{"SET_WATCHTARGET", ziel}}, tr(ziel == "NULL" ? Str::BahnBlickFrei : Str::BahnAnsehen));
+}
+
+void rueckwaertsLaufen(const Path& navgoal) {
+    // Den Lauf suchen: von wo nach wo, und wer.
+    for (const Actor& a : g_app->scene.actors) {
+        for (const ActorStep& st : a.steps) {
+            if (st.kind != ActorStep::Kind::WalkTo || st.path != navgoal) { continue; }
+            float d[3] = {st.to[0] - st.from[0], st.to[1] - st.from[1], 0.0F};
+            const float l = std::sqrt(d[0] * d[0] + d[1] * d[1]);
+            if (l < 1.0F) { return; }
+            // Die Marke liegt hinter dem Start, entgegen der Laufrichtung -
+            // die Figur schaut den ganzen Weg zurueck.
+            const float ort[3] = {st.from[0] - d[0] / l * 400.0F, st.from[1] - d[1] / l * 400.0F, st.from[2] + 40.0F};
+            std::vector<MapEntity> vorher = g_app->map.entities;
+            MapEntity e;
+            setKey(e, "classname", "ref_tag");
+            setKey(e, "origin", ortText(ort));
+            const std::string name = freierEntityName(a.name + "_blick");
+            setKey(e, "targetname", name);
+            g_app->map.entities.push_back(std::move(e));
+            aenderung(std::move(vorher));
+            setzeVorNavgoal(navgoal, {{"SET_WATCHTARGET", name}}, tr(Str::BahnRueckwaerts));
+            return;
+        }
+    }
+}
+
+void gangartSetzen(const Path& navgoal, bool gehen) {
+    if (navgoal.empty()) { return; }
+    Script s = g_app->doc.script();
+    std::vector<Node>* geschw = &s.nodes;
+    for (std::size_t k = 0; k + 1 < navgoal.size(); ++k) {
+        if (navgoal[k] >= geschw->size()) { return; }
+        geschw = &(*geschw)[navgoal[k]].children;
+    }
+    std::size_t i = navgoal.back();
+    if (i >= geschw->size()) { return; }
+    // Vorhandene set-Zeilen direkt davor umstellen, sonst eine neue davor.
+    const auto setze = [&](const char* typ, const char* wert) {
+        for (std::size_t j = i; j > 0; --j) {
+            Node& v = (*geschw)[j - 1];
+            if (v.kind != Node::Kind::Command || v.name != "set") { break; }
+            if (v.args.size() >= 2 && v.args[0].text == typ) {
+                v.args[1].text = wert;
+                return;
+            }
+        }
+        Node n;
+        n.kind = Node::Kind::Command;
+        n.name = "set";
+        Arg a0;
+        a0.kind = Arg::Kind::String;
+        a0.text = typ;
+        a0.typeset = "SET_TYPES";
+        Arg a1;
+        a1.kind = Arg::Kind::String;
+        a1.text = wert;
+        n.args = {a0, a1};
+        geschw->insert(geschw->begin() + static_cast<std::ptrdiff_t>(i), std::move(n));
+        ++i;
+    };
+    if (gehen) {
+        // Gehen heisst in der Engine: walking und NICHT running.
+        setze("SET_RUNNING", "false");
+        setze("SET_WALKING", "true");
+    } else {
+        setze("SET_RUNNING", "true");
+    }
+    g_app->doc.ersetzeSkript(std::move(s), tr(gehen ? Str::BahnGehen : Str::BahnRennen));
+    nachSkriptGeaendert();
+}
+
+// --- Bahnpunkt mitten in einer Bewegung (rc597) -------------------------------
+namespace {
+// Einen Befehl in eine Folge von Geschwistern genau zur Zeit `ziel` setzen.
+// Die Zeit laeuft ab `ab` (Index) bei `t0`; ein wait(W) dauert W plus ein
+// Spielbild. Faellt `ziel` in ein wait, wird es in zwei geteilt - die Summe
+// bleibt, alle anderen Befehle behalten ihre Zeit.
+bool befehlZurZeit(std::vector<Node>& g, std::size_t ab, double t0, double ziel, const Node& n) {
+    constexpr double kSpielbild = 50.0;
+    const auto zahl = [](double v) {
+        char t[48];
+        std::snprintf(t, sizeof(t), "%.3f", v);
+        return std::string(t);
+    };
+    const auto warte = [&](double w) {
+        Node x;
+        x.kind = Node::Kind::Command;
+        x.name = "wait";
+        Arg a;
+        a.kind = Arg::Kind::Number;
+        a.text = zahl(w);
+        x.args = {a};
+        return x;
+    };
+    double t = t0;
+    for (std::size_t j = ab; j < g.size(); ++j) {
+        const Node& x = g[j];
+        if (x.name == "waitsignal" || x.name == "dowait" ||
+            (x.name == "wait" && (x.args.empty() || x.args[0].kind != Arg::Kind::Number))) {
+            return false;   // die Zeit danach ist nicht bekannt
+        }
+        if (x.name != "wait") { continue; }
+        const double w = std::atof(x.args[0].text.c_str());
+        if (t + w + kSpielbild <= ziel) {
+            t += w + kSpielbild;
+            continue;
+        }
+        // ziel liegt in diesem wait: teilen.
+        const double a = ziel - t - kSpielbild;   // erster Teil
+        const double b = w - (ziel - t);          // zweiter Teil
+        std::vector<Node> ein;
+        if (a >= 0.0) { ein.push_back(warte(a)); }
+        ein.push_back(n);
+        if (b >= 0.0) { ein.push_back(warte(b)); }
+        g.erase(g.begin() + static_cast<std::ptrdiff_t>(j));
+        g.insert(g.begin() + static_cast<std::ptrdiff_t>(j), ein.begin(), ein.end());
+        return true;
+    }
+    // Hinter allem: warten, dann der Befehl.
+    if (ziel - t - kSpielbild >= 0.0) { g.push_back(warte(ziel - t - kSpielbild)); }
+    g.push_back(n);
+    return true;
+}
+}  // namespace
+
+bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf) {
+    figur = figurFuerEntity(ei);
+    if (figur < 0) { return false; }
+    const Actor& a = g_app->scene.actors[static_cast<std::size_t>(figur)];
+    for (const ActorStep& st : a.steps) {
+        const bool l = st.kind == ActorStep::Kind::WalkTo;
+        if ((!l && st.kind != ActorStep::Kind::Glide) || st.path.empty() || !st.fremd.empty()) { continue; }
+        if (!(ms > st.startMs + 50.0 && ms < st.endMs - 25.0)) { continue; }
+        if (!a.at(ms).visible) { return false; }   // eine unsichtbare Figur greift man nicht
+        const Node* n = nodeAt(g_app->doc.script(), st.path);
+        if (n == nullptr) { return false; }
+        if (l ? (n->args.size() < 2) : (n->name != "move" || n->args.size() < 2 || n->args[0].kind != Arg::Kind::Vector)) {
+            return false;
+        }
+        pfad = st.path;
+        lauf = l;
+        return true;
+    }
+    return false;
+}
+
+bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float kOrt[3], double ms) {
+    if (figur < 0 || static_cast<std::size_t>(figur) >= g_app->scene.actors.size() || pfad.empty()) { return false; }
+    // Der Schritt aus der UNVERAENDERTEN Szene (die Vorschau hat die Bahn im
+    // Speicher geteilt - die Szene ist beim Loslassen noch die gezogene).
+    const ActorStep* stp = nullptr;
+    ActorStep merk;
+    for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figur)].steps) {
+        if (st.path == pfad && (st.kind == ActorStep::Kind::WalkTo || st.kind == ActorStep::Kind::Glide)) {
+            if (stp == nullptr) {
+                merk = st;
+                stp = &merk;
+            } else {
+                // Zweite Haelfte der Vorschau: ihr Ende ist das echte Ende.
+                merk.endMs = st.endMs;
+                for (int k = 0; k < 3; ++k) { merk.to[k] = st.to[k]; }
+            }
+        }
+    }
+    if (stp == nullptr) { return false; }
+    const double t0 = merk.startMs;
+    const double ende = merk.endMs;
+    Script s = g_app->doc.script();
+    std::vector<Node>* geschw = &s.nodes;
+    for (std::size_t k = 0; k + 1 < pfad.size(); ++k) {
+        if (pfad[k] >= geschw->size()) { return false; }
+        geschw = &(*geschw)[pfad[k]].children;
+    }
+    const std::size_t i = pfad.back();
+    if (i >= geschw->size()) { return false; }
+    std::vector<Node>& g = *geschw;
+    // Wie lange dauert der eingefuegte Teil? Schiff: bis ms (die Dauer steht
+    // im move). Figur: so lange sie mit ihrem Tempo bis K braucht.
+    double teil = ms - t0;
+    if (lauf) {
+        const float dab = std::sqrt((merk.to[0] - merk.from[0]) * (merk.to[0] - merk.from[0]) +
+                                    (merk.to[1] - merk.from[1]) * (merk.to[1] - merk.from[1]) +
+                                    (merk.to[2] - merk.from[2]) * (merk.to[2] - merk.from[2]));
+        const float dak = std::sqrt((kOrt[0] - merk.from[0]) * (kOrt[0] - merk.from[0]) +
+                                    (kOrt[1] - merk.from[1]) * (kOrt[1] - merk.from[1]) +
+                                    (kOrt[2] - merk.from[2]) * (kOrt[2] - merk.from[2]));
+        if (dab < 1.0F || ende <= t0) { return false; }
+        teil = static_cast<double>(dak) / (static_cast<double>(dab) / (ende - t0));
+    }
+    constexpr double kSpielbild = 50.0;   // ein wait endet ein Bild spaeter
+    if (teil < kSpielbild + 1.0) { return false; }
+    // Das naechste wait derselben Ebene nimmt den eingefuegten Teil auf.
+    std::size_t waitNr = g.size();
+    for (std::size_t j = i + 1; j < g.size(); ++j) {
+        if (g[j].name == "waitsignal" || g[j].name == "dowait") { break; }
+        if (g[j].name == "wait") {
+            if (!g[j].args.empty() && g[j].args[0].kind == Arg::Kind::Number) { waitNr = j; }
+            break;
+        }
+    }
+    double waitWert = 0.0;
+    if (waitNr < g.size()) {
+        waitWert = std::atof(g[waitNr].args[0].text.c_str());
+        if (!lauf && waitWert + 1e-3 < teil) { return false; }
+    }
+    const auto zahl = [](double v) {
+        char t[48];
+        std::snprintf(t, sizeof(t), "%.3f", v);
+        return std::string(t);
+    };
+    const auto vektor = [](const float* v) {
+        char t[96];
+        std::snprintf(t, sizeof(t), "%.3f %.3f %.3f", static_cast<double>(v[0]), static_cast<double>(v[1]),
+                      static_cast<double>(v[2]));
+        return std::string(t);
+    };
+    std::vector<MapEntity> vorher = g_app->map.entities;
+    Node erster = g[i];
+    erster.kennung = 0;
+    Node zweiter = g[i];
+    if (lauf) {
+        // Ein neues Laufziel bei K - eine Kopie des alten Ziels (gleiche Art).
+        MapEntity ziel;
+        const int alt = [&] {
+            for (std::size_t q = 0; q < g_app->map.entities.size(); ++q) {
+                if (g_app->map.entities[q].targetname == g[i].args[1].text) { return static_cast<int>(q); }
+            }
+            return -1;
+        }();
+        if (alt >= 0) {
+            ziel = g_app->map.entities[static_cast<std::size_t>(alt)];
+        } else {
+            setKey(ziel, "classname", "waypoint_navgoal");
+        }
+        std::string stamm = g[i].args[1].text;
+        while (!stamm.empty() && std::isdigit(static_cast<unsigned char>(stamm.back())) != 0) { stamm.pop_back(); }
+        if (stamm.empty()) { stamm = "navgoal"; }
+        const std::string name = freierEntityName(stamm);
+        setKey(ziel, "targetname", name);
+        setKey(ziel, "origin", ortText(kOrt));
+        g_app->map.entities.push_back(std::move(ziel));
+        erster.args[1].text = name;
+    } else {
+        // Schiff: bis ms nach K, mit der Stellung, die es dort hat.
+        erster.args[0].text = vektor(kOrt);
+        if (erster.args.size() >= 3 && erster.args[1].kind == Arg::Kind::Vector) {
+            const ActorState jetzt = g_app->scene.actors[static_cast<std::size_t>(figur)].at(ms);
+            erster.args[1].text = vektor(jetzt.angles);
+        }
+        erster.args.back().text = zahl(teil);
+        zweiter.args.back().text = zahl(ende - ms);
+    }
+    Node warte;
+    warte.kind = Node::Kind::Command;
+    warte.name = "wait";
+    Arg wa;
+    wa.kind = Arg::Kind::Number;
+    wa.text = zahl(teil - kSpielbild);
+    warte.args = {wa};
+    if (lauf) {
+        // Erst zum neuen Ziel, und wenn sie dort ankommt, weiter zum alten.
+        const Node altesZiel = g[i];
+        g[i] = erster;
+        if (!befehlZurZeit(g, i + 1, t0, t0 + teil, altesZiel)) {
+            g_app->map.entities = std::move(vorher);
+            return false;
+        }
+        aenderung(std::move(vorher));
+        g_app->doc.ersetzeSkript(std::move(s), tr(Str::BahnZwischenUndo));
+        nachSkriptGeaendert();
+        char tf[96];
+        std::snprintf(tf, sizeof(tf), tr(Str::BahnZwischen), ms / 1000.0);
+        addStatus(tf);
+        return true;
+    }
+    std::vector<Node> neu;
+    neu.reserve(g.size() + 2U);
+    for (std::size_t q = 0; q < i; ++q) { neu.push_back(g[q]); }
+    neu.push_back(erster);
+    const std::size_t bis = waitNr < g.size() ? waitNr : g.size();
+    for (std::size_t q = i + 1; q < bis; ++q) { neu.push_back(g[q]); }
+    neu.push_back(warte);
+    neu.push_back(zweiter);
+    if (waitNr < g.size()) {
+        Node w = g[waitNr];
+        w.args[0].text = zahl(waitWert - teil);
+        neu.push_back(w);
+        for (std::size_t q = waitNr + 1; q < g.size(); ++q) { neu.push_back(g[q]); }
+    }
+    g = std::move(neu);
+    if (lauf) { aenderung(std::move(vorher)); }
+    g_app->doc.ersetzeSkript(std::move(s), tr(Str::BahnZwischenUndo));
+    nachSkriptGeaendert();
+    char t[96];
+    std::snprintf(t, sizeof(t), tr(Str::BahnZwischen), ms / 1000.0);
+    addStatus(t);
+    return true;
+}
+
+void gangartMenueInhalt() {
+    if (ImGui::MenuItem(tr(Str::BahnGehen))) { gangartSetzen(g_app->bahnMenuePfad, true); }
+    if (ImGui::MenuItem(tr(Str::BahnRennen))) { gangartSetzen(g_app->bahnMenuePfad, false); }
+    ImGui::Separator();
+    if (ImGui::MenuItem(tr(Str::BahnRueckwaerts))) { rueckwaertsLaufen(g_app->bahnMenuePfad); }
+    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::BahnBlickHinweis)); }
+    if (ImGui::BeginMenu(tr(Str::BahnAnsehen))) {
+        // Die anderen Figuren der Szene - wen man beim Laufen ansieht.
+        std::string selbst;
+        for (const Actor& a : g_app->scene.actors) {
+            for (const ActorStep& st : a.steps) {
+                if (st.kind == ActorStep::Kind::WalkTo && st.path == g_app->bahnMenuePfad) { selbst = a.name; }
+            }
+        }
+        for (const Actor& a : g_app->scene.actors) {
+            if (a.name == selbst || a.brushModel > 0 || !a.haveStart) { continue; }
+            if (ImGui::MenuItem(a.name.c_str())) { blickSetzen(g_app->bahnMenuePfad, a.name); }
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::BahnBlickHinweis)); }
+    if (ImGui::MenuItem(tr(Str::BahnBlickFrei))) { blickSetzen(g_app->bahnMenuePfad, "NULL"); }
+}
+
+void bahnGriffeMaus() {
+    App::BahnZug& z = g_app->bahnZug;
+    const ImGuiIO& io = ImGui::GetIO();
+    g_app->bahnGriffHover = -1;
+    const std::vector<BahnGriff> griffe = bahnGriffe();
+    if (griffe.empty() && !z.kandidat) { return; }
+    const Proj p = projektion();
+    const bool imBild = io.MousePos.x >= g_app->kartenAnsicht[0] && io.MousePos.x < g_app->kartenAnsicht[2] &&
+                        io.MousePos.y >= g_app->kartenAnsicht[1] && io.MousePos.y < g_app->kartenAnsicht[3] &&
+                        ImGui::IsWindowHovered();
+    if (!z.kandidat && imBild) {
+        const float r = ImGui::GetFontSize() * 0.6F;
+        float best = r * r;
+        for (std::size_t i = 0; i < griffe.size(); ++i) {
+            ImVec2 s;
+            if (!aufSchirm(p, griffe[i].ort, s)) { continue; }
+            const float d = (s.x - io.MousePos.x) * (s.x - io.MousePos.x) + (s.y - io.MousePos.y) * (s.y - io.MousePos.y);
+            if (d < best) {
+                best = d;
+                g_app->bahnGriffHover = static_cast<int>(i);
+            }
+        }
+    }
+    const int h = g_app->bahnGriffHover;
+    // Rechtsklick auf ein Laufziel: Gehen oder Rennen.
+    if (h >= 0 && griffe[static_cast<std::size_t>(h)].art == 1 && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+        io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= io.MouseDragThreshold * io.MouseDragThreshold) {
+        g_app->bahnMenuePfad = griffe[static_cast<std::size_t>(h)].pfad;
+        g_app->bahnMenueBild = ImGui::GetFrameCount();
+        ImGui::OpenPopup("##gangart");
+    }
+    if (h >= 0 && !z.kandidat && !g_app->wegKlickVerbraucht && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const BahnGriff& gr = griffe[static_cast<std::size_t>(h)];
+        z = App::BahnZug{};
+        z.kandidat = true;
+        z.art = gr.art;
+        z.entity = gr.entity;
+        z.pfad = gr.pfad;
+        z.vorher = g_app->map.entities;
+        for (int k = 0; k < 3; ++k) {
+            z.startOrt[k] = z.ort[k] = gr.ort[k];
+            z.von[k] = gr.von[k];
+        }
+        z.startMaus[0] = io.MousePos.x;
+        z.startMaus[1] = io.MousePos.y;
+        // Die Zeile im Skript (und damit der Balken unten) gleich mit.
+        if (!z.pfad.empty()) { selectByPath(z.pfad); }
+    }
+    if (!z.kandidat) { return; }
+    g_app->wegKlickVerbraucht = true;   // solange gezogen wird, gehoert die Maus den Griffen
+    if (!z.aktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 3.0F)) {
+        z.aktiv = true;
+        if (z.art == 1 && z.entity >= 0 &&
+            namensNutzung(g_app->map.entities[static_cast<std::size_t>(z.entity)].targetname) > 1) {
+            z.entity = zielKopieren(z.entity, z.pfad);
+        }
+        z.figur = bahnFigur();
+        if (z.figur >= 0) {
+            const Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.figur)];
+            z.stepsVorher = a.steps;
+            for (int k = 0; k < 3; ++k) { z.startVorher[k] = a.start[k]; }
+        }
+        z.szeneBautenBeimZug = g_app->szeneBauten;
+    }
+    if (z.aktiv && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        float a[3];
+        float b[3];
+        strahlDurch(io.MousePos.x, io.MousePos.y, a, b);
+        if (z.art == 2 || (z.art == 0 && istBrushEntity(z.entity))) {
+            // Schiffe fliegen: in der waagrechten Ebene des Griffs, mit
+            // Umschalt senkrecht.
+            if (io.KeyShift) {
+                z.ort[2] = z.startOrt[2] + (z.startMaus[1] - io.MousePos.y) * laengeFuerPx(p, z.startOrt, 1.0F);
+            } else if (std::fabs(b[2] - a[2]) > 1e-3F) {
+                const float t = (z.ort[2] - a[2]) / (b[2] - a[2]);
+                if (t > 0.0F && t < 1.0F) {
+                    z.ort[0] = a[0] + (b[0] - a[0]) * t;
+                    z.ort[1] = a[1] + (b[1] - a[1]) * t;
+                }
+            }
+        } else if (z.entity >= 0) {
+            TraceTreffer t;
+            if (spur(a, b, t)) {
+                aufFlaeche(g_app->map.entities[static_cast<std::size_t>(z.entity)].classname, t, z.ort);
+            }
+        }
+        if (z.art != 2 && z.entity >= 0) {
+            setKey(g_app->map.entities[static_cast<std::size_t>(z.entity)], "origin", ortText(z.ort));
+        }
+        // Die Bahn dieser Figur im Speicher nachziehen - jedes Bild, ohne die
+        // Szene neu zu bauen. Nur der gezogene Punkt wandert: der Anfang des
+        // ersten Stuecks (Start) bzw. das Ende dieses Stuecks und der Anfang
+        // des naechsten (Ziel). Die Dauern rechnet erst das Loslassen neu.
+        if (z.figur >= 0 && static_cast<std::size_t>(z.figur) < g_app->scene.actors.size() && !z.stepsVorher.empty()) {
+            Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.figur)];
+            a.steps = z.stepsVorher;
+            const auto gleich = [](const float* p, const float* q) {
+                return std::fabs(p[0] - q[0]) + std::fabs(p[1] - q[1]) + std::fabs(p[2] - q[2]) < 1.0F;
+            };
+            if (z.art == 0) {
+                for (int k = 0; k < 3; ++k) { a.start[k] = z.ort[k]; }
+                for (ActorStep& st : a.steps) {
+                    // Ein Teleport auf den Spawnort (beim Erscheinen) geht mit.
+                    if (st.kind == ActorStep::Kind::Teleport && gleich(st.to, z.startVorher)) {
+                        for (int k = 0; k < 3; ++k) { st.to[k] = z.ort[k]; }
+                        continue;
+                    }
+                    if (st.kind == ActorStep::Kind::WalkTo || st.kind == ActorStep::Kind::Glide) {
+                        if (gleich(st.from, z.startVorher)) {
+                            for (int k = 0; k < 3; ++k) { st.from[k] = z.ort[k]; }
+                        }
+                        break;
+                    }
+                }
+            } else {
+                bool danach = false;
+                for (ActorStep& st : a.steps) {
+                    const bool bewegung = st.kind == ActorStep::Kind::WalkTo || st.kind == ActorStep::Kind::Glide;
+                    if (!bewegung) { continue; }
+                    if (danach) {
+                        if (gleich(st.from, z.startOrt)) {
+                            for (int k = 0; k < 3; ++k) { st.from[k] = z.ort[k]; }
+                        }
+                        break;
+                    }
+                    if (st.path == z.pfad) {
+                        for (int k = 0; k < 3; ++k) { st.to[k] = z.ort[k]; }
+                        danach = true;
+                    }
+                }
+            }
+        }
+        g_app->mapDirty = true;
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (z.aktiv) {
+            if (z.art == 2) {
+                const Node* alt = nodeAt(g_app->doc.script(), z.pfad);
+                if (alt != nullptr && !alt->args.empty()) {
+                    Node n = *alt;
+                    char t[96];
+                    std::snprintf(t, sizeof(t), "%.3f %.3f %.3f", static_cast<double>(z.ort[0]), static_cast<double>(z.ort[1]),
+                                  static_cast<double>(z.ort[2]));
+                    n.args[0].text = t;
+                    g_app->doc.replaceAt(z.pfad, n);
+                    nachSkriptGeaendert();
+                }
+            } else {
+                aenderung(std::move(z.vorher));
+            }
+            g_app->camTrackValid = false;   // jetzt einmal richtig, mit den neuen Dauern
+        }
+        z = App::BahnZug{};
+    }
+}
+
+void bahnGriffeZeichnen() {
+    if (ImGui::BeginPopup("##gangart")) {
+        gangartMenueInhalt();
+        ImGui::EndPopup();
+    }
+    const std::vector<BahnGriff> griffe = bahnGriffe();
+    if (griffe.empty()) { return; }
+    const App::BahnZug& z = g_app->bahnZug;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(ImVec2{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1]},
+                     ImVec2{g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]}, true);
+    const Proj p = projektion();
+    const float px = std::max(1.0F, ImGui::GetFontSize() / 13.0F);
+    const float r = 6.0F * px;
+    // --- Die Bahn selbst, kraeftig und obenauf ---------------------------
+    //
+    // Laufen und Fliegen gehen in geraden Stuecken von Punkt zu Punkt - also
+    // genau durch die Griffe. Grau voraus, gelb schon zurueckgelegt.
+    {
+        const int f = bahnFigur();
+        if (f >= 0) {
+            const Actor& a = g_app->scene.actors[static_cast<std::size_t>(f)];
+            const ActorState jetzt = a.at(g_app->playMs);
+            const auto linie = [&](const float* von, const float* bis, ImU32 farbe) {
+                ImVec2 s0;
+                ImVec2 s1;
+                if (aufSchirm(p, von, s0) && aufSchirm(p, bis, s1)) {
+                    dl->AddLine(s0, s1, IM_COL32(10, 12, 16, 170), 4.5F * px);
+                    dl->AddLine(s0, s1, farbe, 2.2F * px);
+                }
+            };
+            const ImU32 grau = IM_COL32(170, 175, 185, 230);
+            const ImU32 gelb = IM_COL32(240, 200, 60, 255);
+            for (const ActorStep& st : a.steps) {
+                if (st.kind != ActorStep::Kind::WalkTo && st.kind != ActorStep::Kind::Glide) { continue; }
+                if (g_app->playMs >= st.endMs) {
+                    linie(st.from, st.to, gelb);
+                } else if (g_app->playMs <= st.startMs) {
+                    linie(st.from, st.to, grau);
+                } else {
+                    linie(st.from, jetzt.pos, gelb);
+                    linie(jetzt.pos, st.to, grau);
+                }
+            }
+        }
+    }
+    for (std::size_t i = 0; i < griffe.size(); ++i) {
+        const BahnGriff& gr = griffe[i];
+        // Der gezogene Griff steht, wo die Maus ihn hinstellt.
+        const bool gezogen = z.aktiv && z.art == gr.art && (gr.art == 0 ? z.entity >= 0 : z.pfad == gr.pfad);
+        const float* ort = gezogen ? z.ort : gr.ort;
+        ImVec2 s;
+        if (!aufSchirm(p, ort, s)) { continue; }
+        // Ausserhalb der Ansicht: ein Pfeil am Rand zeigt, wo der Griff liegt.
+        const float rand = 14.0F * px;
+        const float x0 = g_app->kartenAnsicht[0] + rand;
+        const float y0 = g_app->kartenAnsicht[1] + rand;
+        const float x1 = g_app->kartenAnsicht[2] - rand;
+        const float y1 = g_app->kartenAnsicht[3] - rand;
+        if (s.x < x0 || s.x > x1 || s.y < y0 || s.y > y1) {
+            const ImVec2 m{(x0 + x1) * 0.5F, (y0 + y1) * 0.5F};
+            const ImVec2 rd{s.x - m.x, s.y - m.y};
+            const float tx = rd.x != 0.0F ? ((rd.x > 0.0F ? x1 : x0) - m.x) / rd.x : 1e9F;
+            const float ty = rd.y != 0.0F ? ((rd.y > 0.0F ? y1 : y0) - m.y) / rd.y : 1e9F;
+            const float t = std::min(tx, ty);
+            const ImVec2 e{m.x + rd.x * t, m.y + rd.y * t};
+            const float l = std::sqrt(rd.x * rd.x + rd.y * rd.y);
+            const ImVec2 d{rd.x / l, rd.y / l};
+            const ImVec2 n{-d.y, d.x};
+            const ImU32 pf = gr.art == 0 ? IM_COL32(90, 220, 120, 255)
+                           : gr.art == 1 ? IM_COL32(240, 200, 60, 255)
+                                         : IM_COL32(90, 190, 255, 255);
+            const float g2 = 9.0F * px;
+            dl->AddTriangleFilled(ImVec2{e.x + d.x * g2, e.y + d.y * g2}, ImVec2{e.x - d.x * g2 + n.x * g2 * 0.7F, e.y - d.y * g2 + n.y * g2 * 0.7F},
+                                  ImVec2{e.x - d.x * g2 - n.x * g2 * 0.7F, e.y - d.y * g2 - n.y * g2 * 0.7F}, pf);
+            continue;
+        }
+        if (gezogen && gr.art != 0) {
+            ImVec2 v;
+            if (aufSchirm(p, gr.von, v)) { dl->AddLine(v, s, IM_COL32(255, 255, 255, 160), 1.5F * px); }
+        }
+        const ImU32 farbe = gr.art == 0 ? IM_COL32(90, 220, 120, 255)
+                          : gr.art == 1 ? IM_COL32(240, 200, 60, 255)
+                                        : IM_COL32(90, 190, 255, 255);
+        const bool ueber = g_app->bahnGriffHover == static_cast<int>(i) || gezogen;
+        dl->AddRectFilled(ImVec2{s.x - r, s.y - r}, ImVec2{s.x + r, s.y + r}, farbe);
+        dl->AddRect(ImVec2{s.x - r, s.y - r}, ImVec2{s.x + r, s.y + r},
+                    ueber ? IM_COL32(255, 255, 255, 255) : IM_COL32(20, 22, 28, 220), 0.0F, 0, (ueber ? 2.0F : 1.2F) * px);
+        if (ueber && !z.aktiv) {
+            ImGui::BeginTooltip();
+            if (gr.art == 0) {
+                ImGui::TextUnformatted(tr(Str::BahnStart));
+            } else if (gr.art == 1) {
+                ImGui::Text(tr(Str::BahnZiel), gr.name.c_str());
+                ImGui::TextDisabled("%s, %.1f s - %s", tr(gr.gehen ? Str::BahnGehtJetzt : Str::BahnRenntJetzt),
+                                    (gr.endMs - gr.startMs) / 1000.0, tr(Str::BahnZielMenue));
+            } else {
+                ImGui::TextUnformatted(tr(Str::BahnFlug));
+            }
+            ImGui::EndTooltip();
+        }
+    }
+    dl->PopClipRect();
+}
+
 // Fuer den Selbsttest: wo liegt ein Griff des Gizmos auf dem Schirm?
 // griff 1..3 = Achse (bei drei Vierteln), 4 = Ring (vorn).
 bool entityGizmoPunkt(int griff, ImVec2& out) {
     const int ziel = inspektorZiel();
     float o[3];
-    if (ziel < 0 || !entityOrt(g_app->map.entities[static_cast<std::size_t>(ziel)], o)) { return false; }
+    if (ziel < 0 || !entityOrtAnzeige(g_app->map.entities[static_cast<std::size_t>(ziel)], o)) { return false; }
     const Proj p = projektion();
     const float L = laengeFuerPx(p, o, kGizmoPx);
     float w[3] = {o[0], o[1], o[2]};
@@ -1239,6 +2196,51 @@ bool entityGizmoPunkt(int griff, ImVec2& out) {
         w[1] += std::sin(a) * L * 0.8F;
     }
     return aufSchirm(p, w, out);
+}
+
+void skriptFokusAuffrischen() {
+    // Alle Argumente des Skripts, klein, ohne Anfuehrungszeichen.
+    std::unordered_set<std::string> namen;
+    std::function<void(const std::vector<Node>&)> sammle = [&](const std::vector<Node>& knoten) {
+        for (const Node& n : knoten) {
+            for (const Arg& a : n.args) {
+                std::string t = a.text;
+                if (t.size() >= 2 && t.front() == '"' && t.back() == '"') { t = t.substr(1, t.size() - 2); }
+                if (!t.empty()) { namen.insert(klein(t)); }
+            }
+            sammle(n.children);
+        }
+    };
+    sammle(g_app->doc.script().nodes);
+    const auto& ents = g_app->map.entities;
+    g_app->entImSkript.assign(ents.size(), 0);
+    for (std::size_t i = 0; i < ents.size(); ++i) {
+        const MapEntity& e = ents[i];
+        const std::string a = klein(entitySkriptName(e));
+        const std::string b = klein(e.targetname);
+        g_app->entImSkript[i] = static_cast<char>((!a.empty() && namen.count(a) != 0U) || (!b.empty() && namen.count(b) != 0U));
+    }
+}
+
+void skriptSchild() {
+    if (g_app->camViewActive || g_app->map.empty()) {
+        g_app->skriptSchildText.clear();
+        return;
+    }
+    const std::string name = !g_app->shownName.empty() ? g_app->shownName : fileName(g_app->path);
+    g_app->skriptSchildText = name;
+    if (name.empty()) { return; }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float px = std::max(1.0F, ImGui::GetFontSize() / 13.0F);
+    const float g = std::floor(ImGui::GetFontSize());
+    const ImVec2 groesse = ImGui::CalcTextSize(name.c_str());
+    const ImVec2 a{g_app->kartenAnsicht[0] + 8.0F * px, g_app->kartenAnsicht[1] + 8.0F * px};
+    const ImVec2 b{a.x + g + 14.0F * px + groesse.x, a.y + std::max(g, groesse.y) + 8.0F * px};
+    const ImU32 akzent = ImGui::GetColorU32(ImGuiCol_TabSelectedOverline);
+    dl->AddRectFilled(a, b, IM_COL32(16, 18, 24, 190), 4.0F * px);
+    dl->AddRect(a, b, akzent, 4.0F * px, 0, 1.2F * px);
+    uiIcon(dl, UiIcon::Skript, ImVec2{a.x + 5.0F * px, std::floor(a.y + 4.0F * px)}, g, akzent);
+    dl->AddText(ImVec2{a.x + g + 9.0F * px, a.y + 4.0F * px}, IM_COL32(235, 238, 245, 255), name.c_str());
 }
 
 void entityUeberlagerung(float rasterSkal) {
@@ -1275,16 +2277,24 @@ void entityUeberlagerung(float rasterSkal) {
             // jede Wand hindurch).
             const bool gewaehlt = entityIstGewaehlt(static_cast<int>(mk.entity)) ||
                                   g_app->entHover == static_cast<int>(mk.entity);
-            const int deck = (mk.verdeckt && !gewaehlt) ? 55 : 255;
+            // Woran man arbeitet (rc597): was das aktive Skript benutzt, kraeftig
+            // und mit hellem Ring; alles andere blasser.
+            const bool fokus = g_app->skriptFokus && mk.entity < g_app->entImSkript.size();
+            const bool imSkript = fokus && g_app->entImSkript[mk.entity] != 0;
+            int deck = (mk.verdeckt && !gewaehlt) ? 55 : 255;
+            if (fokus && !imSkript && !gewaehlt) { deck = std::min(deck, 80); }
             dl->AddCircleFilled(c, r, IM_COL32(18, 20, 26, deck * 190 / 255));
-            if (deck == 255) { dl->AddCircle(c, r, IM_COL32(ek.r, ek.g, ek.b, 150), 0, 1.2F * px); }
+            if (imSkript) {
+                dl->AddCircle(c, r + 2.0F * px, IM_COL32(255, 255, 255, mk.verdeckt ? 90 : 200), 0, 1.6F * px);
+            }
+            if (deck == 255) { dl->AddCircle(c, r, IM_COL32(ek.r, ek.g, ek.b, imSkript ? 255 : 150), 0, (imSkript ? 1.8F : 1.2F) * px); }
             uiIcon(dl, ek.icon, ImVec2{std::floor(c.x - g * 0.5F), std::floor(c.y - g * 0.5F)}, g,
                    IM_COL32(ek.r, ek.g, ek.b, deck));
         }
     }
     const auto zeichneKasten = [&](const MapEntity& e, ImU32 farbe, float dicke) {
         float o[3];
-        if (!entityOrt(e, o)) { return false; }
+        if (!entityOrtAnzeige(e, o)) { return false; }
         float mn[3];
         float mx[3];
         kasten(e, mn, mx);
@@ -1301,11 +2311,12 @@ void entityUeberlagerung(float rasterSkal) {
     };
     const auto zeichneRichtung = [&](const MapEntity& e, ImU32 farbe, float dicke) {
         float o[3];
-        if (!hatRichtung(e) || !entityOrt(e, o)) { return; }
+        if (!hatRichtung(e) || !entityOrtAnzeige(e, o)) { return; }
         float mn[3];
         float mx[3];
         kasten(e, mn, mx);
-        const float a = winkelVon(e) * 3.14159265F / 180.0F;
+        // Wohin das Modell gerade schaut (rc597), nicht nur der Schluessel.
+        const float a = entityGierAnzeige(e) * 3.14159265F / 180.0F;
         const float l = std::max(32.0F, mx[0] - mn[0]) * 1.2F;
         const float m[3] = {o[0], o[1], o[2] + (mn[2] + mx[2]) * 0.5F};
         const float spitze[3] = {m[0] + std::cos(a) * l, m[1] + std::sin(a) * l, m[2]};
@@ -1327,7 +2338,7 @@ void entityUeberlagerung(float rasterSkal) {
     const auto namensSchild = [&](const MapEntity& e, ImU32 farbe) {
         float o[3];
         ImVec2 s;
-        if (!entityOrt(e, o)) { return; }
+        if (!entityOrtAnzeige(e, o)) { return; }
         float mn[3];
         float mx[3];
         kasten(e, mn, mx);
@@ -1375,7 +2386,7 @@ void entityUeberlagerung(float rasterSkal) {
         zeichneRichtung(e, orange, 2.0F * px);
         if (g_app->entHover == ziel || g_app->entZug.kandidat) { namensSchild(e, orange); }
         float o[3];
-        if (entityOrt(e, o)) {
+        if (entityOrtAnzeige(e, o)) {
             const App::EntZug& z = g_app->entZug;
             const float L = (z.kandidat && z.modus > 0) ? z.achsLaenge : laengeFuerPx(p, o, kGizmoPx);
             ImVec2 so;

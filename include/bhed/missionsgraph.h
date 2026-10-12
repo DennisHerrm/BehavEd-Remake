@@ -58,8 +58,11 @@ using GraphSkriptQuelle = std::function<const Script*(const std::string& pfad)>;
 // Ausloeser (immer), andere Entities, wenn sie verbunden sind, und alle Skripte,
 // auf die Entities oder andere Skripte zeigen. `startSkript`: ein Skript, das
 // auch ohne Verweis dazugehoert (das offene).
+// `immer`: Entities, die auch unverbunden einen Knoten bekommen (in den Graphen
+// gezogen, rc597).
 [[nodiscard]] MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphSkriptQuelle& skript,
-                                              const std::string& startSkript = {}, std::size_t maxKnoten = 400);
+                                              const std::string& startSkript = {}, std::size_t maxKnoten = 400,
+                                              const std::vector<int>& immer = {});
 
 // In Spalten von links nach rechts (nach dem laengsten Weg von den Quellen),
 // in jeder Spalte nach dem Mittel der Vorgaenger sortiert. Nicht verbundene

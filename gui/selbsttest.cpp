@@ -6446,6 +6446,37 @@ std::vector<Schritt> missionFotoSchritte() {
             diag::detail("Knopftest: Missionfoto - Figur \"" + a.name + "\" Typ \"" + a.npcType + "\"");
         }
     }));
+    // Einen bestimmten Reiter (BHED_REITER, Teil des Namens) aktivieren und
+    // je Lauf protokollieren, welche Beinanimation mitten im Lauf spielt -
+    // so laesst sich an bestehenden Skripten pruefen, ob behaved rueckwaerts
+    // laufen erkennt (rc597, Vader in md_dd/cin1_jedi).
+    const std::string reiter = std::getenv("BHED_REITER") ? std::getenv("BHED_REITER") : "";
+    if (!reiter.empty()) {
+        add(tu("Missionfoto: Reiter " + reiter, [=] {
+            for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+                const bool aktiv = static_cast<int>(i) == g_app->activeTab;
+                const std::string& n = aktiv ? g_app->shownName : g_app->tabs[i].shownName;
+                const std::string& pf = aktiv ? g_app->path : g_app->tabs[i].path;
+                const std::string name = !n.empty() ? n : fileName(pf);
+                if (name.find(reiter) != std::string::npos) { g_app->tabRequest = static_cast<int>(i); }
+            }
+        }));
+        add(pause(1.0));
+        add(warteBis("Missionfoto: Szene des Reiters", [] { return g_app->camTrackValid; }, 600));
+        add(tu("Missionfoto: Laeufe und ihre Animation", [] {
+            diag::detail("Knopftest: Missionfoto - Reiter " + g_app->shownName);
+            for (const Actor& a : g_app->scene.actors) {
+                for (const ActorStep& st : a.steps) {
+                    if (st.kind != ActorStep::Kind::WalkTo) { continue; }
+                    const ActorState m = a.at((st.startMs + st.endMs) * 0.5);
+                    char z[240];
+                    std::snprintf(z, sizeof(z), "Knopftest: Missionfoto - Lauf %s %.1f-%.1f s: %s", a.name.c_str(),
+                                  st.startMs / 1000.0, st.endMs / 1000.0, m.animation.c_str());
+                    diag::detail(z);
+                }
+            }
+        }));
+    }
     add(foto("missionfoto_start"));
     for (const double t : zeiten) {
         add(tu("Missionfoto: zu " + std::to_string(static_cast<int>(t)) + " ms", [=] {
@@ -7120,6 +7151,89 @@ std::vector<Schritt> missionsbauSchritte() {
             return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) == "intro.txt" && use &&
                    kanteDa((*schl)["intro"], (*schl)["runner1"], "use") && g_app->settings.flussAnsicht == 1;
         }));
+        // --- rc597: rechtwinklige Leitungen, Umlenkpunkte, Ablegen von links ---
+        add(tu("Graph: einpassen (rechtwinklig ist voreingestellt)", [] {
+            g_app->graph().angepasst = false;
+            g_app->graph().rechtwinklig = true;
+        }));
+        add(pause(0.3));
+        add(pruefe("Graph rechtwinklig: keine schraegen Stuecke, keine Leitung quer durch einen Knoten", [] {
+            const App::GraphZustand& gz = g_app->graph();
+            diag::detail("Knopftest: Graph - " + std::to_string(gz.kantenMitte.size()) + " Kanten, schraeg " +
+                         std::to_string(gz.schraegeStuecke) + ", Kreuzungen " + std::to_string(gz.kreuzungen));
+            return !gz.kantenMitte.empty() && gz.schraegeStuecke == 0 && gz.kreuzungen == 0;
+        }));
+        auto kante = std::make_shared<std::string>();
+        add(tu("Graph: eine Leitung waehlen", [=] {
+            const App::GraphZustand& gz = g_app->graph();
+            kante->clear();
+            for (const auto& [k, p] : gz.kantenMitte) {
+                if (p.x > gz.ursprung.x + 20.0F && p.y > gz.ursprung.y + 20.0F && p.x < gz.ursprung.x + gz.groesse.x - 20.0F &&
+                    p.y < gz.ursprung.y + gz.groesse.y - 20.0F) {
+                    *kante = k;
+                    break;
+                }
+            }
+        }));
+        // kantenMitte liegt auf der Linie (die Beschriftung steht darueber).
+        add(klickAn("Doppelklick auf die Leitung", [=] {
+            const auto& km = g_app->graph().kantenMitte;
+            const auto it = km.find(*kante);
+            return it != km.end() ? it->second : ImVec2{-1.0F, -1.0F};
+        }, 0, true));
+        add(pause(0.2));
+        add(pruefe("Doppelklick auf eine Leitung setzt einen Umlenkpunkt", [=] {
+            const auto& u = g_app->graph().umlenk;
+            const auto it = u.find(*kante);
+            diag::detail("Knopftest: Umlenkpunkte an \"" + *kante + "\": " + std::to_string(it != u.end() ? it->second.size() : 0U));
+            return !kante->empty() && it != u.end() && it->second.size() == 1U;
+        }));
+        add(klickAn("Rechtsklick auf den Umlenkpunkt", [=] {
+            const App::GraphZustand& gz = g_app->graph();
+            const auto it = gz.umlenk.find(*kante);
+            if (it == gz.umlenk.end() || it->second.empty()) { return ImVec2{-1.0F, -1.0F}; }
+            const ImVec2 p = it->second.front();
+            return ImVec2{gz.ursprung.x + gz.panX + p.x * gz.zoom, gz.ursprung.y + gz.panY + p.y * gz.zoom};
+        }, 1));
+        add(pause(0.2));
+        add(pruefe("Rechtsklick entfernt den Umlenkpunkt wieder", [=] {
+            return g_app->graph().umlenk.find(*kante) == g_app->graph().umlenk.end();
+        }));
+        // Befehl auf freie Flaeche: neues Skript an der Abwurfstelle. Vorher
+        // alle Knoten weit nach rechts schieben, damit die Mitte frei ist.
+        auto reiterVorher = std::make_shared<std::size_t>(0);
+        auto modusVorher = std::make_shared<int>(0);
+        add(tu("Graph: die Mitte freimachen, links die Ereignisliste", [=] {
+            *reiterVorher = g_app->tabs.size();
+            *modusVorher = g_app->leftMode;
+            g_app->leftMode = 0;
+            g_app->graph().panX += g_app->graph().groesse.x * 3.0F;
+        }));
+        add(pause(0.2));
+        add(ziehe("flush  ", "", "##graphflaeche", "", 0, 0, 0.5F, true, ImVec2{0.0F, 0.0F}, true));
+        add(pause(0.3));
+        add(pruefe("Befehl auf freie Flaeche im Graph: neues Skript mit dem Befehl, als Knoten gewaehlt", [=] {
+            const App::GraphZustand& gz = g_app->graph();
+            const std::string name = mb::reiterName(static_cast<std::size_t>(g_app->activeTab));
+            bool knoten = false;
+            for (const GraphKnoten& k : gz.g.knoten) { knoten = knoten || k.schluessel == gz.auswahl; }
+            diag::detail("Knopftest: Graph-Ablegen - Reiter \"" + name + "\", Auswahl \"" + gz.auswahl + "\", " +
+                         std::to_string(g_app->tabs.size()) + " Reiter");
+            return g_app->tabs.size() == *reiterVorher + 1U && name.rfind("neu", 0) == 0 &&
+                   !g_app->doc.script().nodes.empty() && g_app->doc.script().nodes.front().name == "flush" &&
+                   gz.auswahl.rfind("s:", 0) == 0 && gz.auswahl.find("neu") != std::string::npos && knoten;
+        }));
+        add(tu("Graph: den neuen Reiter wieder schliessen, linke Spalte wie vorher", [=] {
+            if (mb::reiterName(static_cast<std::size_t>(g_app->activeTab)).rfind("neu", 0) == 0) {
+                g_app->doc.markSaved();
+                reiterSchliessen(g_app->activeTab);
+            }
+            mb::zumReiter("intro.txt");
+            g_app->leftMode = *modusVorher;
+        }));
+        add(pause(0.4));   // das neue Layout einschwingen lassen
+        add(tu("Graph: wieder einpassen", [] { g_app->graph().angepasst = false; }));
+        add(pause(0.3));
         // Doppelklick auf das Skript runner1 oeffnet seinen Reiter.
         add(tu("Graph: den Knoten runner1 (Skript) in die Mitte holen", [=] {
             App::GraphZustand& gz = g_app->graph();
@@ -7999,6 +8113,9 @@ std::vector<Schritt> undoListeSchritte() {
 std::vector<Schritt> zeitleisteSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    // Hier werden waits angeklickt und gezogen - seit rc597 sind sie sonst
+    // ausgeblendet.
+    add(tu("Zeitleiste: waits als Bloecke zeigen", [] { g_app->tlWaitsZeigen = true; }));
     const auto xVon = [](double ms) {
         return g_app->tlFeldX + static_cast<float>((ms - g_app->tlSichtStart) / g_app->tlSichtSpanne) * g_app->tlFeldW;
     };
@@ -8028,7 +8145,9 @@ std::vector<Schritt> zeitleisteSchritte() {
         g_app->zeigeRuhigeSpuren = false;
         g_app->leftMode = 1;
         g_app->showTracks = true;
-        g_app->timelineFrac = 0.40F;
+        // rc597: die Kamera ist eine Gruppe mit eigener Kopfzeile - eine
+        // Zeile mehr, also etwas mehr Hoehe.
+        g_app->timelineFrac = 0.50F;
         g_app->timelineZoom = 1.0;
         g_app->timelineViewStartMs = 0.0;
         g_app->timelineFrames = false;
@@ -8904,6 +9023,27 @@ std::vector<Schritt> kameraSchritte() {
                g_app->gpuKarte > 0 && g_app->gpuFehler.empty();
     }));
     add(foto("kamera_vorschau"));
+    // rc597, shank: "wenn ich die Kamera anklicke und die Timeline bewege,
+    // bleibt das Bild rechts unten einfach stehen". Mit gewaehltem Schluessel
+    // die Zeitleiste in die Fahrt zum zweiten Schluessel stellen - die
+    // Vorschau muss mitfahren.
+    auto vorschauOrt = std::make_shared<std::array<float, 3>>();
+    add(tu("Vorschau: Zeitleiste auf 1000 ms", [] { g_app->playMs = 1000.0; g_app->mapDirty = true; }));
+    add(pause(0.3));
+    add(tu("Vorschau: Ort merken, Zeitleiste auf 2500 ms", [=] {
+        for (int k = 0; k < 3; ++k) { (*vorschauOrt)[k] = g_app->vorschauPos[k]; }
+        g_app->playMs = 2500.0;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(pruefe("Vorschau folgt der Zeitleiste (gewaehlte Kamera, Zeit bewegt)", [=] {
+        float d = 0.0F;
+        for (int k = 0; k < 3; ++k) { d += std::fabs(g_app->vorschauPos[k] - (*vorschauOrt)[k]); }
+        diag::detail("Knopftest: Vorschau bewegt sich um " + std::to_string(d) + " Einheiten");
+        return g_app->vorschauGezeigt && d > 1.0F;
+    }));
+    add(tu("Vorschau: Zeitleiste zurueck auf 0", [] { g_app->playMs = 0.0; g_app->mapDirty = true; }));
+    add(pause(0.3));
     add(klick(tr(Str::CamPreview), "##kameraleiste"));
     add(pause(0.4));
     add(gezeichnet("ohne Vorschau"));
@@ -8957,11 +9097,117 @@ std::vector<Schritt> kameraSchritte() {
            [] { g_app->playMs = 2500.0; g_app->mapDirty = true; }));
     add(pause(0.25));
     add(gezeichnet("unterwegs"));
-    add(pruefe("Unterwegs: Geisterkamera und Linie zum Zielpunkt, dort sitzt das Gizmo", [] {
+    add(foto("kamera_bahn"));
+    // rc597: die Kamerabahn wie die der Figuren - grau voraus, gelb gefahren.
+    add(pruefe("Kamerabahn: kraeftig, gelb bis zur Zeit, grau danach", [] {
+        diag::detail("Knopftest: Kamerabahn - " + std::to_string(g_app->kamBahnFarbig) + " gelb, " +
+                     std::to_string(g_app->kamBahnGrau) + " grau");
+        return g_app->kamBahnFarbig > 0 && g_app->kamBahnGrau > 0;
+    }));
+    // "show all und active, weil das zu unuebersichtlich wird".
+    auto bahnZeitAktiv = std::make_shared<std::pair<double, double>>();
+    add(tu("Kamerabahn: nur die aktive Fahrt", [] { g_app->kamBahnNurAktiv = true; g_app->mapDirty = true; }));
+    add(pause(0.2));
+    add(klick(tr(Str::CamPathAll)));
+    add(pause(0.3));
+    add(pruefe("Kamerabahn: 'Alle' zeigt alle Fahrten, 'Aktiv' nur die um die Zeit", [] {
+        const bool alle = !g_app->kamBahnNurAktiv;
+        diag::detail("Knopftest: Kamerabahn - nach Klick auf 'Alle': alle " + std::to_string(alle));
+        return alle;
+    }));
+    add(klick(tr(Str::CamPathActive)));
+    add(pause(0.3));
+    add(pruefe("Kamerabahn: und zurueck auf 'Aktiv'", [] { return g_app->kamBahnNurAktiv && g_app->kamBahnFarbig > 0; }));
+    // rc597, shank: "wenn die Kamera zwischen 2 Punkten ist und ich drehe die
+    // Kamera oder bewege sie, wird an dem Punkt ein neuer erstellt und nicht
+    // der Anfang geaendert". Unterwegs sitzt das Gizmo deshalb an der
+    // LAUFENDEN Kamera; die Geisterkamera zeigt weiter das Ziel.
+    add(pruefe("Unterwegs: Geisterkamera am Zielpunkt, das Gizmo an der laufenden Kamera", [] {
         if (g_app->keyMarks.size() < 2U) { return false; }
-        const auto& k = g_app->keyMarks[1];
-        return g_app->geisterKamera && g_app->selectedKey == 1 &&
-               std::fabs(g_app->gizmoSx[0][0] - k.sx) < 3.0F;
+        diag::detail("Knopftest: unterwegs - Kamera " + std::to_string(g_app->cameraSx) + "/" + std::to_string(g_app->cameraSy) +
+                     ", Gizmo " + std::to_string(g_app->gizmoSx[0][0]) + "/" + std::to_string(g_app->gizmoSy[0][0]) +
+                     ", zwischen " + std::to_string(g_app->kameraGizmoZwischen));
+        return g_app->geisterKamera && g_app->selectedKey == 1 && g_app->kameraGizmoZwischen &&
+               std::fabs(g_app->gizmoSx[0][0] - g_app->cameraSx) < 3.0F && std::fabs(g_app->gizmoSy[0][0] - g_app->cameraSy) < 3.0F;
+    }));
+    // Auto-Key: mitten in der Fahrt am Gizmo ziehen.
+    struct AutoKey {
+        std::vector<std::array<float, 3>> orte;
+        std::size_t tiefe = 0;
+        float z = 0.0F;
+        std::vector<double> enden;
+    };
+    auto ak = std::make_shared<AutoKey>();
+    const auto schluesselOrte = [] {
+        std::vector<std::array<float, 3>> o;
+        for (const KameraSchluessel& k : kameraSchluessel(g_app->doc.script())) { o.push_back({k.pos[0], k.pos[1], k.pos[2]}); }
+        return o;
+    };
+    const auto fahrtEnden = [] {
+        std::vector<double> e;
+        for (const CamSegment& c : g_app->camTrack.segments) {
+            if (c.kind == CamSegment::Kind::Move && c.fremd.empty()) { e.push_back(c.endMs); }
+        }
+        return e;
+    };
+    add(tu("Auto-Key: Stand merken", [=] {
+        ak->orte = schluesselOrte();
+        ak->tiefe = g_app->doc.undoDepth();
+        ak->z = camStateAt(2500.0).pos[2];
+        for (const CamSegment& c : g_app->camTrack.segments) {
+            if (c.kind == CamSegment::Kind::Move && c.fremd.empty()) { ak->enden.push_back(c.endMs); }
+        }
+    }));
+    add(ziehenAn("Auto-Key: mitten in der Fahrt an Z 50 Punkte hoch", [] {
+        const float x = g_app->gizmoSx[2][0] + (g_app->gizmoSx[2][1] - g_app->gizmoSx[2][0]) * 0.66F;
+        const float y = g_app->gizmoSy[2][0] + (g_app->gizmoSy[2][1] - g_app->gizmoSy[2][0]) * 0.66F;
+        return bildZuSchirm(x, y);
+    }, 0.0F, -50.0F, 0));
+    add(pause(0.4));
+    add(pruefe("Auto-Key: ein neuer Schluessel bei 2,5 s - die alten bleiben, die Zeiten danach auch", [=] {
+        const auto jetzt = schluesselOrte();
+        int alteDa = 0;
+        for (const auto& o : ak->orte) {
+            for (const auto& n : jetzt) {
+                if (std::fabs(o[0] - n[0]) + std::fabs(o[1] - n[1]) + std::fabs(o[2] - n[2]) < 0.05F) { ++alteDa; break; }
+            }
+        }
+        bool neuerHoeher = false;
+        for (const auto& n : jetzt) { neuerHoeher = neuerHoeher || n[2] > ak->z + 5.0F; }
+        const auto enden = fahrtEnden();
+        const auto hat = [&](double t) {
+            for (const double e : enden) {
+                if (std::fabs(e - t) < 1.0) { return true; }
+            }
+            return false;
+        };
+        std::string z;
+        for (const double e : enden) { z += " " + std::to_string(static_cast<int>(e)); }
+        diag::detail("Knopftest: Auto-Key - Schluessel " + std::to_string(ak->orte.size()) + " -> " + std::to_string(jetzt.size()) +
+                     ", alte noch da " + std::to_string(alteDa) + ", Fahrten enden bei" + z);
+        bool alteZeiten = true;
+        for (const double e : ak->enden) { alteZeiten = alteZeiten && hat(e); }
+        return jetzt.size() == ak->orte.size() + 1U && alteDa == static_cast<int>(ak->orte.size()) && neuerHoeher &&
+               hat(2500.0) && alteZeiten;
+    }));
+    add(tu("Auto-Key: zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > ak->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->selectedKey = 1;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(klickAn("Auto-Key: nur anklicken, nicht ziehen", [] {
+        const float x = g_app->gizmoSx[2][0] + (g_app->gizmoSx[2][1] - g_app->gizmoSx[2][0]) * 0.66F;
+        const float y = g_app->gizmoSy[2][0] + (g_app->gizmoSy[2][1] - g_app->gizmoSy[2][0]) * 0.66F;
+        return bildZuSchirm(x, y);
+    }));
+    add(pause(0.3));
+    add(pruefe("Auto-Key: ein Klick ohne Ziehen laesst alles, wie es war", [=] {
+        diag::detail("Knopftest: Auto-Key - nach Klick " + std::to_string(schluesselOrte().size()) + " Schluessel, Tiefe " +
+                     std::to_string(g_app->doc.undoDepth()) + " (vorher " + std::to_string(ak->tiefe) + ")");
+        return schluesselOrte().size() == ak->orte.size() && g_app->doc.undoDepth() == ak->tiefe;
     }));
     add(tu("Zeitleiste auf 6000 ms (Kamera steht am dritten Schluessel)",
            [] { g_app->playMs = 6000.0; g_app->mapDirty = true; }));
@@ -9244,6 +9490,45 @@ std::vector<Schritt> kameraSchritte() {
         return !g_app->kameraPilot && kameraVektor(1) == "0.000 6400.000 100.000" &&
                std::fabs(g_app->cam.pos[0] - (*vorPilot)[0]) < 0.01F;
     }));
+    // rc597: "Schluessel setzen" beim Pilotieren - die geflogene Ansicht zur
+    // eingestellten Zeit; mitten in einer Fahrt entsteht ein neuer Schluessel.
+    struct PilotKey {
+        std::size_t schluessel = 0;
+        std::size_t tiefe = 0;
+        std::array<float, 3> ort{};
+    };
+    auto pk = std::make_shared<PilotKey>();
+    add(tu("Pilot: Zeit mitten in die zweite Fahrt (2,5 s), Steuern, 120 hoch", [=] {
+        g_app->playMs = 2500.0;
+        g_app->selectedKey = 1;
+        pk->schluessel = kameraSchluessel(g_app->doc.script()).size();
+        pk->tiefe = g_app->doc.undoDepth();
+        kameraPilotStarten();
+        g_app->cam.pos[2] += 120.0F;
+        for (int k = 0; k < 3; ++k) { pk->ort[static_cast<std::size_t>(k)] = g_app->cam.pos[k]; }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    add(klick(tr(Str::CamPilotKey), "##kamerapilot"));
+    add(pause(0.4));
+    add(pruefe("Pilot: 'Schluessel setzen' legt mitten in der Fahrt einen neuen an - mit der geflogenen Stellung", [=] {
+        const auto ks = kameraSchluessel(g_app->doc.script());
+        bool da = false;
+        for (const KameraSchluessel& k : ks) {
+            da = da || (std::fabs(k.pos[0] - pk->ort[0]) + std::fabs(k.pos[1] - pk->ort[1]) + std::fabs(k.pos[2] - pk->ort[2]) < 0.5F);
+        }
+        diag::detail("Knopftest: Pilot - Schluessel " + std::to_string(pk->schluessel) + " -> " + std::to_string(ks.size()) +
+                     ", geflogene Stellung dabei " + std::to_string(da) + ", Pilot noch an " + std::to_string(g_app->kameraPilot));
+        return g_app->kameraPilot && ks.size() == pk->schluessel + 1U && da;
+    }));
+    add(tu("Pilot: abbrechen und zuruecknehmen", [=] {
+        kameraPilotBeenden(false);
+        while (g_app->doc.undoDepth() > pk->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
     // Neue Einstellung und loeschen - je ein Schritt.
     add(tu("Ansicht fuer die neue Einstellung", [] {
         g_app->cam.pos[0] = 50.0F; g_app->cam.pos[1] = 6300.0F; g_app->cam.pos[2] = 180.0F;
@@ -11322,6 +11607,1323 @@ std::vector<Schritt> wegSchritte() {
     return s;
 }
 
+// --- Umriss der Auswahl (rc597) ------------------------------------------------
+//
+// "wenn ich bei uns ein Schiff oder eine figur auswaehle ... das es dann
+// gehighlightet ist" - wie in Unreal eine orange Linie um das Gewaehlte.
+// Gezaehlt werden die Bildpunkte in genau der Umrissfarbe, vor und nach dem
+// Waehlen.
+namespace {
+int orangePunkte() {
+    std::vector<std::uint8_t> px;
+    int w = 0;
+    int h = 0;
+    if (!gpu::leseFarbe(px, w, h) || px.empty()) { return -1; }
+    int n = 0;
+    const std::size_t alle = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    for (std::size_t i = 0; i < alle; ++i) {
+        const int r = px[i * 4U];
+        const int g = px[i * 4U + 1U];
+        const int b = px[i * 4U + 2U];
+        if (r >= 249 && std::abs(g - 168) <= 6 && std::abs(b - 31) <= 6) { ++n; }
+    }
+    return n;
+}
+}  // namespace
+
+std::vector<Schritt> umrissSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    struct Kandidat {
+        int entity = -1;
+        float mitte[3]{};
+        float radius = 0.0F;
+    };
+    auto kandidaten = std::make_shared<std::vector<Kandidat>>();
+    auto vorher = std::make_shared<int>(0);
+    auto bilder0 = std::make_shared<int>(0);
+    auto bester = std::make_shared<int>(0);
+    auto zuwachsBilder = std::make_shared<int>(0);
+    add(tu("Umriss: Ausgangslage, Brush-Objekte (func_*) suchen", [=] {
+        g_app->cameraSelected = false;
+        g_app->selectedKey = -1;
+        g_app->selectedActor = -1;
+        g_app->throughCamera = false;
+        entityAuswahlSetzen(-1);
+        kandidaten->clear();
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            const std::string* mdl = e.find("model");
+            if (e.classname.rfind("func_", 0) != 0 || mdl == nullptr || mdl->size() < 2 || (*mdl)[0] != '*') { continue; }
+            const int nr = std::atoi(mdl->c_str() + 1);
+            if (nr <= 0 || static_cast<std::size_t>(nr) >= g_app->geo.models.size()) { continue; }
+            const auto bm = g_app->brushMeshes.find(nr);
+            if (bm == g_app->brushMeshes.end() || bm->second.indexes.empty()) { continue; }
+            const auto& sm = g_app->geo.models[static_cast<std::size_t>(nr)];
+            Kandidat k;
+            k.entity = static_cast<int>(i);
+            float d2 = 0.0F;
+            for (int a = 0; a < 3; ++a) {
+                k.mitte[a] = (sm.mins[a] + sm.maxs[a]) * 0.5F;
+                d2 += (sm.maxs[a] - sm.mins[a]) * (sm.maxs[a] - sm.mins[a]);
+            }
+            k.radius = std::sqrt(d2) * 0.5F;
+            if (k.radius > 24.0F && k.radius < 700.0F) { kandidaten->push_back(k); }
+        }
+        // Die groessten zuerst - die sieht man am ehesten.
+        std::sort(kandidaten->begin(), kandidaten->end(), [](const Kandidat& a, const Kandidat& b) { return a.radius > b.radius; });
+        if (kandidaten->size() > 4U) { kandidaten->resize(4U); }
+        diag::detail("Knopftest: Umriss - " + std::to_string(kandidaten->size()) + " Brush-Objekte zur Probe");
+        *bester = 0;
+        *zuwachsBilder = 0;
+    }));
+    add(pruefe("Umriss: Brush-Objekte zur Probe gefunden", [=] { return !kandidaten->empty(); }));
+    // Vier Richtungen je Objekt reichen nicht immer an Waenden vorbei - es
+    // genuegt, wenn EIN Objekt aus EINER Richtung sichtbar umrandet wird.
+    for (int k = 0; k < 4; ++k) {
+        add(tu("Umriss: Kamera vor Objekt " + std::to_string(k + 1), [=] {
+            entityAuswahlSetzen(-1);
+            if (static_cast<std::size_t>(k) >= kandidaten->size()) { return; }
+            const Kandidat& c = (*kandidaten)[static_cast<std::size_t>(k)];
+            const float gier = static_cast<float>(k) * 1.5707963F + 0.6F;
+            const float abst = c.radius * 1.4F + 120.0F;
+            g_app->cam.pos[0] = c.mitte[0] - std::cos(gier) * abst;
+            g_app->cam.pos[1] = c.mitte[1] - std::sin(gier) * abst;
+            g_app->cam.pos[2] = c.mitte[2] + abst * 0.45F;
+            aimAngles(g_app->cam.pos, c.mitte, g_app->cam.angles);
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.4));
+        add(tu("Umriss: Bild ohne Auswahl zaehlen", [=] {
+            *vorher = orangePunkte();
+            *bilder0 = g_app->umrissBilder;
+        }));
+        add(tu("Umriss: Objekt " + std::to_string(k + 1) + " waehlen", [=] {
+            if (static_cast<std::size_t>(k) < kandidaten->size()) {
+                entityAuswahlSetzen((*kandidaten)[static_cast<std::size_t>(k)].entity);
+            }
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.4));
+        add(tu("Umriss: Bild mit Auswahl zaehlen", [=] {
+            if (static_cast<std::size_t>(k) >= kandidaten->size()) { return; }
+            const int nachher = orangePunkte();
+            const int zuwachs = nachher - *vorher;
+            *bester = std::max(*bester, zuwachs);
+            *zuwachsBilder += g_app->umrissBilder - *bilder0;
+            const MapEntity& e = g_app->map.entities[static_cast<std::size_t>((*kandidaten)[static_cast<std::size_t>(k)].entity)];
+            diag::detail("Knopftest: Umriss - " + e.classname + " (Entity " +
+                         std::to_string((*kandidaten)[static_cast<std::size_t>(k)].entity) + "): orange vorher " +
+                         std::to_string(*vorher) + ", nachher " + std::to_string(nachher));
+        }));
+        add(foto("umriss_brush" + std::to_string(k + 1)));
+    }
+    add(pruefe("Umriss: ein gewaehltes Brush-Objekt bekommt eine orange Linie", [=] {
+        diag::detail("Knopftest: Umriss - bester Zuwachs " + std::to_string(*bester) + " Punkte, " +
+                     std::to_string(*zuwachsBilder) + " Umrissbilder");
+        return *bester >= 40 && *zuwachsBilder > 0;
+    }));
+    add(tu("Umriss: Auswahl weg", [] {
+        entityAuswahlSetzen(-1);
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    // Die Karte selbst hat Punkte in dieser Farbe (Lava) - verglichen wird
+    // mit dem Bild vor dem Waehlen (dieselbe Ansicht).
+    add(pruefe("Umriss: abgewaehlt ist die Linie wieder weg", [=] {
+        const int n = orangePunkte();
+        diag::detail("Knopftest: Umriss - abgewaehlt " + std::to_string(n) + " orange Punkte, vor dem Waehlen " +
+                     std::to_string(*vorher));
+        return n >= 0 && std::abs(n - *vorher) < 20;
+    }));
+
+    // --- Figur: per Klick auf ihre Marke waehlen ---------------------------
+    auto figur = std::make_shared<int>(-1);
+    // Nicht jede Figur steht zur Zeit 0 schon da - die erste nehmen, deren
+    // Marke in der Ansicht liegt.
+    add(tu("Umriss: Zeit auf den Anfang", [=] {
+        *figur = -1;
+        g_app->playMs = 0;
+        g_app->mapDirty = true;
+    }));
+    for (int k = 0; k < 6; ++k) {
+        add(tu("Umriss: Kamera vor Figur " + std::to_string(k + 1), [=] {
+            if (*figur >= 0) { return; }
+            int gesehen = 0;
+            for (std::size_t i = 0; i < g_app->scene.actors.size(); ++i) {
+                const Actor& a = g_app->scene.actors[i];
+                if (!a.haveStart || a.brushModel > 0) { continue; }
+                const ActorState st = a.at(g_app->playMs);
+                if (!st.visible) { continue; }
+                if (gesehen++ != k) { continue; }
+                const float ziel[3] = {st.pos[0], st.pos[1], st.pos[2] + 20.0F};
+                const float gier = a.startAngles[1] * 3.14159265F / 180.0F;
+                g_app->cam.pos[0] = st.pos[0] + std::cos(gier) * 150.0F;
+                g_app->cam.pos[1] = st.pos[1] + std::sin(gier) * 150.0F;
+                g_app->cam.pos[2] = st.pos[2] + 50.0F;
+                aimAngles(g_app->cam.pos, ziel, g_app->cam.angles);
+                g_app->mapDirty = true;
+                break;
+            }
+        }));
+        add(pause(0.4));
+        add(tu("Umriss: steht eine Figur in der Mitte?", [=] {
+            if (*figur >= 0) { return; }
+            // Die Marken liegen in Bildkoordinaten.
+            const float bw = static_cast<float>(g_app->mapImage.width);
+            const float bh = static_cast<float>(g_app->mapImage.height);
+            const ImVec2 m{bw * 0.5F, bh * 0.5F};
+            float best = 1e30F;
+            for (const App::ActorMark& am : g_app->actorMarks) {
+                if (am.sx < 30.0F || am.sx > bw - 30.0F || am.sy < 30.0F || am.sy > bh - 30.0F) { continue; }
+                const float d = (am.sx - m.x) * (am.sx - m.x) + (am.sy - m.y) * (am.sy - m.y);
+                if (d < best) {
+                    best = d;
+                    *figur = am.index;
+                }
+            }
+            if (*figur >= 0) { diag::detail("Knopftest: Umriss - Figur " + std::to_string(*figur) + " im Bild"); }
+        }));
+    }
+    add(tu("Umriss: Bild ohne Auswahl zaehlen (Figur)", [=] {
+        *vorher = orangePunkte();
+        *bilder0 = g_app->umrissBilder;
+    }));
+    add(klickAn("Klick auf die Figur", [=] {
+        for (const App::ActorMark& am : g_app->actorMarks) {
+            if (am.index == *figur) { return bildZuSchirm(am.sx, am.sy); }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }));
+    add(pause(0.4));
+    add(foto("umriss_figur"));
+    add(pruefe("Umriss: eine angeklickte Figur bekommt eine orange Linie", [=] {
+        const int nachher = orangePunkte();
+        diag::detail("Knopftest: Umriss - nach dem Klick: Entity " + std::to_string(g_app->pickedEntity) + ", Kamera " +
+                     (g_app->cameraSelected ? "ja" : "nein") + ", Schluessel " + std::to_string(g_app->selectedKey));
+        diag::detail("Knopftest: Umriss - Figur " + std::to_string(g_app->selectedActor) + " gewaehlt, orange vorher " +
+                     std::to_string(*vorher) + ", nachher " + std::to_string(nachher) + ", " +
+                     std::to_string(g_app->umrissBilder - *bilder0) + " Umrissbilder");
+        return g_app->selectedActor == *figur && *figur >= 0 && nachher - *vorher >= 40 && g_app->umrissBilder > *bilder0;
+    }));
+    add(tu("Umriss: Figur abwaehlen", [] {
+        g_app->selectedActor = -1;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.2));
+    return s;
+}
+
+// --- Marke und Gizmo folgen Schiff und Figur (rc597) --------------------------
+//
+// "sollte sich die ent nicht mit dem schiff mitbewegen?", "ich kann das schiff
+// nicht anklicken weil das ent nicht drauf ist", "auch beim character
+// dasselbe", "auch wenn ich die figur anklicke sollte das ent ausgewaehlt
+// sein". md_am_sith: sta2 (func_static) fliegt per Skript ein.
+struct FolgeZiel {
+    int actor = -1;
+    int entity = -1;
+    double ms = 0.0;
+};
+
+// Die freie Kamera vor die Figur bzw. das Schiff stellen, Zeit auf ihren Moment.
+void folgeKameraVor(const FolgeZiel& z, float abst, float hoch) {
+    if (z.actor < 0) { return; }
+    g_app->playMs = z.ms;
+    const ActorState st = g_app->scene.actors[static_cast<std::size_t>(z.actor)].at(z.ms);
+    const float ziel[3] = {st.pos[0], st.pos[1], st.pos[2] + 20.0F};
+    g_app->cam.pos[0] = st.pos[0] - abst;
+    g_app->cam.pos[1] = st.pos[1] - abst * 0.3F;
+    g_app->cam.pos[2] = st.pos[2] + hoch;
+    aimAngles(g_app->cam.pos, ziel, g_app->cam.angles);
+    g_app->throughCamera = false;
+    g_app->cameraSelected = false;
+    g_app->selectedActor = -1;
+    entityAuswahlSetzen(-1);
+    g_app->mapDirty = true;
+}
+std::vector<Schritt> folgeSchritte2(std::shared_ptr<FolgeZiel> schiff, std::shared_ptr<FolgeZiel> figur);
+
+std::vector<Schritt> folgeSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    using Ziel = FolgeZiel;
+    auto schiff = std::make_shared<Ziel>();
+    auto figur = std::make_shared<Ziel>();
+    auto klick = std::make_shared<ImVec2>(-1.0F, -1.0F);
+    // Ein Zeitpunkt, an dem die Figur (das Brush-Modell) weit weg vom Start ist.
+    const auto suche = [](bool brush, Ziel& z) {
+        z = Ziel{};
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size() && z.actor < 0; ++ai) {
+            const Actor& a = g_app->scene.actors[ai];
+            if (!a.haveStart || (a.brushModel > 0) != brush) { continue; }
+            int ei = -1;
+            if (brush) {
+                for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+                    const std::string* mdl = g_app->map.entities[i].find("model");
+                    if (mdl != nullptr && *mdl == "*" + std::to_string(a.brushModel) && !g_app->map.entities[i].origin.empty()) {
+                        ei = static_cast<int>(i);
+                    }
+                }
+            } else {
+                ei = entityFuerFigur(static_cast<int>(ai));
+            }
+            float o[3];
+            if (ei < 0 || !entityOrt(g_app->map.entities[static_cast<std::size_t>(ei)], o)) { continue; }
+            for (double ms = 500.0; ms < 60000.0; ms += 500.0) {
+                const ActorState st = a.at(ms);
+                const float dx = st.pos[0] - o[0];
+                const float dy = st.pos[1] - o[1];
+                const float dz = st.pos[2] - o[2];
+                if (st.visible && dx * dx + dy * dy + dz * dz > (brush ? 150.0F * 150.0F : 64.0F * 64.0F)) {
+                    z.actor = static_cast<int>(ai);
+                    z.entity = ei;
+                    z.ms = ms;
+                    break;
+                }
+            }
+        }
+    };
+    const auto kameraVor = [](const Ziel& z, float abst, float hoch) { folgeKameraVor(z, abst, hoch); };
+    const auto gezeigtBei = [](const Ziel& z, float& abstand) {
+        abstand = 1e9F;
+        if (z.actor < 0 || z.entity < 0) { return false; }
+        const Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.actor)];
+        const ActorState st = a.at(g_app->playMs);
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(z.entity)];
+        float o[3];
+        if (!entityOrtAnzeige(e, o)) { return false; }
+        // Erwartet: genau dort, wo Figur oder Schiff gerade sind.
+        float d2 = 0.0F;
+        for (int k = 0; k < 3; ++k) { d2 += (o[k] - st.pos[k]) * (o[k] - st.pos[k]); }
+        abstand = std::sqrt(d2);
+        bool marke = false;
+        for (const App::PickedMarker& mk : g_app->markers) { marke = marke || static_cast<int>(mk.entity) == z.entity; }
+        return marke && abstand < 2.0F;
+    };
+
+    add(tu("Folgen: Schiff und Figur suchen, die das Skript bewegt", [=] {
+        suche(true, *schiff);
+        suche(false, *figur);
+        diag::detail("Knopftest: Folgen - Schiff: Figur " + std::to_string(schiff->actor) + ", Entity " +
+                     std::to_string(schiff->entity) + ", " + std::to_string(static_cast<int>(schiff->ms)) + " ms; Figur: " +
+                     std::to_string(figur->actor) + ", Entity " + std::to_string(figur->entity) + ", " +
+                     std::to_string(static_cast<int>(figur->ms)) + " ms");
+    }));
+    add(pruefe("Folgen: ein bewegtes Schiff und eine laufende Figur gefunden", [=] {
+        return schiff->actor >= 0 && figur->actor >= 0;
+    }));
+    // --- Schiff -------------------------------------------------------------
+    add(tu("Folgen: Kamera vor das fliegende Schiff", [=] { kameraVor(*schiff, 420.0F, 160.0F); }));
+    add(pause(0.5));
+    add(foto("folgen_schiff"));
+    add(pruefe("Folgen: die Marke des Schiffs steht dort, wo das Schiff gerade fliegt", [=] {
+        float d = 0.0F;
+        const bool ok = gezeigtBei(*schiff, d);
+        diag::detail("Knopftest: Folgen - Schiff: Abstand der Marke zum Schiff " + std::to_string(d));
+        return ok;
+    }));
+    add(tu("Folgen: eine Stelle auf dem Schiff suchen, an der keine Marke liegt", [=] {
+        *klick = ImVec2{-1.0F, -1.0F};
+        auto treffer = std::make_shared<std::map<int, int>>();
+        const float skal = g_app->mapImage.width > 0
+                               ? static_cast<float>(g_app->mapImage.width) /
+                                     std::max(1.0F, g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0])
+                               : 1.0F;
+        const float reich = ImGui::GetFontSize() * 2.0F;
+        float bestAbst = -1.0F;
+        for (float y = g_app->kartenAnsicht[1] + 20.0F; y < g_app->kartenAnsicht[3] - 20.0F; y += 10.0F) {
+            for (float x = g_app->kartenAnsicht[0] + 20.0F; x < g_app->kartenAnsicht[2] - 20.0F; x += 10.0F) {
+                const int hit = moverUnterMaus(x, y);
+                if (hit >= 0) { ++(*treffer)[hit]; }
+                if (hit != schiff->entity) { continue; }
+                float naechste = 1e9F;
+                for (const App::PickedMarker& mk : g_app->markers) {
+                    const float mx = g_app->kartenAnsicht[0] + mk.sx / skal;
+                    const float my = g_app->kartenAnsicht[1] + mk.sy / skal;
+                    naechste = std::min(naechste, (mx - x) * (mx - x) + (my - y) * (my - y));
+                }
+                for (const App::ActorMark& am : g_app->actorMarks) {
+                    const float mx = g_app->kartenAnsicht[0] + am.sx / skal;
+                    const float my = g_app->kartenAnsicht[1] + am.sy / skal;
+                    naechste = std::min(naechste, (mx - x) * (mx - x) + (my - y) * (my - y));
+                }
+                if (naechste > reich * reich && naechste > bestAbst) {
+                    bestAbst = naechste;
+                    *klick = ImVec2{x, y};
+                }
+            }
+        }
+        std::string t;
+        for (const auto& [ei, n] : *treffer) { t += " " + std::to_string(ei) + ":" + std::to_string(n); }
+        int mitSchiff = 0;
+        for (const App::PickMover& pm : g_app->pickMover) { mitSchiff += pm.entity == schiff->entity ? 1 : 0; }
+        diag::detail("Knopftest: Folgen - Klickstelle auf dem Schiff " + std::to_string(klick->x) + "/" + std::to_string(klick->y) +
+                     "; " + std::to_string(g_app->pickMover.size()) + " Modelle (" + std::to_string(mitSchiff) +
+                     " vom Schiff), Treffer:" + t);
+    }));
+    add(klickAn("Klick auf das Schiff (nicht auf die Marke)", [=] { return *klick; }));
+    add(pause(0.3));
+    add(pruefe("Folgen: ein Klick auf das Schiff waehlt seine Entity", [=] {
+        diag::detail("Knopftest: Folgen - gewaehlt " + std::to_string(g_app->pickedEntity) + ", erwartet " +
+                     std::to_string(schiff->entity));
+        return klick->x >= 0.0F && g_app->pickedEntity == schiff->entity;
+    }));
+    // --- Figur --------------------------------------------------------------
+    add(tu("Folgen: Kamera vor die gelaufene Figur", [=] { kameraVor(*figur, 170.0F, 60.0F); }));
+    add(pause(0.5));
+    add(pruefe("Folgen: die Marke des Spawners steht bei der Figur", [=] {
+        float d = 0.0F;
+        const bool ok = gezeigtBei(*figur, d);
+        diag::detail("Knopftest: Folgen - Figur: Abstand der Marke zur Figur " + std::to_string(d));
+        return ok;
+    }));
+    add(klickAn("Klick auf die Figur", [=] {
+        for (const App::ActorMark& am : g_app->actorMarks) {
+            if (am.index == figur->actor) { return bildZuSchirm(am.sx, am.sy); }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }));
+    add(pause(0.3));
+    add(foto("folgen_figur"));
+    add(pruefe("Folgen: ein Klick auf die Figur waehlt Figur UND ihren Spawner", [=] {
+        diag::detail("Knopftest: Folgen - Figur " + std::to_string(g_app->selectedActor) + ", Entity " +
+                     std::to_string(g_app->pickedEntity) + ", erwartet " + std::to_string(figur->actor) + "/" +
+                     std::to_string(figur->entity));
+        return figur->actor >= 0 && g_app->selectedActor == figur->actor && g_app->pickedEntity == figur->entity;
+    }));
+    // --- Effekte in der Kameravorschau (rc597) ------------------------------
+    //
+    // "wenn die kamera rechts unten angezeigt wird und ich meine hauptkamera
+    // weg drehe werden die effecte nicht mehr gerendert in der kamera rechts
+    // unten". Bei 22,4 s schaut die Skriptkamera auf Lavafall und Rauch.
+    auto eckenGleich = std::make_shared<int>(0);
+    add(tu("Vorschau-Effekte: Kamera waehlen, Zeit 22,4 s", [] {
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(-1);
+        g_app->cameraSelected = true;
+        g_app->kameraBildImBild = true;
+        g_app->playMs = 22420.0;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(tu("Vorschau-Effekte: Hauptkamera blickt wie die Vorschau", [] {
+        for (int k = 0; k < 3; ++k) {
+            g_app->cam.pos[k] = g_app->vorschauPos[k];
+            g_app->cam.angles[k] = g_app->vorschauWinkel[k];
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(tu("Vorschau-Effekte: Ecken merken, Hauptkamera umdrehen", [=] {
+        *eckenGleich = g_app->nebenEffektEcken;
+        g_app->cam.angles[1] = g_app->vorschauWinkel[1] + 180.0F;
+        g_app->cam.angles[0] = -g_app->vorschauWinkel[0];
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("vorschau_effekte"));
+    add(pruefe("Vorschau-Effekte: dreht die Hauptkamera weg, bleiben die Effekte in der Vorschau", [=] {
+        diag::detail("Knopftest: Vorschau-Effekte - Ecken mit gleichem Blick " + std::to_string(*eckenGleich) +
+                     ", Hauptkamera weggedreht " + std::to_string(g_app->nebenEffektEcken) + ", Hauptansicht " +
+                     std::to_string(g_app->effectMesh.verts.size()) + ", Vorschau gezeigt " +
+                     std::to_string(g_app->vorschauGezeigt));
+        return g_app->vorschauGezeigt && *eckenGleich > 100 &&
+               static_cast<float>(g_app->nebenEffektEcken) >= 0.8F * static_cast<float>(*eckenGleich);
+    }));
+    // --- Rauch vor dem Gluehen (rc597) -------------------------------------
+    //
+    // "wenn ich durch den rauch auf den Vulkan schaue soll der so pixelig
+    // sein?" - "das ist dynamic glow, wenn es aus ist, sieht es richtig aus".
+    // Die Kamera hinter Rauch- und Dampfeffekte stellen, durch sie hindurch
+    // blicken und messen, was das Gluehen zum Bild beitraegt (mit minus
+    // ohne) - einmal mit, einmal ohne die Daempfung durch den Rauch.
+    struct GluehMessung {
+        std::vector<std::array<float, 3>> orte;
+        std::vector<std::uint8_t> an;
+        std::vector<std::uint8_t> aus;
+        double besteDaempfung = 0.0;
+        double beitragOhne = 0.0;
+        int posen = 0;
+        int rauchAufrufe = 0;
+    };
+    auto gm = std::make_shared<GluehMessung>();
+    const auto lies = [](std::vector<std::uint8_t>& px) {
+        int w = 0;
+        int h = 0;
+        return gpu::leseFarbe(px, w, h) && !px.empty();
+    };
+    const auto beitrag = [](const std::vector<std::uint8_t>& an, const std::vector<std::uint8_t>& aus) {
+        if (an.size() != aus.size() || an.empty()) { return -1.0; }
+        double summe = 0.0;
+        for (std::size_t i = 0; i < an.size(); i += 4U) {
+            for (std::size_t k = 0; k < 3U; ++k) { summe += std::max(0, static_cast<int>(an[i + k]) - static_cast<int>(aus[i + k])); }
+        }
+        return summe / static_cast<double>(an.size() / 4U);
+    };
+    add(tu("Rauch: Rauch- und Dampfeffekte suchen", [=] {
+        g_app->cameraSelected = false;
+        g_app->showGlow = true;
+        g_app->showEffects = true;
+        g_app->rauchImGluehen = true;
+        g_app->playMs = 3500.0;
+        gm->orte.clear();
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.classname != "fx_runner") { continue; }
+            const std::string* fx = e.find("fxFile");
+            if (fx == nullptr) { continue; }
+            std::string n = *fx;
+            for (char& ch : n) { ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); }
+            float o[3];
+            if ((n.find("smoke") != std::string::npos || n.find("steam") != std::string::npos) && entityOrt(e, o) &&
+                gm->orte.size() < 4U) {
+                gm->orte.push_back({o[0], o[1], o[2]});
+            }
+        }
+        diag::detail("Knopftest: Rauch - " + std::to_string(gm->orte.size()) + " Rauch-/Dampfeffekte");
+    }));
+    for (int i = 0; i < 16; ++i) {
+        const int ort = i / 4;
+        const float gier = static_cast<float>(i % 4) * 90.0F;
+        add(tu("Rauch: Blick " + std::to_string(i + 1), [=] {
+            if (static_cast<std::size_t>(ort) >= gm->orte.size()) { return; }
+            const auto& o = gm->orte[static_cast<std::size_t>(ort)];
+            const float r = gier * 3.14159265F / 180.0F;
+            g_app->cam.pos[0] = o[0] - std::cos(r) * 260.0F;
+            g_app->cam.pos[1] = o[1] - std::sin(r) * 260.0F;
+            g_app->cam.pos[2] = o[2] + 60.0F;
+            const float ziel[3] = {o[0] + std::cos(r) * 400.0F, o[1] + std::sin(r) * 400.0F, o[2] + 40.0F};
+            aimAngles(g_app->cam.pos, ziel, g_app->cam.angles);
+            g_app->showGlow = true;
+            g_app->rauchImGluehen = true;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.35));
+        add(tu("Rauch: mit Daempfung lesen, Gluehen aus", [=] {
+            if (static_cast<std::size_t>(ort) >= gm->orte.size()) { return; }
+            (void)lies(gm->an);
+            gm->rauchAufrufe = std::max(gm->rauchAufrufe, gpu::gluehenRauchAufrufe());
+            g_app->showGlow = false;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.35));
+        add(tu("Rauch: ohne Gluehen lesen, Gluehen ohne Daempfung", [=] {
+            if (static_cast<std::size_t>(ort) >= gm->orte.size()) { return; }
+            (void)lies(gm->aus);
+            g_app->showGlow = true;
+            g_app->rauchImGluehen = false;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.35));
+        add(tu("Rauch: vergleichen", [=] {
+            if (static_cast<std::size_t>(ort) >= gm->orte.size()) { return; }
+            std::vector<std::uint8_t> ohne;
+            if (!lies(ohne)) { return; }
+            const double mit = beitrag(gm->an, gm->aus);
+            const double ohneD = beitrag(ohne, gm->aus);
+            ++gm->posen;
+            if (ohneD > 0.5 && mit >= 0.0) {
+                const double daempfung = 1.0 - mit / ohneD;
+                if (daempfung > gm->besteDaempfung) {
+                    gm->besteDaempfung = daempfung;
+                    gm->beitragOhne = ohneD;
+                }
+            }
+            g_app->rauchImGluehen = true;
+        }));
+    }
+    add(pruefe("Rauch: Rauch vor einer gluehenden Flaeche dunkelt auch ihr Gluehen ab", [=] {
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Rauch - %d Blicke, beste Daempfung %.1f %% (Beitrag ohne %.2f), %d Rauchaufrufe",
+                      gm->posen, gm->besteDaempfung * 100.0, gm->beitragOhne, gm->rauchAufrufe);
+        diag::detail(z);
+        return gm->posen > 0 && gm->besteDaempfung > 0.10;
+    }));
+    add(tu("Rauch: Gluehen, Effekte, Daempfung wieder an", [] {
+        g_app->showGlow = true;
+        g_app->showEffects = true;
+        g_app->rauchImGluehen = true;
+        g_app->mapDirty = true;
+    }));
+    // --- Eine Kamera fuer alle Reiter derselben Karte (rc597) ---------------
+    //
+    // "wenn sich eine map die ent teilt von allen scripts waere es nicht
+    // besser, dass wenn ich die reiter wechsel alle dieselbe kamera teilen?"
+    // Reiter B einmal besuchen (dort merkt er sich eine Kamera), zurueck, die
+    // Kamera woanders hinstellen, wieder zu B: sie muss bleiben.
+    struct ReiterProbe {
+        int a = -1;
+        int b = -1;
+        std::string karte;
+        float ort[3]{};
+    };
+    auto rp = std::make_shared<ReiterProbe>();
+    add(tu("Reiter: Kamera an Ort 1, zu einem anderen Reiter derselben Karte", [=] {
+        g_app->cameraSelected = false;
+        rp->a = g_app->activeTab;
+        rp->b = (g_app->activeTab + 1) % static_cast<int>(g_app->tabs.size());
+        rp->karte = g_app->map.path;
+        g_app->cam.pos[0] += 100.0F;
+        g_app->tabRequest = rp->b;
+    }));
+    add(pause(0.6));
+    add(tu("Reiter: zurueck zum ersten", [=] { g_app->tabRequest = rp->a; }));
+    add(pause(0.6));
+    add(tu("Reiter: Kamera an Ort 2, wieder zum anderen Reiter", [=] {
+        g_app->cam.pos[1] += 300.0F;
+        g_app->cam.pos[2] += 50.0F;
+        for (int k = 0; k < 3; ++k) { rp->ort[k] = g_app->cam.pos[k]; }
+        g_app->tabRequest = rp->b;
+    }));
+    add(pause(0.6));
+    add(pruefe("Reiter: auf derselben Karte bleibt die Kamera beim Reiterwechsel", [=] {
+        float d = 0.0F;
+        for (int k = 0; k < 3; ++k) { d += std::fabs(g_app->cam.pos[k] - rp->ort[k]); }
+        diag::detail("Knopftest: Reiter " + std::to_string(rp->a) + " -> " + std::to_string(g_app->activeTab) +
+                     ", Karte gleich " + std::to_string(g_app->map.path == rp->karte) + ", Kamera weg um " + std::to_string(d));
+        return g_app->activeTab == rp->b && g_app->map.path == rp->karte && d < 1.0F;
+    }));
+    add(tu("Reiter: zurueck zum ersten", [=] { g_app->tabRequest = rp->a; }));
+    add(pause(0.6));
+
+    // --- Woran arbeite ich gerade? (rc597) ---------------------------------
+    //
+    // "irgendwie muessen die an dem script man gerade ist besonders sichtbar
+    // sein, dass man weiss wo man arbeitet und vor allem auch welchen tab man
+    // gerade aktiv bearbeitet". intro2_sith benutzt das Schiff sta2.
+    add(tu("Fokus: Blick auf den Platz, Zeit 0", [] {
+        g_app->playMs = 0.0;
+        g_app->skriptFokus = true;
+        g_app->cam.pos[0] = 200.0F; g_app->cam.pos[1] = 6000.0F; g_app->cam.pos[2] = 700.0F;
+        g_app->cam.angles[0] = 50.0F; g_app->cam.angles[1] = 90.0F; g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("skript_fokus"));
+    add(pruefe("Fokus: die Entities des aktiven Skripts sind erkannt, der Reitername steht in der Ansicht", [=] {
+        int benutzt = 0;
+        for (const char c : g_app->entImSkript) { benutzt += c != 0 ? 1 : 0; }
+        const bool schiffDabei = schiff->entity >= 0 && static_cast<std::size_t>(schiff->entity) < g_app->entImSkript.size() &&
+                            g_app->entImSkript[static_cast<std::size_t>(schiff->entity)] != 0;
+        const std::string name = mb::reiterName(static_cast<std::size_t>(g_app->activeTab));
+        diag::detail("Knopftest: Fokus - " + std::to_string(benutzt) + " von " + std::to_string(g_app->map.entities.size()) +
+                     " Entities im Skript \"" + name + "\", Schiff dabei " + std::to_string(schiffDabei) + ", Schild \"" +
+                     g_app->skriptSchildText + "\"");
+        return g_app->entImSkript.size() == g_app->map.entities.size() && benutzt > 0 &&
+               benutzt < static_cast<int>(g_app->map.entities.size()) && schiffDabei && g_app->skriptSchildText == name;
+    }));
+    // --- Die Bahn: ganz, grau voraus, gelb schon gefahren (rc597) ----------
+    add(tu("Bahn: Schiff als Entity waehlen (ohne Figur), Zeit mitten im Flug", [=] {
+        kameraVor(*schiff, 420.0F, 160.0F);
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(schiff->entity);
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("bahn_schiff"));
+    add(pruefe("Bahn: die ganze Flugbahn des gewaehlten Schiffs, grau voraus und gelb, was schon geflogen ist", [] {
+        diag::detail("Knopftest: Bahn - " + std::to_string(g_app->bahnFarbig) + " Stuecke gelb, " +
+                     std::to_string(g_app->bahnGrau) + " grau");
+        return g_app->bahnFarbig > 0 && g_app->bahnGrau > 0;
+    }));
+
+    // --- Zeitleiste: Zeile, Bewegung, Ausloeser (rc597) ---------------------
+    add(tu("Zeitleiste: den Spawner der Figur waehlen, Spuren an", [=] {
+        g_app->showTracks = true;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        g_app->playMs = figur->ms;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("zeitleiste_figur"));
+    add(pruefe("Zeitleiste: die Zeile der gewaehlten Figur leuchtet, ihre Bewegung und deren Ausloeser sind markiert", [=] {
+        const std::string soll = g_app->scene.actors[static_cast<std::size_t>(std::max(figur->actor, 0))].name;
+        diag::detail("Knopftest: Zeitleiste - Zeile \"" + g_app->tlAuswahlZeile + "\" (erwartet \"" + soll + "\"), " +
+                     std::to_string(g_app->tlBewegungsBalken) + " Bewegungsbalken, " + std::to_string(g_app->tlAusloeser) +
+                     " Ausloeser");
+        return figur->actor >= 0 && g_app->tlAuswahlZeile == soll && g_app->tlBewegungsBalken > 0 && g_app->tlAusloeser > 0;
+    }));
+
+    // --- Live ziehen: die Figur geht mit, der Gizmo zittert nicht (rc597) ----
+    struct ZugProbe {
+        ImVec2 start{-1.0F, -1.0F};
+        std::array<float, 3> fig0{};
+        std::size_t tiefe = 0;
+        std::size_t entTiefe = 0;
+        float ort0[3]{};
+        bool ok = false;
+        std::string text;
+    };
+    auto zp = std::make_shared<ZugProbe>();
+    add(tu("Zug: Kamera vor die Figur, ihr Spawner gewaehlt", [=] {
+        kameraVor(*figur, 170.0F, 90.0F);
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add({"Zug: die Marke des Spawners anfassen, ziehen und mitten im Zug pruefen", [=](int b) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (b == 0) {
+            zp->start = ImVec2{-1.0F, -1.0F};
+            for (const App::PickedMarker& mk : g_app->markers) {
+                if (static_cast<int>(mk.entity) == figur->entity) { zp->start = bildZuSchirm(mk.sx, mk.sy); }
+            }
+            if (figur->entity >= 0) { (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(figur->entity)], zp->ort0); }
+            if (g_app->figurGezeichnet.size() > static_cast<std::size_t>(std::max(figur->actor, 0))) {
+                zp->fig0 = g_app->figurGezeichnet[static_cast<std::size_t>(figur->actor)];
+            }
+            zp->tiefe = g_app->doc.undoDepth();
+            zp->entTiefe = g_app->entUndo.size();
+            setzeMaus(zp->start);
+            return zp->start.x < 0.0F;   // keine Marke: abbrechen, die Pruefung meldet es
+        }
+        if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+        if (b >= 3 && b <= 14) {
+            setzeMaus(ImVec2{zp->start.x + static_cast<float>(b - 2) * 12.0F, zp->start.y + static_cast<float>(b - 2) * 4.0F});
+            return false;
+        }
+        if (b == 20) {
+            const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(figur->entity)];
+            float o[3];
+            float gezeigt[3];
+            (void)entityOrt(e, o);
+            (void)entityOrtAnzeige(e, gezeigt);
+            const ActorState st = g_app->scene.actors[static_cast<std::size_t>(figur->actor)].at(g_app->playMs);
+            const auto& f = g_app->figurGezeichnet.size() > static_cast<std::size_t>(figur->actor)
+                                ? g_app->figurGezeichnet[static_cast<std::size_t>(figur->actor)]
+                                : std::array<float, 3>{0.0F, 0.0F, 0.0F};
+            float dO = 0.0F;
+            float abw = 0.0F;
+            float gizmo = 0.0F;
+            for (int k = 0; k < 3; ++k) {
+                const float d = o[k] - zp->ort0[k];
+                dO += d * d;
+                abw += (f[static_cast<std::size_t>(k)] - st.pos[k] - d) * (f[static_cast<std::size_t>(k)] - st.pos[k] - d);
+                gizmo += (gezeigt[k] - f[static_cast<std::size_t>(k)]) * (gezeigt[k] - f[static_cast<std::size_t>(k)]);
+            }
+            // rc597: mitten im Lauf entsteht ein Bahnpunkt - der Spawner bleibt,
+            // die Figur geht live mit, der Gizmo bleibt auf ihr.
+            float weg = 0.0F;
+            for (int k = 0; k < 2; ++k) {
+                weg += (f[static_cast<std::size_t>(k)] - zp->fig0[static_cast<std::size_t>(k)]) *
+                       (f[static_cast<std::size_t>(k)] - zp->fig0[static_cast<std::size_t>(k)]);
+            }
+            (void)abw;
+            char z[260];
+            std::snprintf(z, sizeof(z), "Knopftest: Zug - Spawner verschoben um %.1f, Figur gewandert %.1f, Gizmo neben der Figur %.2f, Bahnpunkt %d, Zug aktiv %d",
+                          std::sqrt(dO), std::sqrt(weg), std::sqrt(gizmo), g_app->entZug.zwischen ? 1 : 0, g_app->entZug.aktiv ? 1 : 0);
+            zp->text = z;
+            zp->ok = g_app->entZug.aktiv && std::sqrt(weg) > 10.0F && std::sqrt(gizmo) < 1.0F;
+            return false;
+        }
+        if (b == 21) { io.AddMouseButtonEvent(0, false); return false; }
+        return b >= 26;
+    }});
+    add(pruefe("Zug: beim Ziehen des Spawners geht die Figur live mit, der Gizmo bleibt auf ihr", [=] {
+        diag::detail(zp->text.empty() ? std::string("Knopftest: Zug - keine Marke zum Anfassen") : zp->text);
+        return zp->ok;
+    }));
+    add(tu("Zug: rueckgaengig", [=] {
+        while (g_app->entUndo.size() > zp->entTiefe && entityRueckgaengig()) {}
+        while (g_app->doc.undoDepth() > zp->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    // "was bringt das facing? weil es schaut nicht gerade da hin, wo das model
+    // hinsieht" - der Pfeil zeigt die Blickrichtung des Modells zur Zeit.
+    add(pruefe("Blick: der Pfeil des Spawners zeigt, wohin die Figur gerade schaut", [=] {
+        if (figur->actor < 0 || figur->entity < 0) { return false; }
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(figur->entity)];
+        const ActorState st = g_app->scene.actors[static_cast<std::size_t>(figur->actor)].at(g_app->playMs);
+        const std::string* w = e.find("angle");
+        const float schl = w != nullptr ? std::strtof(w->c_str(), nullptr) : 0.0F;
+        const float d = std::fabs(std::remainder(entityGierAnzeige(e) - st.angles[1], 360.0F));
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Blick - Schluessel %.1f, Modell %.1f, Pfeil %.1f", static_cast<double>(schl),
+                      static_cast<double>(st.angles[1]), static_cast<double>(entityGierAnzeige(e)));
+        diag::detail(z);
+        return std::fabs(std::remainder(schl - st.angles[1], 360.0F)) > 5.0F && d < 1.0F;
+    }));
+    for (Schritt& x : folgeSchritte2(schiff, figur)) { s.push_back(std::move(x)); }
+    add(tu("Folgen: Auswahl weg, Zeit auf 0", [] {
+        g_app->cameraSelected = false;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(-1);
+        g_app->playMs = 0;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.2));
+    return s;
+}
+
+// Zweiter Teil der Folge-Pruefungen (rc597): eine Funktion allein wurde dem
+// Compiler zu gross (C1506, zu viele verschachtelte Bloecke).
+std::vector<Schritt> folgeSchritte2(std::shared_ptr<FolgeZiel> schiff, std::shared_ptr<FolgeZiel> figur) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    using Ziel = FolgeZiel;
+    const auto kameraVor = [](const Ziel& z, float abst, float hoch) { folgeKameraVor(z, abst, hoch); };
+    // --- Griffe auf der Bahn (rc597) ----------------------------------------
+    //
+    // "kann ich den Anfangspunkt und den Endpunkt des bewegten Characters
+    // setzen ... das ich den Endpunkt nur anders setzen will oder den
+    // Startpunkt, und das auch bei den Schiffen". Und unten in der Zeitleiste:
+    // "ich wuerde gerne unten mit der Timeline arbeiten koennen".
+    struct GriffProbe {
+        float ziel0[3]{};
+        float start0[3]{};
+        float spawner0[3]{};
+        std::size_t ents0 = 0;
+        std::string zielName0;
+        double startMs0 = 0.0;
+        double dauer0 = 0.0;
+        std::string gang0;
+        std::string moveText0;
+        float flugZiel0[3]{};
+        std::size_t undo0 = 0;
+    };
+    auto gp = std::make_shared<GriffProbe>();
+    const auto laufVon = [](int figurNr) -> const ActorStep* {
+        if (figurNr < 0 || static_cast<std::size_t>(figurNr) >= g_app->scene.actors.size()) { return nullptr; }
+        for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figurNr)].steps) {
+            if (st.kind == ActorStep::Kind::WalkTo && !st.path.empty() && st.fremd.empty()) { return &st; }
+        }
+        return nullptr;
+    };
+    const auto griffNr = [](int art) {
+        for (int i = 0; i < bahnGriffZahl(); ++i) {
+            if (bahnGriffArt(i) == art) { return i; }
+        }
+        return -1;
+    };
+    add(tu("Griffe: Spawner der Figur waehlen, Kamera von oben auf ihren Lauf", [=] {
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        const ActorStep* st = laufVon(figur->actor);
+        if (st != nullptr) {
+            g_app->playMs = st->startMs;
+            const float mitte[3] = {(st->from[0] + st->to[0]) * 0.5F, (st->from[1] + st->to[1]) * 0.5F, st->to[2]};
+            g_app->cam.pos[0] = mitte[0] - 150.0F;
+            g_app->cam.pos[1] = mitte[1];
+            g_app->cam.pos[2] = mitte[2] + 420.0F;
+            aimAngles(g_app->cam.pos, mitte, g_app->cam.angles);
+            for (int k = 0; k < 3; ++k) {
+                gp->ziel0[k] = st->to[k];
+                gp->start0[k] = st->from[k];
+            }
+            gp->startMs0 = st->startMs;
+            gp->dauer0 = st->endMs - st->startMs;
+            gp->gang0 = st->text;
+            const Node* n = nodeAt(g_app->doc.script(), st->path);
+            gp->zielName0 = (n != nullptr && n->args.size() >= 2) ? n->args[1].text : std::string();
+        }
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(std::max(figur->entity, 0))], gp->spawner0);
+        gp->ents0 = g_app->map.entities.size();
+        gp->undo0 = g_app->doc.undoDepth();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("griffe_lauf"));
+    add(pruefe("Griffe: Start und Laufziel liegen auf der Bahn der gewaehlten Figur", [=] {
+        diag::detail("Knopftest: Griffe - " + std::to_string(bahnGriffZahl()) + " Griffe, Start " +
+                     std::to_string(griffNr(0)) + ", Laufziel " + std::to_string(griffNr(1)) + " (" + gp->zielName0 + ")");
+        return griffNr(0) == 0 && griffNr(1) > 0;
+    }));
+    // Geteiltes Ziel: eine zweite Entity zeigt darauf (target2). Dann muss
+    // dieser Lauf eine eigene Kopie bekommen, das alte Ziel bleibt stehen.
+    auto zielOrt0 = std::make_shared<std::array<float, 3>>();
+    auto zielNr0 = std::make_shared<int>(-1);
+    add(tu("Griffe: eine zweite Entity auf dasselbe Laufziel zeigen lassen", [=] {
+        entityKeySetzen(schiff->entity, "target2", gp->zielName0);
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].targetname == gp->zielName0) {
+                *zielNr0 = static_cast<int>(i);
+                float o[3];
+                (void)entityOrt(g_app->map.entities[i], o);
+                *zielOrt0 = {o[0], o[1], o[2]};
+            }
+        }
+        gp->ents0 = g_app->map.entities.size();
+    }));
+    add(ziehenAn("das Laufziel", [=] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)bahnGriffPunkt(griffNr(1), q);
+        return q;
+    }, 70.0F, 30.0F, 0));
+    add(pause(0.6));
+    add(pruefe("Griffe: das Laufziel ziehen verschiebt nur das Ziel - der Start bleibt", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        float o[3];
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(figur->entity)], o);
+        float dz = 0.0F;
+        float ds = 0.0F;
+        for (int k = 0; k < 2; ++k) {
+            dz += std::fabs((st != nullptr ? st->to[k] : 0.0F) - gp->ziel0[k]);
+            ds += std::fabs(o[k] - gp->spawner0[k]);
+        }
+        const Node* n = st != nullptr ? nodeAt(g_app->doc.script(), st->path) : nullptr;
+        const std::string name = (n != nullptr && n->args.size() >= 2) ? n->args[1].text : std::string();
+        char z[300];
+        std::snprintf(z, sizeof(z), "Knopftest: Griffe - Ziel um %.0f verschoben, Spawner um %.0f; Ziel \"%s\" -> \"%s\", Entities %zu -> %zu",
+                      static_cast<double>(dz), static_cast<double>(ds), gp->zielName0.c_str(), name.c_str(), gp->ents0,
+                      g_app->map.entities.size());
+        diag::detail(z);
+        float altBleibt = 1e9F;
+        if (*zielNr0 >= 0) {
+            float o0[3];
+            (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(*zielNr0)], o0);
+            altBleibt = std::fabs(o0[0] - (*zielOrt0)[0]) + std::fabs(o0[1] - (*zielOrt0)[1]);
+        }
+        diag::detail("Knopftest: Griffe - altes Ziel bewegt um " + std::to_string(altBleibt));
+        return st != nullptr && dz > 20.0F && ds < 0.5F && name != gp->zielName0 && !name.empty() &&
+               g_app->map.entities.size() == gp->ents0 + 1U && altBleibt < 0.5F;
+    }));
+    // Mitten im Zug pruefen: "wenn ich den Startpunkt ziehe, geht die fps auf
+    // 16 runter, und das Model hinkt dem Gizmo hinterher". Keine
+    // Neuberechnung der Szene, die Figur steht in DIESEM Bild am Griff, das
+    // Ziel bleibt.
+    auto mitte = std::make_shared<std::string>();
+    auto mitteOk = std::make_shared<bool>(false);
+    auto startPunkt = std::make_shared<ImVec2>(-1.0F, -1.0F);
+    add(tu("Griffe: Zeit an den Anfang des Laufs (die Figur steht am Start)", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        // Genau am Anfang des Laufs: vorher ist sie noch nicht gespawnt
+        // (unsichtbar), danach schon unterwegs.
+        if (st != nullptr) { g_app->playMs = st->startMs + 1.0; }
+        diag::detail("Knopftest: Griffe - Figur sichtbar am Laufanfang: " +
+                     std::to_string(st != nullptr && g_app->scene.actors[static_cast<std::size_t>(figur->actor)].at(st->startMs + 1.0).visible));
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    add({"Griffe: den Start anfassen, ziehen und mitten im Zug pruefen", [=](int b) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (b == 0) {
+            *startPunkt = ImVec2{-1.0F, -1.0F};
+            (void)bahnGriffPunkt(0, *startPunkt);
+            setzeMaus(*startPunkt);
+            return startPunkt->x < 0.0F;
+        }
+        if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+        if (b >= 3 && b <= 14) {
+            setzeMaus(ImVec2{startPunkt->x - static_cast<float>(b - 2) * 5.0F, startPunkt->y + static_cast<float>(b - 2) * 1.7F});
+            return false;
+        }
+        if (b == 20) {
+            const App::BahnZug& z = g_app->bahnZug;
+            const ActorStep* st = laufVon(figur->actor);
+            const auto& f = g_app->figurGezeichnet.size() > static_cast<std::size_t>(figur->actor)
+                                ? g_app->figurGezeichnet[static_cast<std::size_t>(figur->actor)]
+                                : std::array<float, 3>{0.0F, 0.0F, 0.0F};
+            float figurAmGriff = 0.0F;
+            float zielBleibt = 0.0F;
+            for (int k = 0; k < 2; ++k) {
+                figurAmGriff += std::fabs(f[static_cast<std::size_t>(k)] - z.ort[k]);
+                zielBleibt += std::fabs((st != nullptr ? st->to[k] : 0.0F) - gp->ziel0[k]);
+            }
+            float weg = std::fabs(z.ort[0] - z.startOrt[0]) + std::fabs(z.ort[1] - z.startOrt[1]);
+            char t[260];
+            std::snprintf(t, sizeof(t), "Knopftest: Griffe - mitten im Zug: Szene neu gebaut %d mal, Griff %.0f gewandert, Figur neben dem Griff %.1f, Ziel gewandert %.1f",
+                          g_app->szeneBauten - z.szeneBautenBeimZug, static_cast<double>(weg), static_cast<double>(figurAmGriff),
+                          static_cast<double>(zielBleibt));
+            *mitte = t;
+            *mitteOk = z.aktiv && g_app->szeneBauten == z.szeneBautenBeimZug && weg > 20.0F && figurAmGriff < 2.0F;
+            return false;
+        }
+        if (b == 21) { io.AddMouseButtonEvent(0, false); return false; }
+        return b >= 26;
+    }});
+    add(pause(0.6));
+    add(pruefe("Griffe: beim Ziehen des Starts folgt die Figur sofort, ohne die Szene neu zu rechnen", [=] {
+        diag::detail(mitte->empty() ? std::string("Knopftest: Griffe - kein Startgriff") : *mitte);
+        return *mitteOk;
+    }));
+    add(pause(0.6));
+    add(pruefe("Griffe: den Start ziehen verschiebt den Spawner - das Laufziel bleibt", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        float o[3];
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(figur->entity)], o);
+        float ds = 0.0F;
+        for (int k = 0; k < 2; ++k) { ds += std::fabs(o[k] - gp->spawner0[k]); }
+        float vorher[3] = {0.0F, 0.0F, 0.0F};
+        if (st != nullptr) { for (int k = 0; k < 3; ++k) { vorher[k] = st->to[k]; } }
+        diag::detail("Knopftest: Griffe - Spawner um " + std::to_string(ds) + " verschoben, Ziel bei " +
+                     std::to_string(vorher[0]) + "/" + std::to_string(vorher[1]));
+        return st != nullptr && ds > 20.0F;
+    }));
+    // Gehen / Rennen per Rechtsklick auf das Laufziel.
+    add(klickAn("Rechtsklick auf das Laufziel", [=] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)bahnGriffPunkt(griffNr(1), q);
+        return q;
+    }, 1));
+    add(pause(0.3));
+    auto menueZiel = std::make_shared<ImVec2>(-1.0F, -1.0F);
+    add({"Klick Gehen/Rennen im Menue", [=](int bild) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (bild == 0) {
+            const std::string l = tr(gp->gang0 == "BOTH_WALK1" ? Str::BahnRennen : Str::BahnGehen);
+            const Element* e = finde(l, "##Popup", 0, false);
+            if (e == nullptr) { return true; }
+            *menueZiel = e->rect.GetCenter();
+            setzeMaus(*menueZiel);
+            return false;
+        }
+        if (bild == 2) { io.AddMouseButtonEvent(0, true); return false; }
+        if (bild == 3) { io.AddMouseButtonEvent(0, false); return false; }
+        return bild >= 8;
+    }});
+    add(pause(0.6));
+    add(pruefe("Griffe: Rechtsklick auf das Laufziel stellt zwischen Gehen und Rennen um", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        diag::detail("Knopftest: Griffe - Gangart vorher " + gp->gang0 + ", jetzt " + (st != nullptr ? st->text : std::string("-")) +
+                     ", Dauer " + std::to_string(gp->dauer0) + " -> " + std::to_string(st != nullptr ? st->endMs - st->startMs : 0.0));
+        return st != nullptr && !gp->gang0.empty() && st->text != gp->gang0;
+    }));
+    // Rueckwaerts: "both_walkback ist das rueckwaerts laufen und both_walk1
+    // vorwaerts" - per Menue "Rueckwaerts laufen" auf dem Laufziel.
+    const auto mitteDesLaufs = [=]() -> ActorState {
+        const ActorStep* st = laufVon(figur->actor);
+        if (st == nullptr) { return ActorState{}; }
+        return g_app->scene.actors[static_cast<std::size_t>(figur->actor)].at((st->startMs + st->endMs) * 0.5);
+    };
+    const auto menuePunkt = [=](Str text) {
+        auto ziel = std::make_shared<ImVec2>(-1.0F, -1.0F);
+        return Schritt{"Klick im Laufmenue", [=](int bild) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (bild == 0) {
+                const Element* e = finde(tr(text), "##Popup", 0, false);
+                if (e == nullptr) { return true; }
+                *ziel = e->rect.GetCenter();
+                setzeMaus(*ziel);
+                return false;
+            }
+            if (bild == 2) { io.AddMouseButtonEvent(0, true); return false; }
+            if (bild == 3) { io.AddMouseButtonEvent(0, false); return false; }
+            return bild >= 8;
+        }};
+    };
+    add(klickAn("Rechtsklick auf das Laufziel (rueckwaerts)", [=] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)bahnGriffPunkt(griffNr(1), q);
+        return q;
+    }, 1));
+    add(pause(0.3));
+    add(menuePunkt(Str::BahnRueckwaerts));
+    add(pause(0.6));
+    add(pruefe("Rueckwaerts: Blick hinter die Figur - sie laeuft mit der Rueckwaerts-Animation", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        const ActorState m = mitteDesLaufs();
+        float dot = 0.0F;
+        if (st != nullptr) {
+            const float g = m.angles[1] * 3.14159265F / 180.0F;
+            dot = std::cos(g) * (st->to[0] - st->from[0]) + std::sin(g) * (st->to[1] - st->from[1]);
+        }
+        diag::detail("Knopftest: Rueckwaerts - Animation mitten im Lauf \"" + m.animation + "\", Blick gegen Laufrichtung " +
+                     std::to_string(dot < 0.0F));
+        return st != nullptr && dot < 0.0F && m.animation.find("BACK") != std::string::npos;
+    }));
+    add(klickAn("Rechtsklick auf das Laufziel (vorwaerts)", [=] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)bahnGriffPunkt(griffNr(1), q);
+        return q;
+    }, 1));
+    add(pause(0.3));
+    add(menuePunkt(Str::BahnBlickFrei));
+    add(pause(0.6));
+    add(pruefe("Rueckwaerts: 'In Laufrichtung schauen' - wieder vorwaerts", [=] {
+        const ActorState m = mitteDesLaufs();
+        diag::detail("Knopftest: Rueckwaerts - danach \"" + m.animation + "\"");
+        return m.animation == "BOTH_WALK1" || m.animation == "BOTH_RUN1";
+    }));
+    // Zeitleiste: den Balken des Laufs anfassen und nach rechts ziehen.
+    add(tu("Zeitleiste: Spuren an, Zeit vor den Lauf", [=] {
+        g_app->showTracks = true;
+        const ActorStep* st = laufVon(figur->actor);
+        if (st != nullptr) { gp->startMs0 = st->startMs; }
+    }));
+    add(pause(0.4));
+    add(ziehenAn("den Laufbalken in der Zeitleiste", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        for (const App::TlBalken& b : g_app->tlBalken) {
+            if (st != nullptr && b.pfad == st->path) { return ImVec2{(b.a.x + b.b.x) * 0.5F, (b.a.y + b.b.y) * 0.5F}; }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }, 60.0F, 0.0F, 0));
+    add(pause(0.6));
+    add(pruefe("Zeitleiste: den Laufbalken ziehen verschiebt den Lauf in der Zeit", [=] {
+        const ActorStep* st = laufVon(figur->actor);
+        diag::detail("Knopftest: Zeitleiste - Lauf beginnt " + std::to_string(gp->startMs0) + " -> " +
+                     std::to_string(st != nullptr ? st->startMs : -1.0) + " ms, " + std::to_string(g_app->tlBalken.size()) +
+                     " Balken");
+        return st != nullptr && st->startMs > gp->startMs0 + 200.0;
+    }));
+    // --- Die Zeitleiste als Baum wie im Unreal Sequencer (rc597) --------------
+    //
+    // "es ist fuer jeden Character alles in eine Leiste gestopft ... schau mal
+    // nach, wie Unreal Engine das handhabt, so dass es logisch ist und man
+    // auch aufklappen kann".
+    const auto zeileDa = [](const std::string& n) {
+        for (const auto& [z, y] : g_app->tlZeilenY) {
+            if (z == n) { return true; }
+        }
+        return false;
+    };
+    const auto zeileY = [](const std::string& n) {
+        for (const auto& [z, y] : g_app->tlZeilenY) {
+            if (z == n) { return y; }
+        }
+        return -1000.0F;
+    };
+    auto figName = std::make_shared<std::string>();
+    add(tu("Baum: die Figur waehlen, waits aus", [=] {
+        g_app->showTracks = true;
+        g_app->tlWaitsZeigen = false;
+        g_app->tlOffen.clear();
+        g_app->tlRollFigur = -1;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        *figName = g_app->scene.actors[static_cast<std::size_t>(std::max(figur->actor, 0))].name;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(foto("zeitleiste_baum"));
+    add(pruefe("Baum: die gewaehlte Figur klappt auf - eigene Spuren je Art, keine wait-Bloecke", [=] {
+        std::string zeilen;
+        for (const auto& [z, y] : g_app->tlZeilenY) { zeilen += " [" + z + "]"; }
+        diag::detail("Knopftest: Baum - Zeilen" + zeilen + "; wait-Bloecke " + std::to_string(g_app->tlWaitBloecke));
+        return g_app->tlOffen.count(*figName) != 0U && zeileDa(*figName + "/" + tr(Str::TlKatBewegung)) &&
+               g_app->tlWaitBloecke == 0;
+    }));
+    add(tu("Baum: waits einblenden", [] { g_app->tlWaitsZeigen = true; }));
+    add(pause(0.3));
+    add(pruefe("Baum: der Schalter zeigt die waits wieder als Bloecke", [] {
+        diag::detail("Knopftest: Baum - mit waits " + std::to_string(g_app->tlWaitBloecke) + " wait-Bloecke");
+        return g_app->tlWaitBloecke > 0;
+    }));
+    add(tu("Baum: waits wieder aus", [] { g_app->tlWaitsZeigen = false; }));
+    add(pause(0.3));
+    add(klickAn("Pfeil der Figur (zuklappen)", [=] {
+        return ImVec2{g_app->tlKopfX + g_app->tlZeilenH * 0.5F, zeileY(*figName)};
+    }));
+    add(pause(0.3));
+    add(pruefe("Baum: der Pfeil klappt die Figur zu", [=] {
+        return g_app->tlOffen.count(*figName) == 0U && zeileDa(*figName) && !zeileDa(*figName + "/" + tr(Str::TlKatBewegung));
+    }));
+    add(tu("Baum: Spuren nach oben rollen (die Kamera steht oben)", [] {
+        for (ImGuiWindow* w : GImGui->Windows) {
+            if (w != nullptr && std::strstr(w->Name, "/tracks_") != nullptr) { ImGui::SetScrollY(w, 0.0F); }
+        }
+    }));
+    add(pause(0.3));
+    add(klickAn("Pfeil der Kamera (zuklappen)", [=] {
+        return ImVec2{g_app->tlKopfX + g_app->tlZeilenH * 0.5F, zeileY("camera")};
+    }));
+    add(pause(0.3));
+    add(pruefe("Baum: die Kameragruppe klappt zu - ihre Zeilen sind weg, die Gruppe bleibt", [=] {
+        return !g_app->tlKameraOffen && zeileDa("camera") && !zeileDa("camera MOVE");
+    }));
+    add(klickAn("Pfeil der Kamera (aufklappen)", [=] {
+        return ImVec2{g_app->tlKopfX + g_app->tlZeilenH * 0.5F, zeileY("camera")};
+    }));
+    add(pause(0.3));
+    add(pruefe("Baum: und wieder auf", [=] { return g_app->tlKameraOffen && zeileDa("camera MOVE"); }));
+    add(klickAn("Pfeil der Figur (aufklappen)", [=] {
+        return ImVec2{g_app->tlKopfX + g_app->tlZeilenH * 0.5F, zeileY(*figName)};
+    }));
+    add(pause(0.3));
+    // Schiff: das Flugziel eines move.
+    add(tu("Griffe: das Schiff waehlen, Kamera auf sein erstes Flugziel", [=] {
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(schiff->entity);
+        const Actor& a = g_app->scene.actors[static_cast<std::size_t>(std::max(schiff->actor, 0))];
+        for (const ActorStep& st : a.steps) {
+            if (st.kind != ActorStep::Kind::Glide || st.path.empty() || !st.fremd.empty()) { continue; }
+            const Node* n = nodeAt(g_app->doc.script(), st.path);
+            if (n == nullptr) { continue; }
+            gp->moveText0 = n->args.empty() ? std::string() : n->args[0].text;
+            for (int k = 0; k < 3; ++k) { gp->flugZiel0[k] = st.to[k]; }
+            g_app->playMs = st.startMs;
+            g_app->cam.pos[0] = st.to[0] - 300.0F;
+            g_app->cam.pos[1] = st.to[1] - 100.0F;
+            g_app->cam.pos[2] = st.to[2] + 250.0F;
+            aimAngles(g_app->cam.pos, st.to, g_app->cam.angles);
+            break;
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("das Flugziel", [=] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)bahnGriffPunkt(griffNr(2), q);
+        return q;
+    }, 80.0F, 0.0F, 0));
+    add(pause(0.6));
+    add(pruefe("Griffe: das Flugziel ziehen schreibt den neuen Ort in den move-Befehl", [=] {
+        const Actor& a = g_app->scene.actors[static_cast<std::size_t>(std::max(schiff->actor, 0))];
+        std::string jetzt;
+        float d = 0.0F;
+        for (const ActorStep& st : a.steps) {
+            if (st.kind != ActorStep::Kind::Glide || st.path.empty() || !st.fremd.empty()) { continue; }
+            const Node* n = nodeAt(g_app->doc.script(), st.path);
+            jetzt = (n != nullptr && !n->args.empty()) ? n->args[0].text : std::string();
+            for (int k = 0; k < 2; ++k) { d += std::fabs(st.to[k] - gp->flugZiel0[k]); }
+            break;
+        }
+        diag::detail("Knopftest: Griffe - move \"" + gp->moveText0 + "\" -> \"" + jetzt + "\", Flugziel um " + std::to_string(d) +
+                     " verschoben");
+        return !gp->moveText0.empty() && jetzt != gp->moveText0 && d > 20.0F;
+    }));
+    add(pruefe("Zeitleiste: ein move hat am Ende einen Griff fuer die Flugzeit", [] {
+        Node n;
+        n.kind = Node::Kind::Command;
+        n.name = "move";
+        Arg v;
+        v.kind = Arg::Kind::Vector;
+        v.text = "0 0 0";
+        Arg d;
+        d.kind = Arg::Kind::Number;
+        d.text = "2000.000";
+        n.args = {v, d};
+        const int a = durationArgIndex(n);
+        n.args = {v, v, d};
+        const int b = durationArgIndex(n);
+        diag::detail("Knopftest: Zeitleiste - Dauer-Argument von move: " + std::to_string(a) + " / " + std::to_string(b));
+        return a == 1 && b == 2;
+    }));
+    add(tu("Griffe: alles zurueck (Karte und Skript)", [=] {
+        while (entityRueckgaengig()) {}
+        while (g_app->doc.undoDepth() > gp->undo0 && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    // --- Bahnpunkt mitten in der Bewegung (rc597) ---------------------------
+    //
+    // "wenn ich das Schiff mittendrin bewege, macht er keinen neuen Punkt,
+    // sondern aendert immer den Anfangspunkt - dasselbe beim Character".
+    struct BahnPunktProbe {
+        std::vector<ActorStep> vorher;
+        float ursprung[3]{};
+        std::size_t ents = 0;
+        std::size_t tiefe = 0;
+        std::size_t entTiefe = 0;
+        double t = 0.0;
+    };
+    auto bp = std::make_shared<BahnPunktProbe>();
+    const auto bewegungen = [](int figurNr, ActorStep::Kind art) {
+        std::vector<ActorStep> v;
+        if (figurNr < 0) { return v; }
+        for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figurNr)].steps) {
+            if (st.kind == art && !st.path.empty() && st.fremd.empty()) { v.push_back(st); }
+        }
+        return v;
+    };
+    // Figur: mitten im Lauf die Marke des Spawners ziehen.
+    add(tu("Bahnpunkt: die Figur mitten im Lauf, ihr Spawner gewaehlt", [=] {
+        const auto l = bewegungen(figur->actor, ActorStep::Kind::WalkTo);
+        if (l.empty()) { return; }
+        bp->vorher = l;
+        // Kurz nach dem Losgehen - spaeter entfernt das Skript sie (unsichtbar).
+        bp->t = l.front().startMs + std::min(1000.0, (l.front().endMs - l.front().startMs) * 0.3);
+        g_app->playMs = bp->t;
+        kameraVor(*figur, 200.0F, 160.0F);
+        g_app->playMs = bp->t;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(figur->entity)], bp->ursprung);
+        bp->ents = g_app->map.entities.size();
+        bp->tiefe = g_app->doc.undoDepth();
+        bp->entTiefe = g_app->entUndo.size();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Bahnpunkt: die Figur mitten im Lauf zur Seite ziehen", [=] {
+        for (const App::PickedMarker& mk : g_app->markers) {
+            if (static_cast<int>(mk.entity) == figur->entity) { return bildZuSchirm(mk.sx, mk.sy); }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }, 70.0F, 40.0F, 0));
+    add(pause(0.6));
+    add(pruefe("Bahnpunkt: mitten im Lauf entsteht ein neues Laufziel - der Spawner und das alte Ziel bleiben", [=] {
+        const auto l = bewegungen(figur->actor, ActorStep::Kind::WalkTo);
+        float o[3];
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(figur->entity)], o);
+        const float spawner = std::fabs(o[0] - bp->ursprung[0]) + std::fabs(o[1] - bp->ursprung[1]);
+        bool altesZiel = false;
+        for (const ActorStep& st : l) {
+            if (!bp->vorher.empty() && std::fabs(st.to[0] - bp->vorher.front().to[0]) + std::fabs(st.to[1] - bp->vorher.front().to[1]) < 1.0F) {
+                altesZiel = true;
+            }
+        }
+        diag::detail("Knopftest: Bahnpunkt Figur - Laeufe " + std::to_string(bp->vorher.size()) + " -> " + std::to_string(l.size()) +
+                     ", Spawner bewegt um " + std::to_string(spawner) + ", altes Ziel noch angelaufen " + std::to_string(altesZiel) +
+                     ", Entities " + std::to_string(bp->ents) + " -> " + std::to_string(g_app->map.entities.size()));
+        return !bp->vorher.empty() && l.size() == bp->vorher.size() + 1U && spawner < 0.5F && altesZiel &&
+               g_app->map.entities.size() == bp->ents + 1U;
+    }));
+    add(tu("Bahnpunkt: Figur zuruecknehmen", [=] {
+        while (g_app->entUndo.size() > bp->entTiefe && entityRueckgaengig()) {}
+        while (g_app->doc.undoDepth() > bp->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    // Schiff: mitten im ersten Flug an der X-Achse des Gizmos ziehen.
+    add(tu("Bahnpunkt: das Schiff mitten im ersten Flug, gewaehlt", [=] {
+        const auto g = bewegungen(schiff->actor, ActorStep::Kind::Glide);
+        if (g.empty()) { return; }
+        bp->vorher = g;
+        bp->t = g.front().startMs + (g.front().endMs - g.front().startMs) * 0.5;
+        kameraVor(*schiff, 420.0F, 160.0F);
+        g_app->playMs = bp->t;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(schiff->entity);
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(schiff->entity)], bp->ursprung);
+        bp->tiefe = g_app->doc.undoDepth();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Bahnpunkt: das Schiff an der X-Achse ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(1, q);
+        return q;
+    }, 60.0F, 0.0F, 0));
+    add(pause(0.6));
+    add(pruefe("Bahnpunkt: mitten im Flug entsteht ein neuer Punkt - Ursprung und spaetere Zeiten bleiben", [=] {
+        const auto g = bewegungen(schiff->actor, ActorStep::Kind::Glide);
+        float o[3];
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(schiff->entity)], o);
+        const float urs = std::fabs(o[0] - bp->ursprung[0]) + std::fabs(o[1] - bp->ursprung[1]) + std::fabs(o[2] - bp->ursprung[2]);
+        const auto endeDa = [&](double t) {
+            for (const ActorStep& st : g) {
+                if (std::fabs(st.endMs - t) < 1.0) { return true; }
+            }
+            return false;
+        };
+        bool alleEnden = true;
+        for (const ActorStep& st : bp->vorher) { alleEnden = alleEnden && endeDa(st.endMs); }
+        std::string z;
+        for (const ActorStep& st : g) { z += " " + std::to_string(static_cast<int>(st.endMs)); }
+        diag::detail("Knopftest: Bahnpunkt Schiff - Fluege " + std::to_string(bp->vorher.size()) + " -> " + std::to_string(g.size()) +
+                     ", Ursprung bewegt um " + std::to_string(urs) + ", Enden" + z);
+        return !bp->vorher.empty() && g.size() == bp->vorher.size() + 1U && urs < 0.5F && alleEnden && endeDa(bp->t);
+    }));
+    add(tu("Bahnpunkt: Schiff zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > bp->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    return s;
+}
+
 // --- Werkzeuge der Kartenansicht (rc590) --------------------------------------
 //
 // Rahmen-Auswahl, Strg-Klick, Gruppe ziehen, Alt+Ziehen kopiert, Gruppe
@@ -12320,6 +13922,8 @@ void selbsttest() {
     static const bool nurHolo = std::strcmp(modus, "holo") == 0;
     static const bool nurOrt = std::strcmp(modus, "ort") == 0;
     static const bool nurKamera = std::strcmp(modus, "kamera") == 0;
+    // Nur der Umriss der Auswahl (rc597).
+    static const bool nurUmriss = std::strcmp(modus, "umriss") == 0;
     static const bool nurWeg = std::strcmp(modus, "wegpunkte") == 0;
     static const bool nurModell = std::strcmp(modus, "modell") == 0;
     static const bool nurAlleKarten = std::strcmp(modus, "allekarten") == 0;
@@ -12452,15 +14056,19 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
                 a.schritte = karteSchritte();
-                if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg) {
+                if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
                     // Nur laden (die ersten Schritte von karteSchritte bis
                     // "Kartenansicht gezeichnet"), dann Lava oder Holotisch.
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
                     for (Schritt& x : (nurLava ? lavaSchritte() : nurHolo ? holoSchritte()
-                                       : nurKamera ? kameraSchritte() : nurWeg ? wegSchritte() : ortSchritte())) {
+                                       : nurKamera ? kameraSchritte() : nurWeg ? wegSchritte()
+                                       : nurUmriss ? umrissSchritte() : ortSchritte())) {
                         a.schritte.push_back(std::move(x));
+                    }
+                    if (nurUmriss) {
+                        for (Schritt& x : folgeSchritte()) { a.schritte.push_back(std::move(x)); }
                     }
                     if (nurWeg) {
                         for (Schritt& x : kartenWerkzeugSchritte()) { a.schritte.push_back(std::move(x)); }

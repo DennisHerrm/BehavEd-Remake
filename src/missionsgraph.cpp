@@ -82,7 +82,7 @@ void sammle(const std::vector<Node>& nodes, std::vector<Verweis>& aus, int& befe
 }  // namespace
 
 MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphSkriptQuelle& skript,
-                                const std::string& startSkript, std::size_t maxKnoten) {
+                                const std::string& startSkript, std::size_t maxKnoten, const std::vector<int>& immer) {
     MissionsGraph g;
     // Namen -> Entities (mehrere duerfen denselben Namen tragen).
     std::map<std::string, std::vector<int>> namen;
@@ -141,6 +141,11 @@ MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphS
         g.kanten.push_back({von, nach, art, label});
     };
 
+    // In den Graphen gezogene Entities zuerst - sie sollen auch ohne
+    // Verbindung dastehen.
+    for (const int i : immer) {
+        if (i >= 0 && static_cast<std::size_t>(i) < ents.size()) { (void)knotenFuerEntity(i); }
+    }
     // Entity -> Entity (target) und Entity -> Skript (*script).
     for (std::size_t i = 0; i < ents.size(); ++i) {
         const MapEntity& e = ents[i];

@@ -186,6 +186,19 @@ struct App {
         std::string cacheKarte;
         ImVec2 ursprung{0.0F, 0.0F};          // linke obere Ecke der Flaeche (Bildschirm)
         ImVec2 groesse{0.0F, 0.0F};           // Groesse der Flaeche
+        // rc597: rechtwinklige Leitungen durch die Gassen, Umlenkpunkte je
+        // Kante (Weltkoordinaten), in den Graphen gezogene Entities.
+        bool rechtwinklig = true;
+        std::map<std::string, std::vector<ImVec2>> umlenk;
+        std::string ziehtUmlenk;              // Kante, deren Umlenkpunkt gezogen wird
+        int ziehtUmlenkNr = -1;
+        std::vector<int> immerEntities;
+        // Fuer den Selbsttest, je Bild neu: wo die Beschriftung jeder Kante
+        // steht (Bildschirm), schraege Stuecke und Kreuzungen mit fremden
+        // Knoten im rechtwinkligen Stil.
+        std::map<std::string, ImVec2> kantenMitte;
+        int schraegeStuecke = 0;
+        int kreuzungen = 0;
     };
     // Je Feld der geteilten Ansicht ein eigener Graph-Zustand (Zoom, Lage,
     // Auswahl) - zwei Graphen nebeneinander sollen sich nicht gegenseitig
@@ -236,7 +249,21 @@ struct App {
         // Was gezogen wird: 0 ueber den Boden, 1..3 Gizmo-Achse X/Y/Z,
         // 4 Gizmo-Ring (Blickrichtung).
         int modus = 0;
-        float startOrt[3] = {0.0F, 0.0F, 0.0F};
+        float startOrt[3] = {0.0F, 0.0F, 0.0F};   // der Schluessel "origin" (nicht der gezeigte Ort)
+        float versatz[3] = {0.0F, 0.0F, 0.0F};    // gezeigt minus "origin" beim Anfassen (rc597)
+        // Mitten in einer Bewegung angefasst (rc597): kein Verschieben des
+        // Ursprungs, sondern ein neuer Bahnpunkt zur eingestellten Zeit -
+        // wie der Auto-Key der Kamera. Waehrend des Ziehens nur die Bahn
+        // dieser Figur im Speicher, geschrieben wird beim Loslassen.
+        bool zwischen = false;
+        bool zwLauf = false;          // Figur (SET_NAVGOAL) statt Schiff (move)
+        bool zwBewegt = false;
+        int zwFigur = -1;
+        double zwT = 0.0;
+        Path zwPfad;
+        std::vector<ActorStep> zwSteps;
+        float zwOrt[3] = {0.0F, 0.0F, 0.0F};
+        float gierVersatz = 0.0F;                 // ebenso fuer die Blickrichtung
         float startWinkel = 0.0F;
         float startMaus[2] = {0.0F, 0.0F};
         float achsLaenge = 0.0F;        // Weltlaenge der Gizmo-Achse beim Anfassen
@@ -398,6 +425,84 @@ struct App {
     bool vorschauGezeigt = false;   // im letzten Bild gezeichnet
     int vorschauW = 0;
     int vorschauH = 0;
+    float vorschauPos[3] = {0.0F, 0.0F, 0.0F};   // wo die Vorschau-Kamera zuletzt stand (Selbsttest)
+    float vorschauWinkel[3] = {0.0F, 0.0F, 0.0F};  // und wohin sie schaute
+    int nebenEffektEcken = 0;     // Ecken des Effektnetzes, das die letzte Nebenansicht zeichnete (Selbsttest)
+    bool rauchImGluehen = true;   // Rauch dunkelt das Gluehen ab (rc597; aus nur fuer den Selbsttest)
+    // Woran arbeite ich gerade (rc597)? Die Entities des aktiven Skripts
+    // hervorheben, die anderen blasser; der Name des Reiters in der Ansicht.
+    bool skriptFokus = true;
+    std::vector<char> entImSkript;   // je Entity: benutzt das aktive Skript sie? (leer = unbekannt)
+    std::string skriptSchildText;    // was das Schild oben links zuletzt zeigte (Selbsttest)
+    int szeneBauten = 0;             // wie oft die Szene neu gebaut wurde (Schluessel fuer Zwischenspeicher)
+    // Fuer den Selbsttest (rc597): die Bahn der gewaehlten Figur/des Schiffs -
+    // Stuecke schon gefahren (farbig) und noch vor ihr (grau); wo jede Figur
+    // in diesem Bild gezeichnet wurde; die Zeitleiste: hervorgehobene Zeile,
+    // Bewegungsbalken und Ausloeser darin.
+    int bahnFarbig = 0;
+    int bahnGrau = 0;
+    std::vector<std::array<float, 3>> figurGezeichnet;
+    std::string tlAuswahlZeile;
+    int tlBewegungsBalken = 0;
+    int tlAusloeser = 0;
+    // --- Griffe auf der Bahn (rc597) ------------------------------------------
+    //
+    // "kann ich den Anfangspunkt und den Endpunkt des bewegten Characters
+    // setzen, im Editor selbst beim Ziehen?" Start (Spawner/Ursprung),
+    // Laufziele (die Entity jedes SET_NAVGOAL) und Flugziele (der Ort jedes
+    // move) der gewaehlten Figur bzw. des Schiffs.
+    struct BahnZug {
+        bool kandidat = false;
+        bool aktiv = false;
+        int art = -1;                  // 0 Start, 1 Laufziel, 2 Flugziel
+        int entity = -1;               // Start: Spawner/Schiff; Laufziel: die Ziel-Entity
+        Path pfad;                     // Laufziel: SET_NAVGOAL; Flugziel: move
+        std::vector<MapEntity> vorher;
+        float startOrt[3] = {0.0F, 0.0F, 0.0F};
+        float ort[3] = {0.0F, 0.0F, 0.0F};
+        float von[3] = {0.0F, 0.0F, 0.0F};   // wo das Stueck anfaengt (fuer die Vorschaulinie)
+        float startMaus[2] = {0.0F, 0.0F};
+        double letzterBau = 0.0;
+        // Waehrend des Ziehens wird nur die Bahn DIESER Figur im Speicher
+        // angepasst (rc597) - die ganze Szene neu zu rechnen kostete bis
+        // 16 fps, und das Modell hinkte dem Griff hinterher. Neu gerechnet
+        // wird einmal beim Loslassen.
+        int figur = -1;
+        std::vector<ActorStep> stepsVorher;
+        float startVorher[3] = {0.0F, 0.0F, 0.0F};
+        int szeneBautenBeimZug = 0;   // Selbsttest: keine Neuberechnung waehrend des Zuges
+    };
+    BahnZug bahnZug;
+    int bahnGriffHover = -1;
+    Path bahnMenuePfad;              // der SET_NAVGOAL, dessen Gangart das Menue setzt
+    int bahnMenueBild = -1;          // in diesem Bild hat ein Griff den Rechtsklick genommen
+    // Die Bewegungsbalken der Zeitleiste in diesem Bild (Selbsttest).
+    struct TlBalken {
+        Path pfad;
+        ImVec2 a{0.0F, 0.0F};
+        ImVec2 b{0.0F, 0.0F};
+        bool gehen = false;
+        int figur = -1;
+    };
+    std::vector<TlBalken> tlBalken;
+    int tlRollFigur = -1;            // zu dieser Figurenzeile ist die Zeitleiste schon gerollt
+    // Aufklappbare Spuren wie im Unreal Sequencer (rc597): welche Figuren
+    // aufgeklappt sind, ob die Kameragruppe offen ist, ob waits als eigene
+    // Bloecke erscheinen.
+    std::set<std::string> tlOffen;
+    bool tlKameraOffen = true;
+    bool tlWaitsZeigen = false;
+    // Auto-Key der Kamera (rc597): beim Anfassen des Gizmos mitten in einer
+    // Fahrt wurde dort ein Schluessel eingefuegt (wird ohne Aenderung beim
+    // Loslassen zurueckgenommen).
+    bool kameraAutoKeyEingefuegt = false;
+    bool kameraGizmoZwischen = false;   // der Gizmo sitzt gerade an der laufenden Kamera (mitten in einer Fahrt)
+    bool kamBahnNurAktiv = true;        // nur die Fahrt um die eingestellte Zeit zeigen (rc597, "Aktiv")
+    int kamBahnFarbig = 0;              // Selbsttest: Stuecke der Kamerabahn, gelb (gefahren) / grau (voraus)
+    int kamBahnGrau = 0;
+    int tlWaitBloecke = 0;           // Selbsttest: so viele wait-Bloecke wurden in diesem Bild gezeichnet
+    float tlKopfX = 0.0F;            // linke Kante der Spurkoepfe (Selbsttest: Pfeil anklicken)
+    float tlZeilenH = 0.0F;
     int vorschauBilder = 0;         // wie oft gezeichnet (Selbsttest)
     // Himmelsportal (rc593): gerade im Durchgang vom Portalort aus (dort kein
     // Wetter), und ob die Ansicht zuletzt mit Portalhimmel gezeichnet wurde.
@@ -662,6 +767,11 @@ struct App {
     // viewport plane by dragging the center box." Damit bewegt man in der
     // Bildebene, also in alle Richtungen zugleich - das war der Wunsch.
     static constexpr int kGizmoFree = 3;
+    // Der Drehring um die Hochachse, auch im Verschieben (rc597, wie bei den
+    // Figuren: Pfeile und Ring zugleich).
+    static constexpr int kGizmoYawRing = 4;
+    bool kamYawRingInMove = false;   // dieser Ring liegt gerade im Bild (gizmoRingSx[2])
+    bool kamRingAusMove = false;     // gedreht wird ueber diesen Ring - danach zurueck ins Verschieben
     // Rechts und oben der Kamera beim Griff, fuer die freie Bewegung.
     float gizmoFreeRight[3]{};
     float gizmoFreeUp[3]{};
@@ -1107,6 +1217,29 @@ struct App {
     int grafikNeuAufbauten = 0;   // wie oft das Geraet neu aufgebaut wurde (rc596)
     std::size_t vorgewaermt = 0;   // Stand von Karte, Bildern und Effekten beim letzten Vorwaermen
     bool ruheImTest = false;      // Selbsttest: den Ruhezustand ausnahmsweise erlauben
+    // --- Was das Skript bewegt (rc597) ----------------------------------------
+    //
+    // "sollte sich die ent nicht mit dem schiff mitbewegen?" - je Entity der
+    // Versatz vom Schluessel "origin" zum Ort, an dem Szene oder Mover-
+    // Simulation sie zur eingestellten Zeit zeigen (Schiff, Tuer, Figur).
+    // Marke, Kasten und Gizmo stehen dort. Neu bei jedem Neuzeichnen.
+    std::unordered_map<int, std::array<float, 3>> entVersatz;
+    // Ebenso die Blickrichtung: Gier des Modells jetzt minus Schluessel
+    // "angle" - der Pfeil zeigt, wohin es gerade schaut ("was bringt das
+    // facing? es schaut nicht da hin, wo das Model hinsieht").
+    std::unordered_map<int, float> entGierVersatz;
+    // Was ein Klick ins Bild treffen kann, ausser Marken: die Netze der
+    // beweglichen Modelle mit ihrer Stellung (rc597, "ich kann das schiff
+    // nicht anklicken").
+    struct PickMover {
+        const BspMesh* mesh = nullptr;
+        int entity = -1;
+        float welt[16]{};
+    };
+    std::vector<PickMover> pickMover;
+    int umrissBilder = 0;         // wie oft ein Umriss der Auswahl gezeichnet wurde (Selbsttest)
+    int vorschauEffektNetze = 0;  // Effektnetze fuer die Kameravorschau gebaut (Selbsttest)
+    int vorschauEffektEcken = 0;  // Ecken im letzten davon
     int gizmoBox[4] = {0, 0, 0, 0};
     int gizmoBoxAlt[4] = {0, 0, 0, 0};
     void* gizmoTexture = nullptr;
@@ -2033,6 +2166,48 @@ int entityKategorie(const MapEntity& e);
 UiIcon entityIcon(const MapEntity& e);
 std::string entitySkriptName(const MapEntity& e);
 bool entityOrt(const MapEntity& e, float out[3]);
+// Wie entityOrt, aber dort, wo die Entity zur eingestellten Zeit zu sehen ist
+// (rc597): Schluessel "origin" plus App::entVersatz.
+bool entityOrtAnzeige(const MapEntity& e, float out[3]);
+// Die gezeigte Blickrichtung in Grad: Schluessel "angle" plus App::entGierVersatz.
+float entityGierVersatz(int ei);
+float entityGierAnzeige(const MapEntity& e);
+void entityVersatz(int ei, float d[3]);
+// Die Entity des Modells unter dem Bildschirmpunkt (Schiff, Tuer, Kartenmodell),
+// -1 = keines.
+int moverUnterMaus(float sx, float sy);
+// Der NPC-Spawner einer Figur der Szene (-1 = keiner).
+int entityFuerFigur(int figur);
+// Umgekehrt: die Figur der Szene zu einer Entity - ein Spawner ueber den
+// Namen, ein Brush-Modell ("*N") ueber Actor::brushModel (-1 = keine).
+int figurFuerEntity(int ei);
+// Wird die Entity gerade gezogen? Dann um wie viel (Ursprung, Winkel) seit
+// dem Anfassen - damit Figur und Schiff live mitgehen (rc597).
+bool zugVersatz(int ei, float d[3], float& dGier);
+// Bahnpunkt mitten in einer Bewegung (rc597): bewegt sich die Figur bzw. das
+// Schiff der Entity zur Zeit ms gerade (Lauf oder move), welche Figur und
+// welcher Befehl - und laesst sich dort teilen?
+bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf);
+// Die Bewegung bei ms teilen, mit dem neuen Punkt K: ein Schiff faehrt bis
+// ms nach K und von dort weiter; eine Figur bekommt ein neues Laufziel bei K.
+// Die Befehle danach behalten ihre Zeit.
+bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float k[3], double ms);
+// Griffe auf der Bahn (rc597, gui/app_mission.cpp): Maus (vor entityZiehen),
+// Zeichnen samt Menue Gehen/Rennen, und fuer den Selbsttest, wo sie liegen.
+void bahnGriffeMaus();
+void bahnGriffeZeichnen();
+int bahnGriffZahl();
+bool bahnGriffPunkt(int nr, ImVec2& out);
+int bahnGriffArt(int nr);
+// Gehen oder Rennen ab diesem SET_NAVGOAL - schreibt SET_WALKING/SET_RUNNING
+// direkt davor (vorhandene werden umgestellt). Ein Rueckgaengig-Schritt.
+void gangartSetzen(const Path& navgoal, bool gehen);
+// Blick beim Laufen (rc597): SET_WATCHTARGET direkt vor dem SET_NAVGOAL -
+// auf eine Entity ("NULL" = in Laufrichtung). rueckwaertsLaufen legt eine
+// Marke (ref_tag) hinter den Start und laesst die Figur auf sie schauen.
+void blickSetzen(const Path& navgoal, const std::string& ziel);
+void rueckwaertsLaufen(const Path& navgoal);
+void gangartMenueInhalt();
 void zurEntityFliegen(std::size_t i);
 void entityMenue(std::size_t i);
 bool verschiebeImAblauf(const Path& p, double delta, bool nurDieser);
@@ -2047,6 +2222,13 @@ void drawMapToolbar();
 void drawPickedEntity();
 void drawEntityLayers(float height);
 CameraState camStateAt(double ms);
+// Auto-Key (rc597): steht die Zeit MITTEN in einer Kamerafahrt (nicht an
+// ihrem Ende), der Schluessel dieser Fahrt, sonst -1.
+int kameraZwischenSchluesselNr(double ms);
+// Die Fahrt bei ms in zwei teilen: ein neuer Schluessel genau dort, mit der
+// Stellung, die die Kamera dort hat; Anfang und Ende bleiben, alles danach
+// behaelt seine Zeit. Waehlt den neuen Schluessel. Ein Rueckgaengig-Schritt.
+bool kameraSchluesselEinfuegen(double ms);
 // Die Kamera der Bild-im-Bild-Vorschau, oder false, wenn keine gezeigt wird
 // (siehe App::kameraBildImBild). `aspekt` = Breite / Hoehe des Bildes.
 bool vorschauKamera(Camera& vc, float aspekt);
@@ -2133,6 +2315,12 @@ void kameraNeueEinstellung();
 bool kameraEinstellungLoeschen(int key);
 void kameraPilotStarten();
 void kameraPilotBeenden(bool uebernehmen);
+// Beim Pilotieren: die geflogene Ansicht als Schluessel zur eingestellten
+// Zeit (rc597) - mitten in einer Fahrt ein neuer, sonst der dieser Zeit.
+bool kameraPilotSchluesselSetzen();
+// Die Kamerabahn kraeftig obenauf, wie die der Figuren (rc597): grau voraus,
+// gelb schon gefahren, die Schluessel als Quadrate.
+void kameraBahnZeichnen();
 void kameraUeberlagerung(float rasterSkal);
 
 // --- Wegnetz (gui/app_wegpunkte.cpp) -----------------------------------------
@@ -2187,6 +2375,10 @@ void entityNeuMenue(bool amMauspunkt);
 void entityZiehen(float rasterSkal);
 // Kaesten, Blickrichtung, Gizmo und Namen ueber dem Bild (nach entityZiehen).
 void entityUeberlagerung(float rasterSkal);
+// Welche Entities das aktive Skript benutzt (App::entImSkript) und das Schild
+// mit dem Namen des aktiven Reiters oben links in der Ansicht (rc597).
+void skriptFokusAuffrischen();
+void skriptSchild();
 bool entityGizmoPunkt(int griff, ImVec2& out);
 int neueEntityAn(const std::string& klasse, const float ort[3]);
 int neueEntityHier(const std::string& klasse, bool amMauspunkt);
@@ -2251,6 +2443,9 @@ float ansichtsSchalter(bool nurMessen);
 void drawKartenStatistik();
 bool entityFokus();
 int reiterFuerSkriptRef(const std::string& ref);
+// Die Zeilen fuer eine Nutzlast "bhed_new" aus der Ereignisliste (rc597, fuer
+// den Graphen); leer, wenn sie nicht passt.
+std::vector<Node> knotenAusNeuNutzlast(const void* daten, int groesse);
 std::string aktiverSkriptRef();
 bool skriptTextLaden(const std::string& ref, std::string& text);
 void skriptOeffnen(const std::string& ref, bool anlegen);

@@ -155,6 +155,147 @@ bool markeWinkel(const std::string& name, const float ang[3]) {
 
 }  // namespace
 
+// --- Auto-Key: einen Schluessel mitten in einer Fahrt (rc597) ---------------
+//
+// shank: "wenn ich die Timeline bewege und die Kamera zwischen 2 Punkten ist
+// und ich drehe die Kamera oder bewege sie, wird an dem Punkt ein neuer
+// erstellt und nicht der Anfang geaendert - so als haette ich da animiert".
+// Wie Auto-Key in Unreal. Nur auf oberster Ebene, dort haben die Zeilen Zeiten.
+namespace {
+const CamSegment* zwischenFahrt(double ms) {
+    if (!g_app->camTrackValid) { return nullptr; }
+    for (const CamSegment& c : g_app->camTrack.segments) {
+        if (c.kind != CamSegment::Kind::Move || !c.fremd.empty() || c.path.size() != 1U) { continue; }
+        if (ms > c.startMs + 50.0 && ms < c.endMs - 25.0) { return &c; }
+    }
+    return nullptr;
+}
+
+std::string zahl3(double v) {
+    char t[48];
+    std::snprintf(t, sizeof(t), "%.3f", v);
+    return t;
+}
+
+std::string vektor3(const float* v) {
+    char t[96];
+    std::snprintf(t, sizeof(t), "%.3f %.3f %.3f", static_cast<double>(v[0]), static_cast<double>(v[1]),
+                  static_cast<double>(v[2]));
+    return t;
+}
+}  // namespace
+
+int kameraZwischenSchluesselNr(double ms) {
+    const CamSegment* c = zwischenFahrt(ms);
+    if (c == nullptr) { return -1; }
+    const auto ks = kameraSchluessel(g_app->doc.script());
+    for (std::size_t i = 0; i < ks.size(); ++i) {
+        if (ks[i].path == c->path) { return static_cast<int>(i); }
+    }
+    return -1;
+}
+
+bool kameraSchluesselEinfuegen(double ms) {
+    const CamSegment* c = zwischenFahrt(ms);
+    if (c == nullptr) { return false; }
+    const double t0 = c->startMs;
+    const double a = ms - t0;           // Fahrt zum neuen Schluessel
+    const double rest = c->endMs - ms;  // vom neuen zum alten Ziel
+    Script s = g_app->doc.script();
+    std::vector<Node>& top = s.nodes;
+    const std::size_t i = c->path[0];
+    if (i >= top.size() || top[i].args.size() < 3) { return false; }
+    // Der PAN, der mit diesem MOVE beginnt (vor dem naechsten wait/MOVE).
+    std::size_t panNr = top.size();
+    std::size_t waitNr = top.size();
+    for (std::size_t j = i + 1; j < top.size(); ++j) {
+        const Node& n = top[j];
+        if (n.name == "waitsignal" || n.name == "dowait") { break; }
+        if (n.name == "wait") {
+            if (!n.args.empty() && n.args[0].kind == Arg::Kind::Number) { waitNr = j; }
+            break;
+        }
+        if (n.name == "camera" && !n.args.empty()) {
+            if (n.args[0].text == "MOVE") { break; }
+            if (n.args[0].text == "PAN" && panNr == top.size()) { panNr = j; }
+        }
+    }
+    double panDauer = 0.0;
+    bool panTeilen = false;
+    if (panNr < top.size()) {
+        const Node& p = top[panNr];
+        panDauer = std::atof(p.args.back().text.c_str());
+        panTeilen = p.args.size() >= 4 && p.args[1].kind == Arg::Kind::Vector && panDauer > a + 1.0;
+    }
+    // Das wait danach muss die Fahrt zum neuen Schluessel aufnehmen koennen -
+    // sonst kaeme der Rest hinter den naechsten Befehl.
+    double waitWert = 0.0;
+    if (waitNr < top.size()) {
+        waitWert = std::atof(top[waitNr].args[0].text.c_str());
+        if (waitWert + 1e-3 < a) { return false; }
+    }
+    // Das Spiel beendet ein wait ein Bild (50 ms) spaeter - der Ablauf, aus
+    // dem die Kamerabahn entsteht, rechnet genauso (siehe auch das Ziehen an
+    // einer wait-Kante in der Zeitleiste, das 50 ms abzieht).
+    Node probe;
+    probe.kind = Node::Kind::Command;
+    probe.name = "wait";
+    Arg pa;
+    pa.kind = Arg::Kind::Number;
+    pa.text = "0.000";
+    probe.args = {pa};
+    constexpr double zuschlag = 50.0;
+    if (a - zuschlag < 1.0) { return false; }
+
+    const CameraState cs = camStateAt(ms);
+    Node moveK = top[i];
+    moveK.kennung = 0;
+    moveK.args[1].text = vektor3(cs.pos);
+    moveK.args[2].text = zahl3(a);
+    Node moveB = top[i];
+    moveB.args[2].text = zahl3(rest);
+    Node panK;
+    Node panB;
+    if (panTeilen) {
+        panB = top[panNr];
+        panK = panB;
+        panK.kennung = 0;
+        panK.args[1].text = vektor3(cs.angles);
+        panK.args.back().text = zahl3(a);
+        panB.args.back().text = zahl3(panDauer - a);
+    }
+    Node warte = probe;
+    warte.args[0].text = zahl3(a - zuschlag);
+    std::vector<Node> neu;
+    neu.reserve(top.size() + 3U);
+    for (std::size_t k = 0; k < i; ++k) { neu.push_back(top[k]); }
+    neu.push_back(moveK);
+    if (panTeilen) { neu.push_back(panK); }
+    const std::size_t bis = waitNr < top.size() ? waitNr : top.size();
+    for (std::size_t k = i + 1; k < bis; ++k) {
+        if (panTeilen && k == panNr) { continue; }
+        neu.push_back(top[k]);
+    }
+    neu.push_back(warte);
+    neu.push_back(moveB);
+    if (panTeilen) { neu.push_back(panB); }
+    if (waitNr < top.size()) {
+        Node w = top[waitNr];
+        w.args[0].text = zahl3(waitWert - a);
+        neu.push_back(w);
+        for (std::size_t k = waitNr + 1; k < top.size(); ++k) { neu.push_back(top[k]); }
+    }
+    top = std::move(neu);
+    g_app->doc.ersetzeSkript(std::move(s), tr(Str::CamAutoKey));
+    nachSkriptAenderung();
+    const auto ks = kameraSchluessel(g_app->doc.script());
+    for (std::size_t k = 0; k < ks.size(); ++k) {
+        if (ks[k].path == Path{i}) { g_app->selectedKey = static_cast<int>(k); }
+    }
+    vorschauVerwerfen();
+    return true;
+}
+
 // --- Schreiben -------------------------------------------------------------------
 
 bool kameraVorschauSchreiben() {
@@ -370,6 +511,202 @@ void kameraPilotStarten() {
     g_app->mapDirty = true;
 }
 
+// --- Die Kamerabahn, wie die der Figuren (rc597) -----------------------------
+//
+// shank: "welche Bahn die Kamera entlang faehrt ist nicht so gut wie bei den
+// Figuren". Bisher eine duenne gruene Linie im Rasterbild. Jetzt dieselbe
+// Darstellung wie bei Figuren und Schiffen: kraeftig, obenauf, grau voraus und
+// gelb, was bis zur eingestellten Zeit schon gefahren ist; die Schluessel als
+// Quadrate (der gewaehlte gelb).
+void kameraBahnZeichnen() {
+    g_app->kamBahnFarbig = 0;
+    g_app->kamBahnGrau = 0;
+    if (!g_app->cameraSelected || g_app->camViewActive || !g_app->camTrackValid || g_app->camTrack.durationMs <= 1.0) {
+        return;
+    }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(ImVec2{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1]},
+                     ImVec2{g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]}, true);
+    const float px = std::max(1.0F, ImGui::GetFontSize() / 13.0F);
+    constexpr int kSchritte = 240;
+    double w0 = 0.0;
+    double w1 = g_app->camTrack.durationMs;
+    // "Aktiv": nur die Fahrt zum aktuellen Schluessel und die zum naechsten -
+    // "show all und active, weil das zu unuebersichtlich wird".
+    const CamSegment* vorSeg = nullptr;
+    const CamSegment* nachSeg = nullptr;
+    if (g_app->kamBahnNurAktiv) {
+        for (const CamSegment& c : g_app->camTrack.segments) {
+            if (c.kind != CamSegment::Kind::Move || !c.fremd.empty()) { continue; }
+            if (c.startMs <= g_app->playMs + 0.5) {
+                if (vorSeg == nullptr || c.startMs >= vorSeg->startMs) { vorSeg = &c; }
+            } else if (nachSeg == nullptr || c.startMs < nachSeg->startMs) {
+                nachSeg = &c;
+            }
+        }
+        w0 = vorSeg != nullptr ? vorSeg->startMs : 0.0;
+        w1 = nachSeg != nullptr ? nachSeg->endMs : (vorSeg != nullptr ? vorSeg->endMs : w1);
+        if (w1 <= w0) { w1 = w0 + 1.0; }
+    }
+    const double dauer = w1 - w0;
+    ImVec2 vor;
+    bool hatVor = false;
+    double vorMs = 0.0;
+    for (int i = 0; i <= kSchritte; ++i) {
+        const double ms = w0 + dauer * static_cast<double>(i) / static_cast<double>(kSchritte);
+        const CameraState st = camStateAt(ms);
+        ImVec2 s;
+        if (!st.enabled || !kartenPunktAufSchirm(st.pos, s)) {
+            hatVor = false;
+            continue;
+        }
+        if (hatVor) {
+            const bool gefahren = vorMs < g_app->playMs;
+            dl->AddLine(vor, s, IM_COL32(10, 12, 16, 170), 4.5F * px);
+            dl->AddLine(vor, s, gefahren ? IM_COL32(240, 200, 60, 255) : IM_COL32(170, 175, 185, 230), 2.2F * px);
+            ++(gefahren ? g_app->kamBahnFarbig : g_app->kamBahnGrau);
+        }
+        vor = s;
+        vorMs = ms;
+        hatVor = true;
+    }
+    const std::vector<KameraSchluessel> ks = kameraSchluessel(g_app->doc.script());
+    const float r = 5.0F * px;
+    for (std::size_t i = 0; i < ks.size(); ++i) {
+        ImVec2 s;
+        if (!kartenPunktAufSchirm(ks[i].pos, s)) { continue; }
+        const bool gewaehlt = static_cast<int>(i) == g_app->selectedKey;
+        if (g_app->kamBahnNurAktiv && !gewaehlt) {
+            // Nur die Schluessel dieser Fahrten: ihr Anfang und ihre Ziele.
+            bool dabei = false;
+            for (const CamSegment* c : {vorSeg, nachSeg}) {
+                if (c == nullptr) { continue; }
+                dabei = dabei || ks[i].path == c->path;
+                const float d = std::fabs(ks[i].pos[0] - c->from[0]) + std::fabs(ks[i].pos[1] - c->from[1]) +
+                                std::fabs(ks[i].pos[2] - c->from[2]);
+                dabei = dabei || d < 0.5F;
+            }
+            if (!dabei) { continue; }
+        }
+        dl->AddRectFilled(ImVec2{s.x - r, s.y - r}, ImVec2{s.x + r, s.y + r},
+                          gewaehlt ? IM_COL32(240, 200, 60, 255) : IM_COL32(96, 170, 255, 255));
+        dl->AddRect(ImVec2{s.x - r, s.y - r}, ImVec2{s.x + r, s.y + r}, IM_COL32(20, 22, 28, 230), 0.0F, 0, 1.2F * px);
+    }
+    // --- Der Gizmo, wie der der Figuren (rc597) ----------------------------
+    //
+    // shank: "wenn der Bewegungs- und Rotations-Gizmo noch so gut ist wie bei
+    // den Charakteren, dann ist es fast perfekt". Kraeftige Achsen mit Spitze
+    // in Rot/Gruen/Blau, Kaestchen in der Mitte, der Ring um die Hochachse
+    // schon im Verschieben; beim Drehen ein gefuelltes Tortenstueck. Die Lage
+    // kommt aus derselben Rechnung wie Ueberfahren und Ziehen (gizmoSx,
+    // gizmoRingSx, Rasterpunkte).
+    if (g_app->gizmoShown && !g_app->kameraPilot) {
+        const float skal = g_app->mapImage.width > 0
+                               ? static_cast<float>(g_app->mapImage.width) /
+                                     std::max(1.0F, g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0])
+                               : 1.0F;
+        const auto schirm = [&](float x, float y) {
+            return ImVec2{g_app->kartenAnsicht[0] + x / skal, g_app->kartenAnsicht[1] + y / skal};
+        };
+        const ImU32 achsFarbe[3] = {IM_COL32(235, 70, 70, 255), IM_COL32(80, 210, 90, 255), IM_COL32(70, 130, 255, 255)};
+        const ImU32 hell = IM_COL32(255, 240, 120, 255);
+        const auto ring = [&](int ax, ImU32 f, float dicke) {
+            for (int t = 0; t + 1 < App::kRingPts; ++t) {
+                if (g_app->gizmoRingSx[ax][t] < 0.0F || g_app->gizmoRingSx[ax][t + 1] < 0.0F) { continue; }
+                dl->AddLine(schirm(g_app->gizmoRingSx[ax][t], g_app->gizmoRingSy[ax][t]),
+                            schirm(g_app->gizmoRingSx[ax][t + 1], g_app->gizmoRingSy[ax][t + 1]), f, dicke);
+            }
+        };
+        if (g_app->gizmoMode == App::GizmoMode::Rotate) {
+            for (int ax = 0; ax < 3; ++ax) {
+                if (g_app->kamRingAusMove && ax != 2) { continue; }   // nur der gegriffene Ring
+                const bool aktiv = (g_app->gizmoRotating && g_app->gizmoAxis == ax) ||
+                                   (!g_app->gizmoRotating && g_app->gizmoHover == ax);
+                ring(ax, aktiv ? hell : achsFarbe[ax], (aktiv ? 4.0F : 2.5F) * px);
+            }
+            // Das Tortenstueck: wie weit gedreht wurde.
+            const int ax = g_app->gizmoAxis;
+            if (g_app->gizmoRotating && ax >= 0 && ax < 3) {
+                ImVec2 mitte{0.0F, 0.0F};
+                int n = 0;
+                for (int t = 0; t + 1 < App::kRingPts; ++t) {
+                    if (g_app->gizmoRingSx[ax][t] < 0.0F) { continue; }
+                    const ImVec2 q = schirm(g_app->gizmoRingSx[ax][t], g_app->gizmoRingSy[ax][t]);
+                    mitte.x += q.x;
+                    mitte.y += q.y;
+                    ++n;
+                }
+                const float grad = g_app->gizmoAngles[ax] - g_app->gizmoRotStart[ax];
+                const int teile = std::min(App::kRingPts - 1, static_cast<int>(std::fabs(grad) / 7.5F));
+                if (n > 0 && teile > 0) {
+                    mitte.x /= static_cast<float>(n);
+                    mitte.y /= static_cast<float>(n);
+                    for (int q = 0; q < teile; ++q) {
+                        const int i0 = grad >= 0.0F ? q : (App::kRingPts - 1 - q) % (App::kRingPts - 1);
+                        const int i1 = grad >= 0.0F ? q + 1 : (App::kRingPts - 2 - q + (App::kRingPts - 1)) % (App::kRingPts - 1);
+                        if (g_app->gizmoRingSx[ax][i0] < 0.0F || g_app->gizmoRingSx[ax][i1] < 0.0F) { continue; }
+                        dl->AddTriangleFilled(mitte, schirm(g_app->gizmoRingSx[ax][i0], g_app->gizmoRingSy[ax][i0]),
+                                              schirm(g_app->gizmoRingSx[ax][i1], g_app->gizmoRingSy[ax][i1]),
+                                              IM_COL32(255, 230, 120, 90));
+                    }
+                }
+            }
+        } else {
+            if (g_app->kamYawRingInMove) {
+                const bool aktiv = g_app->gizmoHover == App::kGizmoYawRing;
+                ring(2, aktiv ? hell : IM_COL32(240, 200, 60, 200), (aktiv ? 3.5F : 2.0F) * px);
+            }
+            for (int ax = 0; ax < 3; ++ax) {
+                if (g_app->gizmoSx[ax][0] < 0.0F || g_app->gizmoSx[ax][1] < 0.0F) { continue; }
+                const ImVec2 a = schirm(g_app->gizmoSx[ax][0], g_app->gizmoSy[ax][0]);
+                const ImVec2 b = schirm(g_app->gizmoSx[ax][1], g_app->gizmoSy[ax][1]);
+                const bool aktiv = g_app->gizmoAxis == ax || (g_app->gizmoAxis < 0 && g_app->gizmoHover == ax);
+                const ImU32 f = aktiv ? hell : achsFarbe[ax];
+                dl->AddLine(a, b, f, (aktiv ? 4.5F : 3.0F) * px);
+                const float lx = b.x - a.x;
+                const float ly = b.y - a.y;
+                const float l = std::sqrt(lx * lx + ly * ly);
+                if (l > 4.0F) {
+                    const ImVec2 d{lx / l, ly / l};
+                    const ImVec2 nrm{-d.y, d.x};
+                    const float sp = (aktiv ? 11.0F : 9.0F) * px;
+                    dl->AddTriangleFilled(ImVec2{b.x + d.x * sp, b.y + d.y * sp},
+                                          ImVec2{b.x - d.x * sp * 0.2F + nrm.x * sp * 0.55F, b.y - d.y * sp * 0.2F + nrm.y * sp * 0.55F},
+                                          ImVec2{b.x - d.x * sp * 0.2F - nrm.x * sp * 0.55F, b.y - d.y * sp * 0.2F - nrm.y * sp * 0.55F}, f);
+                }
+            }
+            if (g_app->gizmoSx[0][0] >= 0.0F) {
+                const ImVec2 m = schirm(g_app->gizmoSx[0][0], g_app->gizmoSy[0][0]);
+                const bool aktiv = g_app->gizmoAxis == App::kGizmoFree ||
+                                   (g_app->gizmoAxis < 0 && g_app->gizmoHover == App::kGizmoFree);
+                const float h = (aktiv ? 7.0F : 5.5F) * px;
+                dl->AddRectFilled(ImVec2{m.x - h, m.y - h}, ImVec2{m.x + h, m.y + h},
+                                  aktiv ? IM_COL32(255, 240, 120, 230) : IM_COL32(235, 235, 240, 160));
+                dl->AddRect(ImVec2{m.x - h, m.y - h}, ImVec2{m.x + h, m.y + h}, IM_COL32(20, 22, 28, 230), 0.0F, 0, 1.2F * px);
+            }
+        }
+    }
+    dl->PopClipRect();
+}
+
+bool kameraPilotSchluesselSetzen() {
+    if (!g_app->kameraPilot) { return false; }
+    int key = -1;
+    if (kameraZwischenSchluesselNr(g_app->playMs) >= 0 && kameraSchluesselEinfuegen(g_app->playMs)) {
+        key = g_app->selectedKey;
+    } else {
+        key = schluesselFuerZeit(g_app->playMs);
+    }
+    if (key < 0) { return false; }
+    kameraAufAnsicht(key);
+    g_app->selectedKey = key;
+    g_app->pilotSchluessel = key;
+    char t[128];
+    std::snprintf(t, sizeof(t), tr(Str::CamPilotKeySet), g_app->playMs / 1000.0);
+    addStatus(t);
+    return true;
+}
+
 void kameraPilotBeenden(bool uebernehmen) {
     if (!g_app->kameraPilot) { return; }
     g_app->kameraPilot = false;
@@ -470,6 +807,11 @@ void kameraUeberlagerung(float rasterSkal) {
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(text.c_str());
             if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::CamPilotHint)); }
+            ImGui::SameLine();
+            if (iconTextKnopf(tr(Str::CamPilotKey), UiIcon::Plus, tr(Str::CamPilotKeyHint)) ||
+                (ImGui::IsKeyPressed(ImGuiKey_Enter, false) && !ImGui::GetIO().WantTextInput)) {
+                kameraPilotSchluesselSetzen();
+            }
             ImGui::SameLine();
             if (iconTextKnopf(tr(Str::CamPilotApply), UiIcon::Haken, tr(Str::CamPilotHint))) { kameraPilotBeenden(true); }
             ImGui::SameLine();
@@ -657,6 +999,26 @@ void drawKameraInspector(float hoehe) {
         if (iconKnopf(tr(Str::CamNewShot), UiIcon::Plus, tr(Str::CamNewShotHint))) { kameraNeueEinstellung(); }
         ImGui::SameLine();
         if (iconKnopf(tr(Str::CamDeleteShot), UiIcon::Loeschen, nullptr, false, k >= 0)) { kameraEinstellungLoeschen(k); }
+        // Welche Bahn die Ansicht zeigt (rc597): alle Fahrten oder nur die
+        // um die eingestellte Zeit.
+        ImGui::SameLine(0.0F, sp * 2.5F);
+        const auto schalter = [&](Str text, bool an) {
+            ImGui::PushStyleColor(ImGuiCol_Button, an ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+                                                      : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+            const bool k2 = ImGui::SmallButton(tr(text));
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::CamPathHint)); }
+            return k2;
+        };
+        if (schalter(Str::CamPathAll, !g_app->kamBahnNurAktiv)) {
+            g_app->kamBahnNurAktiv = false;
+            g_app->mapDirty = true;
+        }
+        ImGui::SameLine(0.0F, 0.0F);
+        if (schalter(Str::CamPathActive, g_app->kamBahnNurAktiv)) {
+            g_app->kamBahnNurAktiv = true;
+            g_app->mapDirty = true;
+        }
         ImGui::PopStyleVar();
     }
     ImGui::Separator();

@@ -4245,6 +4245,7 @@ void takeTab(int index, bool rollen = true, bool layout = true) {
     //
     // Verglichen wird die KENNUNG, nicht der Plattenpfad: eine Mission aus
     // einem .pk3 hat gar keinen.
+    const std::string karteVorher = g_app->map.path;
     if (!t.mapId.empty() && t.mapId != g_app->map.path) {
         char zeile[300];
         std::snprintf(zeile, sizeof(zeile),
@@ -4264,10 +4265,17 @@ void takeTab(int index, bool rollen = true, bool layout = true) {
     // Und die Sicht wiederherstellen - aber nur, wenn dieser Reiter schon
     // einmal eine hatte. Ein frischer bekommt die Ansicht, die das Laden
     // der Karte einstellt, und nicht die Nullstellung.
+    //
+    // Auf DERSELBEN Karte bleibt die Kamera, wo sie ist (rc597): "wenn sich
+    // eine map die ent teilt von allen scripts waere es nicht besser, dass
+    // wenn ich die reiter wechsel alle dieselbe kamera teilen?" Die Zeit
+    // bleibt je Reiter - jedes Skript hat seine eigene Zeitleiste.
     if (t.camSaved) {
-        for (int k = 0; k < 3; ++k) {
-            g_app->cam.pos[k] = t.camPos[k];
-            g_app->cam.angles[k] = t.camAng[k];
+        if (karteVorher.empty() || g_app->map.path != karteVorher) {
+            for (int k = 0; k < 3; ++k) {
+                g_app->cam.pos[k] = t.camPos[k];
+                g_app->cam.angles[k] = t.camAng[k];
+            }
         }
         g_app->playMs = t.playMs;
         g_app->playing = false;
@@ -5854,6 +5862,16 @@ void insertCommand(const Command& c) {
 // Die Knoten, die ein Zug aus der Ereignisliste erzeugt: ein Befehl oder
 // die Zeilen eines Makros. Gebraucht vom Hauptbaum (dropNewAt) und von den
 // Nebenfeldern - eine Fassung fuer beide.
+std::vector<Node> knotenFuerNeu(const NewDrag& what);
+std::vector<Node> knotenAusNeuNutzlastIntern(const void* daten, int groesse) {
+    if (daten == nullptr || groesse != static_cast<int>(sizeof(NewDrag))) {
+        return {};
+    }
+    NewDrag neu{};
+    std::memcpy(&neu, daten, sizeof(neu));
+    return knotenFuerNeu(neu);
+}
+
 std::vector<Node> knotenFuerNeu(const NewDrag& what) {
     std::vector<Node> nodes;
     if (what.kind == 0) {
@@ -10289,6 +10307,7 @@ void oeffneSkriptAusSpeicher(const std::string& data, const std::string& name) {
 // Ein neuer, leerer Reiter wie "New" - ohne die Rueckfrage und ohne das
 // Wiederverwenden eines leeren Reiters, die doNew() davorschaltet.
 void neuerReiter() { neuesSkript(); }
+std::vector<Node> knotenAusNeuNutzlast(const void* daten, int groesse) { return knotenAusNeuNutzlastIntern(daten, groesse); }
 // Aus main: nach dem Neustart eines Updates einmal zeigen, was neu ist.
 void changelogZeigen() {
     if (g_app != nullptr) { g_app->changelogOpen = true; }

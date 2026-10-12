@@ -194,6 +194,8 @@ struct KinoModell {
 // Mod haengen nie mehr als eines auf einmal an.
 inline constexpr int kMaxKinoModelle = 4;
 
+struct ActorStep;   // weiter unten - ActorState zeigt auf ein Blickziel mit Spur
+
 struct ActorState {
     float pos[3]{};
     float angles[3]{};
@@ -381,6 +383,7 @@ struct ActorState {
     // fester Winkelgeschwindigkeit (siehe kNpcTurnDegPerSec).
     bool hasWatchTarget = false;
     float watchAt[3]{};
+    const ActorStep* watchStep = nullptr;   // mit Spur: das Ziel bewegt sich (rc597)
     float watchFromYaw = 0.0F;
     double watchStartMs = 0.0;
     // Die geltende Drehrate in Grad je Sekunde. Vorgabe, bis ein
@@ -521,6 +524,11 @@ struct ActorStep {
     // Die Engine hat dafuer zwei Wege, siehe roffStand().
     bool roffFigur = false;
     Path path;               // welche Zeile im Skript
+    // SET_WATCHTARGET auf eine andere FIGUR (rc597): ihre Bahn ab startMs,
+    // alle spurSchrittMs abgetastet - der Blick folgt ihr wie in der Engine,
+    // die den aktuellen Ort des Ziels nimmt. Leer: das Ziel steht still.
+    std::vector<std::array<float, 3>> spur;
+    double spurSchrittMs = 50.0;
     std::string fremd;       // aus einem anderen Skript (dann path leer)
 };
 

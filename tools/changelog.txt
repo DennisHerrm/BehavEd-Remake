@@ -6,6 +6,64 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc598 2026-10-12
+[en]
+- Selected ships, doors, models and characters get an orange outline, like in Unreal.
+- Marker, box and gizmo follow a ship or character that the script moves; clicking the character or the ship itself selects its entity. The orange arrow shows where the model is looking right now.
+- The selected character or ship shows its whole path: grey ahead, yellow where it has already been. Handles on the path: green start, yellow walk targets, blue flight targets - drag them to move only that point. A shared walk target gets its own copy.
+- Right-click a walk target: walk or run, walk backwards, look at another character while walking, or face the walking direction.
+- Dragging a character or ship in the middle of its movement inserts a new path point there instead of moving the whole path; later commands keep their times.
+- Characters that look away from where they walk (SET_WATCHTARGET) now walk backwards in the preview (BOTH_WALKBACK1, with a saber BOTH_WALKBACK2, running BOTH_RUNBACK), also in existing scripts; a look target that is a moving character is followed.
+- Timeline like the Unreal Sequencer: the camera and every character can be expanded into tracks (movement, animation, look, sound, state). Waits are hidden (button "Waits"). Walk and flight bars can be dragged in time, a move has a handle for its duration, and a selected character's row opens and scrolls into view.
+- Camera: in the middle of a move, moving or turning the camera inserts a new key there (auto-key). While piloting, "Set key (Enter)" writes the flown view at the playhead.
+- New camera gizmo like the character gizmo (arrows, centre box, turning ring), the camera path is drawn like the character paths, and "All paths / Active path" chooses what is shown.
+- The camera preview at the bottom right follows the timeline and keeps its effects when the main view looks away.
+- Smoke in front of glowing lava now also dims the glow (no blurry lava shining through).
+- Tabs on the same map share the camera; the entities of the active script are highlighted and its name is shown in the view (switch in the view settings).
+- Graph view: right-angled wires with bend points, entities and commands can be dragged in from the left, gaps in the wires fixed.
+[de]
+- Gewählte Schiffe, Türen, Modelle und Figuren bekommen einen orangen Umriss wie in Unreal.
+- Marke, Kasten und Gizmo folgen einem Schiff oder einer Figur, die das Skript bewegt; ein Klick auf die Figur oder das Schiff selbst wählt die Entity. Der orange Pfeil zeigt, wohin das Modell gerade schaut.
+- Die gewählte Figur oder das gewählte Schiff zeigt die ganze Bahn: grau voraus, gelb, wo sie schon war. Griffe auf der Bahn: grüner Start, gelbe Laufziele, blaue Flugziele - ziehen verschiebt nur diesen Punkt. Ein geteiltes Laufziel bekommt eine eigene Kopie.
+- Rechtsklick auf ein Laufziel: gehen oder rennen, rückwärts laufen, beim Laufen eine andere Figur ansehen oder in Laufrichtung schauen.
+- Eine Figur oder ein Schiff mitten in der Bewegung ziehen setzt dort einen neuen Bahnpunkt, statt die ganze Bahn zu verschieben; spätere Befehle behalten ihre Zeit.
+- Figuren, die beim Laufen woanders hinschauen (SET_WATCHTARGET), laufen in der Vorschau jetzt rückwärts (BOTH_WALKBACK1, mit Lichtschwert BOTH_WALKBACK2, rennend BOTH_RUNBACK) - auch in bestehenden Skripten; ein Blickziel, das selbst läuft, wird verfolgt.
+- Zeitleiste wie im Unreal Sequencer: Kamera und jede Figur lassen sich in Spuren aufklappen (Bewegung, Animation, Blick, Ton, Zustand). Die waits sind ausgeblendet (Knopf "waits"). Lauf- und Flugbalken lassen sich zeitlich ziehen, ein move hat einen Griff für seine Dauer, und die Zeile einer gewählten Figur klappt auf und rollt ins Bild.
+- Kamera: mitten in einer Fahrt setzt Verschieben oder Drehen dort einen neuen Schlüssel (Auto-Key). Beim Pilotieren schreibt "Schlüssel setzen (Enter)" die geflogene Ansicht zur eingestellten Zeit.
+- Neuer Kamera-Gizmo wie bei den Figuren (Pfeile, Kästchen in der Mitte, Drehring), die Kamerabahn wie die Bahnen der Figuren, und "Alle Bahnen / Aktive Bahn" wählt, was zu sehen ist.
+- Die Kameravorschau unten rechts folgt der Zeitleiste und behält ihre Effekte, auch wenn die Hauptansicht wegschaut.
+- Rauch vor glühender Lava dunkelt jetzt auch das Glühen ab (keine verwaschen durchscheinende Lava mehr).
+- Reiter mit derselben Karte teilen sich die Kamera; die Entities des aktiven Skripts werden hervorgehoben und sein Name steht in der Ansicht (Schalter in den Ansichtseinstellungen).
+- Graph: rechtwinklige Leitungen mit Umlenkpunkten, Entities und Befehle lassen sich von links hineinziehen, Lücken in den Leitungen behoben.
+[zh]
+- 选中的飞船、门、模型和角色会显示橙色轮廓,类似 Unreal。
+- 标记、方框和操纵器会跟随脚本移动的飞船或角色;直接点击角色或飞船即可选中其实体。橙色箭头显示模型当前的朝向。
+- 选中的角色或飞船显示完整路径:前方为灰色,已走过的部分为黄色。路径上的手柄:绿色起点、黄色行走目标、蓝色飞行目标——拖动只移动该点。共享的行走目标会获得自己的副本。
+- 右键单击行走目标:行走或奔跑、倒退行走、行走时注视其他角色,或面向行走方向。
+- 在移动途中拖动角色或飞船,会在该处插入新的路径点,而不是移动整条路径;之后的命令保持原有时间。
+- 行走时看向别处的角色(SET_WATCHTARGET)在预览中现在会倒退行走(BOTH_WALKBACK1,持光剑时 BOTH_WALKBACK2,奔跑时 BOTH_RUNBACK),现有脚本同样适用;正在移动的注视目标会被持续跟随。
+- 时间轴类似 Unreal Sequencer:摄像机和每个角色都可展开为轨道(移动、动画、注视、声音、状态)。等待已隐藏(按钮"waits")。行走和飞行条可在时间上拖动,move 有调整时长的手柄,选中角色的行会自动展开并滚动到视图中。
+- 摄像机:在移动途中移动或旋转摄像机会在该处插入新关键帧(自动关键帧)。驾驶时,"设置关键帧(Enter)"会在播放头处写入飞行视角。
+- 新的摄像机操纵器与角色操纵器相同(箭头、中心方块、旋转环),摄像机路径与角色路径画法一致,"全部路径 / 当前路径"可选择显示内容。
+- 右下角的摄像机预览跟随时间轴,主视图转开时也保留特效。
+- 发光熔岩前的烟雾现在也会减弱辉光(不再有模糊的熔岩透出)。
+- 使用同一地图的标签页共享摄像机;当前脚本的实体会被突出显示,其名称显示在视图中(视图设置中可开关)。
+- 图表视图:直角连线和拐点,可从左侧拖入实体和命令,修复了连线中的缺口。
+[ja]
+- 選択した船、ドア、モデル、キャラクターに Unreal のようなオレンジの輪郭が付きます。
+- スクリプトで動く船やキャラクターにマーカー、ボックス、ギズモが追従します。キャラクターや船そのものをクリックするとエンティティが選択されます。オレンジの矢印はモデルが今向いている方向を示します。
+- 選択したキャラクターや船は経路全体を表示します:これからの部分はグレー、通過済みは黄色。経路上のハンドル:緑が開始点、黄色が歩行ターゲット、青が飛行ターゲット——ドラッグするとその点だけが動きます。共有の歩行ターゲットは専用のコピーになります。
+- 歩行ターゲットを右クリック:歩く/走る、後ろ向きに歩く、歩きながら別のキャラクターを見る、進行方向を向く。
+- 移動中のキャラクターや船をドラッグすると、経路全体を動かす代わりにそこへ新しい経路点を挿入します。後のコマンドは時間を保ちます。
+- 歩きながら別の方向を見るキャラクター(SET_WATCHTARGET)は、プレビューで後ろ向きに歩くようになりました(BOTH_WALKBACK1、セーバー使用時 BOTH_WALKBACK2、走るとき BOTH_RUNBACK)。既存のスクリプトでも有効で、動いているキャラクターを見る場合は追従します。
+- Unreal Sequencer のようなタイムライン:カメラと各キャラクターをトラック(移動、アニメーション、視線、サウンド、状態)に展開できます。wait は非表示(「waits」ボタン)。歩行・飛行バーは時間方向にドラッグでき、move には長さのハンドルがあり、選択したキャラクターの行は自動で展開・スクロールします。
+- カメラ:移動の途中でカメラを動かしたり回したりすると、そこに新しいキーを挿入します(オートキー)。操縦中は「キーを設定(Enter)」で飛行中のビューを再生位置に書き込みます。
+- キャラクターと同じ新しいカメラギズモ(矢印、中央のボックス、回転リング)、キャラクターと同じ描き方のカメラパス、「すべてのパス / 現在のパス」で表示を選べます。
+- 右下のカメラプレビューはタイムラインに追従し、メインビューが別の方向を向いてもエフェクトを保ちます。
+- 光る溶岩の手前の煙がグローも暗くするようになりました(ぼやけた溶岩が透けなくなりました)。
+- 同じマップのタブはカメラを共有します。アクティブなスクリプトのエンティティを強調し、その名前をビューに表示します(ビュー設定で切り替え)。
+- グラフビュー:直角の線と折れ点、左からエンティティやコマンドをドラッグ可能、線の途切れを修正。
+
 ## rc597 2026-10-12
 [en]
 - No more short hang when flying freely through a map: shaders (light, shadow, fog, figures, effects) were compiled only when first needed, up to 0.8 s in the middle of the flight. They are now prepared while the map loads.

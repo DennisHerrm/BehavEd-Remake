@@ -68,6 +68,9 @@ namespace bhed::gpu {
 
 namespace {
 
+void gibUmrissFrei();  // Umriss der Auswahl, weiter unten
+bool umrissAnlegen();
+
 // Ein uebersetztes Shaderpaar, nach Merkmalsbits abgelegt.
 //
 // Der Name aus shaderName() ist der Schluessel: gleiche Bits heissen
@@ -160,6 +163,28 @@ Netzpuffer g_netz[2];
 std::map<const BspMesh*, Netzpuffer> g_moverNetze;
 ID3D11Buffer* g_cbBild = nullptr;
 ID3D11Buffer* g_cbStapel = nullptr;
+// --- Umriss der Auswahl (rc597) ------------------------------------------
+//
+// shank: "wenn ich ein Schiff oder eine Figur auswaehle, dass es dann
+// gehighlightet ist wie auf dem Bild (Unreal)". Die ausgewaehlten Teile
+// werden ein zweites Mal gezeichnet, einfarbig in eine Maske, mit dem
+// Tiefenpuffer der Ansicht (verdeckte Teile zaehlen nicht); ein Vollbild-
+// Durchgang legt um den Rand der Maske eine Linie.
+bool g_umriss = false;                       // Maskenmodus: alle Aufrufe weiss in die Maske
+ID3D11Texture2D* g_maskeTex = nullptr;
+ID3D11RenderTargetView* g_maskeRtv = nullptr;
+ID3D11ShaderResourceView* g_maskeSrv = nullptr;
+int g_maskeW = 0;
+int g_maskeH = 0;
+ID3D11PixelShader* g_umrissPs = nullptr;     // weiss
+ID3D11PixelShader* g_umrissRandPs = nullptr; // die Linie
+ID3D11DepthStencilState* g_dsUmriss = nullptr;
+ID3D11Buffer* g_cbUmriss = nullptr;
+bool g_umrissVersucht = false;
+// Rauch dunkelt das Gluehen ab (rc597): alle Aufrufe schwarz mit ihrem Alpha.
+bool g_verdunkeln = false;
+ID3D11PixelShader* g_verdunkelnPs = nullptr;
+int g_gluehenRauch = 0;
 // --- Ein grosser Ring fuer die Stapelkonstanten (rc596) -------------------
 //
 // Bis rc595 wurde fuer jeden Stapel g_cbStapel mit WRITE_DISCARD neu
@@ -1838,6 +1863,33 @@ struct ListenSchluessel {
 std::map<ListenSchluessel, std::vector<DrawCall>> g_listen;
 std::uint64_t g_listenBild = 0;
 
+// Im Maskenmodus (Umriss der Auswahl): weiss, deckend, Tiefe pruefen ohne zu
+// schreiben - Form und Keulen bleiben, wie der Aufruf sie gesetzt hat.
+void verdunkelnUeberschreiben(ID3D11DeviceContext* c) {
+    if (!g_verdunkeln || g_verdunkelnPs == nullptr) {
+        return;
+    }
+    c->PSSetShader(g_verdunkelnPs, nullptr, 0);
+    if (ID3D11BlendState* bs = holeBlend(Blend::AlphaBlend)) {
+        const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+        c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU);
+    }
+    if (g_dsUmriss != nullptr) { c->OMSetDepthStencilState(g_dsUmriss, 0); }
+}
+
+void umrissUeberschreiben(ID3D11DeviceContext* c) {
+    verdunkelnUeberschreiben(c);
+    if (!g_umriss || g_umrissPs == nullptr) {
+        return;
+    }
+    c->PSSetShader(g_umrissPs, nullptr, 0);
+    if (ID3D11BlendState* bs = holeBlend(Blend::Opaque)) {
+        const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+        c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU);
+    }
+    if (g_dsUmriss != nullptr) { c->OMSetDepthStencilState(g_dsUmriss, 0); }
+}
+
 // Die Stapelkonstanten in den Ring schreiben und mit Versatz binden
 // (rc596, siehe g_cbRing). false: geht hier nicht, der Aufrufer nimmt den
 // alten Weg ueber g_cbStapel.
@@ -1991,6 +2043,7 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
                 if (rs != nullptr) { c->RSSetState(rs); }
             }
             letzter = &call.state;
+            umrissUeberschreiben(c);
         }
         // --- Die Konstanten gehoeren zum AUFRUF, nicht zum Stapel -------
         //
@@ -2064,7 +2117,7 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         // derselbe Lichtweg), dann die Grundstufe mit ONE/ONE_MINUS_SRC_ALPHA
         // darueber - (Textur + Spiegel*(1-a)) x Lightmap.
         bool ueberSpiegel = false;
-        if (g_spiegelSatz >= 0 && !call.zusatzstufe && textures != nullptr && platz >= 0 &&
+        if (!g_umriss && g_spiegelSatz >= 0 && !call.zusatzstufe && textures != nullptr && platz >= 0 &&
             static_cast<std::size_t>(platz) < textures->byShader.size() &&
             textures->byShader[static_cast<std::size_t>(platz)].istPortal) {
             std::string sf2;
@@ -2592,10 +2645,13 @@ int zeichneMover(const BspMesh& mesh, const TextureSet* textures,
                         lage);
 }
 
+int gluehenRauchAufrufe() { return g_gluehenRauch; }
+
 int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                    const BspGeometry* geo, const float* viewProj,
                    float zeitSekunden, int breite, int hoehe, bool weich,
-                   std::string* fehler) {
+                   std::string* fehler, const BspMesh* rauch) {
+    g_gluehenRauch = 0;
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (d == nullptr || c == nullptr || g_zielRtv == nullptr ||
@@ -2689,6 +2745,35 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                                  fehler);
     if (n == 0) {
         return 0;
+    }
+    // --- Durchgang 1b: Rauch davor dunkelt das Gluehen ab (rc597) ---------
+    //
+    // shank: "wenn ich durch den rauch auf den Vulkan schaue soll der so
+    // pixelig sein?" - mit Gluehen aus sah es richtig aus. Der Rauch schreibt
+    // keine Tiefe; das Gluehen der Lava dahinter kam deshalb ungedaempft und
+    // als weichgezeichnete 320x240-Kopie UEBER den Rauch. Jetzt nimmt jedes
+    // durchscheinende Teilchen dem Gluehen so viel, wie es dem Bild nimmt.
+    if (rauch != nullptr && !rauch->indexes.empty() && umrissAnlegen() && g_verdunkelnPs != nullptr) {
+        Netzpuffer& np = g_netz[1];
+        if (np.vb != nullptr && np.ib != nullptr && np.schrittweite != 0) {
+            std::vector<DrawCall> dunkel;
+            for (const DrawCall& call : zeichenliste(*rauch, textures, zeitSekunden)) {
+                if (call.state.dstFactor == BlendFactor::OneMinusSrcAlpha && (call.state.features & kGlow) == 0U) {
+                    dunkel.push_back(call);
+                }
+            }
+            if (!dunkel.empty()) {
+                setzeSchritt("Gluehen: Rauch");
+                const UINT schritt = np.schrittweite;
+                const UINT versatz = 0;
+                c->IASetVertexBuffers(0, 1, &np.vb, &schritt, &versatz);
+                c->IASetIndexBuffer(np.ib, DXGI_FORMAT_R32_UINT, 0);
+                g_verdunkeln = true;
+                std::string rf;
+                g_gluehenRauch = zeichneAufrufe(dunkel, *rauch, textures, geo, zeitSekunden, &rf);
+                g_verdunkeln = false;
+            }
+        }
     }
 
     // --- Durchgang 2: verkleinern und fuenfmal weichzeichnen --------------
@@ -3319,6 +3404,7 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
     c->IASetInputLayout(sp->layout);
     c->VSSetShader(sp->vs, nullptr, 0);
     c->PSSetShader(sp->ps, nullptr, 0);
+    umrissUeberschreiben(c);
     // --- Die REINE Kameramatrix wiederherstellen -------------------------
     //
     // Nach den Movern steht in gViewProj `Kamera x Moverstellung`. Figuren
@@ -3438,6 +3524,7 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                 ID3D11RasterizerState* rs = holeRaster(zustand.features);
                 if (rs != nullptr) { c->RSSetState(rs); }
             }
+            umrissUeberschreiben(c);
         }
         ID3D11ShaderResourceView* srvs[3] = {bild, nullptr, nullptr};
         c->PSSetShaderResources(0, 3, srvs);
@@ -4574,6 +4661,7 @@ void shutdown() {
     if (g_cbBild != nullptr) { g_cbBild->Release(); g_cbBild = nullptr; }
     if (g_cbStapel != nullptr) { g_cbStapel->Release(); g_cbStapel = nullptr; }
     if (g_cbRing != nullptr) { g_cbRing->Release(); g_cbRing = nullptr; }
+    gibUmrissFrei();
     if (g_ctx1 != nullptr) { g_ctx1->Release(); g_ctx1 = nullptr; }
     g_ringGeht = -1;
     g_ringStand = kRingGroesse;
@@ -5467,7 +5555,8 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
         return 0;
     }
     const float leer[4] = {0.0F, 0.0F, 0.0F, 1.0F};
-    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+    // Im Maskendurchgang des Umrisses (rc597) in die Maske, nicht ins Bild.
+    c->OMSetRenderTargets(1, (g_umriss && g_maskeRtv != nullptr) ? &g_maskeRtv : &g_zielRtv, g_tiefeDsv);
     // Nur das ERSTE Netz loescht. Das Effektnetz kommt danach und muss auf
     // die Tiefe der Karte treffen - sonst schweben die Teilchen vor allem,
     // genau der Fehler, der im Rasterer rc377 gekostet hat.
@@ -5533,6 +5622,9 @@ int vorwaermen(const BspMesh& karte, const TextureSet* textures, const std::vect
     (void)holeFigurShader(&f);
     (void)holeKlingeShader(&f);
     (void)holeFigurSchattenZeug(&f);
+    // Umriss der Auswahl und Rauch vor dem Gluehen (rc597) - sonst kamen sie
+    // beim ersten Waehlen bzw. beim Abspielen dazu.
+    (void)umrissAnlegen();
     const auto stapel = [&](const BspMesh& netz) {
         for (const DrawCall& c : buildDrawCalls(netz, textures, 0.0F)) {
             (void)holeShader(c.state.features, c.state.numTexMods, &f);
@@ -5560,6 +5652,197 @@ int vorwaermen(const BspMesh& karte, const TextureSet* textures, const std::vect
     return g_shaderAngelegt - vorher;
 }
 
+namespace {
+bool umrissAnlegen() {
+    if (g_umrissVersucht) {
+        return g_umrissPs != nullptr && g_umrissRandPs != nullptr && g_dsUmriss != nullptr && g_cbUmriss != nullptr;
+    }
+    g_umrissVersucht = true;
+    ID3D11Device* d = dev();
+    if (d == nullptr) {
+        return false;
+    }
+    const std::string weiss = R"(
+float4 main(float4 pos : SV_POSITION) : SV_TARGET { return float4(1, 1, 1, 1); }
+)";
+    const std::string rand = R"(
+cbuffer Umriss : register(b3) {
+    float4 gFarbe;
+    float  gDicke;
+    float3 gFrei;
+};
+Texture2D<float> gMaske : register(t0);
+struct VSOut {
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+};
+float4 main(VSOut ein) : SV_TARGET {
+    const int2 p = int2(ein.pos.xy);
+    if (gMaske.Load(int3(p, 0)) > 0.5) { discard; }
+    const int r = (int)gDicke;
+    float n = 0.0;
+    [loop] for (int y = -4; y <= 4; ++y) {
+        [loop] for (int x = -4; x <= 4; ++x) {
+            if (abs(x) <= r && abs(y) <= r && x * x + y * y <= r * r + r) {
+                n = max(n, gMaske.Load(int3(p + int2(x, y), 0)));
+            }
+        }
+    }
+    if (n < 0.5) { discard; }
+    return gFarbe;
+}
+)";
+    std::string f;
+    ID3DBlob* b1 = nullptr;
+    ID3DBlob* b2 = nullptr;
+    ID3DBlob* err = nullptr;
+    if (SUCCEEDED(d3dUebersetzen(weiss.data(), weiss.size(), "umriss", nullptr, nullptr, "main", "ps_4_0", uebersetzFahnen(),
+                                 0, &b1, &err))) {
+        d->CreatePixelShader(b1->GetBufferPointer(), b1->GetBufferSize(), nullptr, &g_umrissPs);
+        b1->Release();
+    }
+    if (err != nullptr) { err->Release(); err = nullptr; }
+    if (SUCCEEDED(d3dUebersetzen(rand.data(), rand.size(), "umrissrand", nullptr, nullptr, "main", "ps_4_0",
+                                 uebersetzFahnen(), 0, &b2, &err))) {
+        d->CreatePixelShader(b2->GetBufferPointer(), b2->GetBufferSize(), nullptr, &g_umrissRandPs);
+        b2->Release();
+    }
+    if (err != nullptr) {
+        diag::detail(std::string("Umriss: ") + static_cast<const char*>(err->GetBufferPointer()));
+        err->Release();
+        err = nullptr;
+    }
+    // Rauch vor dem Gluehen: schwarz, so deckend wie das Teilchen.
+    const std::string dunkel = R"(
+Texture2D    gBild    : register(t0);
+SamplerState gSampler : register(s0);
+struct VSOut {
+    float4 pos    : SV_POSITION;
+    float2 uv     : TEXCOORD0;
+    float2 uvLm   : TEXCOORD1;
+    float4 farbe  : COLOR0;
+};
+float4 main(VSOut ein) : SV_TARGET {
+    const float a = saturate(gBild.Sample(gSampler, ein.uv).a * ein.farbe.a);
+    return float4(0, 0, 0, a);
+}
+)";
+    ID3DBlob* b3 = nullptr;
+    if (SUCCEEDED(d3dUebersetzen(dunkel.data(), dunkel.size(), "verdunkeln", nullptr, nullptr, "main", "ps_4_0",
+                                 uebersetzFahnen(), 0, &b3, &err))) {
+        d->CreatePixelShader(b3->GetBufferPointer(), b3->GetBufferSize(), nullptr, &g_verdunkelnPs);
+        b3->Release();
+    }
+    if (err != nullptr) {
+        diag::detail(std::string("Verdunkeln: ") + static_cast<const char*>(err->GetBufferPointer()));
+        err->Release();
+    }
+    D3D11_DEPTH_STENCIL_DESC dd{};
+    dd.DepthEnable = TRUE;
+    dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    dd.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    d->CreateDepthStencilState(&dd, &g_dsUmriss);
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth = 32;
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    d->CreateBuffer(&bd, nullptr, &g_cbUmriss);
+    return g_umrissPs != nullptr && g_umrissRandPs != nullptr && g_dsUmriss != nullptr && g_cbUmriss != nullptr;
+}
+
+void gibUmrissFrei() {
+    for (IUnknown** p : {reinterpret_cast<IUnknown**>(&g_maskeTex), reinterpret_cast<IUnknown**>(&g_maskeRtv),
+                         reinterpret_cast<IUnknown**>(&g_maskeSrv), reinterpret_cast<IUnknown**>(&g_umrissPs),
+                         reinterpret_cast<IUnknown**>(&g_umrissRandPs), reinterpret_cast<IUnknown**>(&g_dsUmriss),
+                         reinterpret_cast<IUnknown**>(&g_cbUmriss), reinterpret_cast<IUnknown**>(&g_verdunkelnPs)}) {
+        if (*p != nullptr) {
+            (*p)->Release();
+            *p = nullptr;
+        }
+    }
+    g_maskeW = 0;
+    g_maskeH = 0;
+    g_umrissVersucht = false;
+    g_umriss = false;
+    g_verdunkeln = false;
+}
+}  // namespace
+
+bool umrissBeginnen() {
+    ID3D11Device* d = dev();
+    ID3D11DeviceContext* c = ctx();
+    if (d == nullptr || c == nullptr || g_tiefeDsv == nullptr || g_zielW <= 0 || g_zielH <= 0 || !umrissAnlegen()) {
+        return false;
+    }
+    if (g_maskeTex == nullptr || g_maskeW != g_zielW || g_maskeH != g_zielH) {
+        if (g_maskeSrv != nullptr) { g_maskeSrv->Release(); g_maskeSrv = nullptr; }
+        if (g_maskeRtv != nullptr) { g_maskeRtv->Release(); g_maskeRtv = nullptr; }
+        if (g_maskeTex != nullptr) { g_maskeTex->Release(); g_maskeTex = nullptr; }
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = static_cast<UINT>(g_zielW);
+        td.Height = static_cast<UINT>(g_zielH);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(d->CreateTexture2D(&td, nullptr, &g_maskeTex)) ||
+            FAILED(d->CreateRenderTargetView(g_maskeTex, nullptr, &g_maskeRtv)) ||
+            FAILED(d->CreateShaderResourceView(g_maskeTex, nullptr, &g_maskeSrv))) {
+            return false;
+        }
+        g_maskeW = g_zielW;
+        g_maskeH = g_zielH;
+    }
+    ID3D11ShaderResourceView* nichts[4] = {nullptr, nullptr, nullptr, nullptr};
+    c->PSSetShaderResources(0, 4, nichts);
+    const float leer[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    c->ClearRenderTargetView(g_maskeRtv, leer);
+    c->OMSetRenderTargets(1, &g_maskeRtv, g_tiefeDsv);
+    // Das Gluehen davor arbeitet klein - den ganzen Schirm zurueck.
+    D3D11_VIEWPORT vp{};
+    vp.Width = static_cast<float>(g_zielW);
+    vp.Height = static_cast<float>(g_zielH);
+    vp.MaxDepth = 1.0F;
+    c->RSSetViewports(1, &vp);
+    g_umriss = true;
+    return true;
+}
+
+void umrissBeenden(const float farbe[4], float dicke) {
+    ID3D11DeviceContext* c = ctx();
+    g_umriss = false;
+    if (c == nullptr || g_zielRtv == nullptr || g_maskeSrv == nullptr || g_umrissRandPs == nullptr) {
+        return;
+    }
+    c->OMSetRenderTargets(1, &g_zielRtv, nullptr);
+    if (!wechsleAufVollbild()) {
+        c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+        return;
+    }
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (SUCCEEDED(c->Map(g_cbUmriss, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+        auto* f = static_cast<float*>(m.pData);
+        for (int k = 0; k < 4; ++k) { f[k] = farbe[k]; }
+        f[4] = std::clamp(dicke, 1.0F, 4.0F);
+        f[5] = f[6] = f[7] = 0.0F;
+        c->Unmap(g_cbUmriss, 0);
+    }
+    c->PSSetShader(g_umrissRandPs, nullptr, 0);
+    c->PSSetConstantBuffers(3, 1, &g_cbUmriss);
+    c->PSSetShaderResources(0, 1, &g_maskeSrv);
+    if (ID3D11BlendState* bs = holeBlend(Blend::AlphaBlend)) {
+        const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+        c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU);
+    }
+    c->Draw(3, 0);
+    ID3D11ShaderResourceView* nichts = nullptr;
+    c->PSSetShaderResources(0, 1, &nichts);
+    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+}
+
 }  // namespace bhed::gpu
 
 #else   // kein Direct3D
@@ -5579,9 +5862,10 @@ int zeichneMover(const BspMesh&, const TextureSet*, const BspGeometry*,
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }
+int gluehenRauchAufrufe() { return 0; }
 int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
                    const float*, float, int, int, bool,
-                   std::string* fehler) {
+                   std::string* fehler, const BspMesh*) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }
@@ -5632,6 +5916,8 @@ void setzeSpiegelung(bool, const float*, bool) {}
 void* zielTexturSatz(int) { return nullptr; }
 bool tiefeAbbilden(TiefenSicht& sicht, int, int, bool) { sicht = TiefenSicht{}; return false; }
 int shaderAngelegt() { return 0; }
+bool umrissBeginnen() { return false; }
+void umrissBeenden(const float*, float) {}
 int vorwaermen(const BspMesh&, const TextureSet*, const std::vector<int>&) { return 0; }
 void tiefeFreigeben() {}
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }

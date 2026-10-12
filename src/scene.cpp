@@ -657,8 +657,10 @@ ActorState Actor::at(double ms) const {
                     for (int k = 0; k < 3; ++k) {
                         st.watchAt[k] = step.to[k];
                     }
+                    st.watchStep = step.spur.empty() ? nullptr : &step;
                 } else {
                     st.hasWatchTarget = false;
+                    st.watchStep = nullptr;
                 }
                 break;
             case ActorStep::Kind::Crouch:
@@ -740,6 +742,18 @@ ActorState Actor::at(double ms) const {
     // hier angles[1]. Einen Nickwinkel zu setzen, den niemand zeichnet,
     // waere eine Zeile, die nichts tut und beim naechsten Lesen Fragen
     // aufwirft.
+    if (st.hasWatchTarget && st.watchStep != nullptr && !st.watchStep->spur.empty()) {
+        // Ein bewegtes Ziel: wo es JETZT ist.
+        const ActorStep& w = *st.watchStep;
+        const double f = std::max(0.0, ms - w.startMs) / w.spurSchrittMs;
+        const auto i = std::min(static_cast<std::size_t>(f), w.spur.size() - 1U);
+        const std::size_t j = std::min(i + 1U, w.spur.size() - 1U);
+        const auto r = static_cast<float>(std::min(1.0, f - static_cast<double>(i)));
+        for (int k = 0; k < 3; ++k) {
+            st.watchAt[k] = w.spur[i][static_cast<std::size_t>(k)] +
+                            (w.spur[j][static_cast<std::size_t>(k)] - w.spur[i][static_cast<std::size_t>(k)]) * r;
+        }
+    }
     if (st.hasWatchTarget && !roffFigurLaeuft) {
         const float dx = st.watchAt[0] - st.pos[0];
         const float dy = st.watchAt[1] - st.pos[1];
@@ -785,7 +799,27 @@ ActorState Actor::at(double ms) const {
             // die Engine aus dem Bewegungszustand; hier wird sie aus
             // SET_WALKING abgeleitet. Ein laufender Uebergang zeigte auf
             // ein anderes Paar und faellt weg.
-            st.animation = weg->text;
+            // --- Rueckwaerts (rc597) ------------------------------------
+            //
+            // Schaut die Figur gegen ihre Laufrichtung (ein SET_WATCHTARGET
+            // hinter ihr), laeuft sie rueckwaerts: STEER::DeActivate macht
+            // aus der Bewegung eine Eingabe relativ zum Blick, eine negative
+            // Vorwaertseingabe setzt PMF_BACKWARDS_RUN (bg_pmove.cpp), und
+            // PM_Footsteps waehlt BOTH_WALKBACK1 (mit Klinge WALKBACK2) bzw.
+            // BOTH_RUNBACK1/2. Genau so machen es die Skripte - Vader in
+            // md_dd/cin1_jedi ("vader_walkback").
+            std::string lauf = weg->text;
+            {
+                const float mx = weg->to[0] - weg->from[0];
+                const float my = weg->to[1] - weg->from[1];
+                const float g = st.angles[1] * std::numbers::pi_v<float> / 180.0F;
+                if (mx * mx + my * my > 1.0F && std::cos(g) * mx + std::sin(g) * my < 0.0F) {
+                    const bool rennt = weg->text == "BOTH_RUN1";
+                    lauf = rennt ? (st.saberActive ? "BOTH_RUNBACK2" : "BOTH_RUNBACK1")
+                                 : (st.saberActive ? "BOTH_WALKBACK2" : "BOTH_WALKBACK1");
+                }
+            }
+            st.animation = lauf;
             st.prevAnimation.clear();
             // Die Animation laeuft MIT dem Tempo - siehe kAnimSpeedWalk in
             // scene.h. Ohne das rutschen die Fuesse ueber den Boden.
@@ -794,7 +828,7 @@ ActorState Actor::at(double ms) const {
             // 20 Bildern je Sekunde (bg_panimate.cpp:4834: animSpeed =
             // 50/frameLerp * Verhaeltnis, hoechstens 1,5). BOTH_RUN1 hat
             // 30 fps - vorher lief es mit 45 fps, also 50 % zu schnell.
-            const auto lerp = bildDauerMs.find(weg->text);
+            const auto lerp = bildDauerMs.find(lauf);
             if (lerp != bildDauerMs.end() && lerp->second > 0.0) {
                 st.animSpeed = std::min(
                     st.animSpeed, static_cast<float>(1.5 * lerp->second / 50.0));
@@ -2573,7 +2607,8 @@ Scene buildScene(const Script& s, const MapData& map, const SzenenHilfe* hilfe) 
         for (Actor& a : sc.actors) {
             // Dazu die Kampfhaltungen (saberGrundhaltung prueft, ob es sie gibt).
             std::vector<std::string> namen = {"BOTH_STAND1", "BOTH_WALK1", "BOTH_RUN1",
-                                              "BOTH_CROUCH1IDLE"};
+                                              "BOTH_CROUCH1IDLE", "BOTH_WALKBACK1", "BOTH_WALKBACK2",
+                                              "BOTH_RUNBACK1", "BOTH_RUNBACK2"};
             for (int stil = 1; stil <= 7; ++stil) {
                 namen.emplace_back(saberHaltungFuerStil(stil));
             }
@@ -2592,6 +2627,40 @@ Scene buildScene(const Script& s, const MapData& map, const SzenenHilfe* hilfe) 
                 if (hilfe->bildDauer) {
                     const double b = hilfe->bildDauer(a.name, n);
                     if (b > 0.0) { a.bildDauerMs[n] = b; }
+                }
+            }
+        }
+    }
+    // --- Blickziel ist eine andere Figur (rc597) -------------------------
+    //
+    // Vader in md_dd/cin1_jedi schaut auf obi2, waehrend der um ihn
+    // herumgeht, und laeuft dabei rueckwaerts ("vader_walkback"). Die Engine
+    // nimmt den AKTUELLEN Ort des Ziels (NPC_BSCinematic); hier stand bisher
+    // sein Spawner. Die Bahn des Ziels wird einmal abgetastet - sein Ort
+    // haengt nicht von seinem eigenen Blick ab, die Reihenfolge ist also egal.
+    {
+        double ende = sc.durationMs;
+        for (const Actor& a : sc.actors) {
+            for (const ActorStep& st : a.steps) { ende = std::max(ende, st.endMs); }
+        }
+        ende = std::min(ende + 1000.0, 600000.0);
+        for (Actor& a : sc.actors) {
+            for (ActorStep& st : a.steps) {
+                if (st.kind != ActorStep::Kind::Watch || st.value < 0.5F || st.text.empty()) { continue; }
+                const Actor* ziel = nullptr;
+                for (const Actor& b : sc.actors) {
+                    if (&b != &a && b.haveStart && b.name == st.text) { ziel = &b; }
+                }
+                if (ziel == nullptr) { continue; }
+                bool bewegt = false;
+                for (const ActorStep& zs : ziel->steps) {
+                    bewegt = bewegt || zs.kind == ActorStep::Kind::WalkTo || zs.kind == ActorStep::Kind::Glide ||
+                             zs.kind == ActorStep::Kind::Teleport;
+                }
+                if (!bewegt) { continue; }
+                for (double t = st.startMs; t <= ende; t += st.spurSchrittMs) {
+                    const ActorState zs = ziel->at(t);
+                    st.spur.push_back({zs.pos[0], zs.pos[1], zs.pos[2]});
                 }
             }
         }

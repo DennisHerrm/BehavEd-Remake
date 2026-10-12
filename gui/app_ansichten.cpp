@@ -117,7 +117,171 @@ std::string graphSignatur() {
         s += "|" + std::to_string(d.stand()) + "/" + std::to_string(d.undoDepth()) + "/" +
              std::to_string(d.redoDepth()) + "/" + std::to_string(d.script().nodes.size());
     }
+    s += "|e";
+    for (const int i : g_app->graph().immerEntities) { s += std::to_string(i) + ","; }
     return s + "|" + aktiverSkriptRef();
+}
+
+// --- Leitungen (rc597) ------------------------------------------------------
+//
+// shank: "es sieht bisschen unordentlich aus - kann man da was machen wie bei
+// den Blueprints, wo man einzelne Punkte erstellen kann, dass es rechteckig
+// ist?" und "es sieht so aus, als gebe es manchmal Luecken". Die Luecken
+// waren zwei Dinge: gestrichelte Kurven wurden in immer 24 Stuecke geteilt
+// (bei langen Leitungen riesige Striche und Loecher), und lange Kurven liefen
+// quer hinter anderen Knoten durch.
+//
+// Rechtwinklig laufen die Leitungen nur durch die Gassen zwischen den Spalten
+// und Zeilen (ordneGraph legt sie mit festen Abstaenden an): hinaus nach
+// rechts in die Gasse hinter der Quelle, dort hoch oder runter, in der Gasse
+// ueber dem Ziel hinueber, in der Gasse vor dem Ziel hinunter und hinein.
+// Nebeneinander liegende Spalten brauchen nur die eine Gasse dazwischen. Jede
+// Kante wird ein wenig versetzt, damit gebuendelte Leitungen zu trennen sind.
+// Umlenkpunkte (Doppelklick auf eine Leitung) legen den Weg selbst fest.
+constexpr float kGasseX = 80.0F;   // wie ordneGraph in graphNeuBauen
+constexpr float kGasseY = 26.0F;
+
+// Eckpunkte eines Wegs in Weltkoordinaten. Abschnitte: je Umlenkpunkt einer
+// mehr; `abschnittVon[i]` sagt, zu welchem Abschnitt Eckpunkt i gehoert.
+struct Weg {
+    std::vector<ImVec2> ecken;
+    std::vector<int> abschnitt;
+};
+
+Weg rechtwinkligerWeg(ImVec2 p0, ImVec2 p3, const std::vector<ImVec2>& umlenk, float s, float versatz) {
+    Weg w;
+    const float gx = kGasseX * s;
+    const float gy = kGasseY * s;
+    const float h = kKnotenH * s;
+    const auto dazu = [&](ImVec2 p, int ab) {
+        if (!w.ecken.empty() && std::fabs(w.ecken.back().x - p.x) < 0.01F && std::fabs(w.ecken.back().y - p.y) < 0.01F) {
+            return;
+        }
+        w.ecken.push_back(p);
+        w.abschnitt.push_back(ab);
+    };
+    dazu(p0, 0);
+    if (umlenk.empty()) {
+        if (p3.x - p0.x >= gx * 0.4F && p3.x - p0.x <= gx + kKnotenB * s * 0.5F) {
+            // Nachbarspalte: nur die Gasse dazwischen.
+            const float xm = p0.x + (p3.x - p0.x) * 0.5F + versatz;
+            dazu(ImVec2{xm, p0.y}, 0);
+            dazu(ImVec2{xm, p3.y}, 0);
+        } else {
+            const float xa = p0.x + gx * 0.5F + versatz;
+            const float xb = p3.x - gx * 0.5F + versatz;
+            const float spur = p3.y - h * 0.5F - gy * 0.5F + versatz * 0.5F;   // Gasse ueber dem Ziel
+            dazu(ImVec2{xa, p0.y}, 0);
+            dazu(ImVec2{xa, spur}, 0);
+            dazu(ImVec2{xb, spur}, 0);
+            dazu(ImVec2{xb, p3.y}, 0);
+        }
+        dazu(p3, 0);
+        return w;
+    }
+    // Durch die Umlenkpunkte: zwischen zwei Punkten waagrecht - senkrecht -
+    // waagrecht, die Senkrechte auf halbem Weg.
+    std::vector<ImVec2> pkt;
+    pkt.push_back(p0);
+    for (const ImVec2& u : umlenk) { pkt.push_back(u); }
+    pkt.push_back(p3);
+    for (std::size_t i = 0; i + 1 < pkt.size(); ++i) {
+        const ImVec2 a = pkt[i];
+        const ImVec2 b = pkt[i + 1];
+        const int ab = static_cast<int>(i);
+        const float xm = (a.x + b.x) * 0.5F;
+        dazu(ImVec2{xm, a.y}, ab);
+        dazu(ImVec2{xm, b.y}, ab);
+        dazu(b, ab);
+    }
+    return w;
+}
+
+// Den Weg als Punktfolge fuer das Zeichnen: Ecken leicht abgerundet.
+std::vector<ImVec2> abgerundet(const std::vector<ImVec2>& e, float r) {
+    std::vector<ImVec2> aus;
+    if (e.size() < 2) { return e; }
+    aus.push_back(e.front());
+    for (std::size_t i = 1; i + 1 < e.size(); ++i) {
+        const ImVec2 a = e[i - 1];
+        const ImVec2 c = e[i];
+        const ImVec2 b = e[i + 1];
+        const float la = std::sqrt((c.x - a.x) * (c.x - a.x) + (c.y - a.y) * (c.y - a.y));
+        const float lb = std::sqrt((b.x - c.x) * (b.x - c.x) + (b.y - c.y) * (b.y - c.y));
+        const float rr = std::min({r, la * 0.5F, lb * 0.5F});
+        if (rr < 0.5F || la < 0.01F || lb < 0.01F) {
+            aus.push_back(c);
+            continue;
+        }
+        const ImVec2 v{c.x - (c.x - a.x) / la * rr, c.y - (c.y - a.y) / la * rr};
+        const ImVec2 n{c.x + (b.x - c.x) / lb * rr, c.y + (b.y - c.y) / lb * rr};
+        for (int t = 0; t <= 4; ++t) {
+            const float u = static_cast<float>(t) / 4.0F;
+            const float q = 1.0F - u;
+            aus.push_back(ImVec2{q * q * v.x + 2.0F * q * u * c.x + u * u * n.x, q * q * v.y + 2.0F * q * u * c.y + u * u * n.y});
+        }
+    }
+    aus.push_back(e.back());
+    return aus;
+}
+
+// Eine Bezierkurve als Punktfolge (Kurvenstil, auch durch Umlenkpunkte).
+std::vector<ImVec2> kurve(ImVec2 p0, ImVec2 p3, float zoomS) {
+    const float dx = std::max(40.0F * zoomS, std::fabs(p3.x - p0.x) * 0.5F);
+    const ImVec2 p1{p0.x + dx, p0.y};
+    const ImVec2 p2{p3.x - dx, p3.y};
+    std::vector<ImVec2> aus;
+    for (int t = 0; t <= 32; ++t) {
+        const float u = static_cast<float>(t) / 32.0F;
+        const float v = 1.0F - u;
+        aus.push_back(ImVec2{v * v * v * p0.x + 3 * v * v * u * p1.x + 3 * v * u * u * p2.x + u * u * u * p3.x,
+                             v * v * v * p0.y + 3 * v * v * u * p1.y + 3 * v * u * u * p2.y + u * u * u * p3.y});
+    }
+    return aus;
+}
+
+// Zeichnen: durchgezogen oder gestrichelt mit FESTER Strichlaenge.
+void zeichneLinie(ImDrawList* dl, const std::vector<ImVec2>& p, ImU32 farbe, float dicke, bool gestrichelt, float strich) {
+    if (p.size() < 2) { return; }
+    if (!gestrichelt) {
+        dl->AddPolyline(p.data(), static_cast<int>(p.size()), farbe, ImDrawFlags_None, dicke);
+        return;
+    }
+    const float luecke = strich * 0.75F;
+    float rest = strich;
+    bool an = true;
+    for (std::size_t i = 0; i + 1 < p.size(); ++i) {
+        ImVec2 a = p[i];
+        const ImVec2 b = p[i + 1];
+        float len = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+        while (len > 0.0F) {
+            const float stueck = std::min(rest, len);
+            const ImVec2 e{a.x + (b.x - a.x) / len * stueck, a.y + (b.y - a.y) / len * stueck};
+            if (an) { dl->AddLine(a, e, farbe, dicke); }
+            len -= stueck;
+            rest -= stueck;
+            a = e;
+            if (rest <= 0.0F) {
+                an = !an;
+                rest = an ? strich : luecke;
+            }
+        }
+    }
+}
+
+float abstandZuStrecke(ImVec2 m, ImVec2 a, ImVec2 b) {
+    const float dx = b.x - a.x;
+    const float dy = b.y - a.y;
+    const float l2 = dx * dx + dy * dy;
+    float t = l2 > 0.0F ? ((m.x - a.x) * dx + (m.y - a.y) * dy) / l2 : 0.0F;
+    t = std::clamp(t, 0.0F, 1.0F);
+    const float px = a.x + dx * t - m.x;
+    const float py = a.y + dy * t - m.y;
+    return std::sqrt(px * px + py * py);
+}
+
+std::string kantenSchluessel(const GraphKnoten& a, const GraphKnoten& b, const GraphKante& k) {
+    return a.schluessel + ">" + b.schluessel + ":" + k.label;
 }
 
 const Script* skriptFuerGraph(const std::string& ref) {
@@ -147,10 +311,12 @@ void graphNeuBauen() {
     if (z.cacheKarte != g_app->map.path) {
         z.skriptCache.clear();
         z.pos.clear();
+        z.umlenk.clear();
+        z.immerEntities.clear();
         z.cacheKarte = g_app->map.path;
         z.angepasst = false;
     }
-    z.g = baueMissionsGraph(g_app->map.entities, skriptFuerGraph, aktiverSkriptRef());
+    z.g = baueMissionsGraph(g_app->map.entities, skriptFuerGraph, aktiverSkriptRef(), 400, z.immerEntities);
     const float s = ImGui::GetFontSize() / 13.0F;
     ordneGraph(z.g, kKnotenB * s, kKnotenH * s, 80.0F * s, 26.0F * s);
     for (GraphKnoten& k : z.g.knoten) {
@@ -265,6 +431,101 @@ std::string graphVerbinden(const std::string& vonSchluessel, const std::string& 
     return {};
 }
 
+// --- Von links in den Graphen ziehen (rc597) ----------------------------------
+//
+// shank: "ich kann von links nichts in den Graph rein ziehen, dass es da
+// spawnt, wo es soll" - gewuenscht: beides.
+//   Entity (Kartenmodus, Entity-Liste): erscheint als Knoten genau an der
+//     Abwurfstelle, auch unverbunden, und laesst sich verbinden.
+//   Befehl (Ereignisliste): auf einen Skript-Knoten -> ans Ende dieses
+//     Skripts; auf freie Flaeche -> ein neues Skript im Ordner der Mission,
+//     als Knoten an der Abwurfstelle.
+// Muss direkt nach dem InvisibleButton der Flaeche stehen (letztes Element).
+void graphAblegen(ImVec2 o, float s) {
+    if (!ImGui::BeginDragDropTarget()) {
+        return;
+    }
+    App::GraphZustand& z = g_app->graph();
+    const ImVec2 m = ImGui::GetIO().MousePos;
+    const ImVec2 w{(m.x - o.x - z.panX) / z.zoom, (m.y - o.y - z.panY) / z.zoom};
+    const ImVec2 lage{w.x - kKnotenB * s * 0.5F, w.y - kKnotenH * s * 0.5F};
+    // Welcher Knoten liegt unter der Abwurfstelle?
+    int unter = -1;
+    for (int i = static_cast<int>(z.g.knoten.size()) - 1; i >= 0; --i) {
+        const GraphKnoten& k = z.g.knoten[static_cast<std::size_t>(i)];
+        if (w.x >= k.x && w.x <= k.x + kKnotenB * s && w.y >= k.y && w.y <= k.y + kKnotenH * s) {
+            unter = i;
+            break;
+        }
+    }
+    if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("bhed_entity")) {
+        int nr = -1;
+        if (pl->DataSize == static_cast<int>(sizeof(int))) { std::memcpy(&nr, pl->Data, sizeof(nr)); }
+        if (nr >= 0 && static_cast<std::size_t>(nr) < g_app->map.entities.size()) {
+            if (std::find(z.immerEntities.begin(), z.immerEntities.end(), nr) == z.immerEntities.end()) {
+                z.immerEntities.push_back(nr);
+            }
+            const std::string sch = "e:" + std::to_string(nr);
+            z.pos[sch] = lage;
+            z.auswahl = sch;
+            z.signatur.clear();   // neu bauen, mit dem neuen Knoten an seiner Stelle
+        }
+    }
+    if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("bhed_new")) {
+        const std::vector<Node> neu = knotenAusNeuNutzlast(pl->Data, pl->DataSize);
+        const std::string befehl = neu.empty() ? std::string() : neu.front().name;
+        const GraphKnoten* ziel = unter >= 0 ? &z.g.knoten[static_cast<std::size_t>(unter)] : nullptr;
+        if (!neu.empty() && ziel != nullptr && !ziel->skript.empty()) {
+            const std::string pfad = ziel->skript;
+            const std::string titel = ziel->titel;
+            skriptOeffnen(pfad, false);
+            if (!aktiverSkriptRef().empty() && klein(aktiverSkriptRef()) == klein(pfad)) {
+                Path at;
+                bool ok = false;
+                if (g_app->doc.script().nodes.empty()) {
+                    for (const Node& n : neu) { ok = g_app->doc.insertAfter(Path{}, n) || ok; }
+                } else {
+                    ok = g_app->doc.insertAfterAll(Path{g_app->doc.script().nodes.size() - 1}, neu, &at);
+                    if (ok) { g_app->selectedPath = at; }
+                }
+                if (ok) {
+                    rebuildTree();
+                    g_app->camTrackValid = false;
+                    char t[300];
+                    std::snprintf(t, sizeof(t), tr(Str::GraphCmdAdded), befehl.c_str(), titel.c_str());
+                    meldung(t, std::string());
+                }
+            }
+        } else if (!neu.empty() && ziel != nullptr) {
+            meldung(tr(Str::GraphCmdOnEntity), std::string());
+        } else if (!neu.empty()) {
+            // Ein neues Skript im Ordner des offenen (bzw. der Mission).
+            std::string ordner = aktiverSkriptRef();
+            const auto strich = ordner.find_last_of('/');
+            ordner = strich == std::string::npos ? std::string() : ordner.substr(0, strich + 1);
+            std::string name;
+            std::string text;
+            for (int n = 1; n < 1000; ++n) {
+                name = ordner + "neu" + std::to_string(n);
+                if (reiterFuerSkriptRef(name) < 0 && !skriptTextLaden(name, text)) { break; }
+            }
+            neuerReiter();
+            g_app->skriptPfad = name;
+            g_app->shownName = name.substr(name.find_last_of('/') == std::string::npos ? 0 : name.find_last_of('/') + 1) + ".txt";
+            for (const Node& n : neu) { (void)g_app->doc.insertAfter(Path{}, n); }
+            rebuildTree();
+            const std::string sch = "s:" + klein(name);
+            z.pos[sch] = lage;
+            z.auswahl = sch;
+            z.signatur.clear();
+            char t[300];
+            std::snprintf(t, sizeof(t), tr(Str::GraphNewScript), name.c_str(), befehl.c_str());
+            meldung(t, std::string());
+        }
+    }
+    ImGui::EndDragDropTarget();
+}
+
 void drawGraphAnsicht() {
     App::GraphZustand& z = g_app->graph();
     const std::string sig = graphSignatur();
@@ -287,9 +548,12 @@ void drawGraphAnsicht() {
     ImGui::SameLine();
     if (iconTextKnopf(tr(Str::GraphRelayout), UiIcon::Verschieben, nullptr)) {
         z.pos.clear();
+        z.umlenk.clear();
         z.signatur.clear();
         z.angepasst = false;
     }
+    ImGui::SameLine();
+    ImGui::Checkbox(tr(Str::GraphRightAngles), &z.rechtwinklig);
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled(tr(z.g.gekuerzt ? Str::GraphCountCut : Str::GraphCount), static_cast<int>(z.g.knoten.size()),
@@ -311,6 +575,7 @@ void drawGraphAnsicht() {
     ImGui::InvisibleButton("##graphflaeche", flaecheGr,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
     const bool ueber = ImGui::IsItemHovered();
+    graphAblegen(o, s);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(o, ImVec2{o.x + flaecheGr.x, o.y + flaecheGr.y}, true);
     dl->AddRectFilled(o, ImVec2{o.x + flaecheGr.x, o.y + flaecheGr.y}, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.0F);
@@ -351,46 +616,112 @@ void drawGraphAnsicht() {
         }
     }
 
-    // --- Kanten (Bezier wie in Blueprint) --------------------------------------
-    for (const GraphKante& k : z.g.kanten) {
+    // --- Kanten: rechtwinklig durch die Gassen oder als Kurve (rc597) -----------
+    struct Treffer {
+        std::string schluessel;
+        std::vector<std::vector<ImVec2>> abschnitte;   // Bildschirmpunkte je Abschnitt
+    };
+    std::vector<Treffer> treffer;
+    treffer.reserve(z.g.kanten.size());
+    const float zs = s * z.zoom;
+    std::string ueberUmlenk;
+    int ueberUmlenkNr = -1;
+    z.kantenMitte.clear();
+    z.schraegeStuecke = 0;
+    z.kreuzungen = 0;
+    for (std::size_t ki = 0; ki < z.g.kanten.size(); ++ki) {
+        const GraphKante& k = z.g.kanten[ki];
         const GraphKnoten& a = z.g.knoten[static_cast<std::size_t>(k.von)];
         const GraphKnoten& b = z.g.knoten[static_cast<std::size_t>(k.nach)];
-        const ImVec2 p0 = welt(a.x + kKnotenB * s, a.y + kKnotenH * s * 0.5F);
-        const ImVec2 p3 = welt(b.x, b.y + kKnotenH * s * 0.5F);
-        const float dx = std::max(40.0F * s * z.zoom, std::fabs(p3.x - p0.x) * 0.5F);
-        const ImVec2 p1{p0.x + dx, p0.y};
-        const ImVec2 p2{p3.x - dx, p3.y};
-        const bool hervor = (!z.auswahl.empty() &&
-                             (a.schluessel == z.auswahl || b.schluessel == z.auswahl));
+        const std::string ks = kantenSchluessel(a, b, k);
+        const ImVec2 w0{a.x + kKnotenB * s, a.y + kKnotenH * s * 0.5F};
+        const ImVec2 w3{b.x, b.y + kKnotenH * s * 0.5F};
+        static const std::vector<ImVec2> keine;
+        const auto um = z.umlenk.find(ks);
+        const std::vector<ImVec2>& umlenk = um != z.umlenk.end() ? um->second : keine;
+        Treffer tr;
+        tr.schluessel = ks;
+        std::vector<ImVec2> linie;   // Bildschirm, fertig zum Zeichnen
+        if (z.rechtwinklig) {
+            const float versatz = (static_cast<float>(ki % 7U) - 3.0F) * 3.0F * s;
+            const Weg w = rechtwinkligerWeg(w0, w3, umlenk, s, versatz);
+            std::vector<ImVec2> bild;
+            for (const ImVec2& p : w.ecken) { bild.push_back(welt(p.x, p.y)); }
+            linie = abgerundet(bild, 9.0F * zs);
+            // Pruefgroessen: schraege Stuecke, Kreuzungen mit fremden Knoten.
+            for (std::size_t i = 0; i + 1 < bild.size(); ++i) {
+                const ImVec2 p = bild[i];
+                const ImVec2 q = bild[i + 1];
+                if (std::fabs(p.x - q.x) > 0.5F && std::fabs(p.y - q.y) > 0.5F) { ++z.schraegeStuecke; }
+                for (std::size_t n = 0; n < z.g.knoten.size(); ++n) {
+                    if (static_cast<int>(n) == k.von || static_cast<int>(n) == k.nach) { continue; }
+                    const ImVec2 r0 = welt(z.g.knoten[n].x, z.g.knoten[n].y);
+                    const ImVec2 r1{r0.x + B, r0.y + H};
+                    const float x0 = std::min(p.x, q.x);
+                    const float x1 = std::max(p.x, q.x);
+                    const float y0 = std::min(p.y, q.y);
+                    const float y1 = std::max(p.y, q.y);
+                    if (x1 > r0.x + 2.0F && x0 < r1.x - 2.0F && y1 > r0.y + 2.0F && y0 < r1.y - 2.0F) { ++z.kreuzungen; }
+                }
+            }
+            tr.abschnitte.assign(umlenk.size() + 1U, {});
+            for (std::size_t i = 0; i + 1 < bild.size(); ++i) {
+                auto& ab = tr.abschnitte[static_cast<std::size_t>(std::clamp(w.abschnitt[i + 1], 0, static_cast<int>(umlenk.size())))];
+                if (ab.empty()) { ab.push_back(bild[i]); }
+                ab.push_back(bild[i + 1]);
+            }
+        } else {
+            std::vector<ImVec2> pkt{welt(w0.x, w0.y)};
+            for (const ImVec2& u : umlenk) { pkt.push_back(welt(u.x, u.y)); }
+            pkt.push_back(welt(w3.x, w3.y));
+            for (std::size_t i = 0; i + 1 < pkt.size(); ++i) {
+                std::vector<ImVec2> st = kurve(pkt[i], pkt[i + 1], zs);
+                tr.abschnitte.push_back(st);
+                linie.insert(linie.end(), st.begin() + (i == 0 ? 0 : 1), st.end());
+            }
+        }
+        const bool hervor = (!z.auswahl.empty() && (a.schluessel == z.auswahl || b.schluessel == z.auswahl));
         ImVec4 c = k.art == GraphKante::Art::Skript ? uiIconFarbe(UiIcon::Neu) : ImVec4{0.65F, 0.69F, 0.76F, 1.0F};
         c.w = hervor ? 1.0F : 0.75F;
         const float dicke = (hervor ? 2.6F : 1.6F) * s * std::max(0.6F, z.zoom);
-        if (k.art == GraphKante::Art::Steuern) {
-            // gestrichelt: in Stuecken der Kurve
-            ImVec2 vorher = p0;
-            for (int t = 1; t <= 24; ++t) {
-                const float u = static_cast<float>(t) / 24.0F;
-                const float v = 1.0F - u;
-                const ImVec2 q{v * v * v * p0.x + 3 * v * v * u * p1.x + 3 * v * u * u * p2.x + u * u * u * p3.x,
-                               v * v * v * p0.y + 3 * v * v * u * p1.y + 3 * v * u * u * p2.y + u * u * u * p3.y};
-                if (t % 2 == 1) { dl->AddLine(vorher, q, ImGui::GetColorU32(c), dicke); }
-                vorher = q;
-            }
-        } else {
-            dl->AddBezierCubic(p0, p1, p2, p3, ImGui::GetColorU32(c), dicke);
-        }
+        zeichneLinie(dl, linie, ImGui::GetColorU32(c), dicke, k.art == GraphKante::Art::Steuern, 7.0F * s);
+        const ImVec2 p3 = welt(w3.x, w3.y);
         const float sp = 7.0F * s * std::max(0.6F, z.zoom);
         dl->AddTriangleFilled(ImVec2{p3.x, p3.y}, ImVec2{p3.x - sp, p3.y - sp * 0.6F}, ImVec2{p3.x - sp, p3.y + sp * 0.6F},
                               ImGui::GetColorU32(c));
-        if (z.zoom > 0.45F) {
-            const ImVec2 mitte{(p0.x + 3 * p1.x + 3 * p2.x + p3.x) / 8.0F, (p0.y + 3 * p1.y + 3 * p2.y + p3.y) / 8.0F};
+        // Beschriftung: auf dem laengsten waagrechten Stueck, ohne Kasten
+        // ueber der Linie - nur ein schmaler Hintergrund unter dem Text.
+        if (z.zoom > 0.45F && linie.size() >= 2) {
+            std::size_t best = 0;
+            float bestL = -1.0F;
+            for (std::size_t i = 0; i + 1 < linie.size(); ++i) {
+                const float l = std::fabs(linie[i + 1].x - linie[i].x) - std::fabs(linie[i + 1].y - linie[i].y) * 4.0F;
+                if (l > bestL) { bestL = l; best = i; }
+            }
+            const ImVec2 mitte{(linie[best].x + linie[best + 1].x) * 0.5F, (linie[best].y + linie[best + 1].y) * 0.5F};
+            z.kantenMitte[ks] = mitte;
             const ImVec2 g = ImGui::CalcTextSize(k.label.c_str());
-            dl->AddRectFilled(ImVec2{mitte.x - g.x * 0.5F - 3.0F, mitte.y - g.y * 0.5F - 1.0F},
-                              ImVec2{mitte.x + g.x * 0.5F + 3.0F, mitte.y + g.y * 0.5F + 1.0F},
-                              ImGui::GetColorU32(ImGuiCol_FrameBg), 3.0F);
-            dl->AddText(ImVec2{mitte.x - g.x * 0.5F, mitte.y - g.y * 0.5F}, ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                        k.label.c_str());
+            const ImVec2 t0{mitte.x - g.x * 0.5F, mitte.y - g.y - 2.0F * s};
+            dl->AddRectFilled(ImVec2{t0.x - 2.0F, t0.y}, ImVec2{t0.x + g.x + 2.0F, t0.y + g.y}, ImGui::GetColorU32(ImGuiCol_FrameBg, 0.85F),
+                              3.0F);
+            dl->AddText(t0, ImGui::GetColorU32(ImGuiCol_TextDisabled), k.label.c_str());
         }
+        // Umlenkpunkte
+        for (std::size_t i = 0; i < umlenk.size(); ++i) {
+            const ImVec2 q = welt(umlenk[i].x, umlenk[i].y);
+            const bool drueber = ueber && (m.x - q.x) * (m.x - q.x) + (m.y - q.y) * (m.y - q.y) < (7.0F * s) * (7.0F * s);
+            if (drueber) {
+                ueberUmlenk = ks;
+                ueberUmlenkNr = static_cast<int>(i);
+            }
+            dl->AddCircleFilled(q, (drueber ? 6.0F : 4.5F) * s, ImGui::GetColorU32(drueber ? ImVec4{1.0F, 0.9F, 0.4F, 1.0F} : c));
+            dl->AddCircle(q, (drueber ? 6.0F : 4.5F) * s, ImGui::GetColorU32(ImGuiCol_FrameBg), 0, 1.2F * s);
+        }
+        treffer.push_back(std::move(tr));
+    }
+    if (ueberUmlenkNr >= 0) {
+        ueberKnoten = -1;   // der Punkt liegt vorn
+        ueberAusgang = false;
     }
 
     // --- Knoten -------------------------------------------------------------------
@@ -448,7 +779,52 @@ void drawGraphAnsicht() {
         z.panX += io.MouseDelta.x;
         z.panY += io.MouseDelta.y;
     }
-    if (ueber && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    // --- Umlenkpunkte (rc597) ---------------------------------------------------
+    if (ueber && ueberUmlenkNr >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        z.ziehtUmlenk = ueberUmlenk;
+        z.ziehtUmlenkNr = ueberUmlenkNr;
+    }
+    if (!z.ziehtUmlenk.empty() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        auto it = z.umlenk.find(z.ziehtUmlenk);
+        if (it != z.umlenk.end() && z.ziehtUmlenkNr >= 0 && static_cast<std::size_t>(z.ziehtUmlenkNr) < it->second.size()) {
+            ImVec2& p = it->second[static_cast<std::size_t>(z.ziehtUmlenkNr)];
+            p.x += io.MouseDelta.x / z.zoom;
+            p.y += io.MouseDelta.y / z.zoom;
+        }
+    }
+    if (ueber && ueberUmlenkNr >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+        io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] < 16.0F) {
+        auto it = z.umlenk.find(ueberUmlenk);
+        if (it != z.umlenk.end() && static_cast<std::size_t>(ueberUmlenkNr) < it->second.size()) {
+            it->second.erase(it->second.begin() + ueberUmlenkNr);
+            if (it->second.empty()) { z.umlenk.erase(it); }
+        }
+    }
+    // Doppelklick auf eine Leitung: dort einen Umlenkpunkt setzen.
+    if (ueber && ueberKnoten < 0 && ueberUmlenkNr < 0 && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        float best = 6.0F * s;
+        const Treffer* wer = nullptr;
+        int abschnitt = 0;
+        for (const Treffer& t : treffer) {
+            for (std::size_t ab = 0; ab < t.abschnitte.size(); ++ab) {
+                const auto& pk = t.abschnitte[ab];
+                for (std::size_t i = 0; i + 1 < pk.size(); ++i) {
+                    const float d = abstandZuStrecke(m, pk[i], pk[i + 1]);
+                    if (d < best) {
+                        best = d;
+                        wer = &t;
+                        abschnitt = static_cast<int>(ab);
+                    }
+                }
+            }
+        }
+        if (wer != nullptr) {
+            const ImVec2 p{(m.x - o.x - z.panX) / z.zoom, (m.y - o.y - z.panY) / z.zoom};
+            auto& liste = z.umlenk[wer->schluessel];
+            liste.insert(liste.begin() + std::clamp(abschnitt, 0, static_cast<int>(liste.size())), p);
+        }
+    }
+    if (ueber && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ueberUmlenkNr < 0) {
         if (ueberKnoten >= 0) {
             const GraphKnoten& k = z.g.knoten[static_cast<std::size_t>(ueberKnoten)];
             z.auswahl = k.schluessel;
@@ -511,6 +887,8 @@ void drawGraphAnsicht() {
         }
         z.zieht.clear();
         z.verbindetVon.clear();
+        z.ziehtUmlenk.clear();
+        z.ziehtUmlenkNr = -1;
     }
     if (ImGui::BeginPopup("##verbindungsart")) {
         ImGui::TextDisabled("%s", tr(Str::GraphConnectAs));

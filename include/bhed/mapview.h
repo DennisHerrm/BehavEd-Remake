@@ -312,6 +312,10 @@ struct TextureSet {
 // der Kartenbauer es hingelegt hat.
 struct MoverDraw {
     const BspMesh* mesh = nullptr;
+    // Wem es gehoert - fuer den Umriss der Auswahl (rc597): die Entity
+    // (Kartenmodelle) bzw. die Nummer des Brush-Modells ("*N").
+    int entity = -1;
+    int brush = -1;
     float offset[3]{};   // aktueller Ort minus Startort
     float yaw = 0.0F;    // Drehung gegenueber dem gebauten Winkel
     float pivot[3]{};    // worum gedreht wird: der Ursprung der Entity

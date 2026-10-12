@@ -37,6 +37,15 @@ int durationArgIndex(const Node& n) {
         }
         return -1;
     }
+    // move ( <ort>, [<winkel>,] dauer ) - die Flugzeit (rc597): das Ende des
+    // Balkens in der Zeitleiste ziehen macht den Flug laenger oder kuerzer.
+    if (n.name == "move" && n.args.size() >= 2) {
+        const std::size_t letzte = n.args.size() - 1U;
+        if (n.args[letzte].kind == Arg::Kind::Number) {
+            return static_cast<int>(letzte);
+        }
+        return -1;
+    }
     return -1;
 }
 

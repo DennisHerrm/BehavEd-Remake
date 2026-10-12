@@ -626,6 +626,11 @@ void drawCameraGizmos(MapImage& img) {
                 for (int k = 0; k < 3; ++k) { merk.p[k] = q[k]; }
             }
             float p[3] = {merk.p[0], merk.p[1], merk.p[2]};
+            {
+                float v[3];
+                entityVersatz(static_cast<int>(ei), v);
+                for (int k = 0; k < 3; ++k) { p[k] += v[k]; }
+            }
             // Draufsicht: was ueber dem Schnitt liegt, ist nicht zu sehen.
             if (g_app->draufsicht && p[2] - 24.0F > g_app->draufSchnitt) {
                 continue;
@@ -723,7 +728,14 @@ void drawCameraGizmos(MapImage& img) {
         if (!fs.visible) {
             continue;
         }
-        const float brust[3] = {fs.pos[0], fs.pos[1], fs.pos[2] + 40.0F};
+        float brust[3] = {fs.pos[0], fs.pos[1], fs.pos[2] + 40.0F};
+        if (g_app->entZug.aktiv) {
+            float zv[3];
+            float zg = 0.0F;
+            if (zugVersatz(entityFuerFigur(static_cast<int>(ai)), zv, zg)) {
+                for (int k = 0; k < 3; ++k) { brust[k] += zv[k]; }
+            }
+        }
         const P2 mk = project(brust);
         if (mk.ok) {
             g_app->actorMarks.push_back(
@@ -740,50 +752,98 @@ void drawCameraGizmos(MapImage& img) {
     //
     // Nur bei ausgewaehlter Figur, genau wie in 3ds Max: dort erscheint
     // die Trajektorie erst, wenn das Objekt gewaehlt ist.
-    if (g_app->selectedActor >= 0 &&
-        static_cast<std::size_t>(g_app->selectedActor) <
-            g_app->scene.actors.size()) {
-        const Actor& fig =
-            g_app->scene.actors[static_cast<std::size_t>(g_app->selectedActor)];
-        const double dauer = std::max(g_app->scene.durationMs, 1.0);
-        constexpr int kFigSchritte = 200;
-        P2 vorFig;
-        bool hatVorFig = false;
-        for (int i = 0; i <= kFigSchritte; ++i) {
-            const double ms =
-                dauer * static_cast<double>(i) / static_cast<double>(kFigSchritte);
-            const ActorState fst = fig.at(ms);
-            if (!fst.visible) {
-                hatVorFig = false;   // Luecke: die Figur ist gerade weg
-                continue;
+    //
+    // rc597: auch fuer die gewaehlte ENTITY (Spawner, Schiff, Tuer) - die
+    // ganze Bahn grau, was bis zur eingestellten Zeit schon gefahren ist,
+    // gelb. "es sollte auch die end linie zeigen nur grau und die wo es
+    // bereits geflogen ist in gelb".
+    g_app->bahnFarbig = 0;
+    g_app->bahnGrau = 0;
+    {
+        const int gewEnt = g_app->pickedEntity;
+        int bahnFig = g_app->selectedActor;
+        if ((bahnFig < 0 || static_cast<std::size_t>(bahnFig) >= g_app->scene.actors.size()) && gewEnt >= 0) {
+            bahnFig = figurFuerEntity(gewEnt);
+        }
+        // Eine Tuer o. a. ohne Figur: die Bahn der Mover-Simulation.
+        int moverNr = -1;
+        if (bahnFig < 0 && gewEnt >= 0 && static_cast<std::size_t>(gewEnt) < g_app->map.entities.size()) {
+            if (const std::string* mdl = g_app->map.entities[static_cast<std::size_t>(gewEnt)].find("model");
+                mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*') {
+                const int nr = std::atoi(mdl->c_str() + 1);
+                if (g_app->moverSim.at(nr, 0.0).bekannt) { moverNr = nr; }
             }
-            const P2 jetzt = project(fst.pos);
-            if (hatVorFig) {
-                // Gelb - abgesetzt von der gruenen Kamerabahn, damit man
-                // beide gleichzeitig lesen kann.
-                line(vorFig, jetzt, 220, 190, 60, false);
+        }
+        float zv[3] = {0.0F, 0.0F, 0.0F};
+        float zg = 0.0F;
+        const int bahnEnt = bahnFig >= 0 ? (g_app->scene.actors[static_cast<std::size_t>(bahnFig)].brushModel > 0
+                                                ? gewEnt
+                                                : entityFuerFigur(bahnFig))
+                                         : gewEnt;
+        if (g_app->entZug.aktiv) { (void)zugVersatz(bahnEnt, zv, zg); }
+        const auto ortBei = [&](double ms, float out[3]) {
+            if (bahnFig >= 0) {
+                const ActorState fst = g_app->scene.actors[static_cast<std::size_t>(bahnFig)].at(ms);
+                for (int k = 0; k < 3; ++k) { out[k] = fst.pos[k] + zv[k]; }
+                return fst.visible;
             }
-            vorFig = jetzt;
-            hatVorFig = true;
+            const MoverSim::Stand ms2 = g_app->moverSim.at(moverNr, ms);
+            for (int k = 0; k < 3; ++k) { out[k] = ms2.origin[k] + zv[k]; }
+            return ms2.bekannt && ms2.sichtbar;
+        };
+        if (bahnFig >= 0 || moverNr > 0) {
+            const double dauer = std::max({g_app->scene.durationMs, g_app->camTrack.durationMs,
+                                           g_app->timeline.practicalEndMs, 1.0});
+            constexpr int kFigSchritte = 400;
+            P2 vorFig;
+            bool hatVorFig = false;
+            double vorMs = 0.0;
+            for (int i = 0; i <= kFigSchritte; ++i) {
+                const double ms =
+                    dauer * static_cast<double>(i) / static_cast<double>(kFigSchritte);
+                float p[3];
+                if (!ortBei(ms, p)) {
+                    hatVorFig = false;   // Luecke: die Figur ist gerade weg
+                    continue;
+                }
+                const P2 jetzt = project(p);
+                if (hatVorFig) {
+                    // Gelb, was schon gefahren ist - abgesetzt von der gruenen
+                    // Kamerabahn; grau, was noch kommt.
+                    if (vorMs < g_app->playMs) {
+                        line(vorFig, jetzt, 230, 190, 60, false);
+                        ++g_app->bahnFarbig;
+                    } else {
+                        line(vorFig, jetzt, 140, 144, 155, false);
+                        ++g_app->bahnGrau;
+                    }
+                }
+                vorFig = jetzt;
+                vorMs = ms;
+                hatVorFig = true;
+            }
         }
         // Und die STUETZSTELLEN: dort steht ein Befehl im Skript. In Max
         // sind das die weissen Quadrate auf der Bahn.
-        for (const ActorStep& sp : fig.steps) {
-            const ActorState fst = fig.at(sp.startMs);
-            if (!fst.visible) {
-                continue;
-            }
-            const P2 mp = project(fst.pos);
-            if (!mp.ok) {
-                continue;
-            }
-            const int mx = static_cast<int>(mp.x);
-            const int my = static_cast<int>(mp.y);
-            for (int d = -3; d <= 3; ++d) {
-                plot(mx + d, my - 3, mp.z, 255, 230, 120);
-                plot(mx + d, my + 3, mp.z, 255, 230, 120);
-                plot(mx - 3, my + d, mp.z, 255, 230, 120);
-                plot(mx + 3, my + d, mp.z, 255, 230, 120);
+        if (bahnFig >= 0) {
+            const Actor& fig = g_app->scene.actors[static_cast<std::size_t>(bahnFig)];
+            for (const ActorStep& sp : fig.steps) {
+                float p[3];
+                if (!ortBei(sp.startMs, p)) {
+                    continue;
+                }
+                const P2 mp = project(p);
+                if (!mp.ok) {
+                    continue;
+                }
+                const int mx = static_cast<int>(mp.x);
+                const int my = static_cast<int>(mp.y);
+                for (int d = -3; d <= 3; ++d) {
+                    plot(mx + d, my - 3, mp.z, 255, 230, 120);
+                    plot(mx + d, my + 3, mp.z, 255, 230, 120);
+                    plot(mx - 3, my + d, mp.z, 255, 230, 120);
+                    plot(mx + 3, my + d, mp.z, 255, 230, 120);
+                }
             }
         }
     }
@@ -804,8 +864,10 @@ void drawCameraGizmos(MapImage& img) {
             const P2 jetzt = project(st.pos);
             if (hatVorher) {
                 // Gedaempftes Gruen - die Bahn soll die Marken nicht
-                // uebertoenen, sondern sie verbinden.
-                line(vorherP, jetzt, 40, 130, 70, false);
+                // uebertoenen, sondern sie verbinden. Seit rc597 zeichnet
+                // kameraBahnZeichnen sie kraeftig obenauf (Alle/Aktiv) -
+                // hier nicht mehr doppelt.
+                if (false) { line(vorherP, jetzt, 40, 130, 70, false); }
             }
             vorherP = jetzt;
             hatVorher = true;
@@ -816,7 +878,7 @@ void drawCameraGizmos(MapImage& img) {
             // beieinander heisst langsam, weit auseinander heisst schnell.
             // Genau dafuer hat Max sie ("the white dots are in-betweens",
             // "ticks give you an idea of the animation timing").
-            if (jetzt.ok && (i % 5) == 0) {
+            if (false && jetzt.ok && (i % 5) == 0) {
                 plot(static_cast<int>(jetzt.x), static_cast<int>(jetzt.y),
                      jetzt.z, 170, 255, 190);
             }
@@ -832,6 +894,16 @@ void drawCameraGizmos(MapImage& img) {
             g_app->gizmoOffset[0] != 0.0F || g_app->gizmoOffset[1] != 0.0F ||
             g_app->gizmoOffset[2] != 0.0F;
         g_app->keyMarks.clear();
+        // Auto-Key (rc597): mitten in einer Fahrt sitzt der Gizmo an der
+        // LAUFENDEN Kamera - Anfassen setzt dort einen neuen Schluessel.
+        const int zwischenNr = g_app->cameraSelected ? kameraZwischenSchluesselNr(g_app->playMs) : -1;
+        const CameraState zwischenStand = zwischenNr >= 0 ? camStateAt(g_app->playMs) : CameraState{};
+        g_app->kameraGizmoZwischen = false;
+        // Der Gizmo selbst wird seit rc597 obenauf gezeichnet (wie der der
+        // Figuren, app_kamera.cpp kameraBahnZeichnen) - hier nur noch die
+        // Lage fuer Ueberfahren und Ziehen.
+        constexpr bool kRasterGizmo = false;
+        if (g_app->gizmoMode != App::GizmoMode::Move) { g_app->kamYawRingInMove = false; }
         for (std::size_t si2 = 0; si2 < shots.size(); ++si2) {
             const Shot& sh2 = shots[si2];
             const P2 kp = project(sh2.pos);
@@ -850,6 +922,15 @@ void drawCameraGizmos(MapImage& img) {
 
             const bool ausgewaehlt =
                 (static_cast<int>(si2) == g_app->selectedKey);
+            Shot gz = sh2;
+            if (ausgewaehlt && zwischenNr == static_cast<int>(si2)) {
+                for (int k = 0; k < 3; ++k) {
+                    gz.pos[k] = zwischenStand.pos[k];
+                    gz.ang[k] = zwischenStand.angles[k];
+                }
+                gz.hasAng = true;
+                g_app->kameraGizmoZwischen = true;
+            }
             const int kx = static_cast<int>(kp.x);
             const int ky = static_cast<int>(kp.y);
             // Der ausgewaehlte Schluessel groesser und gelb - wie in Max
@@ -891,7 +972,7 @@ void drawCameraGizmos(MapImage& img) {
             if (ausgewaehlt && verschobenNun) {
                 float neu[3];
                 for (int k = 0; k < 3; ++k) {
-                    neu[k] = sh2.pos[k] + g_app->gizmoOffset[k];
+                    neu[k] = gz.pos[k] + g_app->gizmoOffset[k];
                 }
                 const P2 np = project(neu);
                 // Der Weg vom vorigen Schluessel hierher ...
@@ -912,15 +993,15 @@ void drawCameraGizmos(MapImage& img) {
                 // wohin sie blickt. Genau das fehlte: das Gizmo wanderte,
                 // die Kamera nicht.
                 float vang[3] = {0.0F, 0.0F, 0.0F};
-                if (sh2.hasAng) {
+                if (gz.hasAng) {
                     for (int k = 0; k < 3; ++k) {
-                        vang[k] = sh2.ang[k] + g_app->gizmoAngles[k];
+                        vang[k] = gz.ang[k] + g_app->gizmoAngles[k];
                     }
                 }
                 // Betont (der vierte Wert), damit die Vorschau vor der weissen
                 // Kamera aus dem Skript steht - sie ist das, was man gerade
                 // einstellt.
-                zeichneKamera(neu, vang, 120, 255, 140, true, sh2.hasAng);
+                zeichneKamera(neu, vang, 120, 255, 140, true, gz.hasAng);
             }
 
             // --- Drehen: ein Ring je Achse ------------------------------
@@ -951,9 +1032,9 @@ void drawCameraGizmos(MapImage& img) {
                 }
                 Camera hilfL;
                 for (int k = 0; k < 3; ++k) {
-                    hilfL.pos[k] = sh2.pos[k];
+                    hilfL.pos[k] = gz.pos[k];
                     hilfL.angles[k] =
-                        (sh2.hasAng ? sh2.ang[k] : 0.0F) + g_app->gizmoAngles[k];
+                        (gz.hasAng ? gz.ang[k] : 0.0F) + g_app->gizmoAngles[k];
                 }
                 float fL[3];
                 float rL[3];
@@ -975,12 +1056,12 @@ void drawCameraGizmos(MapImage& img) {
                 g_app->gizmoAngles[0] != 0.0F ||
                 g_app->gizmoAngles[1] != 0.0F ||
                 g_app->gizmoAngles[2] != 0.0F;
-            if (ausgewaehlt && gedrehtNun && !verschobenNun && sh2.hasAng) {
+            if (ausgewaehlt && gedrehtNun && !verschobenNun && gz.hasAng) {
                 float vang2[3];
                 for (int k = 0; k < 3; ++k) {
-                    vang2[k] = sh2.ang[k] + g_app->gizmoAngles[k];
+                    vang2[k] = gz.ang[k] + g_app->gizmoAngles[k];
                 }
-                zeichneKamera(sh2.pos, vang2, 120, 255, 140, true, true);
+                zeichneKamera(gz.pos, vang2, 120, 255, 140, true, true);
             }
 
             if (ausgewaehlt) {
@@ -996,7 +1077,7 @@ void drawCameraGizmos(MapImage& img) {
                     }
                 }
                 for (int k = 0; k < 3; ++k) {
-                    g_app->gizmoAngNow[k] = sh2.hasAng ? sh2.ang[k] : 0.0F;
+                    g_app->gizmoAngNow[k] = gz.hasAng ? gz.ang[k] : 0.0F;
                 }
             }
 
@@ -1006,11 +1087,11 @@ void drawCameraGizmos(MapImage& img) {
                 // also davon ab, ob man ZUFAELLIG vorher im Verschieben
                 // war. War man es nie, liess sich kein Ring anfassen.
                 g_app->gizmoShown = true;
-                const float ringRad = sizeAt(sh2.pos) * 3.0F;
+                const float ringRad = sizeAt(gz.pos) * 3.0F;
                 float rdir[3][3];
                 // WAEHREND DES ZIEHENS bleiben die Ringe stehen.
                 //
-                // Vorher wurden sie jedes Bild aus sh2.ang + gizmoAngles neu
+                // Vorher wurden sie jedes Bild aus gz.ang + gizmoAngles neu
                 // gebaut - sie drehten sich also mit der Vorschau mit.
                 // Gemeldet als "jetzt rotiert beides mit".
                 //
@@ -1054,7 +1135,7 @@ void drawCameraGizmos(MapImage& img) {
                                          static_cast<float>(kTeile);
                         float pt[3];
                         for (int k = 0; k < 3; ++k) {
-                            pt[k] = sh2.pos[k] + g_app->gizmoOffset[k] +
+                            pt[k] = gz.pos[k] + g_app->gizmoOffset[k] +
                                     (a1[k] * std::cos(w2) + a2[k] * std::sin(w2)) *
                                         ringRad;
                         }
@@ -1069,7 +1150,7 @@ void drawCameraGizmos(MapImage& img) {
                             g_app->gizmoRingSy[ax][t] =
                                 jetzt2.ok ? jetzt2.y : -1.0F;
                         }
-                        if (hatVorig) {
+                        if (hatVorig && kRasterGizmo) {
                             line(vorigP, jetzt2, rr2, gg2, bb2, aktivR);
                         }
                         vorigP = jetzt2;
@@ -1095,7 +1176,7 @@ void drawCameraGizmos(MapImage& img) {
                                        1, 90);
                         float mitte[3];
                         for (int k = 0; k < 3; ++k) {
-                            mitte[k] = sh2.pos[k] + g_app->gizmoOffset[k];
+                            mitte[k] = gz.pos[k] + g_app->gizmoOffset[k];
                         }
                         const P2 mp2 = project(mitte);
                         for (int q = 0; q <= speichen; ++q) {
@@ -1107,7 +1188,7 @@ void drawCameraGizmos(MapImage& img) {
                                          (a1[k] * std::cos(w3) +
                                           a2[k] * std::sin(w3)) * ringRad;
                             }
-                            line(mp2, project(pt2), 255, 230, 120, false);
+                            if (kRasterGizmo) { line(mp2, project(pt2), 255, 230, 120, false); }
                         }
                     }
                 }
@@ -1117,7 +1198,7 @@ void drawCameraGizmos(MapImage& img) {
                 // Deutlich groesser als in rc153. Ein Gizmo, das man suchen
                 // muss, ist keines - in Max nimmt es einen guten Teil des
                 // Bildes ein, und das ist der Grund.
-                const float len = sizeAt(sh2.pos) * 5.5F;
+                const float len = sizeAt(gz.pos) * 5.5F;
                 g_app->gizmoWorldLen = len;
                 g_app->gizmoShown = true;
                 float mdir[3][3];
@@ -1125,7 +1206,7 @@ void drawCameraGizmos(MapImage& img) {
                 for (int ax = 0; ax < 3; ++ax) {
                     float ende[3];
                     for (int k = 0; k < 3; ++k) {
-                        ende[k] = sh2.pos[k] + g_app->gizmoOffset[k];
+                        ende[k] = gz.pos[k] + g_app->gizmoOffset[k];
                     }
                     float anfang[3];
                     for (int k = 0; k < 3; ++k) {
@@ -1156,10 +1237,10 @@ void drawCameraGizmos(MapImage& img) {
                     const std::uint8_t ar = (ax == 0) ? hell : dunkel;
                     const std::uint8_t ag = (ax == 1) ? hell : dunkel;
                     const std::uint8_t ab = (ax == 2) ? hell : dunkel;
-                    line(a2, b2, ar, ag, ab, true);
+                    if (kRasterGizmo) { line(a2, b2, ar, ag, ab, true); }
                     // Ein Kloetzchen an der Spitze - da faellt das Zielen
                     // leichter als auf einen Strich.
-                    if (b2.ok) {
+                    if (kRasterGizmo && b2.ok) {
                         const int bx = static_cast<int>(b2.x);
                         const int by = static_cast<int>(b2.y);
                         const int r2 = aktiv ? 7 : 5;
@@ -1183,10 +1264,28 @@ void drawCameraGizmos(MapImage& img) {
                 // schnell.
                 float mittePos[3];
                 for (int k = 0; k < 3; ++k) {
-                    mittePos[k] = sh2.pos[k] + g_app->gizmoOffset[k];
+                    mittePos[k] = gz.pos[k] + g_app->gizmoOffset[k];
                 }
                 const P2 mitte = project(mittePos);
-                if (mitte.ok) {
+                // Der Drehring um die Hochachse auch hier (rc597) - nur die
+                // Punkte fuer Ueberfahren und Zeichnen der Ueberlagerung.
+                {
+                    float rdir[3][3];
+                    achsenRichtungen(g_app->gizmoRotSpace, rdir);
+                    const float ringRad = len * 0.6F;
+                    g_app->kamYawRingInMove = true;
+                    for (int t = 0; t < App::kRingPts; ++t) {
+                        const float w2 = 6.2831853F * static_cast<float>(t) / static_cast<float>(App::kRingPts - 1);
+                        float pt[3];
+                        for (int k = 0; k < 3; ++k) {
+                            pt[k] = mittePos[k] + (rdir[0][k] * std::cos(w2) + rdir[1][k] * std::sin(w2)) * ringRad;
+                        }
+                        const P2 rp = project(pt);
+                        g_app->gizmoRingSx[2][t] = rp.ok ? rp.x : -1.0F;
+                        g_app->gizmoRingSy[2][t] = rp.ok ? rp.y : -1.0F;
+                    }
+                }
+                if (kRasterGizmo && mitte.ok) {
                     const bool aktivM =
                         (g_app->gizmoAxis == App::kGizmoFree) ||
                         (g_app->gizmoAxis < 0 &&
@@ -1733,8 +1832,28 @@ bool vorschauKamera(Camera& vc, float aspekt) {
         return false;
     }
     vc = g_app->cam;
+    // --- Shot oder Zeitleiste? (rc597) -----------------------------------
+    //
+    // shank: "wenn ich die Kamera anklicke und die Timeline bewege, bleibt das
+    // Bild rechts unten einfach stehen - es sollte im Fenster in real time
+    // updaten". Bis rc596 zeigte die Vorschau bei gewaehltem Shot immer
+    // dessen feste Stellung. Jetzt: wurde die Zeitleiste seit der Auswahl
+    // bewegt, folgt sie der Kamera zu dieser Zeit (auch mitten in einer
+    // Fahrt); direkt nach der Auswahl und waehrend der Gizmo gezogen wird,
+    // zeigt sie wie bisher den Shot.
+    static Path auswahlVorher;
+    static double msBeiAuswahl = -1.0;
+    if (g_app->selectedPath != auswahlVorher) {
+        auswahlVorher = g_app->selectedPath;
+        msBeiAuswahl = g_app->playMs;
+    }
+    bool gizmoBewegt = false;
+    for (int k = 0; k < 3; ++k) {
+        gizmoBewegt = gizmoBewegt || g_app->gizmoOffset[k] != 0.0F || g_app->gizmoAngles[k] != 0.0F;
+    }
+    const bool zeitBewegt = g_app->playMs != msBeiAuswahl;
     ShotView shot;
-    if (shotAtSelection(shot)) {
+    if ((gizmoBewegt || !zeitBewegt) && shotAtSelection(shot)) {
         // Wie der Durchblick: mit der Vorschau des Gizmos, damit das Bild
         // beim Ziehen mitlaeuft.
         for (int k = 0; k < 3; ++k) {
@@ -4408,6 +4527,7 @@ void prepareScene() {
     nurRoff.roff = [](const std::string& n) { return roffFuer(n); };
     g_app->scene = buildScene(flach, g_app->map, &nurRoff);
     g_app->camTrackValid = true;
+    ++g_app->szeneBauten;
     // --- Zweiter Durchgang: mit dem, was die Figuren mitbringen ---------
     //
     // Der erste Aufbau sagt, WELCHE Figuren es gibt. Mit ihren Modellen
@@ -4477,6 +4597,7 @@ void prepareScene() {
         g_app->camTrack = buildCameraTrack(g_app->ablauf.flach, kameraMarkeOrt);
         g_app->timeline = buildTimeline(g_app->ablauf.flach, g_app->db);
         g_app->scene = buildScene(g_app->ablauf.flach, g_app->map, &hilfe);
+        ++g_app->szeneBauten;
     }
     // Figuren, die erst waehrend der Szene gespawnt werden (NPC_spawner per
     // use), gibt es vorher nicht: unsichtbar bis NPC_Begin.
@@ -7532,6 +7653,16 @@ void drawEntityLayers(float height) {
                         zurEntityFliegen(i);
                     }
                 }
+                // In den Graphen ziehen (rc597): dort erscheint sie als Knoten an
+                // der Abwurfstelle.
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoHoldToOpenOthers)) {
+                    const int nr = static_cast<int>(i);
+                    ImGui::SetDragDropPayload("bhed_entity", &nr, sizeof(nr));
+                    listenIcon(entityIcon(e), IM_COL32(ek.r, ek.g, ek.b, 255));
+                    ImGui::SameLine();
+                    ImGui::TextUnformatted(label.c_str());
+                    ImGui::EndDragDropSource();
+                }
                 // Ueberfahren in der Liste hebt die Entity in der Ansicht hervor.
                 if (ImGui::IsItemHovered()) { g_app->entListeHover = static_cast<int>(i); }
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
@@ -7645,6 +7776,74 @@ bool entityOrt(const MapEntity& e, float out[3]) {
         return true;
     }
     return false;
+}
+
+void entityVersatz(int ei, float d[3]) {
+    d[0] = d[1] = d[2] = 0.0F;
+    const auto it = g_app->entVersatz.find(ei);
+    if (it != g_app->entVersatz.end()) {
+        for (int k = 0; k < 3; ++k) { d[k] = it->second[static_cast<std::size_t>(k)]; }
+    }
+}
+
+bool entityOrtAnzeige(const MapEntity& e, float out[3]) {
+    if (!entityOrt(e, out)) { return false; }
+    const auto& alle = g_app->map.entities;
+    if (!alle.empty() && &e >= alle.data() && &e < alle.data() + alle.size()) {
+        float d[3];
+        entityVersatz(static_cast<int>(&e - alle.data()), d);
+        for (int k = 0; k < 3; ++k) { out[k] += d[k]; }
+    }
+    return true;
+}
+
+float entityGierVersatz(int ei) {
+    const auto it = g_app->entGierVersatz.find(ei);
+    return it != g_app->entGierVersatz.end() ? it->second : 0.0F;
+}
+
+float entityGierAnzeige(const MapEntity& e) {
+    const std::string* a = e.find("angle");
+    float w = a != nullptr ? std::strtof(a->c_str(), nullptr) : 0.0F;
+    const auto& alle = g_app->map.entities;
+    if (!alle.empty() && &e >= alle.data() && &e < alle.data() + alle.size()) {
+        w += entityGierVersatz(static_cast<int>(&e - alle.data()));
+    }
+    return w;
+}
+
+int figurFuerEntity(int ei) {
+    if (ei < 0 || static_cast<std::size_t>(ei) >= g_app->map.entities.size()) { return -1; }
+    const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(ei)];
+    if (const std::string* mdl = e.find("model"); mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*') {
+        const int nr = std::atoi(mdl->c_str() + 1);
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+            if (nr > 0 && g_app->scene.actors[ai].brushModel == nr) { return static_cast<int>(ai); }
+        }
+        return -1;
+    }
+    for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+        if (g_app->scene.actors[ai].brushModel <= 0 && entityFuerFigur(static_cast<int>(ai)) == ei) {
+            return static_cast<int>(ai);
+        }
+    }
+    return -1;
+}
+
+int entityFuerFigur(int figur) {
+    if (figur < 0 || static_cast<std::size_t>(figur) >= g_app->scene.actors.size()) { return -1; }
+    auto klein = [](std::string s) {
+        for (char& ch : s) { ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); }
+        return s;
+    };
+    const std::string name = klein(g_app->scene.actors[static_cast<std::size_t>(figur)].name);
+    if (name.empty()) { return -1; }
+    for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+        const MapEntity& e = g_app->map.entities[i];
+        const bool npc = e.classname.rfind("NPC_", 0) == 0 || e.classname.rfind("npc_", 0) == 0;
+        if (npc && klein(entitySkriptName(e)) == name) { return static_cast<int>(i); }
+    }
+    return -1;
 }
 
 // Die freie Kamera so stellen, dass die Entity vor einem liegt.
@@ -8696,6 +8895,13 @@ void drawTimeline() {
             ImGui::AlignTextToFramePadding();
             ImGui::TextDisabled("%d", ruhig);
         }
+        // waits als eigene Bloecke (rc597, sonst ausgeblendet).
+        if (g_app->showTracks) {
+            ImGui::SameLine();
+            if (iconKnopf(tr(Str::TlWaits), UiIcon::Pause, tr(Str::TlWaitsHint), g_app->tlWaitsZeigen, true, true)) {
+                g_app->tlWaitsZeigen = !g_app->tlWaitsZeigen;
+            }
+        }
     }
     trenner();
     // Eine Kameraeinstellung an der jetzigen Ansicht - vorher ein Textknopf
@@ -9447,14 +9653,85 @@ void drawTimeline() {
             }
         }
     }
+    // --- Spuren je Figur, wie im Unreal Sequencer (rc597) -------------------
+    //
+    // shank: "es ist fuer jeden Character alles in eine Leiste gestopft ...
+    // schau mal nach, wie Unreal Engine das handhabt, so dass es logisch ist
+    // und man auch aufklappen kann". Jede Figur ist eine Gruppe; aufgeklappt
+    // bekommt jede Art von Befehl ihre Spur. Die waits sind nur der Kleber,
+    // der die Befehle in die Zeit setzt - sie erscheinen nur auf Wunsch.
+    //   0 Bewegung  SET_NAVGOAL, SET_WALKING/RUNNING, SET_ORIGIN, move, rotate ...
+    //   1 Animation SET_ANIM_*
+    //   2 Blick     SET_LOOK_TARGET, SET_WATCHTARGET, SET_VIEWTARGET
+    //   3 Ton       sound, use mit Klang
+    //   4 Zustand   alles andere (Waffe, Klinge, Verhalten, use ...)
+    //   5 Ablauf    wait, signal, waitsignal
+    const auto kategorieVon = [](const TimelineEvent& e) -> int {
+        std::string l = e.label;
+        for (char& ch : l) { ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch))); }
+        const auto hat = [&](const char* t) { return l.find(t) != std::string::npos; };
+        switch (e.kind) {
+            case TimelineEvent::Kind::Wait: return 5;
+            case TimelineEvent::Kind::Move: return 0;
+            case TimelineEvent::Kind::Sound: return 3;
+            case TimelineEvent::Kind::Use: return useSoundFor(e.target, nullptr).empty() ? 4 : 3;
+            case TimelineEvent::Kind::Saber: return 4;
+            case TimelineEvent::Kind::Set:
+                if (hat("SET_ANIM")) { return 1; }
+                if (hat("LOOK_TARGET") || hat("WATCHTARGET") || hat("VIEWTARGET")) { return 2; }
+                if (hat("NAVGOAL") || hat("WALKING") || hat("RUNNING") || hat("ORIGIN") || hat("SET_ANGLES") ||
+                    hat("WALKSPEED") || hat("RUNSPEED") || hat("YAWSPEED") || hat("LOCKYAW") || hat("CROUCH")) {
+                    return 0;
+                }
+                return 4;
+            default:
+                if (l.rfind("SIGNAL", 0) == 0 || l.rfind("WAITSIGNAL", 0) == 0 || l.rfind("WAIT", 0) == 0) { return 5; }
+                return 4;
+        }
+    };
+    struct KatInfo {
+        Str name;
+        UiIcon icon;
+        ImU32 farbe;
+    };
+    static const KatInfo kKat[6] = {
+        {Str::TlKatBewegung, UiIcon::Pfad, IM_COL32(90, 220, 190, 255)},
+        {Str::TlKatAnimation, UiIcon::Animieren, IM_COL32(150, 200, 255, 255)},
+        {Str::TlKatBlick, UiIcon::Zielen, IM_COL32(255, 210, 120, 255)},
+        {Str::TlKatTon, UiIcon::Ton, IM_COL32(255, 120, 200, 255)},
+        {Str::TlKatZustand, UiIcon::Einstellungen, IM_COL32(190, 160, 90, 255)},
+        {Str::TlKatAblauf, UiIcon::Pause, IM_COL32(120, 126, 145, 255)},
+    };
+    // Welche Unterspuren eine Figur hat (fuer die Hoehe und zum Zeichnen).
+    const auto katDerSpur = [&](const TimelineTrack& tr2) {
+        std::array<bool, 6> hatKat{};
+        for (const TimelineEvent& e : tr2.events) { hatKat[static_cast<std::size_t>(kategorieVon(e))] = true; }
+        for (const Actor& ac : g_app->scene.actors) {
+            if (ac.name != tr2.entity) { continue; }
+            for (const ActorStep& st : ac.steps) {
+                if (st.kind == ActorStep::Kind::WalkTo || st.kind == ActorStep::Kind::Glide) { hatKat[0] = true; }
+            }
+        }
+        if (!g_app->tlWaitsZeigen) { hatKat[5] = false; }
+        return hatKat;
+    };
     int sichtbareSpuren = 0;
     for (const TimelineTrack& tr2 : g_app->timeline.tracks) {
-        if (g_app->zeigeRuhigeSpuren || !spurIstRuhig(tr2)) { ++sichtbareSpuren; }
+        if (g_app->zeigeRuhigeSpuren || !spurIstRuhig(tr2)) {
+            ++sichtbareSpuren;
+            if (!tr2.entity.empty() && g_app->tlOffen.count(tr2.entity) != 0U) {
+                for (const bool b : katDerSpur(tr2)) { sichtbareSpuren += b ? 1 : 0; }
+            }
+        }
     }
+    const int kameraZeilen = camZeilenZahl > 0 ? 1 + (g_app->tlKameraOffen ? camZeilenZahl : 0) : 0;
+    // Je Zeile auch der Abstand zwischen zwei Elementen - ohne ihn fehlte
+    // bei vielen Zeilen unten eine ganze (rc597: die Kameragruppe hat eine
+    // Kopfzeile mehr, und die Skriptzeile war abgeschnitten).
     const float noetig =
-        rowH * (static_cast<float>(sichtbareSpuren) +
-                static_cast<float>(camZeilenZahl)) +
-        4.0F;
+        (rowH + ImGui::GetStyle().ItemSpacing.y) * (static_cast<float>(sichtbareSpuren) +
+                                                    static_cast<float>(kameraZeilen)) +
+        8.0F;
     // Volle Breite UND immer eine Rollleiste: dann ist der Inhalt genau so
     // breit wie Zeiger und Lineal darueber, und die Kanten fallen zusammen.
     ImGui::BeginChild("tracks", ImVec2{w + labelW + rollBreite,
@@ -9497,18 +9774,35 @@ void drawTimeline() {
     // Farbe der Spur, lesbarer Name, gewaehlt mit orangem Rand links.
     const ImU32 akzent = IM_COL32(255, 160, 50, 255);
     int zeilenNr = 0;
-    const auto spurKopf = [&](ImVec2 p, UiIcon icon, ImU32 iconFarbe, const char* text, bool an) {
+    // rc597: mit Einzug (Unterspuren) und Pfeil zum Auf- und Zuklappen
+    // (pfeil: -1 keiner, 0 zu, 1 offen) - wie im Unreal Sequencer.
+    const auto spurKopf = [&](ImVec2 p, UiIcon icon, ImU32 iconFarbe, const char* text, bool an, float einzug = 0.0F,
+                              int pfeil = -1) {
         const ImVec2 e{barMin.x - 3.0F, p.y + rowH - 1.0F};
         const bool ueber = ImGui::IsMouseHoveringRect(p, e);
         const ImU32 grund = an      ? IM_COL32(64, 54, 38, 255)
                             : ueber ? IM_COL32(48, 52, 64, 255)
                                     : ((zeilenNr % 2) != 0 ? IM_COL32(33, 36, 45, 255) : IM_COL32(38, 41, 51, 255));
-        tl->AddRectFilled(ImVec2{p.x, p.y + 1.0F}, e, grund, 3.0F);
-        if (an) { tl->AddRectFilled(ImVec2{p.x, p.y + 1.0F}, ImVec2{p.x + 3.0F, e.y}, akzent, 1.5F); }
+        tl->AddRectFilled(ImVec2{p.x + einzug, p.y + 1.0F}, e, grund, 3.0F);
+        if (an) { tl->AddRectFilled(ImVec2{p.x + einzug, p.y + 1.0F}, ImVec2{p.x + einzug + 3.0F, e.y}, akzent, 1.5F); }
+        float x = p.x + einzug + 7.0F;
+        if (pfeil >= 0) {
+            const float h = std::floor(rowH * 0.32F);
+            const ImVec2 m{std::floor(x + h * 0.5F), std::floor(p.y + rowH * 0.5F)};
+            const ImU32 pf = IM_COL32(200, 205, 220, 255);
+            if (pfeil == 1) {
+                tl->AddTriangleFilled(ImVec2{m.x - h * 0.6F, m.y - h * 0.35F}, ImVec2{m.x + h * 0.6F, m.y - h * 0.35F},
+                                      ImVec2{m.x, m.y + h * 0.45F}, pf);
+            } else {
+                tl->AddTriangleFilled(ImVec2{m.x - h * 0.35F, m.y - h * 0.6F}, ImVec2{m.x - h * 0.35F, m.y + h * 0.6F},
+                                      ImVec2{m.x + h * 0.45F, m.y}, pf);
+            }
+            x += h + 5.0F;
+        }
         const float g = std::floor(rowH * 0.66F);
-        uiIcon(tl, icon, ImVec2{std::floor(p.x + 7.0F), std::floor(p.y + (rowH - g) * 0.5F)}, g, iconFarbe);
+        uiIcon(tl, icon, ImVec2{std::floor(x), std::floor(p.y + (rowH - g) * 0.5F)}, g, iconFarbe);
         tl->PushClipRect(p, e, true);
-        tl->AddText(ImVec2{std::floor(p.x + 12.0F + g), std::floor(p.y + (rowH - ImGui::GetFontSize()) * 0.5F)},
+        tl->AddText(ImVec2{std::floor(x + 5.0F + g), std::floor(p.y + (rowH - ImGui::GetFontSize()) * 0.5F)},
                     an ? IM_COL32(245, 245, 250, 255) : IM_COL32(190, 197, 212, 255), text);
         tl->PopClipRect();
         return ueber;
@@ -9525,6 +9819,19 @@ void drawTimeline() {
         tl->AddRectFilled(ImVec2{barMin.x, p.y + 1.0F}, ImVec2{barMin.x + trackW, p.y + rowH - 1.0F},
                           (zeilenNr % 2) != 0 ? IM_COL32(26, 29, 37, 255) : IM_COL32(30, 33, 42, 255));
     };
+    // Eine Zeile anfangen und abschliessen (rc597, fuer Gruppen und Unterspuren).
+    const auto zeilenAnfang = [&](ImVec2 p) {
+        zeilenGrund(p);
+        tl->PushClipRect(ImVec2{barMin.x, p.y}, ImVec2{barMin.x + trackW, p.y + rowH}, true);
+    };
+    const auto zeilenEnde = [&](ImVec2 p) {
+        tl->AddLine(ImVec2{xAt(ablaufEnde), p.y}, ImVec2{xAt(ablaufEnde), p.y + rowH}, IM_COL32(230, 80, 80, 110), 1.0F);
+        const float lx2 = xAt(g_app->playMs);
+        tl->AddLine(ImVec2{lx2, p.y}, ImVec2{lx2, p.y + rowH}, akzent, 1.5F);
+        tl->PopClipRect();
+        ImGui::Dummy(ImVec2{w, rowH});
+        ++zeilenNr;
+    };
     g_app->tlUeberlappungen = 0;
     struct RoteStelle {
         float x0;
@@ -9532,7 +9839,43 @@ void drawTimeline() {
         ImVec2 a;   // der ganze Block, fuer den Rahmen
         ImVec2 b;
     };
+    // Die Kamera als aufklappbare Gruppe (rc597): zugeklappt eine Zeile mit
+    // allen Abschnitten in ihren Farben.
+    if (camZeilenZahl > 0) {
+        const ImVec2 kp = ImGui::GetCursorScreenPos();
+        g_app->tlZeilenY.emplace_back("camera", kp.y + rowH * 0.5F);
+        const bool camAn = g_app->cameraSelected;
+        const bool kUeber = spurKopf(kp, UiIcon::Kamera, IM_COL32(96, 170, 255, 255), tr(Str::TlKamera), camAn, 0.0F,
+                                     g_app->tlKameraOffen ? 1 : 0);
+        if (kUeber) {
+            ImGui::SetTooltip("%s\n%s", tr(Str::TlCamRowHint), tr(Str::TlAufklappen));
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                if (ImGui::GetIO().MousePos.x < kp.x + rowH * 1.1F) {
+                    g_app->tlKameraOffen = !g_app->tlKameraOffen;
+                } else {
+                    g_app->cameraSelected = true;
+                    g_app->selectedActor = -1;
+                    g_app->pickedEntity = -1;
+                    if (g_app->selectedKey < 0) { g_app->selectedKey = schluesselFuerZeit(g_app->playMs); }
+                    g_app->mapDirty = true;
+                }
+            }
+        }
+        zeilenAnfang(kp);
+        for (const CamSegment& seg : t.segments) {
+            ImU32 f = IM_COL32(120, 126, 145, 255);
+            for (const CamZeile& cz : camZeilen) {
+                if (cz.kind == seg.kind) { f = cz.farbe; }
+            }
+            const float sx0 = xAt(seg.startMs);
+            const float sx1 = std::max(xAt(seg.endMs), sx0 + 3.0F);
+            tl->AddRectFilled(ImVec2{sx0, kp.y + rowH * 0.3F}, ImVec2{sx1, kp.y + rowH * 0.7F},
+                              (f & 0x00FFFFFFU) | (0xC0U << IM_COL32_A_SHIFT), 2.0F);
+        }
+        zeilenEnde(kp);
+    }
     for (const CamZeile& cz : camZeilen) {
+        if (!g_app->tlKameraOffen) { break; }
         std::vector<RoteStelle> roteStellen;
         bool hat = false;
         for (const CamSegment& seg : t.segments) {
@@ -9548,7 +9891,7 @@ void drawTimeline() {
         // Der NAME ist anklickbar: er waehlt die Kamera an, und damit
         // erscheint ihre Bahn in der Ansicht. Angewaehlt steht er hell.
         const bool camAn = g_app->cameraSelected;
-        if (spurKopf(cp, UiIcon::Kamera, cz.farbe, tr(cz.anzeige), camAn)) {
+        if (spurKopf(cp, UiIcon::Kamera, cz.farbe, tr(cz.anzeige), camAn, rowH * 0.9F)) {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted(tr(Str::TlCamRowHint));
             ImGui::TextDisabled("%s", nm);
@@ -9719,61 +10062,24 @@ void drawTimeline() {
         ++zeilenNr;
     }
 
-    for (const TimelineTrack& track : g_app->timeline.tracks) {
-        if (!g_app->zeigeRuhigeSpuren && spurIstRuhig(track)) {
-            continue;
-        }
-        const ImVec2 p0 = ImGui::GetCursorScreenPos();
-        const std::string name = track.entity.empty() ? std::string(tr(Str::TlScript))
-                                                      : track.entity;
-        g_app->tlZeilenY.emplace_back(name, p0.y + rowH * 0.5F);
-        // Der Name waehlt die FIGUR an - dann zeigt die Ansicht ihren
-        // Laufweg, so wie sie es fuer die Kamera schon tut.
-        int figIdx = -1;
-        if (!track.entity.empty()) {
-            for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
-                if (g_app->scene.actors[ai].name == track.entity) {
-                    figIdx = static_cast<int>(ai);
-                    break;
-                }
-            }
-        }
-        const bool figAn = (figIdx >= 0 && figIdx == g_app->selectedActor);
-        const bool kopfUeber = spurKopf(p0, track.entity.empty() ? UiIcon::Skript : UiIcon::Figur,
-                                        ImGui::GetColorU32(uiIconFarbe(track.entity.empty() ? UiIcon::Skript
-                                                                                            : UiIcon::Figur)),
-                                        name.c_str(), figAn);
-        if (figIdx >= 0 && kopfUeber) {
-            ImGui::SetTooltip("%s", tr(Str::TlActorHint));
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                // Nochmal derselbe Name hebt die Auswahl auf - dieselbe
-                // Regel wie im Skriptbaum seit rc167.
-                g_app->selectedActor = figAn ? -1 : figIdx;
-                g_app->cameraSelected = false;
-                g_app->mapDirty = true;
-            }
-        }
-
-        // Die Balken beginnen an DERSELBEN Kante wie Zeiger und Lineal -
-        // und zwar an der gemessenen, nicht an einer nachgerechneten.
-        //
-        // "p0.x + labelW" waere fast richtig: p0.x ist die Innenkante des
-        // Kindfensters, also um dessen Innenabstand nach rechts versetzt.
-        // Ein paar Bildpunkte Versatz je Zeile - genug, dass die Balken
-        // sichtbar gegen die Zahlen darueber laufen. barMin.x ist der Ort,
-        // an dem der Zeiger wirklich anfaengt; Zeichenlisten rechnen ohnehin
-        // in Bildschirmkoordinaten.
+    const int auswahlFigur = g_app->pickedEntity >= 0 ? figurFuerEntity(g_app->pickedEntity) : -1;
+    g_app->tlAuswahlZeile.clear();
+    g_app->tlBewegungsBalken = 0;
+    g_app->tlAusloeser = 0;
+    g_app->tlBalken.clear();
+    g_app->tlWaitBloecke = 0;
+    g_app->tlZeilenH = rowH;
+    g_app->tlKopfX = ImGui::GetCursorScreenPos().x;
+    if (auswahlFigur < 0 && g_app->selectedActor < 0) { g_app->tlRollFigur = -1; }
+    const auto zeichneEreignis = [&](const TimelineEvent& e, const ImVec2 p0, const int figIdx,
+                                     const TimelineTrack& track) {
         const float x0 = barMin.x;
-        zeilenGrund(p0);
-        // Dasselbe wie bei den Kamerazeilen: ab hier nur noch im Zeitfeld.
-        tl->PushClipRect(ImVec2{x0, p0.y}, ImVec2{x0 + trackW, p0.y + rowH},
-                         true);
-
-        for (const TimelineEvent& e : track.events) {
+        (void)x0;
+        if (e.kind == TimelineEvent::Kind::Wait) { ++g_app->tlWaitBloecke; }
             // Die Kamerabefehle des Skripts haben ihre eigenen Zeilen oben -
             // in der Script-Zeile lagen sie noch einmal, UNTER den waits.
             if (track.entity.empty() && e.kind == TimelineEvent::Kind::Camera) {
-                continue;
+                return;
             }
             // Nur zeigen, was beim Abstimmen zaehlt. Ein SET_PARM ist
             // richtig, aber uninteressant; ein Klang und eine Bewegung
@@ -9897,18 +10203,185 @@ void drawTimeline() {
                     k.figur = figIdx;
                 }
             }
+    };
+    const auto zeichneBewegung = [&](const TimelineTrack& track, const ImVec2 p0, const int figIdx,
+                                     const bool figAn) {
+        (void)track;
+        // Unterwegs (rc597): je Gehen (SET_NAVGOAL) und Fliegen (move) ein
+        // Band am unteren Rand der Zeile, kraeftig bei der gewaehlten Figur.
+        // Anfassen und ziehen verschiebt den Befehl in der Zeit (das wait
+        // davor, wie bei jedem Block); Rechtsklick auf einen Lauf: gehen oder
+        // rennen. Der ausloesende Befehl bekommt einen hellen Rahmen.
+        if (figIdx >= 0 && static_cast<std::size_t>(figIdx) < g_app->scene.actors.size()) {
+            const float hb = std::max(4.0F, rowH * 0.28F);
+            const ImU32 tuerkis = IM_COL32(90, 220, 190, 255);
+            for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figIdx)].steps) {
+                const bool lauf = st.kind == ActorStep::Kind::WalkTo;
+                if ((!lauf && st.kind != ActorStep::Kind::Glide) || !(st.endMs > st.startMs)) { continue; }
+                const ImVec2 a{xAt(st.startMs), p0.y + rowH - 2.0F - hb};
+                const ImVec2 b{std::max(xAt(st.endMs), a.x + 3.0F), p0.y + rowH - 2.0F};
+                const bool ueber = ImGui::IsMouseHoveringRect(a, b);
+                const bool istZiel = !st.path.empty() && st.path == g_app->selectedPath;
+                ImU32 f = figAn ? IM_COL32(90, 220, 190, 235) : IM_COL32(90, 200, 170, 110);
+                if (ueber || istZiel) { f = IM_COL32(150, 245, 220, 255); }
+                tl->AddRectFilled(a, b, f, 2.0F);
+                g_app->tlBalken.push_back(App::TlBalken{st.path, a, b, lauf, figIdx});
+                if (ueber) {
+                    float weg = 0.0F;
+                    for (int k = 0; k < 3; ++k) { weg += (st.to[k] - st.from[k]) * (st.to[k] - st.from[k]); }
+                    ImGui::BeginTooltip();
+                    ImGui::Text(tr(Str::TlBewegung),
+                                tr(lauf ? (st.text == "BOTH_WALK1" ? Str::BahnGehtJetzt : Str::BahnRenntJetzt) : Str::TlFlug),
+                                (st.endMs - st.startMs) / 1000.0, static_cast<double>(std::sqrt(weg)));
+                    if (lauf) { ImGui::TextDisabled("%s", tr(Str::BahnZielMenue)); }
+                    ImGui::EndTooltip();
+                    if (!st.path.empty() && st.fremd.empty() && !g_app->tlDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                        App::TlKandidat& k = g_app->tlKlickKandidat;
+                        k.da = true;
+                        k.pfad = st.path;
+                        k.startMs = st.startMs;
+                        k.kamera = false;
+                        k.figur = figIdx;
+                    }
+                    if (lauf && !st.path.empty() && st.fremd.empty() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+                        g_app->bahnMenuePfad = st.path;
+                        ImGui::OpenPopup("##gangart_tl");
+                    }
+                }
+                if (!figAn) { continue; }
+                ++g_app->tlBewegungsBalken;
+                for (const TimelineEvent& e : track.events) {
+                    if (st.path.empty() || e.path != st.path) { continue; }
+                    const float ax = xAt(e.startMs);
+                    const float bx = std::max(xAt(e.endMs), ax + 3.0F);
+                    tl->AddRect(ImVec2{ax - 2.0F, p0.y + 1.0F}, ImVec2{bx + 2.0F, p0.y + rowH - 1.0F}, tuerkis, rund, 0, 2.0F);
+                    tl->AddTriangleFilled(ImVec2{ax - 4.0F, p0.y + 1.0F}, ImVec2{ax + 4.0F, p0.y + 1.0F},
+                                          ImVec2{ax, p0.y + 6.0F}, tuerkis);
+                    ++g_app->tlAusloeser;
+                    break;
+                }
+            }
         }
-        // Das Ende des Ablaufs, schwach.
-        tl->AddLine(ImVec2{xAt(ablaufEnde), p0.y}, ImVec2{xAt(ablaufEnde), p0.y + rowH},
-                    IM_COL32(230, 80, 80, 110), 1.0F);
-        // Der Zeiger durch alle Spuren.
-        const float lx = xAt(g_app->playMs);
-        tl->AddLine(ImVec2{lx, p0.y}, ImVec2{lx, p0.y + rowH}, akzent, 1.5F);
-        tl->PopClipRect();
-        ImGui::Dummy(ImVec2{w, rowH});
-        ++zeilenNr;
+    };
+    for (const TimelineTrack& track : g_app->timeline.tracks) {
+        if (!g_app->zeigeRuhigeSpuren && spurIstRuhig(track)) {
+            continue;
+        }
+        const ImVec2 p0 = ImGui::GetCursorScreenPos();
+        const std::string name = track.entity.empty() ? std::string(tr(Str::TlScript))
+                                                      : track.entity;
+        g_app->tlZeilenY.emplace_back(name, p0.y + rowH * 0.5F);
+        // Der Name waehlt die FIGUR an - dann zeigt die Ansicht ihren
+        // Laufweg, so wie sie es fuer die Kamera schon tut.
+        int figIdx = -1;
+        if (!track.entity.empty()) {
+            for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+                if (g_app->scene.actors[ai].name == track.entity) {
+                    figIdx = static_cast<int>(ai);
+                    break;
+                }
+            }
+        }
+        // Gewaehlt ist die Figur auch, wenn ihre ENTITY gewaehlt ist (Spawner,
+        // Schiff) - rc597.
+        const bool figAn = (figIdx >= 0 && (figIdx == g_app->selectedActor || figIdx == auswahlFigur));
+        if (figAn) {
+            g_app->tlAuswahlZeile = name;
+            if (g_app->tlRollFigur != figIdx) { g_app->tlOffen.insert(name); }   // neu gewaehlt: aufklappen
+            // Neu gewaehlt? Dann die Zeile ins Bild rollen - sonst lag sie oft
+            // unter Kamera- und Skriptzeile verborgen (rc597).
+            if (g_app->tlRollFigur != figIdx) {
+                ImGui::SetScrollHereY(0.4F);
+                g_app->tlRollFigur = figIdx;
+            }
+        }
+        const bool skript = track.entity.empty();
+        const bool offen = !skript && g_app->tlOffen.count(name) != 0U;
+        const bool kopfUeber = spurKopf(p0, skript ? UiIcon::Skript : UiIcon::Figur,
+                                        ImGui::GetColorU32(uiIconFarbe(skript ? UiIcon::Skript : UiIcon::Figur)),
+                                        name.c_str(), figAn, 0.0F, skript ? -1 : (offen ? 1 : 0));
+        if (!skript && kopfUeber && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+            ImGui::GetIO().MousePos.x < p0.x + rowH * 1.1F) {
+            // Der Pfeil klappt auf und zu.
+            if (offen) { g_app->tlOffen.erase(name); } else { g_app->tlOffen.insert(name); }
+        } else if (figIdx >= 0 && kopfUeber) {
+            ImGui::SetTooltip("%s\n%s", tr(Str::TlActorHint), tr(Str::TlAufklappen));
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                // Nochmal derselbe Name hebt die Auswahl auf - dieselbe
+                // Regel wie im Skriptbaum seit rc167.
+                g_app->selectedActor = figAn ? -1 : figIdx;
+                g_app->cameraSelected = false;
+                g_app->mapDirty = true;
+            }
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                if (offen) { g_app->tlOffen.erase(name); } else { g_app->tlOffen.insert(name); }
+            }
+        }
+        zeilenAnfang(p0);
+        if (skript) {
+            // Die Skriptzeile: ihre Befehle, die waits nur auf Wunsch.
+            for (const TimelineEvent& e : track.events) {
+                if (kategorieVon(e) == 5 && !g_app->tlWaitsZeigen && e.kind == TimelineEvent::Kind::Wait) { continue; }
+                zeichneEreignis(e, p0, figIdx, track);
+            }
+        } else {
+            // Zusammenfassung wie im Sequencer: wo etwas passiert, in der
+            // Farbe seiner Spur. Anklicken waehlt den Befehl.
+            for (const TimelineEvent& e : track.events) {
+                const int k = kategorieVon(e);
+                if (k == 5 && !g_app->tlWaitsZeigen) { continue; }
+                const float ax = xAt(e.startMs);
+                const float bx = std::max(xAt(e.endMs), ax + 3.0F);
+                const ImVec2 a{ax, p0.y + rowH * 0.28F};
+                const ImVec2 b{bx, p0.y + rowH * 0.72F};
+                const bool ueber = ImGui::IsMouseHoveringRect(ImVec2{a.x - 1.0F, p0.y}, ImVec2{b.x + 1.0F, p0.y + rowH});
+                ImU32 f = kKat[static_cast<std::size_t>(k)].farbe;
+                if (!ueber) { f = (f & 0x00FFFFFFU) | (0xB0U << IM_COL32_A_SHIFT); }
+                tl->AddRectFilled(a, b, f, 2.0F);
+                if (!e.path.empty() && e.fremd.empty() && e.path == g_app->selectedPath) {
+                    tl->AddRect(ImVec2{a.x - 1.0F, a.y - 1.0F}, ImVec2{b.x + 1.0F, b.y + 1.0F}, IM_COL32(255, 255, 255, 255), 2.0F, 0, 1.5F);
+                }
+                if (ueber) {
+                    ImGui::BeginTooltip();
+                    ImGui::TextUnformatted(e.label.c_str());
+                    ImGui::TextDisabled(tr(Str::TlSpanSeconds), e.startMs / 1000.0, e.endMs / 1000.0);
+                    ImGui::EndTooltip();
+                    if (!e.path.empty() && !g_app->tlDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                        App::TlKandidat& kk = g_app->tlKlickKandidat;
+                        kk.da = true;
+                        kk.pfad = e.path;
+                        kk.startMs = e.startMs;
+                        kk.kamera = false;
+                        kk.figur = figIdx;
+                    }
+                }
+            }
+            if (!offen) { zeichneBewegung(track, p0, figIdx, figAn); }
+        }
+        zeilenEnde(p0);
+        // Aufgeklappt: je Art eine Unterspur.
+        if (offen) {
+            const std::array<bool, 6> hatKat = katDerSpur(track);
+            for (int k = 0; k < 6; ++k) {
+                if (!hatKat[static_cast<std::size_t>(k)]) { continue; }
+                const KatInfo& ki = kKat[static_cast<std::size_t>(k)];
+                const ImVec2 q = ImGui::GetCursorScreenPos();
+                g_app->tlZeilenY.emplace_back(name + "/" + tr(ki.name), q.y + rowH * 0.5F);
+                (void)spurKopf(q, ki.icon, ki.farbe, tr(ki.name), figAn, rowH * 0.9F);
+                zeilenAnfang(q);
+                for (const TimelineEvent& e : track.events) {
+                    if (kategorieVon(e) == k) { zeichneEreignis(e, q, figIdx, track); }
+                }
+                if (k == 0) { zeichneBewegung(track, q, figIdx, figAn); }
+                zeilenEnde(q);
+            }
+        }
     }
 
+    if (ImGui::BeginPopup("##gangart_tl")) {
+        gangartMenueInhalt();
+        ImGui::EndPopup();
+    }
     // --- Klick und Kantengriff: der OBERSTE Block gewinnt -----------------
     //
     // Beide wurden beim Zeichnen nur vorgemerkt; der zuletzt gezeichnete
@@ -10493,9 +10966,16 @@ void drawMapView() {
         // Die Achsen der Kamera braucht es, weil die Vierecke senkrecht zur
         // Blickrichtung stehen. Sie kommen aus derselben Rechnung wie im
         // Zeichner: vorn aus den Winkeln, rechts = vorn x oben.
-        if (g_app->showEffects && !g_app->effectRunners.empty()) {
-            const float p = useCam.angles[0] * 3.14159265F / 180.0F;
-            const float y = useCam.angles[1] * 3.14159265F / 180.0F;
+        // --- Das Effektnetz fuer EINE Kamera (rc597) -------------------------
+        //
+        // Die Vierecke stehen quer zum Blick, und CParticle::Cull laesst weg,
+        // was hinter dem Auge liegt. Die Kameravorschau rechts unten bekam
+        // deshalb das Netz der Hauptansicht: "wenn ich meine hauptkamera weg
+        // drehe werden die effecte nicht mehr gerendert in der kamera rechts
+        // unten". Jetzt baut jede Ansicht ihr eigenes - aus derselben Liste.
+        const auto baueEffektNetz = [&](const std::vector<EffectInstance>& alle, const Camera& kam, int bw, int bh) {
+            const float p = kam.angles[0] * 3.14159265F / 180.0F;
+            const float y = kam.angles[1] * 3.14159265F / 180.0F;
             const float fwd[3] = {std::cos(p) * std::cos(y),
                                   std::cos(p) * std::sin(y), -std::sin(p)};
             float rgt[3] = {fwd[1], -fwd[0], 0.0F};
@@ -10507,6 +10987,61 @@ void drawMapView() {
             const float upv[3] = {rgt[1] * fwd[2] - rgt[2] * fwd[1],
                                   rgt[2] * fwd[0] - rgt[0] * fwd[2],
                                   rgt[0] * fwd[1] - rgt[1] * fwd[0]};
+            EffectCull auge;
+            for (int k = 0; k < 3; ++k) {
+                auge.viewer[k] = kam.pos[k];
+            }
+            auge.haveViewer = true;
+            auge.sichtTabelle = false;
+            BspMesh netz =
+                // Die Kartengeometrie mit: ohne sie kann ein Partikel mit
+                // `usePhysics` nicht abprallen - siehe efx::sim::flugbahn.
+                // --- Die Keulung ist NOCH NICHT eingeschaltet -----------
+                //
+                // `EffectCull` steht bereit (bhed/efxdraw.h) und spart
+                // gemessen 337 auf 0,6 ms. Sie wird trotzdem nicht
+                // uebergeben, weil sie in drei Probeansichten SICHTBARE
+                // Effekte weggenommen hat - auch mit einem Freiraum von
+                // 4000 Einheiten.
+                //
+                // Der Grund: die Sichtbarkeitstabelle beantwortet die Frage
+                // "sieht Raum A Raum B". Ein Effekt ist aber kein Punkt -
+                // die Teilchen von volcano.efx fliegen 1200 Einheiten weit
+                // und reichen damit in Raeume, die der Runner selbst nie
+                // beruehrt. Und eine Vorschaukamera steht oft AUSSERHALB
+                // der Karte, wo der Cluster nichts taugt.
+                //
+                // Eine Keulung, die manchmal etwas wegnimmt, ist schlimmer
+                // als eine, die es nicht gibt: sie erzeugt Fehler, die man
+                // fuer Effektfehler haelt und woanders sucht.
+                //
+                // Das AUGE wird trotzdem uebergeben - ohne die Tabelle
+                // (sichtTabelle = false). Ohne Auge gibt es weder die
+                // Bandbreite nach RB_SurfaceLine noch die Richtung eines
+                // Blitzes (RB_SurfaceElectricity) noch CParticle::Cull.
+                buildEffectMesh(alle, g_app->playMs, rgt, upv,
+                                &g_app->effectShaders, &g_app->geo, &auge);
+            // --- Der Vollbildblitz (Flash) ------------------------------
+            //
+            // Als Sprite IM Effektnetz, nicht in der 2D-Ueberlagerung: nur so
+            // gelten Shader und Mischart der .efx, und der Blitz liegt wie im
+            // Spiel UNTER den Kinobalken (siehe appendScreenFlashes).
+            {
+                const float seiten = static_cast<float>(bw) /
+                                     static_cast<float>(std::max(bh, 1));
+                const float fovX =
+                    2.0F *
+                    std::atan(std::tan(kam.fovY * 3.14159265F / 360.0F) *
+                              seiten) *
+                    180.0F / 3.14159265F;
+                const std::vector<ScreenFlash> blitze =
+                    effectScreenFlashesAt(alle, g_app->playMs, kam.pos, fwd);
+                appendScreenFlashes(netz, blitze, kam.pos, fwd,
+                                    rgt, upv, fovX, &g_app->effectShaders);
+            }
+            return netz;
+        };
+        if (g_app->showEffects && !g_app->effectRunners.empty()) {
             // Die Schuesse kommen dazu - dieselbe Liste, derselbe
             // Zeichenweg. Ein eigener waere ein zweiter Rasterisierer.
             std::vector<EffectInstance> alle = g_app->effectRunners;
@@ -10547,58 +11082,7 @@ void drawMapView() {
                 diag::detail(sz);
             }
             const auto tE0 = std::chrono::steady_clock::now();
-            EffectCull auge;
-            for (int k = 0; k < 3; ++k) {
-                auge.viewer[k] = useCam.pos[k];
-            }
-            auge.haveViewer = true;
-            auge.sichtTabelle = false;
-            g_app->effectMesh =
-                // Die Kartengeometrie mit: ohne sie kann ein Partikel mit
-                // `usePhysics` nicht abprallen - siehe efx::sim::flugbahn.
-                // --- Die Keulung ist NOCH NICHT eingeschaltet -----------
-                //
-                // `EffectCull` steht bereit (bhed/efxdraw.h) und spart
-                // gemessen 337 auf 0,6 ms. Sie wird trotzdem nicht
-                // uebergeben, weil sie in drei Probeansichten SICHTBARE
-                // Effekte weggenommen hat - auch mit einem Freiraum von
-                // 4000 Einheiten.
-                //
-                // Der Grund: die Sichtbarkeitstabelle beantwortet die Frage
-                // "sieht Raum A Raum B". Ein Effekt ist aber kein Punkt -
-                // die Teilchen von volcano.efx fliegen 1200 Einheiten weit
-                // und reichen damit in Raeume, die der Runner selbst nie
-                // beruehrt. Und eine Vorschaukamera steht oft AUSSERHALB
-                // der Karte, wo der Cluster nichts taugt.
-                //
-                // Eine Keulung, die manchmal etwas wegnimmt, ist schlimmer
-                // als eine, die es nicht gibt: sie erzeugt Fehler, die man
-                // fuer Effektfehler haelt und woanders sucht.
-                //
-                // Das AUGE wird trotzdem uebergeben - ohne die Tabelle
-                // (sichtTabelle = false). Ohne Auge gibt es weder die
-                // Bandbreite nach RB_SurfaceLine noch die Richtung eines
-                // Blitzes (RB_SurfaceElectricity) noch CParticle::Cull.
-                buildEffectMesh(alle, g_app->playMs, rgt, upv,
-                                &g_app->effectShaders, &g_app->geo, &auge);
-            // --- Der Vollbildblitz (Flash) ------------------------------
-            //
-            // Als Sprite IM Effektnetz, nicht in der 2D-Ueberlagerung: nur so
-            // gelten Shader und Mischart der .efx, und der Blitz liegt wie im
-            // Spiel UNTER den Kinobalken (siehe appendScreenFlashes).
-            {
-                const float seiten = static_cast<float>(w) /
-                                     static_cast<float>(std::max(h, 1));
-                const float fovX =
-                    2.0F *
-                    std::atan(std::tan(useCam.fovY * 3.14159265F / 360.0F) *
-                              seiten) *
-                    180.0F / 3.14159265F;
-                const std::vector<ScreenFlash> blitze =
-                    effectScreenFlashesAt(alle, g_app->playMs, useCam.pos, fwd);
-                appendScreenFlashes(g_app->effectMesh, blitze, useCam.pos, fwd,
-                                    rgt, upv, fovX, &g_app->effectShaders);
-            }
+            g_app->effectMesh = baueEffektNetz(alle, useCam, w, h);
             // Und was an Emittern haengt - hier, wo `alle` steht.
             g_app->emitterFlug =
                 emitterModelsAt(alle, g_app->playMs, &g_app->geo);
@@ -10687,6 +11171,7 @@ void drawMapView() {
             d.pitch = bewegt ? figStand.angles[0] : mm.angles[0];
             d.yaw = bewegt ? figStand.angles[1] : mm.angles[1];
             d.roll = bewegt ? figStand.angles[2] : mm.angles[2];
+            d.entity = static_cast<int>(mm.entity);
             movers.push_back(d);
         }
 
@@ -10849,6 +11334,7 @@ void drawMapView() {
                 }
                 MoverDraw m;
                 m.mesh = &bm;
+                m.brush = static_cast<int>(k);
                 // Tueren, func_wall & Co.: der Stand aus der Mover-
                 // Simulation (bhed/mover.h) - Ort, Winkel, sichtbar.
                 const MoverSim::Stand ms =
@@ -10901,6 +11387,7 @@ void drawMapView() {
                 }
                 MoverDraw m;
                 m.mesh = &bm;
+                m.brush = a.brushModel;
                 // Verschoben wird um den AKTUELLEN Ursprung, nicht um die
                 // Differenz zum Startort.
                 //
@@ -10945,11 +11432,124 @@ void drawMapView() {
             if (netz->second.indexes.empty()) { continue; }
             MoverDraw d = st->second;
             d.mesh = &netz->second;
+            d.entity = static_cast<int>(mm.entity);
             for (int k = 0; k < 3; ++k) {
                 d.pivot[k] = 0.0F;
                 d.scale[k] = 1.0F;
             }
             movers.push_back(d);
+        }
+        // --- Wo die Entities gerade stehen (rc597) -------------------------
+        //
+        // Marke, Kasten und Gizmo folgen dem, was Szene und Mover-Simulation
+        // bewegen: Brush-Modelle ueber ihre Nummer, Figuren ueber den Namen
+        // ihres Spawners.
+        // Zieht man gerade ein Schiff oder ein Modell, geht es live mit.
+        if (g_app->entZug.aktiv) {
+            float zv[3];
+            float zg = 0.0F;
+            const int zi = g_app->entZug.index;
+            if (zugVersatz(zi, zv, zg)) {
+                int nr = -1;
+                if (const std::string* mdl = g_app->map.entities[static_cast<std::size_t>(zi)].find("model");
+                    mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*') {
+                    nr = std::atoi(mdl->c_str() + 1);
+                }
+                for (MoverDraw& mv : movers) {
+                    if (mv.entity == zi || (nr > 0 && mv.brush == nr)) {
+                        for (int k = 0; k < 3; ++k) { mv.offset[k] += zv[k]; }
+                        mv.yaw += zg;
+                    }
+                }
+            }
+        }
+        g_app->entVersatz.clear();
+        g_app->entGierVersatz.clear();
+        g_app->pickMover.clear();
+        {
+            std::unordered_map<int, int> entityVonBrush;
+            for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+                const MapEntity& e = g_app->map.entities[i];
+                const std::string* mdl = e.find("model");
+                if (mdl == nullptr || mdl->size() < 2 || (*mdl)[0] != '*') { continue; }
+                const int nr = std::atoi(mdl->c_str() + 1);
+                if (nr <= 0) { continue; }
+                entityVonBrush[nr] = static_cast<int>(i);
+                const auto st = brushStand.find(nr);
+                float o[3];
+                if (st == brushStand.end() || !entityOrt(e, o)) { continue; }
+                const std::array<float, 3> v{st->second.offset[0] - o[0], st->second.offset[1] - o[1],
+                                             st->second.offset[2] - o[2]};
+                if (std::fabs(v[0]) + std::fabs(v[1]) + std::fabs(v[2]) > 0.5F) {
+                    g_app->entVersatz[static_cast<int>(i)] = v;
+                }
+            }
+            if (g_app->showActors) {
+                // Die Blickrichtung jeder Figur (auch eines Schiffs mit Skript).
+                const auto gier = [](int ei, const ActorState& st) {
+                    if (ei < 0 || !st.visible) { return; }
+                    const std::string* w = g_app->map.entities[static_cast<std::size_t>(ei)].find("angle");
+                    const float schl = w != nullptr ? std::strtof(w->c_str(), nullptr) : 0.0F;
+                    const float d = std::remainder(st.angles[1] - schl, 360.0F);
+                    if (std::fabs(d) > 0.5F) { g_app->entGierVersatz[ei] = d; }
+                };
+                for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+                    const Actor& a = g_app->scene.actors[ai];
+                    if (!a.haveStart) { continue; }
+                    if (a.brushModel > 0) {
+                        const auto it = entityVonBrush.find(a.brushModel);
+                        if (it != entityVonBrush.end()) { gier(it->second, a.at(g_app->playMs)); }
+                        continue;
+                    }
+                    const int ei = entityFuerFigur(static_cast<int>(ai));
+                    if (ei < 0) { continue; }
+                    gier(ei, a.at(g_app->playMs));
+                    // Bis zur Figur selbst - ihr Startort in der Szene ist
+                    // nicht immer der Spawner (ani1 in md_am_sith).
+                    const ActorState st = a.at(g_app->playMs);
+                    float o[3];
+                    if (!entityOrt(g_app->map.entities[static_cast<std::size_t>(ei)], o)) { continue; }
+                    const std::array<float, 3> v{st.pos[0] - o[0], st.pos[1] - o[1], st.pos[2] - o[2]};
+                    if (st.visible && std::fabs(v[0]) + std::fabs(v[1]) + std::fabs(v[2]) > 0.5F) {
+                        g_app->entVersatz[ei] = v;
+                    }
+                }
+            }
+            // Waehrend des Ziehens bleibt der Versatz vom Anfassen - sonst
+            // sprang der Gizmo zwischen altem und neuem Stand hin und her.
+            if (g_app->entZug.aktiv && g_app->entZug.index >= 0 && g_app->entZug.zwischen) {
+                // Neuer Bahnpunkt (rc597): der Gizmo steht am gezogenen Punkt.
+                float o[3];
+                if (entityOrt(g_app->map.entities[static_cast<std::size_t>(g_app->entZug.index)], o)) {
+                    const float* k = g_app->entZug.zwOrt;
+                    g_app->entVersatz[g_app->entZug.index] = {k[0] - o[0], k[1] - o[1], k[2] - o[2]};
+                }
+            } else if (g_app->entZug.aktiv && g_app->entZug.index >= 0) {
+                if (g_app->entZug.gierVersatz != 0.0F) {
+                    g_app->entGierVersatz[g_app->entZug.index] = g_app->entZug.gierVersatz;
+                } else {
+                    g_app->entGierVersatz.erase(g_app->entZug.index);
+                }
+                const float* v = g_app->entZug.versatz;
+                if (v[0] != 0.0F || v[1] != 0.0F || v[2] != 0.0F) {
+                    g_app->entVersatz[g_app->entZug.index] = {v[0], v[1], v[2]};
+                } else {
+                    g_app->entVersatz.erase(g_app->entZug.index);
+                }
+            }
+            for (const MoverDraw& mv : movers) {
+                App::PickMover pm;
+                pm.mesh = mv.mesh;
+                pm.entity = mv.entity >= 0 ? mv.entity : -1;
+                if (pm.entity < 0 && mv.brush > 0) {
+                    const auto it = entityVonBrush.find(mv.brush);
+                    if (it != entityVonBrush.end()) { pm.entity = it->second; }
+                }
+                if (pm.entity < 0 || pm.mesh == nullptr) { continue; }
+                gpu::baueMoverWelt(mv.pivot, mv.offset, mv.yaw, mv.pitch, mv.roll, mv.pitch != 0.0F || mv.roll != 0.0F,
+                                   pm.welt, mv.scale);
+                g_app->pickMover.push_back(pm);
+            }
         }
         // Die Figuren NACH der Karte: sie benutzen deren Tiefenpuffer und
         // verschwinden dadurch hinter Waenden.
@@ -11173,6 +11773,22 @@ void drawMapView() {
                     d.pos[k] = st.pos[k];
                 }
                 d.yaw = st.angles[1];
+                // Zieht man gerade ihren Spawner, geht sie mit (rc597) - "wenn
+                // ich den character bewege, shaked der gizmo, statt den
+                // character in real time zu bewegen". Die Szene baut erst beim
+                // Loslassen neu.
+                if (g_app->entZug.aktiv) {
+                    float zv[3];
+                    float zg = 0.0F;
+                    if (zugVersatz(entityFuerFigur(static_cast<int>(ai)), zv, zg)) {
+                        for (int k = 0; k < 3; ++k) { d.pos[k] += zv[k]; }
+                        d.yaw += zg;
+                    }
+                }
+                if (g_app->figurGezeichnet.size() != g_app->scene.actors.size()) {
+                    g_app->figurGezeichnet.assign(g_app->scene.actors.size(), {0.0F, 0.0F, 0.0F});
+                }
+                g_app->figurGezeichnet[ai] = {d.pos[0], d.pos[1], d.pos[2]};
                 // Das Licht an ihrem Standort, aus dem Gitter der Karte.
                 //
                 // Die Engine nimmt dafuer den URSPRUNG der Entity
@@ -11383,6 +11999,51 @@ void drawMapView() {
             // und - wenn eingeschaltet - ein zweites Mal klein fuer die
             // Bild-im-Bild-Vorschau der Skriptkamera (nebenbild, Zielsatz 1).
             // Das Nebenbild misst nicht, glueht nicht und zaehlt nicht mit.
+            // Was ist gewaehlt (fuer den Umriss, rc597)? Entities direkt
+            // (Kartenmodelle), ihr Brush-Modell ("model" "*N") und ihr
+            // Skriptname - an dem haengen die Figuren der Szene.
+            struct Auswahl {
+                std::set<int> entities;
+                std::set<int> brushes;
+                std::set<std::string> namen;
+                int figurNr = -1;
+                [[nodiscard]] bool leer() const { return entities.empty() && brushes.empty() && namen.empty() && figurNr < 0; }
+                [[nodiscard]] bool mover(const MoverDraw& m) const {
+                    return (m.entity >= 0 && entities.count(m.entity) != 0U) || (m.brush > 0 && brushes.count(m.brush) != 0U);
+                }
+                [[nodiscard]] bool figur(int nr) const {
+                    if (nr < 0) { return false; }
+                    if (nr == figurNr) { return true; }
+                    if (static_cast<std::size_t>(nr) >= g_app->scene.actors.size()) { return false; }
+                    std::string n = g_app->scene.actors[static_cast<std::size_t>(nr)].name;
+                    for (char& ch : n) { ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); }
+                    return namen.count(n) != 0U;
+                }
+            };
+            Auswahl auswahl;
+            for (const int i : entityAuswahl()) {
+                if (i < 0 || static_cast<std::size_t>(i) >= g_app->map.entities.size()) { continue; }
+                const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(i)];
+                auswahl.entities.insert(i);
+                if (const std::string* mdl = e.find("model"); mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*') {
+                    auswahl.brushes.insert(std::atoi(mdl->c_str() + 1));
+                }
+                std::string n = entitySkriptName(e);
+                for (char& ch : n) { ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); }
+                if (!n.empty()) { auswahl.namen.insert(n); }
+            }
+            auswahl.figurNr = g_app->selectedActor;
+            struct UmrissFigur {
+                const GlmModel* model = nullptr;
+                const ModelTextures* textures = nullptr;
+                std::vector<BoneMatrix> knochen;
+                float welt[16];
+            };
+            std::vector<UmrissFigur> umrissFiguren;
+            // Das Effektnetz einer Nebenansicht mit eigener Kamera (rc597);
+            // nullptr = das der Hauptansicht.
+            BspMesh effektNetzVorschau;
+            const BspMesh* effektNetzBild = nullptr;
             auto gpuBild = [&](const Camera& bildCam, const int bildW, const int bildH, const bool nebenbild) {
                 float vp[16];
                 // Draufsicht: die vordere Ebene liegt auf der Schnitthoehe -
@@ -11490,13 +12151,16 @@ void drawMapView() {
 
                     // Das Effektnetz als ZWEITES Netz - es loescht nicht und
                     // trifft damit auf die Tiefe der Karte.
-                    if (!g_app->effectMesh.indexes.empty()) {
+                    const BspMesh& effektNetz =
+                        (nebenbild && effektNetzBild != nullptr) ? *effektNetzBild : g_app->effectMesh;
+                    if (nebenbild) { g_app->nebenEffektEcken = static_cast<int>(effektNetz.verts.size()); }
+                    if (!effektNetz.indexes.empty()) {
                         gpu::beginneMessung(
                             erst ? gpu::Abschnitt::EffekteDeckend
                                  : gpu::Abschnitt::EffekteGemischt);
                         std::string f2;
                         const int ne = gpu::zeichneKarte(
-                            g_app->effectMesh, &g_app->textures, &g_app->geo,
+                            effektNetz, &g_app->textures, &g_app->geo,
                             vp, bildCam.pos, zeit, g_app->mapBrightness,
                             g_app->mapMinLight, 1, gvorn, grechts, ghoch,
                             gfokus, &f2, &g_app->gpuUebersprungen, lage);
@@ -11550,6 +12214,7 @@ void drawMapView() {
                     std::vector<BoneMatrix> welt;
                     std::vector<BoneMatrix> hilf;
                     std::vector<BoneMatrix> skin;
+                    umrissFiguren.clear();
                     // --- Was liegt auf den Figuren? --------------------
                     //
                     // Einmal je Bild neu, damit der Bericht den Stand von
@@ -11649,6 +12314,14 @@ void drawMapView() {
                         const int n = gpu::zeichneFigur(
                             *a.model, a.textures, skin, fw, vp, &ff, &licht,
                             g_app->showCaps);
+                        if (!nebenbild && auswahl.figur(a.figur)) {
+                            UmrissFigur uf;
+                            uf.model = a.model;
+                            uf.textures = a.textures;
+                            uf.knochen = skin;
+                            std::copy(fw, fw + 16, uf.welt);
+                            umrissFiguren.push_back(std::move(uf));
+                        }
                         g_app->gpuAufrufe += n;
                         g_app->gpuFiguren2 += n;
                         if (n == 0 && f.empty()) { f = ff; }
@@ -12046,10 +12719,41 @@ void drawMapView() {
                                         g_app->mesh, &g_app->textures,
                                         &g_app->geo, vp, zeit,
                                         320, 240,
-                                        true, &fg);
+                                        true, &fg,
+                                        (g_app->showEffects && g_app->rauchImGluehen) ? &g_app->effectMesh : nullptr);
                     gpu::beendeMessung(gpu::Abschnitt::Gluehen);
                     if (f.empty()) {
                         f = fg;
+                    }
+                }
+                // --- Umriss der Auswahl (rc597) ---------------------------
+                //
+                // Wie in Unreal: die gewaehlten Schiffe, Tueren, Modelle und
+                // Figuren bekommen eine Linie um ihren sichtbaren Rand. Nur im
+                // Hauptbild, nicht beim Blick durch die Kamera.
+                if (!nebenbild && !g_app->camViewActive && !auswahl.leer()) {
+                    bool etwas = !umrissFiguren.empty();
+                    for (const MoverDraw& mv : movers) { etwas = etwas || auswahl.mover(mv); }
+                    if (etwas && gpu::umrissBeginnen()) {
+                        for (const MoverDraw& mv : movers) {
+                            if (!auswahl.mover(mv) || mv.mesh == nullptr) { continue; }
+                            float mw[16];
+                            gpu::baueMoverWelt(mv.pivot, mv.offset, mv.yaw, mv.pitch, mv.roll,
+                                               mv.pitch != 0.0F || mv.roll != 0.0F, mw, mv.scale);
+                            std::string fu;
+                            int ueb = 0;
+                            (void)gpu::zeichneMover(*mv.mesh, &g_app->textures, &g_app->geo, vp, mw, bildCam.pos, gvorn,
+                                                    grechts, ghoch, gfokus, zeit, g_app->mapBrightness,
+                                                    g_app->mapMinLight, &fu, &ueb, gpu::Lage::Alles);
+                        }
+                        for (const UmrissFigur& uf : umrissFiguren) {
+                            std::string fu;
+                            (void)gpu::zeichneFigur(*uf.model, uf.textures, uf.knochen, uf.welt, vp, &fu, nullptr,
+                                                    g_app->showCaps);
+                        }
+                        const float orange[4] = {1.0F, 0.66F, 0.12F, 1.0F};
+                        gpu::umrissBeenden(orange, std::max(1.0F, std::round(1.6F * ImGui::GetFontSize() / 13.0F)));
+                        ++g_app->umrissBilder;
                     }
                 }
                 // Schliesst das Bild. Danach darf keine Marke mehr kommen.
@@ -12178,8 +12882,20 @@ void drawMapView() {
                     const int pw = std::clamp(gw / 3, 160, 640);
                     const int ph = std::max(90, static_cast<int>(static_cast<float>(pw) / aspekt));
                     if (portalFuer(vorschau, pw, ph)) { gpu::setzeHimmelPortal(2); }
-                    if (nebenBild(vorschau, pw, ph, 1, "Kameravorschau")) {
+                    if (g_app->showEffects && !alleEffekte.empty()) {
+                        effektNetzVorschau = baueEffektNetz(alleEffekte, vorschau, pw, ph);
+                        effektNetzBild = &effektNetzVorschau;
+                        ++g_app->vorschauEffektNetze;
+                        g_app->vorschauEffektEcken = static_cast<int>(effektNetzVorschau.verts.size());
+                    }
+                    const bool vorschauDa = nebenBild(vorschau, pw, ph, 1, "Kameravorschau");
+                    effektNetzBild = nullptr;
+                    if (vorschauDa) {
                         g_app->vorschauGezeigt = true;
+                        for (int k = 0; k < 3; ++k) {
+                            g_app->vorschauPos[k] = vorschau.pos[k];
+                            g_app->vorschauWinkel[k] = vorschau.angles[k];
+                        }
                         g_app->vorschauW = pw;
                         g_app->vorschauH = ph;
                         ++g_app->vorschauBilder;
@@ -12404,10 +13120,15 @@ void drawMapView() {
         // Klick und verschoebe das Schiff statt des Schluessels.
         g_app->wegKlickVerbraucht = false;
         animMaus();
+        bahnGriffeMaus();
         entityZiehen(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         wegWerkzeugMaus(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
         platzierMaus();
+        skriptFokusAuffrischen();
         entityUeberlagerung(w > 0 ? static_cast<float>(g_app->mapImage.width) / static_cast<float>(w) : 1.0F);
+        if (g_app->skriptFokus) { skriptSchild(); } else { g_app->skriptSchildText.clear(); }
+        bahnGriffeZeichnen();
+        kameraBahnZeichnen();
         wegUeberlagerung();
         animUeberlagerung();
         // --- Namen an Entities und Figuren -------------------------------
@@ -12614,6 +13335,14 @@ void drawMapView() {
                             g_app->gizmoHover = ax;
                         }
                     }
+                    // Der Ring um die Hochachse auch im Verschieben (rc597).
+                    if (!dreht && g_app->kamYawRingInMove) {
+                        const float d = abstandZumRing(2);
+                        if (d < best2) {
+                            best2 = d;
+                            g_app->gizmoHover = App::kGizmoYawRing;
+                        }
+                    }
                 }
                 // Hat sich etwas geaendert? Dann NEU ZEICHNEN.
                 //
@@ -12628,11 +13357,23 @@ void drawMapView() {
                 }
             }
 
+            if (g_app->gizmoMode == App::GizmoMode::Move && g_app->gizmoAxis < 0 && g_app->gizmoShown &&
+                g_app->cameraSelected && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                g_app->gizmoHover == App::kGizmoYawRing) {
+                // Der Ring im Verschieben: drehen um die Hochachse, danach
+                // wieder verschieben (rc597).
+                g_app->gizmoMode = App::GizmoMode::Rotate;
+                g_app->gizmoHover = 2;
+                g_app->kamRingAusMove = true;
+            }
             if (g_app->gizmoMode == App::GizmoMode::Move &&
                 g_app->gizmoAxis < 0 && g_app->gizmoShown && g_app->cameraSelected &&
                 ImGui::IsItemHovered() &&
                 ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                g_app->gizmoHover >= 0) {
+                g_app->gizmoHover >= 0 && g_app->gizmoHover != App::kGizmoYawRing) {
+                // Mitten in einer Fahrt: erst dort einen Schluessel (rc597).
+                g_app->kameraAutoKeyEingefuegt =
+                    g_app->kameraGizmoZwischen && kameraSchluesselEinfuegen(g_app->playMs);
 g_app->gizmoAxis = g_app->gizmoHover;
                 g_app->gizmoDragSx = mx2;
                 g_app->gizmoDragSy = my2;
@@ -12686,6 +13427,8 @@ g_app->gizmoAxis = g_app->gizmoHover;
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                     g_app->gizmoHover >= 0 &&
                     g_app->gizmoHover < App::kGizmoFree) {
+                    g_app->kameraAutoKeyEingefuegt =
+                        g_app->kameraGizmoZwischen && kameraSchluesselEinfuegen(g_app->playMs);
     g_app->gizmoRotating = true;
                     g_app->gizmoAxis = g_app->gizmoHover;
                     g_app->gizmoRotStartSx = mx2;
@@ -12758,7 +13501,20 @@ g_app->gizmoAxis = g_app->gizmoHover;
                         g_app->gizmoRotating = false;
                         g_app->gizmoAxis = -1;
                         // Loslassen schreibt (rc588) - wie bei den Entities.
-                        kameraVorschauSchreiben();
+                        {
+                            const bool geschrieben = kameraVorschauSchreiben();
+                            if (g_app->kameraAutoKeyEingefuegt && !geschrieben) {
+                                (void)g_app->doc.undo();
+                                rebuildTree();
+                                g_app->camTrackValid = false;
+                                g_app->mapDirty = true;
+                            }
+                            g_app->kameraAutoKeyEingefuegt = false;
+                        }
+                        if (g_app->kamRingAusMove) {
+                            g_app->gizmoMode = App::GizmoMode::Move;
+                            g_app->kamRingAusMove = false;
+                        }
                     }
                 }
             }
@@ -12805,7 +13561,16 @@ g_app->gizmoAxis = g_app->gizmoHover;
                     // Loslassen schreibt ins Skript (rc588). Vorher stand die
                     // Verschiebung als Vorschau da, bis man unten "Apply"
                     // fand - anders als bei den Entities, und leicht vergessen.
-                    kameraVorschauSchreiben();
+                    {
+                            const bool geschrieben = kameraVorschauSchreiben();
+                            if (g_app->kameraAutoKeyEingefuegt && !geschrieben) {
+                                (void)g_app->doc.undo();
+                                rebuildTree();
+                                g_app->camTrackValid = false;
+                                g_app->mapDirty = true;
+                            }
+                            g_app->kameraAutoKeyEingefuegt = false;
+                        }
                 }
             }
         }
@@ -12836,7 +13601,8 @@ g_app->gizmoAxis = g_app->gizmoHover;
             const float grenze = io2.MouseDragThreshold * io2.MouseDragThreshold;
             if (ImGui::IsItemHovered() &&
                 ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-                io2.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= grenze) {
+                io2.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= grenze &&
+                g_app->bahnMenueBild != ImGui::GetFrameCount()) {   // ein Bahngriff hat ihn schon
                 ImGui::OpenPopup("gizmomodus");
                 // Fuer "Neue Entity hier": wo geklickt wurde.
                 g_app->rechtsklickBild[0] = io2.MousePos.x;
@@ -13023,7 +13789,8 @@ g_app->gizmoAxis = g_app->gizmoHover;
                     (g_app->selectedActor == figHit) ? -1 : figHit;
                 g_app->cameraSelected = false;
                 g_app->gizmoShown = false;
-                g_app->pickedEntity = -1;
+                // Mit ihr ihr Spawner (rc597): Eigenschaften, Gizmo, Umriss.
+                entityAuswahlSetzen(g_app->selectedActor >= 0 ? entityFuerFigur(g_app->selectedActor) : -1);
                 g_app->mapDirty = true;
             } else if (traf) {
                 // Nochmal darauf klicken hebt die Auswahl wieder auf.
@@ -13073,6 +13840,10 @@ g_app->gizmoAxis = g_app->gizmoHover;
                 }
             } else {
                 // Weder Kamera noch Schluessel noch Figur getroffen.
+                //
+                // Keine Marke? Dann das Modell unter der Maus - ein Schiff,
+                // eine Tuer, ein Kartenmodell waehlt seine Entity (rc597).
+                if (found < 0) { found = moverUnterMaus(m.x, m.y); }
                 //
                 // Wurde auch keine Entity getroffen (found ist -1), war das
                 // ein Klick INS LEERE - und der hebt alles auf. "wenn ich
@@ -13306,6 +14077,8 @@ void ansichtEinstellungen() {
             ImGui::SetTooltip("%s", tr(Str::MapShadowsHint));
         }
     }
+    if (ImGui::Checkbox(tr(Str::MapScriptFocus), &g_app->skriptFokus)) { g_app->mapDirty = true; }
+    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::MapScriptFocusHint)); }
     if (g_app->showActors) {
         // Figuren um 90 Grad drehen - fuer Modelle, die anders herum stehen.
         char lbl[64];

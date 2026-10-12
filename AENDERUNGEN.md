@@ -1,5 +1,67 @@
 # Änderungen seit rc94
 
+## rc598 — Auswahl, Bahnen, Zeitleiste wie im Sequencer, Kamera wie in Unreal
+
+Gewünscht in vielen Schritten an einem Tag – unter anderem: „wenn ich bei uns
+ein Schiff oder eine Figur auswähle … dass es dann gehighlightet ist“, „sollte
+sich die Ent nicht mit dem Schiff mitbewegen?“, „kann ich den Anfangspunkt und
+den Endpunkt des bewegten Characters setzen?“, „die Zeitleiste … schau mal nach,
+wie Unreal Engine das handhabt“, „wenn die Kamera zwischen 2 Punkten ist und ich
+drehe die Kamera … wird an dem Punkt ein neuer erstellt“. Jeder Punkt wurde im
+Selbsttest erst nachgestellt (Prüfung schlägt mit abgeschalteter Änderung fehl),
+dann gebaut und im selben Test bestätigt.
+
+* **Umriss der Auswahl** (`umrissBeginnen`/`umrissBeenden`, gpumap_win32.cpp):
+  gewählte Mover (Schiffe, Türen, Kartenmodelle) und Figuren werden weiß in eine
+  Maske gezeichnet, eine Vollbildstufe legt eine orange Linie um den Rand. Der
+  Karten- und Moverweg band sein Ziel selbst – im Maskendurchgang jetzt die Maske.
+  Die drei neuen Shader werden beim Laden der Karte vorgewärmt (sonst kamen sie
+  beim Abspielen dazu – die rc597-Prüfung hat es gemeldet).
+* **Marke, Kasten, Gizmo folgen der Bewegung** (`App::entVersatz`,
+  `entityOrtAnzeige`): Versatz vom Schlüssel „origin“ zum gezeigten Ort, aus der
+  Mover-Simulation und der Szene (Figuren über den Namen ihres Spawners). Beim
+  Ziehen gehen Figur und Schiff live mit (`zugVersatz`), der Gizmo zittert nicht
+  mehr. Der Pfeil zeigt die Gier des Modells (`entGierVersatz`).
+* **Klick auf Figur oder Modell** wählt die Entity (`entityFuerFigur`,
+  `moverUnterMaus`: Strahl gegen die Dreiecke der Mover; Himmel und Unsichtbares
+  verdecken den Klick nicht).
+* **Bahn und Griffe** (`bahnGriffe*`, app_mission.cpp): ganze Bahn grau voraus,
+  gelb gefahren; Start (Spawner/Ursprung), Laufziele (Entity des SET_NAVGOAL),
+  Flugziele (Ort des move). Beim Ziehen wird nur die Bahn dieser Figur im
+  Speicher angepasst (vorher Neuberechnung der Szene alle 80 ms: bis 16 fps).
+  Geteiltes Laufziel → eigene Kopie. Rechtsklick: Gehen/Rennen (SET_WALKING/
+  SET_RUNNING direkt vor dem SET_NAVGOAL), Rückwärts laufen, Dabei ansehen,
+  In Laufrichtung schauen.
+* **Bahnpunkt mitten in der Bewegung** (`bahnPunktMoeglich`,
+  `bahnPunktSchreiben`): Schiff – der move wird geteilt (wie der Auto-Key der
+  Kamera); Figur – neues Laufziel bei K, das alte SET_NAVGOAL zur Ankunftszeit
+  eingesetzt (`befehlZurZeit` teilt das wait, in das die Zeit fällt).
+* **Rückwärts laufen** (scene.cpp): schaut die Figur gegen die Laufrichtung,
+  BOTH_WALKBACK1/2 bzw. BOTH_RUNBACK1/2 – wie PM_Footsteps. In Ravens und MDs
+  Skripten nie als Animation, sondern über SET_WATCHTARGET + SET_NAVGOAL (Vader
+  in md_dd/cin1_jedi, „vader_walkback“). Ein Blickziel, das selbst eine Figur
+  ist, wird über ihre abgetastete Bahn verfolgt (vorher ihr Spawnort).
+* **Zeitleiste als Baum** (drawTimeline): Kameragruppe und je Figur Spuren
+  Bewegung/Animation/Blick/Ton/Zustand, Zusammenfassung zugeklappt; waits
+  ausgeblendet (Schalter). Bewegungsbalken aus den Szenenschritten, ziehbar
+  (verschiebeImAblauf), move mit Kantengriff (durationArgIndex). Die Höhe der
+  Spuren rechnete den Zeilenabstand nicht mit – die unterste Zeile war bei
+  vielen Zeilen abgeschnitten.
+* **Kamera**: Auto-Key (`kameraSchluesselEinfuegen` teilt MOVE und PAN, das
+  wait danach nimmt die Zeit auf), Pilot „Schlüssel setzen (Enter)“, Gizmo als
+  Überlagerung wie bei den Figuren (Pfeile, Kästchen, Drehring auch im
+  Verschieben), Bahn kräftig obenauf mit „Alle Bahnen / Aktive Bahn“.
+* **Kameravorschau**: folgt der Zeitleiste; ein eigenes Effektnetz für ihre
+  Kamera (vorher fielen Teilchen hinter der Hauptkamera weg).
+* **Glühen hinter Rauch**: durchscheinende Teilchen dunkeln den Glühpuffer ab.
+* **Reiter** derselben Karte teilen die Kamera; Entities des aktiven Skripts
+  hervorgehoben, Reitername in der Ansicht.
+* **Graph**: rechtwinklige Leitungen, Umlenkpunkte, Ablegen von links,
+  gestrichelte Linien ohne Lücken.
+* Selbsttest: neuer Modus `umriss` (Umriss, Folgen, Griffe, Bahnpunkt,
+  Zeitleiste, Rauch, Reiter, Fokus); `missionfoto` kann mit BHED_REITER einen
+  Reiter wählen und protokolliert die Animation je Lauf.
+
 ## rc597 — Kein Hänger beim freien Fliegen: Shader vorwärmen und aufbewahren
 
 Gemeldet: „bei der einen Mission, wenn ich frei mit der Kamera rum fahre, das
