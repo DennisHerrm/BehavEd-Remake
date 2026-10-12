@@ -59,6 +59,11 @@ void resize(int width, int height);
 // entsteht jedes Bild neu, und jedes Mal eine Textur anzulegen und die alte
 // wegzuwerfen waere Verschwendung.
 void updateTexture(void* handle, const unsigned char* rgba, int width, int height);
+// Nur das Rechteck [x0, x1) x [y0, y1) aus demselben Bild (rgba, width x
+// height) hochladen - fuer die Gizmo-Ueberlagerung, die meist nur einen
+// kleinen Teil der Ansicht belegt (rc594).
+void updateTextureBereich(void* handle, const unsigned char* rgba, int width, int height,
+                          int x0, int y0, int x1, int y1);
 void destroyTextures();
 
 Backend current();

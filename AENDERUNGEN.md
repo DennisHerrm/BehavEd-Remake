@@ -1,5 +1,33 @@
 # Änderungen seit rc94
 
+## rc595 — Leistung: Fliegen in Karten mit vielen Effekten (kor1)
+
+Gewünscht: „kor1 bleibt mit 15 ms beim Fliegen am langsamsten … okay dann
+mach da weiter“. Wieder mit dem Stichproben-Profiler (vorübergehend, wieder
+entfernt) über Szene und Flug in kor1.
+
+* **Effekte** (`buildEffectMesh`): der Platz je Shadername eines Bausteins
+  wird einmal je Aufruf gesucht (`slotMerk`) statt je Teilchen mit
+  kleingeschriebener Kopie und Zeichenkettensuche – ein Zehntel der Bildzeit.
+  `vorrechnen` reserviert seine Liste.
+* **Tiefe für die Gizmos** (`gpu::tiefeAbbilden`/`tiefeFreigeben` statt
+  `leseTiefe`): der Lesepuffer bleibt abgebildet, `plot` liest nur die
+  Punkte, auf die eine Linie fällt, und rechnet sie mit `abstandAusTiefe` um
+  (dieselbe Rechnung). Vorher 26 MB je Bild kopiert.
+* **Gizmo-Überlagerung**: nur das Rechteck des vorigen Bildes geleert und
+  alt + neu hochgeladen (`gizmoBox`, `render::updateTextureBereich`) statt
+  13 MB je Bild; der Inhalt der Textur bleibt derselbe.
+* **Entity-Ursprünge** im Gizmo-Durchgang je Entity gemerkt, neu gelesen nur,
+  wenn sich der Text ändert.
+* **Zeichenaufrufe** (`zeichneAufrufe`): der Stapelpuffer wird nur neu
+  gefüllt, wenn Platz oder Zeit wechseln, und gleiche Bilder werden nicht
+  erneut gebunden.
+
+Fotovergleich des Kartentests (freie Ansicht mit Gizmos, Kamerabahn,
+Kameravorschau) mit rc594: in der Ansicht pixelgleich. kor1-Flug im ruhigen
+Lauf 14,9 → 10,8 ms; unter gleicher (höherer) Last alle Flüge schneller als
+rc594 (kor1 18,0 → 13,4, hoth2 17,4 → 13,6).
+
 ## rc594 — Leistung: Kamerafahrten und Herumfliegen
 
 Gemeldet: „bei kamerafahrten ab und an nur 20 fps“, „frame drops wenn ich mit

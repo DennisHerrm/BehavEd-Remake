@@ -185,8 +185,8 @@ ID3D11Texture2D* g_zielTex = nullptr;
 ID3D11RenderTargetView* g_zielRtv = nullptr;
 ID3D11ShaderResourceView* g_zielSrv = nullptr;
 ID3D11Texture2D* g_tiefeTex = nullptr;
-ID3D11Texture2D* g_tiefeLesen = nullptr;   // Kopie zum Zuruecklesen (leseTiefe)
-// Die Tiefe des VORIGEN Bildes der Ansicht (rc594, leseTiefe mit
+ID3D11Texture2D* g_tiefeLesen = nullptr;   // Kopie zum Zuruecklesen (tiefeAbbilden)
+// Die Tiefe des VORIGEN Bildes der Ansicht (rc594, tiefeAbbilden mit
 // vorigesBild): beim Bewegen der Kamera ist sie laengst fertig, und die
 // Gizmos muessen nicht auf die Karte warten.
 ID3D11Texture2D* g_tiefeVorig = nullptr;
@@ -1731,6 +1731,17 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
     }
     int abgesetzt = 0;
     const PipelineState* letzter = nullptr;
+    // Was zuletzt im Stapelpuffer und an den Bildplaetzen stand (rc594).
+    // Aufeinanderfolgende Aufrufe desselben Stapels haben dieselben
+    // Konstanten und dieselben Bilder; den Puffer dann nicht noch einmal
+    // abzubilden und zu fuellen spart je Aufruf ein Map/Unmap - in kor1 ein
+    // guter Teil der Zeit im Treiber. Die Grafikkarte sieht dieselben Werte.
+    bool cbDa = false;
+    int cbPlatz = 0;
+    float cbZeit = 0.0F;
+    BatchState cbStand;
+    ID3D11ShaderResourceView* srvDa[4] = {nullptr, nullptr, nullptr, nullptr};
+    UINT srvZahl = 0;
     for (const DrawCall& call : calls) {
         // --- Auffaelliges vermerken ---------------------------------
         //
@@ -1824,15 +1835,21 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
         // Ursprung nicht: es lief mit falschem Versatz.
         const float stapelZeit =
             zeitSekunden - mesh.batches[call.batch].shaderTime;
-        const BatchState bs2 = batchStateFor(textures, platz, stapelZeit);
-        D3D11_MAPPED_SUBRESOURCE m{};
-        if (SUCCEEDED(c->Map(g_cbStapel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
-            auto* f2 = static_cast<float*>(m.pData);
-            packeKonstanten(bs2, f2, stapelZeit);
-            c->Unmap(g_cbStapel, 0);
+        if (!cbDa || platz != cbPlatz || stapelZeit != cbZeit) {
+            cbStand = batchStateFor(textures, platz, stapelZeit);
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (SUCCEEDED(c->Map(g_cbStapel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+                auto* f2 = static_cast<float*>(m.pData);
+                packeKonstanten(cbStand, f2, stapelZeit);
+                c->Unmap(g_cbStapel, 0);
+            }
+            c->VSSetConstantBuffers(1, 1, &g_cbStapel);
+            c->PSSetConstantBuffers(1, 1, &g_cbStapel);
+            cbDa = true;
+            cbPlatz = platz;
+            cbZeit = stapelZeit;
         }
-        c->VSSetConstantBuffers(1, 1, &g_cbStapel);
-        c->PSSetConstantBuffers(1, 1, &g_cbStapel);
+        const BatchState& bs2 = cbStand;
         // animMap: das Bild der Zeit, wie im Rasterer (animBildFuer). Die
         // Bilder der Folge tragen dieselben Eigenschaften wie die Stufe,
         // die Konstanten oben bleiben also richtig.
@@ -1886,6 +1903,7 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
                 }
                 ID3D11ShaderResourceView* vier[4] = {bild, lm, nullptr, spiegelBild};
                 c->PSSetShaderResources(0, 4, vier);
+                srvZahl = 0;   // die naechsten Bilder wieder ganz setzen
                 c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
                 ++abgesetzt;
                 ueberSpiegel = true;
@@ -1907,7 +1925,13 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
             }
         }
         ID3D11ShaderResourceView* srvs[4] = {bild, lm, himmel, portal};
-        c->PSSetShaderResources(0, (portal != nullptr) ? 4U : 3U, srvs);
+        const UINT zahl = (portal != nullptr) ? 4U : 3U;
+        if (zahl != srvZahl || srvs[0] != srvDa[0] || srvs[1] != srvDa[1] || srvs[2] != srvDa[2] ||
+            srvs[3] != srvDa[3]) {
+            c->PSSetShaderResources(0, zahl, srvs);
+            for (int k = 0; k < 4; ++k) { srvDa[k] = srvs[k]; }
+            srvZahl = zahl;
+        }
         c->DrawIndexed(call.numIndexes, call.firstIndex, 0);
         ++abgesetzt;
         if (ueberSpiegel) {
@@ -2204,7 +2228,14 @@ void setzeHimmelPortal(int satz) {
     }
 }
 
-bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, float fern, bool vorigesBild) {
+// Der gerade abgebildete Lesepuffer (tiefeAbbilden bis tiefeFreigeben).
+ID3D11Texture2D* g_tiefeOffen = nullptr;
+
+bool tiefeAbbilden(TiefenSicht& sicht, int breite, int hoehe, bool vorigesBild) {
+    sicht = TiefenSicht{};
+    if (g_tiefeOffen != nullptr) {
+        tiefeFreigeben();
+    }
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (d == nullptr || c == nullptr || g_tiefeTex == nullptr || breite <= 0 || hoehe <= 0) {
@@ -2267,28 +2298,41 @@ bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe, float nah, fl
     if (FAILED(c->Map(quelle, 0, D3D11_MAP_READ, 0, &m))) {
         return false;
     }
-    abstand.resize(static_cast<std::size_t>(breite) * static_cast<std::size_t>(hoehe));
-    // Tiefe d = a + b / z mit a = f/(f-n), b = -n f/(f-n) (baueViewProj),
-    // also z = n f / (f - d (f - n)). d = 1 ist "nichts gezeichnet".
-    const float fn = fern - nah;
+    // Nicht mehr alles umkopieren (rc594): 3,3 Millionen Tiefenwerte, also
+    // 26 MB aus dem Lesepuffer der Grafikkarte, je Bild - auf Intel-Grafik
+    // langsamer Speicher. Der Aufrufer liest nur die Punkte, auf die eine
+    // Gizmo-Linie faellt, direkt aus dem abgebildeten Puffer.
+    //
     // D32_FLOAT_S8X24: je Bildpunkt die Tiefe als float, dahinter 32 Bit
     // mit dem Stencil - also jeder zweite float.
-    const std::size_t schrittF = (td.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT) ? 2U : 1U;
-    for (int y = 0; y < hoehe; ++y) {
-        const float* zeile = reinterpret_cast<const float*>(
-            static_cast<const unsigned char*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch);
-        float* aus = abstand.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(breite);
-        for (int x = 0; x < breite; ++x) {
-            const float t = zeile[static_cast<std::size_t>(x) * schrittF];
-            aus[x] = (t >= 0.999999F) ? 1.0e30F : nah * fern / (fern - t * fn);
+    sicht.daten = static_cast<const unsigned char*>(m.pData);
+    sicht.zeile = m.RowPitch;
+    sicht.punkt = (td.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT) ? 8U : 4U;
+    sicht.breite = breite;
+    sicht.hoehe = hoehe;
+    g_tiefeOffen = quelle;
+    return true;
+}
+
+void tiefeFreigeben() {
+    ID3D11DeviceContext* c = ctx();
+    if (c == nullptr || g_tiefeOffen == nullptr) {
+        g_tiefeOffen = nullptr;
+        return;
+    }
+    c->Unmap(g_tiefeOffen, 0);
+    g_tiefeOffen = nullptr;
+    // Fuer das naechste Bild: die Tiefe dieses Bildes, ohne darauf zu warten.
+    if (g_tiefeVorig != nullptr && g_tiefeTex != nullptr) {
+        D3D11_TEXTURE2D_DESC vd{};
+        D3D11_TEXTURE2D_DESC td{};
+        g_tiefeVorig->GetDesc(&vd);
+        g_tiefeTex->GetDesc(&td);
+        if (vd.Width == td.Width && vd.Height == td.Height) {
+            c->CopyResource(g_tiefeVorig, g_tiefeTex);
+            g_tiefeVorigDa = true;
         }
     }
-    c->Unmap(quelle, 0);
-    if (g_tiefeVorig != nullptr) {
-        c->CopyResource(g_tiefeVorig, g_tiefeTex);
-        g_tiefeVorigDa = true;
-    }
-    return true;
 }
 
 bool leseFarbe(std::vector<std::uint8_t>& rgba, int& breite, int& hoehe) {
@@ -5346,7 +5390,8 @@ void setzeHimmelPortal(int) {}
 void setzeSpiegelBild(int) {}
 void setzeSpiegelung(bool, const float*, bool) {}
 void* zielTexturSatz(int) { return nullptr; }
-bool leseTiefe(std::vector<float>&, int, int, float, float, bool) { return false; }
+bool tiefeAbbilden(TiefenSicht& sicht, int, int, bool) { sicht = TiefenSicht{}; return false; }
+void tiefeFreigeben() {}
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }
 const char* abschnittName(Abschnitt) { return "?"; }
 void bildBeginnt() {}

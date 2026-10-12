@@ -1096,6 +1096,16 @@ struct App {
     // Die Ueberlagerung des GPU-Wegs: Entitykreuze, Kamera, Bahnen, Gizmos
     // und die Blende als durchsichtiges Bild ueber dem GPU-Bild.
     MapImage gizmoBild;
+    // gizmoBild.depth haelt seit rc594 die ROHEN Werte des Tiefenpuffers;
+    // umgerechnet (gpu::abstandAusTiefe) wird nur, wo eine Linie hinfaellt.
+    // Vorher alle 3,3 Millionen je Bild - beim Fliegen ein Zehntel der Zeit.
+    float gizmoTiefeNah = 4.0F;
+    float gizmoTiefeFern = 1.0F;
+    // Das Rechteck [x0, y0, x1, y1), in das die Gizmos in diesem und im
+    // vorigen Bild gezeichnet haben (rc594): nur dort wird das Bild geleert
+    // und hochgeladen, statt jedes Bild 13 MB.
+    int gizmoBox[4] = {0, 0, 0, 0};
+    int gizmoBoxAlt[4] = {0, 0, 0, 0};
     void* gizmoTexture = nullptr;
     int gizmoTexW = 0;
     int gizmoTexH = 0;

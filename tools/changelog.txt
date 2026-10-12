@@ -6,6 +6,16 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc595 2026-10-12
+[en]
+- Flying around maps with many effects and entities is faster again (kor1 15 to 11 ms per frame): effect textures are looked up once per name instead of once per particle, the gizmos read only the depth values they need instead of copying the whole depth buffer, only the changed part of the gizmo overlay is uploaded, and repeated draw constants are not re-sent. Same image.
+[de]
+- Herumfliegen in Karten mit vielen Effekten und Entities ist noch einmal schneller (kor1 15 auf 11 ms je Bild): Effekttexturen werden einmal je Name statt je Teilchen gesucht, die Gizmos lesen nur die Tiefenwerte, die sie brauchen, statt den ganzen Tiefenpuffer zu kopieren, von der Gizmo-Ueberlagerung wird nur der geaenderte Teil hochgeladen, und gleiche Zeichenkonstanten werden nicht erneut geschickt. Gleiches Bild.
+[zh]
+- 在有大量特效和实体的地图中飞行再次变快(kor1 每帧从 15 毫秒降到 11 毫秒):特效纹理按名称查找一次而不是按粒子查找,控件只读取所需的深度值而不复制整个深度缓冲,控件叠加层只上传改变的部分,相同的绘制常量不再重复发送。画面相同。
+[ja]
+- エフェクトとエンティティが多いマップでの飛行がさらに速くなりました(kor1 で 1 フレーム 15 ミリ秒から 11 ミリ秒):エフェクトのテクスチャは粒子ごとではなく名前ごとに 1 回だけ検索し、ギズモは深度バッファ全体をコピーせず必要な深度値だけを読み、ギズモのオーバーレイは変わった部分だけをアップロードし、同じ描画定数は再送しません。画像は同じです。
+
 ## rc594 2026-10-12
 [en]
 - Much smoother camera playback: letterbox bars and fades are now drawn by the graphics card instead of pixel by pixel on the processor (md_am_sith 17 to 7 ms per frame, same image).

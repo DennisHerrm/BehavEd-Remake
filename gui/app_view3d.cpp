@@ -172,6 +172,10 @@ int schluesselFuerZeit(double ms) {
 //
 // Gezeichnet wird direkt ins fertige Bild, mit derselben Projektion wie die
 // Karte. Ein eigener Zeichenweg waere doppelte Arbeit fuer ein paar Linien.
+// Die Tiefe der Ansicht, waehrend die Gizmos gezeichnet werden (rc594,
+// gpu::tiefeAbbilden). Ohne Daten: alles obenauf.
+gpu::TiefenSicht g_gizmoTiefe;
+
 void drawCameraGizmos(MapImage& img) {
     // Gizmo und Schluesselmarken gelten nur fuer DIESES Bild. Gesetzt werden
     // sie nur, wenn die Kamera gewaehlt ist - abgewaehlt blieben sie bis rc587
@@ -264,13 +268,26 @@ void drawCameraGizmos(MapImage& img) {
         const std::size_t at = (static_cast<std::size_t>(y) *
                                 static_cast<std::size_t>(img.width) +
                                 static_cast<std::size_t>(x));
-        if (at < img.depth.size() && z >= img.depth[at]) {
+        if (g_gizmoTiefe.daten != nullptr && x < g_gizmoTiefe.breite && y < g_gizmoTiefe.hoehe &&
+            z >= gpu::abstandAusTiefe(g_gizmoTiefe.bei(x, y), g_app->gizmoTiefeNah, g_app->gizmoTiefeFern)) {
             return;   // etwas Naeheres steht davor
         }
         img.rgba[at * 4U + 0] = r;
         img.rgba[at * 4U + 1] = g;
         img.rgba[at * 4U + 2] = b;
         img.rgba[at * 4U + 3] = 255;   // fuer die durchsichtige GPU-Ueberlagerung
+        int* box = g_app->gizmoBox;
+        if (box[2] <= box[0]) {
+            box[0] = x;
+            box[1] = y;
+            box[2] = x + 1;
+            box[3] = y + 1;
+        } else {
+            box[0] = std::min(box[0], x);
+            box[1] = std::min(box[1], y);
+            box[2] = std::max(box[2], x + 1);
+            box[3] = std::max(box[3], y + 1);
+        }
     };
 
     // Die Linie ZUERST auf das Bild beschneiden.
@@ -584,9 +601,28 @@ void drawCameraGizmos(MapImage& img) {
                 continue;
             }
 
-            float p[3] = {0, 0, 0};
-            std::istringstream is(e.origin);
-            is >> p[0] >> p[1] >> p[2];
+            // Der Ursprung, je Entity gemerkt und nur neu gelesen, wenn sich
+            // sein Text geaendert hat (rc594) - ein istringstream je Entity
+            // und Bild kostete beim Fliegen messbar.
+            struct Ursprung {
+                bool gelesen = false;
+                std::string text;
+                float p[3] = {0.0F, 0.0F, 0.0F};
+            };
+            static std::vector<Ursprung> ursprung;
+            if (ursprung.size() != g_app->map.entities.size()) {
+                ursprung.assign(g_app->map.entities.size(), Ursprung{});
+            }
+            Ursprung& merk = ursprung[ei];
+            if (!merk.gelesen || merk.text != e.origin) {
+                float q[3] = {0, 0, 0};
+                std::istringstream is(e.origin);
+                is >> q[0] >> q[1] >> q[2];
+                merk.gelesen = true;
+                merk.text = e.origin;
+                for (int k = 0; k < 3; ++k) { merk.p[k] = q[k]; }
+            }
+            float p[3] = {merk.p[0], merk.p[1], merk.p[2]};
             // Draufsicht: was ueber dem Schnitt liegt, ist nicht zu sehen.
             if (g_app->draufsicht && p[2] - 24.0F > g_app->draufSchnitt) {
                 continue;
@@ -12207,23 +12243,69 @@ void drawMapView() {
             ov.height = g_app->mapImage.height;
             const std::size_t n = static_cast<std::size_t>(ov.width) *
                                   static_cast<std::size_t>(ov.height);
-            ov.rgba.assign(n * 4U, 0);
+            // --- Nur leeren und hochladen, was sich aendert (rc594) ----------
+            //
+            // Vorher jedes Bild das ganze Bild genullt und ganz hochgeladen
+            // (13 MB bei 2500 x 1300). Jetzt: das Rechteck des vorigen Bildes
+            // leeren, zeichnen, und alt + neu hochladen. Die Textur hat damit
+            // danach genau den Inhalt von ov.rgba, wie vorher.
+            int* alt = g_app->gizmoBoxAlt;
+            const bool ganz = ov.rgba.size() != n * 4U;
+            if (ganz) {
+                ov.rgba.assign(n * 4U, 0);
+            } else if (alt[2] > alt[0] && alt[3] > alt[1]) {
+                const int x0 = std::clamp(alt[0], 0, ov.width);
+                const int x1 = std::clamp(alt[2], 0, ov.width);
+                const int y1 = std::clamp(alt[3], 0, ov.height);
+                for (int y = std::clamp(alt[1], 0, ov.height); y < y1; ++y) {
+                    std::uint8_t* zeile = ov.rgba.data() + (static_cast<std::size_t>(y) * static_cast<std::size_t>(ov.width) +
+                                                            static_cast<std::size_t>(x0)) * 4U;
+                    std::fill(zeile, zeile + static_cast<std::size_t>(x1 - x0) * 4U, std::uint8_t{0});
+                }
+            }
+            ov.depth.clear();
+            int* box = g_app->gizmoBox;
+            box[0] = 0;
+            box[1] = 0;
+            box[2] = 0;
+            box[3] = 0;
             // Ohne Blende (die hat ihren eigenen Zweig oben) ist das die
-            // freie Ansicht - mit Gizmos.
-            // Beim Bewegen die Tiefe des vorigen Bildes (siehe gpu::leseTiefe).
-            if (!gpu::leseTiefe(ov.depth, ov.width, ov.height, 4.0F, kartenFern(), kameraBewegt)) {
-                ov.depth.clear();   // ohne Tiefe: alles obenauf
+            // freie Ansicht - mit Gizmos. Beim Bewegen die Tiefe des vorigen
+            // Bildes (siehe gpu::tiefeAbbilden).
+            g_app->gizmoTiefeNah = 4.0F;
+            g_app->gizmoTiefeFern = kartenFern();
+            if (!gpu::tiefeAbbilden(g_gizmoTiefe, ov.width, ov.height, kameraBewegt)) {
+                g_gizmoTiefe = gpu::TiefenSicht{};   // ohne Tiefe: alles obenauf
             }
             drawCameraGizmos(ov);
+            if (g_gizmoTiefe.daten != nullptr) {
+                gpu::tiefeFreigeben();
+                g_gizmoTiefe = gpu::TiefenSicht{};
+            }
             g_app->gizmoZeigen = true;
             if (g_app->gizmoTexture == nullptr || g_app->gizmoTexW != ov.width ||
                 g_app->gizmoTexH != ov.height) {
                 g_app->gizmoTexture = render::createTexture(ov.rgba.data(), ov.width, ov.height);
                 g_app->gizmoTexW = ov.width;
                 g_app->gizmoTexH = ov.height;
-            } else {
+            } else if (ganz) {
                 render::updateTexture(g_app->gizmoTexture, ov.rgba.data(), ov.width, ov.height);
+            } else {
+                int u[4] = {box[0], box[1], box[2], box[3]};
+                if (alt[2] > alt[0] && alt[3] > alt[1]) {
+                    if (u[2] <= u[0]) {
+                        for (int k = 0; k < 4; ++k) { u[k] = alt[k]; }
+                    } else {
+                        u[0] = std::min(u[0], alt[0]);
+                        u[1] = std::min(u[1], alt[1]);
+                        u[2] = std::max(u[2], alt[2]);
+                        u[3] = std::max(u[3], alt[3]);
+                    }
+                }
+                render::updateTextureBereich(g_app->gizmoTexture, ov.rgba.data(), ov.width, ov.height,
+                                             u[0], u[1], u[2], u[3]);
             }
+            for (int k = 0; k < 4; ++k) { alt[k] = box[k]; }
         } else {
             g_app->gizmoZeigen = false;
         }

@@ -4,6 +4,7 @@
 // Umschaltlogik teilen. Getrennt waeren es zwei Dateien mit je zehn Zeilen
 // Eigenleben und einer gemeinsamen Kopfdatei fuer den Rest.
 
+#include <algorithm>
 #include <cstdlib>
 
 #include "bhed/diag.h"
@@ -355,6 +356,39 @@ void updateTexture(void* handle, const unsigned char* rgba, int width, int heigh
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA,
                     GL_UNSIGNED_BYTE, rgba);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
+}
+
+void updateTextureBereich(void* handle, const unsigned char* rgba, int width, int height,
+                          int x0, int y0, int x1, int y1) {
+    x0 = std::clamp(x0, 0, width);
+    x1 = std::clamp(x1, 0, width);
+    y0 = std::clamp(y0, 0, height);
+    y1 = std::clamp(y1, 0, height);
+    if (handle == nullptr || !g_ready || x1 <= x0 || y1 <= y0) {
+        return;
+    }
+#ifdef BHED_WITH_D3D11
+    if (g_backend == Backend::Direct3D11) {
+        auto* srv = static_cast<ID3D11ShaderResourceView*>(handle);
+        ID3D11Resource* res = nullptr;
+        srv->GetResource(&res);
+        if (res != nullptr) {
+            D3D11_BOX box{};
+            box.left = static_cast<UINT>(x0);
+            box.right = static_cast<UINT>(x1);
+            box.top = static_cast<UINT>(y0);
+            box.bottom = static_cast<UINT>(y1);
+            box.front = 0;
+            box.back = 1;
+            const unsigned char* anfang =
+                rgba + (static_cast<std::size_t>(y0) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x0)) * 4U;
+            g_context->UpdateSubresource(res, 0, &box, anfang, static_cast<UINT>(width) * 4U, 0);
+            res->Release();
+        }
+        return;
+    }
+#endif
+    updateTexture(handle, rgba, width, height);
 }
 
 void destroyTextures() {

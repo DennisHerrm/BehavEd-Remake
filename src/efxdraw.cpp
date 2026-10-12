@@ -1288,6 +1288,7 @@ void vorrechnen(const std::vector<Vorrechnung>& alle, const BspGeometry* geo) {
         return;
     }
     std::vector<const Vorrechnung*> offen;
+    offen.reserve(alle.size());
     {
         const std::lock_guard<std::mutex> sperre(g_flugMerkSperre);
         for (const Vorrechnung& v : alle) {
@@ -1789,6 +1790,12 @@ BspMesh buildEffectMesh(const std::vector<EffectInstance>& live, double nowMs,
                         const EffectShaderSlots* slots, const BspGeometry* geo,
                         const EffectCull* cull) {
     BspMesh mesh;
+    // Der Platz je Shadername eines Bausteins, einmal je Aufruf gesucht
+    // (rc594): vorher fuer JEDES Teilchen eine kleingeschriebene Kopie des
+    // Namens und eine Suche mit Zeichenkettenvergleich - in kor1 (292
+    // Effekte) ein Zehntel der Bildzeit. Schluessel ist der Name im Baustein
+    // selbst; waehrend des Aufrufs aendert sich kein Effekt.
+    std::unordered_map<const std::string*, int> slotMerk;
     // --- Der Cluster der Kamera, einmal je Bild --------------------------
     //
     // Siehe EffectCull in bhed/efxdraw.h fuer die Messung, die das noetig
@@ -1944,27 +1951,33 @@ BspMesh buildEffectMesh(const std::vector<EffectInstance>& live, double nowMs,
                 // Effektdateien: von 1220 shaders-Bloecken nennen 323 mehr
                 // als eine Textur.
                 const std::size_t wahl = std::min(t.medium, pr.shaders.size() - 1U);
-                auto found = slots->find(klein(pr.shaders[wahl]));
-                if (found == slots->end() && wahl != 0U) {
-                    // --- Kein Platz? Dann die erste, NICHT die null ------
-                    //
-                    // `slot` steht auf 0, und 0 ist nicht "ohne Bild" - es
-                    // ist die ERSTE Textur der Karte. In md_am_sith die
-                    // Lava. Genau das ist in rc367 passiert: der Zeichner
-                    // wuerfelte unter allen Namen, eingetragen war aber nur
-                    // der erste, und die uebrigen landeten auf der Lava.
-                    // Im Bild: riesige Lavavierecke, gestapelt.
-                    //
-                    // Seit dieser Runde traegt der Lader alle Namen ein, der
-                    // Fall sollte also nicht mehr auftreten. Der Rueckfall
-                    // steht trotzdem hier: ein fehlender Eintrag darf eine
-                    // Kartentextur ergeben, aber nur wenn er ausdruecklich
-                    // dorthin zeigt - nicht durch Zufall.
-                    found = slots->find(klein(pr.shaders[0]));
+                const std::string* schluessel = &pr.shaders[wahl];
+                auto gemerkt = slotMerk.find(schluessel);
+                if (gemerkt == slotMerk.end()) {
+                    auto found = slots->find(klein(pr.shaders[wahl]));
+                    if (found == slots->end() && wahl != 0U) {
+                        // --- Kein Platz? Dann die erste, NICHT die null ------
+                        //
+                        // `slot` steht auf 0, und 0 ist nicht "ohne Bild" - es
+                        // ist die ERSTE Textur der Karte. In md_am_sith die
+                        // Lava. Genau das ist in rc367 passiert: der Zeichner
+                        // wuerfelte unter allen Namen, eingetragen war aber nur
+                        // der erste, und die uebrigen landeten auf der Lava.
+                        // Im Bild: riesige Lavavierecke, gestapelt.
+                        //
+                        // Seit dieser Runde traegt der Lader alle Namen ein, der
+                        // Fall sollte also nicht mehr auftreten. Der Rueckfall
+                        // steht trotzdem hier: ein fehlender Eintrag darf eine
+                        // Kartentextur ergeben, aber nur wenn er ausdruecklich
+                        // dorthin zeigt - nicht durch Zufall.
+                        found = slots->find(klein(pr.shaders[0]));
+                    }
+                    if (found != slots->end()) {
+                        slot = found->second;
+                    }
+                    gemerkt = slotMerk.emplace(schluessel, slot).first;
                 }
-                if (found != slots->end()) {
-                    slot = found->second;
-                }
+                slot = gemerkt->second;
             }
             // --- depthHack gehoert zum Stapel, nicht zum Baustein ------
             //

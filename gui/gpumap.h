@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <string>
+#include <cstring>
 #include <vector>
 
 #include "bhed/bspgeo.h"
@@ -273,7 +274,7 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
 // --- Zwei Zielsaetze (rc592) --------------------------------------------
 //
 // Satz 0 ist die Kartenansicht, Satz 1 die Bild-im-Bild-Vorschau der
-// Skriptkamera. waehleZiel schaltet um; bereiteZiel, zielTextur, leseTiefe,
+// Skriptkamera. waehleZiel schaltet um; bereiteZiel, zielTextur, tiefeAbbilden,
 // leseFarbe und alles Zeichnen gelten danach fuer den gewaehlten Satz. Nach
 // der Vorschau zurueck auf 0 - der Rest des Programms kennt nur den einen.
 void waehleZiel(int satz);
@@ -302,15 +303,36 @@ void setzeSpiegelung(bool an, const float ebene[4], bool umkehren);
 // Linux gelesen.
 [[nodiscard]] void* zielTextur();
 
-// Den Tiefenpuffer des letzten Bildes lesen, umgerechnet in den ABSTAND zur
-// Kamera entlang der Blickrichtung - dieselbe Groesse, die der Rasterer in
-// MapImage::depth ablegt. Fuer die Ueberlagerung (Gizmos, Entitykreuze), die
-// auf dem GPU-Weg sonst durch Waende scheinen wuerde. false, wenn nichts da
-// ist oder die Groesse nicht passt.
+// Den Tiefenpuffer des letzten Bildes der Ansicht zum Lesen abbilden - fuer
+// die Ueberlagerung (Gizmos, Entitykreuze), die auf dem GPU-Weg sonst durch
+// Waende scheinen wuerde. Die Werte sind roh (0..1); den Abstand zur Kamera
+// gibt abstandAusTiefe. Bis tiefeFreigeben() gueltig, dazwischen kein
+// anderer Aufruf an die Grafikkarte, der dieselbe Tiefe braucht.
+//
 // vorigesBild: die Tiefe des vorigen Bildes nehmen, wenn es eines gibt -
 // ohne auf die Grafikkarte zu warten (beim Bewegen der Kamera, rc594).
-[[nodiscard]] bool leseTiefe(std::vector<float>& abstand, int breite, int hoehe,
-                             float nah, float fern, bool vorigesBild = false);
+// false, wenn nichts da ist oder die Groesse nicht passt.
+struct TiefenSicht {
+    const unsigned char* daten = nullptr;
+    std::size_t zeile = 0;   // Bytes je Zeile
+    std::size_t punkt = 4;   // Bytes je Bildpunkt
+    int breite = 0;
+    int hoehe = 0;
+    [[nodiscard]] float bei(int x, int y) const {
+        float t = 1.0F;
+        std::memcpy(&t, daten + static_cast<std::size_t>(y) * zeile + static_cast<std::size_t>(x) * punkt, sizeof(t));
+        return t;
+    }
+};
+[[nodiscard]] bool tiefeAbbilden(TiefenSicht& sicht, int breite, int hoehe, bool vorigesBild = false);
+void tiefeFreigeben();
+
+// Ein roher Tiefenwert als Abstand: Tiefe d = a + b / z mit a = f/(f-n),
+// b = -n f/(f-n) (baueViewProj), also z = n f / (f - d (f - n)). d = 1 ist
+// "nichts gezeichnet".
+[[nodiscard]] inline float abstandAusTiefe(float t, float nah, float fern) {
+    return (t >= 0.999999F) ? 1.0e30F : nah * fern / (fern - t * (fern - nah));
+}
 
 // Das Farbbild des letzten Kartenbildes lesen (RGBA, Zeile fuer Zeile). Fuer
 // den Selbsttest (ablauf), der das Bild nach einer Folge von Schritten mit
