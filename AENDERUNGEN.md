@@ -1,5 +1,33 @@
 # Änderungen seit rc94
 
+## rc597 — Kein Hänger beim freien Fliegen: Shader vorwärmen und aufbewahren
+
+Gemeldet: „bei der einen Mission, wenn ich frei mit der Kamera rum fahre, das
+es kurz einmal hängt. Können wir testen was das ist?“ – gemessen mit einer
+Messfassung (Ruckler-Rekorder: Stichproben je Millisekunde, Bilder über
+35 ms aufgehoben; nur für die Messung gebaut, nicht eingecheckt), die shank
+in md_am_sith benutzt hat. Ergebnis: 816 ms in einem Bild, 99 % in
+`D3DCompile` für den Lichtshader (`holeLichtShader`) – er wurde erst
+übersetzt, als das erste dynamische Licht ins Bild kam. Daneben 395 ms beim
+ersten Bild (Figuren-, Kartenvarianten, einige Bilder).
+
+* **Nachgestellt** im Kartentest: nach dem Laden die ganze Zeitleiste in
+  Halbsekunden durchgehen und frei über die Karte fliegen – es entstanden noch
+  7 Shader (Licht, Schatten, zwei Effektvarianten). Prüfung „Nach dem Laden:
+  beim Abspielen und Fliegen keine Shader mehr übersetzt“.
+* **Vorwärmen** (`gpu::vorwaermen`): Licht-, Schatten-, Nebel-, Figuren-,
+  Klingen- und Kartenvarianten sowie die Varianten der Effekte (deren Stapel
+  haben eine feste Form) beim Laden, dazu die Effektbilder; einmal je Stand
+  von Karte, Bildern und Effekten. Danach 0 Shader.
+* **Shader-Speicher** (`d3dUebersetzen`): alle neun D3DCompile-Stellen laufen
+  durch eine Hülle; übersetzte Shader liegen in `%APPDATA%\behaved\shader`
+  (Schlüssel aus Quelltext, Einstieg, Ziel, Schaltern und Fassung; Länge und
+  Prüfsumme je Datei). Zweiter Start: 0 übersetzt, Vorwärmen 14 statt
+  1340 ms, Grafikstart 176 statt 1788 ms.
+* Beim Testen bemerkt: `behaved.cfg.sicher` (Sicherung für die Testläufe)
+  stammte vom 27.09. und drehte shanks Einstellungen nach jedem Lauf zurück;
+  jetzt aus seinem heutigen Stand.
+
 ## rc596 — Leistungsstarke Grafikkarte, Flip-Modell, Effektpläne
 
 Gewünscht: „okay mach damit weiter“ (Spawn-Plan), dann: „ich habe noch eine

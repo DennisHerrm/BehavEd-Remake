@@ -6,6 +6,20 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc597 2026-10-12
+[en]
+- No more short hang when flying freely through a map: shaders (light, shadow, fog, figures, effects) were compiled only when first needed, up to 0.8 s in the middle of the flight. They are now prepared while the map loads.
+- Compiled shaders are kept on disk (%APPDATA%\behaved\shader): from the second start on, nothing needs to be compiled; graphics start and map loading get faster.
+[de]
+- Kein kurzer Hänger mehr beim freien Fliegen durch eine Karte: Shader (Licht, Schatten, Nebel, Figuren, Effekte) wurden erst beim ersten Gebrauch übersetzt, bis zu 0,8 s mitten im Flug. Jetzt werden sie beim Laden der Karte vorbereitet.
+- Übersetzte Shader werden auf der Platte aufbewahrt (%APPDATA%\behaved\shader): ab dem zweiten Start muss nichts mehr übersetzt werden, Grafikstart und Kartenladen werden schneller.
+[zh]
+- 在地图中自由飞行时不再短暂卡顿:着色器(光照、阴影、雾、角色、特效)以前在首次使用时才编译,飞行中最多卡 0.8 秒。现在它们在加载地图时就已准备好。
+- 编译好的着色器保存在磁盘上(%APPDATA%\behaved\shader):从第二次启动起无需再编译,图形启动和地图加载更快。
+[ja]
+- マップ内を自由に飛んでいるときの一瞬のフリーズがなくなりました:シェーダー(ライト、影、霧、キャラクター、エフェクト)は初めて使うときにコンパイルされ、飛行中に最大 0.8 秒止まっていました。今はマップの読み込み時に準備します。
+- コンパイル済みのシェーダーをディスクに保存します(%APPDATA%\behaved\shader):2 回目の起動からはコンパイル不要で、グラフィックの起動とマップの読み込みが速くなります。
+
 ## rc596 2026-10-12
 [en]
 - Laptops with two graphics chips (e.g. Intel plus NVIDIA): behaved now runs on the powerful card instead of the power-saving one. BHED_GPU=sparsam chooses the power-saving card (battery); computers with one card are unchanged.

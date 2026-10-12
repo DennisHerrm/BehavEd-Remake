@@ -11352,6 +11352,29 @@ void drawMapView() {
         if (gpuBereit) {
             // Lichtschalter und Flackern zur Zeit des Bildes (rc593).
             lichtStileZuZeit();
+            // Vorwaermen (rc596): Shader und Effektbilder anlegen, sobald Karte
+            // oder Effekte neu sind - nicht erst beim ersten Gebrauch mitten im
+            // Fliegen (816 ms Ruckler, Lichtshader). Einmal je Stand.
+            {
+                const std::size_t stand = reinterpret_cast<std::uintptr_t>(&g_app->mesh) ^
+                                          (g_app->mesh.batches.size() * 1000003U) ^
+                                          (g_app->textures.byShader.size() * 7919U) ^
+                                          (g_app->effectShaders.size() * 104729U) ^
+                                          (static_cast<std::size_t>(g_app->texCacheStand) << 20U);
+                if (stand != g_app->vorgewaermt) {
+                    g_app->vorgewaermt = stand;
+                    std::vector<int> plaetze;
+                    plaetze.reserve(g_app->effectShaders.size());
+                    for (const auto& [name, platz] : g_app->effectShaders) {
+                        (void)name;
+                        plaetze.push_back(platz);
+                    }
+                    diag::Step step("Shader vorwaermen");
+                    const int neu = gpu::vorwaermen(g_app->mesh, &g_app->textures, plaetze);
+                    diag::detail("Vorgewaermt: " + std::to_string(neu) + " Shader neu, " +
+                                 std::to_string(plaetze.size()) + " Effektbilder");
+                }
+            }
             gpu::neuesBild();
             const auto tGpu0 = std::chrono::steady_clock::now();
             // --- Ein GPU-Bild aus einer Kamera (rc592) -----------------------

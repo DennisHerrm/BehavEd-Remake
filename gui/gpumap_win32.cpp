@@ -27,6 +27,8 @@
 // es richtig ist.
 
 #include "gpumap.h"
+#include "platform.h"
+#include "bhed/fassung.h"
 #include "bhed/messpunkt.h"
 #include "bhed/diag.h"
 
@@ -49,6 +51,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <iterator>
 #include <map>
 #include <string>
@@ -456,6 +459,114 @@ UINT uebersetzFahnen() {
     return wert;
 }
 
+// --- Alle Shader laufen hier durch (rc596) -------------------------------
+//
+// Gemessen bei shank (Ruckler-Rekorder, md_am_sith, freies Fliegen): ein
+// Bild brauchte 816 ms, fast alles in D3DCompile fuer den Lichtshader -
+// er wurde erst uebersetzt, als das erste dynamische Licht ins Bild kam.
+// Gezaehlt wird jeder angelegte Shader; der Selbsttest prueft, dass nach dem
+// Laden der Karte keiner mehr dazukommt.
+int g_shaderAngelegt = 0;
+
+// --- Der Shader-Speicher auf der Platte ------------------------------------
+//
+// Uebersetzte Shader kommen nach %APPDATA%\behaved\shader, je einer als
+// Datei. Der Name ist ein Pruefwert ueber alles, was das Ergebnis bestimmt:
+// Quelltext, Einstieg, Ziel, Schalter und die Fassung von behaved (eine neue
+// Fassung uebersetzt neu, falls sich am Shadertext etwas geaendert hat). Jede
+// Datei traegt Laenge und Pruefsumme; passt etwas nicht, wird einfach
+// uebersetzt. Ab dem zweiten Start entfaellt das Uebersetzen fast ganz.
+std::uint64_t fnv(std::uint64_t h, const void* daten, std::size_t n) {
+    const auto* b = static_cast<const unsigned char*>(daten);
+    for (std::size_t i = 0; i < n; ++i) {
+        h = (h ^ b[i]) * 1099511628211ULL;
+    }
+    return h;
+}
+
+std::string shaderOrdner() {
+    static const std::string ordner = [] {
+        std::string o = platform::settingsDirectory();
+        if (o.empty()) {
+            return std::string();
+        }
+        o += "\\shader";
+        CreateDirectoryW(std::filesystem::u8path(o).wstring().c_str(), nullptr);
+        return o;
+    }();
+    return ordner;
+}
+
+constexpr std::uint32_t kSpeicherMarke = 0x43534842U;   // "BHSC"
+
+ID3DBlob* ausSpeicher(const std::string& pfad) {
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, std::filesystem::u8path(pfad).wstring().c_str(), L"rb") != 0 || f == nullptr) {
+        return nullptr;
+    }
+    std::uint32_t kopf[2] = {0, 0};
+    std::uint64_t pruef = 0;
+    ID3DBlob* blob = nullptr;
+    if (std::fread(kopf, sizeof(kopf), 1, f) == 1 && std::fread(&pruef, sizeof(pruef), 1, f) == 1 &&
+        kopf[0] == kSpeicherMarke && kopf[1] > 0U && kopf[1] < (16U << 20) &&
+        SUCCEEDED(D3DCreateBlob(kopf[1], &blob)) && blob != nullptr) {
+        if (std::fread(blob->GetBufferPointer(), 1, kopf[1], f) != kopf[1] ||
+            fnv(1469598103934665603ULL, blob->GetBufferPointer(), kopf[1]) != pruef) {
+            blob->Release();
+            blob = nullptr;
+        }
+    }
+    std::fclose(f);
+    return blob;
+}
+
+void inSpeicher(const std::string& pfad, ID3DBlob* blob) {
+    const std::string vorlaeufig = pfad + ".neu";
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, std::filesystem::u8path(vorlaeufig).wstring().c_str(), L"wb") != 0 || f == nullptr) {
+        return;
+    }
+    const std::uint32_t kopf[2] = {kSpeicherMarke, static_cast<std::uint32_t>(blob->GetBufferSize())};
+    const std::uint64_t pruef = fnv(1469598103934665603ULL, blob->GetBufferPointer(), blob->GetBufferSize());
+    const bool ok = std::fwrite(kopf, sizeof(kopf), 1, f) == 1 && std::fwrite(&pruef, sizeof(pruef), 1, f) == 1 &&
+                    std::fwrite(blob->GetBufferPointer(), 1, blob->GetBufferSize(), f) == blob->GetBufferSize();
+    std::fclose(f);
+    const std::wstring w = std::filesystem::u8path(vorlaeufig).wstring();
+    if (!ok || MoveFileExW(w.c_str(), std::filesystem::u8path(pfad).wstring().c_str(), MOVEFILE_REPLACE_EXISTING) == 0) {
+        DeleteFileW(w.c_str());
+    }
+}
+
+HRESULT d3dUebersetzen(LPCVOID quelle, SIZE_T laenge, LPCSTR name, const D3D_SHADER_MACRO* defs,
+                       ID3DInclude* include, LPCSTR einstieg, LPCSTR ziel, UINT fahnen1, UINT fahnen2,
+                       ID3DBlob** code, ID3DBlob** fehler) {
+    ++g_shaderAngelegt;
+    std::string pfad;
+    if (defs == nullptr && include == nullptr && !shaderOrdner().empty()) {
+        std::uint64_t h = 1469598103934665603ULL;
+        h = fnv(h, quelle, laenge);
+        for (const char* t : {einstieg, ziel, static_cast<const char*>(kFassung)}) {
+            if (t != nullptr) { h = fnv(h, t, std::strlen(t) + 1U); }
+        }
+        h = fnv(h, &fahnen1, sizeof(fahnen1));
+        h = fnv(h, &fahnen2, sizeof(fahnen2));
+        char z[24];
+        std::snprintf(z, sizeof(z), "%016llx", static_cast<unsigned long long>(h));
+        pfad = shaderOrdner() + "\\" + z + ".cso";
+        if (ID3DBlob* gemerkt = ausSpeicher(pfad)) {
+            *code = gemerkt;
+            if (fehler != nullptr) { *fehler = nullptr; }
+            return S_OK;
+        }
+    }
+    diag::detail(std::string("Shader uebersetzt: ") + (name != nullptr ? name : "?") + " " + (ziel != nullptr ? ziel : ""));
+    const HRESULT hr = D3DCompile(quelle, laenge, name, defs, include, einstieg, ziel, fahnen1, fahnen2, code, fehler);
+    if (SUCCEEDED(hr) && !pfad.empty() && code != nullptr && *code != nullptr) {
+        inSpeicher(pfad, *code);
+    }
+    return hr;
+}
+
 // --- Die Lagen im Stapelpuffer AUS DEM SHADER lesen ---------------------
 //
 // gpuconst.h rechnet die Lagen von Hand nach den HLSL-Packregeln aus. Einmal
@@ -556,7 +667,7 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
         }
     };
 
-    if (FAILED(D3DCompile(vsSrc.data(), vsSrc.size(), name.c_str(), nullptr,
+    if (FAILED(d3dUebersetzen(vsSrc.data(), vsSrc.size(), name.c_str(), nullptr,
                           nullptr, "main", "vs_4_0", uebersetzFahnen(), 0, &vsBlob, &err))) {
         meldung("Vertex-Shader nicht uebersetzbar");
         if (err != nullptr) { err->Release(); }
@@ -568,7 +679,7 @@ ShaderPaar* holeShader(std::uint32_t features, int numTexMods,
     if ((features & kDeform) != 0U) {
         pruefeStapelLagen(vsBlob);
     }
-    if (FAILED(D3DCompile(psSrc.data(), psSrc.size(), name.c_str(), nullptr,
+    if (FAILED(d3dUebersetzen(psSrc.data(), psSrc.size(), name.c_str(), nullptr,
                           nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &psBlob, &err))) {
         meldung("Pixel-Shader nicht uebersetzbar");
         kaputt.insert(name);
@@ -1578,7 +1689,7 @@ ShaderPaar* holeFigurShader(std::string* fehler) {
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* psBlob = nullptr;
     ID3DBlob* err = nullptr;
-    if (FAILED(D3DCompile(vsSrc.data(), vsSrc.size(), "figur", nullptr,
+    if (FAILED(d3dUebersetzen(vsSrc.data(), vsSrc.size(), "figur", nullptr,
                           nullptr, "main", "vs_4_0", uebersetzFahnen(), 0, &vsBlob, &err))) {
         if (fehler != nullptr && err != nullptr) {
             *fehler = std::string("Figuren-Vertex-Shader: ") +
@@ -1587,7 +1698,7 @@ ShaderPaar* holeFigurShader(std::string* fehler) {
         if (err != nullptr) { err->Release(); }
         return nullptr;
     }
-    if (FAILED(D3DCompile(psSrc.data(), psSrc.size(), "figur", nullptr,
+    if (FAILED(d3dUebersetzen(psSrc.data(), psSrc.size(), "figur", nullptr,
                           nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &psBlob, &err))) {
         if (fehler != nullptr && err != nullptr) {
             *fehler = std::string("Figuren-Pixel-Shader: ") +
@@ -2057,7 +2168,7 @@ bool wechsleAufVollbild() {
         const std::string k = glowCompositePixelShaderHlsl();
         ID3DBlob* blob = nullptr;
         ID3DBlob* err = nullptr;
-        if (SUCCEEDED(D3DCompile(vs.data(), vs.size(), "vollbild", nullptr,
+        if (SUCCEEDED(d3dUebersetzen(vs.data(), vs.size(), "vollbild", nullptr,
                                  nullptr, "main", "vs_4_0", uebersetzFahnen(), 0, &blob,
                                  &err))) {
             d->CreateVertexShader(blob->GetBufferPointer(),
@@ -2065,7 +2176,7 @@ bool wechsleAufVollbild() {
                                   &g_vollbildVs);
             blob->Release();
         }
-        if (SUCCEEDED(D3DCompile(v.data(), v.size(), "glowshrink", nullptr,
+        if (SUCCEEDED(d3dUebersetzen(v.data(), v.size(), "glowshrink", nullptr,
                                  nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &blob,
                                  &err))) {
             d->CreatePixelShader(blob->GetBufferPointer(),
@@ -2073,7 +2184,7 @@ bool wechsleAufVollbild() {
                                  &g_glowShrinkPs);
             blob->Release();
         }
-        if (SUCCEEDED(D3DCompile(b.data(), b.size(), "glowblur", nullptr,
+        if (SUCCEEDED(d3dUebersetzen(b.data(), b.size(), "glowblur", nullptr,
                                  nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &blob,
                                  &err))) {
             d->CreatePixelShader(blob->GetBufferPointer(),
@@ -2081,7 +2192,7 @@ bool wechsleAufVollbild() {
                                  &g_glowBlurPs);
             blob->Release();
         }
-        if (SUCCEEDED(D3DCompile(k.data(), k.size(), "glowcomp", nullptr,
+        if (SUCCEEDED(d3dUebersetzen(k.data(), k.size(), "glowcomp", nullptr,
                                  nullptr, "main", "ps_4_0", uebersetzFahnen(), 0, &blob,
                                  &err))) {
             d->CreatePixelShader(blob->GetBufferPointer(),
@@ -2301,6 +2412,8 @@ void setzeHimmelPortal(int satz) {
         }
     }
 }
+
+int shaderAngelegt() { return g_shaderAngelegt; }
 
 // Der gerade abgebildete Lesepuffer (tiefeAbbilden bis tiefeFreigeben).
 ID3D11Texture2D* g_tiefeOffen = nullptr;
@@ -3997,7 +4110,7 @@ ID3DBlob* uebersetze(const std::string& src, const char* profil, const char* nam
                      std::string* fehler) {
     ID3DBlob* blob = nullptr;
     ID3DBlob* err = nullptr;
-    if (FAILED(D3DCompile(src.data(), src.size(), name, nullptr, nullptr, "main",
+    if (FAILED(d3dUebersetzen(src.data(), src.size(), name, nullptr, nullptr, "main",
                           profil, uebersetzFahnen(), 0, &blob, &err))) {
         if (fehler != nullptr) {
             *fehler = std::string(name) + ": " +
@@ -5399,6 +5512,54 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     return abgesetzt;
 }
 
+// --- Vorwaermen (rc596) ------------------------------------------------------
+//
+// Alles, was die Karte spaeter brauchen kann, schon jetzt anlegen: die
+// Shader fuer Licht und Schatten, Nebel, Figuren, Klingen, die Varianten
+// der Kartenstapel und die der Effekte - deren Stapel haben immer dieselbe
+// Form (kein Lightmap, Farbe in den Ecken), also lassen sich ihre
+// Zeichenzustaende vorab bilden wie in buildEffectMesh. Dazu die Bilder der
+// Effekte. Bis rc595 geschah das erst beim ersten Gebrauch - mitten im
+// Fliegen ein Ruckler von bis zu 816 ms (Lichtshader, md_am_sith).
+// Wiederholbar: was schon da ist, kostet nichts.
+int vorwaermen(const BspMesh& karte, const TextureSet* textures, const std::vector<int>& effektPlaetze) {
+    if (dev() == nullptr || textures == nullptr) {
+        return 0;
+    }
+    const int vorher = g_shaderAngelegt;
+    std::string f;
+    (void)holeLichtShader(&f);
+    (void)holeNebelZeug(&f);
+    (void)holeFigurShader(&f);
+    (void)holeKlingeShader(&f);
+    (void)holeFigurSchattenZeug(&f);
+    const auto stapel = [&](const BspMesh& netz) {
+        for (const DrawCall& c : buildDrawCalls(netz, textures, 0.0F)) {
+            (void)holeShader(c.state.features, c.state.numTexMods, &f);
+        }
+    };
+    stapel(karte);
+    BspMesh effekte;
+    std::set<int> gesehen;
+    for (const int platz : effektPlaetze) {
+        if (platz < 0 || static_cast<std::size_t>(platz) >= textures->byShader.size() || !gesehen.insert(platz).second) {
+            continue;
+        }
+        BspMesh::Batch b;
+        b.lightmap = -1;
+        b.vertexColour = true;
+        b.shader = platz;
+        b.firstIndex = 0;
+        b.numIndexes = 3;
+        effekte.batches.push_back(b);
+        (void)holeBild(textures, platz);
+    }
+    if (!effekte.batches.empty()) {
+        stapel(effekte);
+    }
+    return g_shaderAngelegt - vorher;
+}
+
 }  // namespace bhed::gpu
 
 #else   // kein Direct3D
@@ -5470,6 +5631,8 @@ void setzeSpiegelBild(int) {}
 void setzeSpiegelung(bool, const float*, bool) {}
 void* zielTexturSatz(int) { return nullptr; }
 bool tiefeAbbilden(TiefenSicht& sicht, int, int, bool) { sicht = TiefenSicht{}; return false; }
+int shaderAngelegt() { return 0; }
+int vorwaermen(const BspMesh&, const TextureSet*, const std::vector<int>&) { return 0; }
 void tiefeFreigeben() {}
 bool leseFarbe(std::vector<std::uint8_t>&, int&, int&) { return false; }
 const char* abschnittName(Abschnitt) { return "?"; }

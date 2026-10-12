@@ -1105,6 +1105,7 @@ struct App {
     // vorigen Bild gezeichnet haben (rc594): nur dort wird das Bild geleert
     // und hochgeladen, statt jedes Bild 13 MB.
     int grafikNeuAufbauten = 0;   // wie oft das Geraet neu aufgebaut wurde (rc596)
+    std::size_t vorgewaermt = 0;   // Stand von Karte, Bildern und Effekten beim letzten Vorwaermen
     bool ruheImTest = false;      // Selbsttest: den Ruhezustand ausnahmsweise erlauben
     int gizmoBox[4] = {0, 0, 0, 0};
     int gizmoBoxAlt[4] = {0, 0, 0, 0};

@@ -10649,6 +10649,85 @@ std::vector<Schritt> karteSchritte() {
     add(reiterFest("der Zeitleiste"));
     add(stabil("Karte nach dem Laden"));
 
+    // ---- rc596: nach dem Laden keine Shader mehr uebersetzen ---------------
+    //
+    // shank: "wenn ich frei mit der Kamera rum fahre, das es kurz einmal
+    // haengt". Der Ruckler-Rekorder zeigte 816 ms in D3DCompile fuer den
+    // Lichtshader. Hier: die ganze Zeitleiste in Halbsekunden durchgehen
+    // (alle Effekte und Lichter tauchen einmal auf) und frei quer ueber die
+    // Karte fliegen - dabei darf kein Shader mehr angelegt werden.
+    struct Vorher {
+        int shader = 0;
+        Camera cam;
+        bool durch = false;
+        double ms = 0.0;
+        double ende = 0.0;
+        float weg[6] = {0, 0, 0, 0, 0, 0};
+    };
+    auto vorher = std::make_shared<Vorher>();
+    add(tu("Shader-Zaehler merken (nach dem Laden)", [=] {
+        vorher->shader = gpu::shaderAngelegt();
+        vorher->cam = g_app->cam;
+        vorher->durch = g_app->throughCamera;
+        vorher->ms = g_app->playMs;
+        vorher->ende = std::max(g_app->camTrack.durationMs, std::min(g_app->timeline.practicalEndMs, 120000.0));
+        g_app->playing = false;
+    }));
+    add({"Zeitleiste in Halbsekunden durchgehen", [=](int b) {
+             const double t = static_cast<double>(b) * 500.0;
+             if (t > vorher->ende) {
+                 return true;
+             }
+             g_app->throughCamera = true;
+             g_app->playMs = t;
+             g_app->mapDirty = true;
+             return false;
+         }});
+    add({"Frei quer ueber die Karte fliegen", [=](int b) {
+             if (b == 0) {
+                 std::vector<std::array<float, 3>> orte;
+                 for (const MapEntity& e : g_app->map.entities) {
+                     float p[3];
+                     if (entityOrt(e, p)) { orte.push_back({p[0], p[1], p[2]}); }
+                 }
+                 if (orte.size() < 2) { return true; }
+                 std::array<float, 3> a = orte[0];
+                 std::array<float, 3> z = orte[0];
+                 float best = -1.0F;
+                 for (const auto& o : orte) {
+                     const float d = (o[0] - a[0]) * (o[0] - a[0]) + (o[1] - a[1]) * (o[1] - a[1]);
+                     if (d > best) { best = d; z = o; }
+                 }
+                 const float w[6] = {a[0], a[1], a[2] + 64.0F, z[0], z[1], z[2] + 64.0F};
+                 for (int k = 0; k < 6; ++k) { vorher->weg[k] = w[k]; }
+                 g_app->throughCamera = false;
+                 g_app->camViewActive = false;
+             }
+             if (b > 120) {
+                 return true;
+             }
+             const float t = static_cast<float>(b) / 120.0F;
+             for (int k = 0; k < 3; ++k) { g_app->cam.pos[k] = vorher->weg[k] + (vorher->weg[k + 3] - vorher->weg[k]) * t; }
+             const float ziel[3] = {vorher->weg[3], vorher->weg[4], vorher->weg[5]};
+             aimAngles(g_app->cam.pos, ziel, g_app->cam.angles);
+             g_app->cam.angles[0] = 0.0F;
+             g_app->mapDirty = true;
+             return false;
+         }});
+    add(pruefe("Nach dem Laden: beim Abspielen und Fliegen keine Shader mehr uebersetzt", [=] {
+        const int neu = gpu::shaderAngelegt() - vorher->shader;
+        diag::detail("Knopftest: nach dem Laden noch " + std::to_string(neu) + " Shader angelegt");
+        return neu == 0;
+    }));
+    add(tu("Kamera und Zeit wie vorher", [=] {
+        g_app->cam = vorher->cam;
+        g_app->throughCamera = vorher->durch;
+        g_app->playMs = vorher->ms;
+        g_app->playing = false;
+        g_app->mapDirty = true;
+    }));
+    add(stabil("Karte nach dem Durchgehen"));
+
     // ---- Kamera: Skript -> Bahn -> Zeitpunkt ---------------------------
     add(Schritt{"Kamerabahn gegen das Skript pruefen", [=](int) {
         const CameraTrack& tr = g_app->camTrack;

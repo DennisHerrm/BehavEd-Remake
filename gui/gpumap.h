@@ -325,6 +325,16 @@ struct TiefenSicht {
     }
 };
 [[nodiscard]] bool tiefeAbbilden(TiefenSicht& sicht, int breite, int hoehe, bool vorigesBild = false);
+
+// Wie viele Shader seit dem Start angelegt wurden (rc596). Fuer den
+// Selbsttest: nach dem Laden einer Karte sollen beim Fliegen und Abspielen
+// keine mehr dazukommen - jedes Uebersetzen ist ein Ruckler.
+[[nodiscard]] int shaderAngelegt();
+
+// Shader und Bilder, die die Karte und ihre Effekte brauchen koennen, vorab
+// anlegen (rc596) - sonst entstehen sie beim ersten Gebrauch mitten im Bild.
+// Liefert, wie viele Shader dabei neu angelegt wurden.
+int vorwaermen(const BspMesh& karte, const TextureSet* textures, const std::vector<int>& effektPlaetze);
 void tiefeFreigeben();
 
 // Ein roher Tiefenwert als Abstand: Tiefe d = a + b / z mit a = f/(f-n),
