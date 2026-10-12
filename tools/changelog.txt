@@ -6,6 +6,28 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc593 2026-10-12
+[en]
+- Switchable and flickering lights follow the timeline: a use on a light in the script switches it at that moment, ls_ patterns flicker like in the game (20 letters a second), and characters are lit accordingly.
+- Sky portals (misc_skyportal): the sky shows the far landscape from the portal room, like the lava mountains behind md_am_sith.
+- Mirrors: mirror floors (misc_portal_surface) reflect the room, fading with distance where the shader says so (alphaGen portal); portal cameras show the far place inside the portal (duel_wbw).
+- Faster drawing with the same image: shaders are looked up by number, draw lists and effect geometry are built once per frame.
+[de]
+- Schaltbare und flackernde Lichter folgen der Zeitleiste: ein use auf ein Licht im Skript schaltet es in diesem Moment, ls_-Muster flackern wie im Spiel (20 Buchstaben je Sekunde), und die Figuren werden entsprechend beleuchtet.
+- Himmelsportale (misc_skyportal): Der Himmel zeigt die ferne Landschaft aus dem Portalraum, etwa die Lavaberge hinter md_am_sith.
+- Spiegel: Spiegelböden (misc_portal_surface) spiegeln den Raum, mit dem Abstand verblassend, wo der Shader es vorsieht (alphaGen portal); Portalkameras zeigen den fernen Ort im Portal (duel_wbw).
+- Schneller gezeichnet bei gleichem Bild: Shader werden über eine Nummer gefunden, Zeichenlisten und Effektgeometrie einmal je Bild gebaut.
+[zh]
+- 可开关和闪烁的灯光跟随时间轴:脚本中对灯光的 use 会在该时刻切换它,ls_ 图案像游戏中一样闪烁(每秒 20 个字母),角色也会相应地被照亮。
+- 天空传送门 (misc_skyportal):天空显示传送门房间中的远景,例如 md_am_sith 后方的熔岩山。
+- 镜子:镜面地板 (misc_portal_surface) 会反射房间,并按着色器的设定随距离淡出 (alphaGen portal);传送门摄像机在传送门内显示远处的地点 (duel_wbw)。
+- 画面不变但绘制更快:着色器按编号查找,绘制列表和特效几何体每帧只构建一次。
+[ja]
+- 切り替え・点滅するライトがタイムラインに追従します:スクリプト内のライトへの use がその時点で切り替え、ls_ パターンはゲームと同じように点滅し(1 秒に 20 文字)、キャラクターもそれに応じて照らされます。
+- スカイポータル (misc_skyportal):空にポータル部屋の遠景が表示されます。たとえば md_am_sith の背後の溶岩の山々です。
+- 鏡:鏡の床 (misc_portal_surface) が部屋を映し、シェーダーの指定どおり距離に応じて薄れます (alphaGen portal)。ポータルカメラはポータルの中に遠くの場所を表示します (duel_wbw)。
+- 見た目はそのままで描画を高速化:シェーダーを番号で検索し、描画リストとエフェクトのジオメトリを 1 フレームに 1 回だけ構築します。
+
 ## rc592 2026-10-12
 [en]
 - Camera editing like the entities: select the camera and the gizmo is there right away; releasing a drag writes the shot into the script, Ctrl+Z undoes each drag (no more "Write to script" button). Hovering the camera highlights it and shows the shot.

@@ -1,5 +1,32 @@
 # Änderungen seit rc94
 
+## rc593 — Lichtschalter im Ablauf, Himmelsportale, Spiegel und Portalkameras
+
+Gewünscht: „okay mach weiter mit dem fehlenden zeug“ – das waren die offenen
+Punkte aus rc592: Lichtschalter, die das Skript umschaltet, Spiegel/Portale
+und die übrigen Leistungsbefunde der Code-Prüfung.
+
+* **Lichtschalter und Flackern** (`stileEinrechnen` mit `dynamisch`,
+  `stileAnwenden`, `lichtStilDynamisch`, `lichtStilGewichteZuZeit`): Stile, die
+  sich ändern können, bleiben Schichten in Seitenkoordinaten; je Bild werden die
+  Gewichte zur Zeit gemischt (Schaltungen aus `MoverSim::lichtSchaltungen`,
+  ls_-Muster 50 ms je Buchstabe), nur betroffene Seiten neu hochgeladen
+  (`lightmapStand`). Nachgestellt im Wegpunkt-Modus (Licht in duel_kamino
+  per Skript aus, vorher 2 FEHLER).
+* **Himmelsportal** wie CG_DrawSkyBoxPortal: dritter Zielsatz, die
+  Himmelsflächen laden das Portalbild pixelgenau (`kSkyPortal`), Wolken fallen
+  dort weg.
+* **Spiegel** wie R_MirrorViewBySurface: vierter Zielsatz, die Welt wird an
+  der Ebene gespiegelt (`vp × R`), Schnittebene `gClip` in allen genutzten
+  Vertexshadern, Wicklung umgekehrt; im Hauptbild das Spiegelbild durch den
+  Lichtweg (`kSpiegelBild`), darüber die Grundstufe mit ONE/ONE_MINUS_SRC_ALPHA.
+  `alphaGen portal` und das Schlüsselwort `portal` im Parser.
+* **Portalkameras** wie R_GetPortalOrientations/CG_Portal (starre Abbildung,
+  Dreh- und Pendelkameras).
+* **Schneller, gleiches Bild**: Shadersuche über eine Zahl, „auffällige
+  Stapel“ ohne Zeichenketten je Draw, Effektnetz einmal je Bild hochgeladen,
+  Zeichenlisten einmal je Netz und Bild. Messschalter aus rc592 entfernt.
+
 ## rc592 — Wegpunkte, Mehrfachauswahl, eigene Mover-Animationen, Kameravorschau, mehr Spielgrafik, Code-Prüfung
 
 Gewünscht: „mach das alles was du vorschlägst“, „ist alles supported das das
