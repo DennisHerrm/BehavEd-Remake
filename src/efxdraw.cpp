@@ -1,7 +1,9 @@
 // efxdraw.cpp - aus einem Effekt werden Vierecke.
 #include <array>
 #include <atomic>
+#include "bhed/messpunkt.h"
 #include "bhed/efxdraw.h"
+#include "bhed/arbeiter.h"
 
 #include <cctype>
 
@@ -641,6 +643,79 @@ unsigned mischeDurchgang(double began) {
 unsigned planSamen(const EffectInstance& inst, double began) {
     return inst.seed ^ (mischeDurchgang(began) * 2654435761U) ^ 1U;
 }
+
+// --- Der Plan eines Durchgangs, gemerkt (rc595) --------------------------
+//
+// efx::sim::schedule haengt nur an wenigen Feldern des Effekts (Zahl der
+// Bausteine, je Baustein count, delay und die Gleichverteilung) und am
+// Samen - und wurde je Bild fuer jeden laufenden Effekt an bis zu sechs
+// Stellen neu gewuerfelt, sortiert und angelegt (in kor1 mit 292 Effekten
+// rund ein Zwanzigstel der Bildzeit).
+//
+// Der Schluessel sind GENAU diese Felder samt Samen, verglichen Bit fuer
+// Bit - nicht die Adresse des Effekts. Ein neu geladener, kopierter oder
+// veraenderter Effekt mit anderen Werten bekommt damit nie einen alten
+// Plan. Je Faden ein Speicher (vorrechnen rechnet auf Hilfsfaeden); die
+// Plaene stehen in shared_ptr, damit ein gerade benutzter auch dann gueltig
+// bleibt, wenn der Speicher voll ist und geleert wird.
+struct PlanFeld {
+    float countMin;
+    float countMax;
+    float delayMin;
+    float delayMax;
+    std::uint32_t merk;   // count.set, count.ranged, delay.set, delay.ranged, gleichmaessig
+};
+struct PlanSchluessel {
+    unsigned samen = 0;
+    std::vector<PlanFeld> felder;
+    bool operator==(const PlanSchluessel& o) const {
+        return samen == o.samen && felder.size() == o.felder.size() &&
+               (felder.empty() ||
+                std::memcmp(felder.data(), o.felder.data(), felder.size() * sizeof(PlanFeld)) == 0);
+    }
+};
+struct PlanHash {
+    std::size_t operator()(const PlanSchluessel& k) const {
+        std::uint64_t h = 1469598103934665603ULL ^ k.samen;
+        const auto* b = reinterpret_cast<const unsigned char*>(k.felder.data());
+        for (std::size_t i = 0; i < k.felder.size() * sizeof(PlanFeld); ++i) {
+            h = (h ^ b[i]) * 1099511628211ULL;
+        }
+        return static_cast<std::size_t>(h);
+    }
+};
+using Plan = std::shared_ptr<const std::vector<efx::sim::Spawn>>;
+
+Plan geplant(const efx::Effect& ef, unsigned samen) {
+    thread_local std::unordered_map<PlanSchluessel, Plan, PlanHash> plaene;
+    thread_local PlanSchluessel k;
+    k.samen = samen;
+    k.felder.clear();
+    // schedule nimmt hoechstens 24 Bausteine (FX_MAX_EFFECT_COMPONENTS).
+    const std::size_t n = std::min<std::size_t>(ef.primitives.size(), 24U);
+    for (std::size_t i = 0; i < n; ++i) {
+        const efx::Primitive& pr = ef.primitives[i];
+        PlanFeld f{};
+        std::memset(&f, 0, sizeof(f));   // auch die Fuellbytes, fuer memcmp und Hash
+        f.countMin = pr.count.min;
+        f.countMax = pr.count.max;
+        f.delayMin = pr.delay.min;
+        f.delayMax = pr.delay.max;
+        f.merk = (pr.count.set ? 1U : 0U) | (pr.count.ranged ? 2U : 0U) | (pr.delay.set ? 4U : 0U) |
+                 (pr.delay.ranged ? 8U : 0U) | (((pr.spawnFlags & efx::kSpawnEvenDistribution) != 0U) ? 16U : 0U);
+        k.felder.push_back(f);
+    }
+    if (const auto hat = plaene.find(k); hat != plaene.end()) {
+        return hat->second;
+    }
+    if (plaene.size() >= 4096U) {
+        plaene.clear();
+    }
+    efx::sim::Random rnd(samen);
+    auto plan = std::make_shared<const std::vector<efx::sim::Spawn>>(efx::sim::schedule(ef, rnd));
+    plaene.emplace(k, plan);
+    return plan;
+}
 // --- Ein Zufallsstrom JE TEILCHEN --------------------------------------
 //
 // Die Engine wuerfelt jedes Teilchen EINMAL beim Erzeugen (CreateEffect,
@@ -1252,9 +1327,8 @@ void sammleBahnen(const std::vector<EffectInstance>& live, double nowMs,
             continue;
         }
         for (const double began : durchgaenge(inst, nowMs, laengsteMs(*inst.effect))) {
-            efx::sim::Random planRnd(planSamen(inst, began));
-            const std::vector<efx::sim::Spawn> spawns =
-                efx::sim::schedule(*inst.effect, planRnd);
+            const Plan plan = geplant(*inst.effect, planSamen(inst, began));
+            const std::vector<efx::sim::Spawn>& spawns = *plan;
             for (std::size_t si = 0; si < spawns.size(); ++si) {
                 const auto at = static_cast<std::size_t>(spawns[si].primitiveIndex);
                 if (at >= inst.effect->primitives.size()) {
@@ -1284,6 +1358,7 @@ void sammleBahnen(const std::vector<EffectInstance>& live, double nowMs,
 // aufrufenden Faden - einen Faden anzulegen kostet mehr als ein paar
 // Bahnen.
 void vorrechnen(const std::vector<Vorrechnung>& alle, const BspGeometry* geo) {
+    BHED_MESS("Effektbahnen");
     if (geo == nullptr || alle.empty()) {
         return;
     }
@@ -1308,39 +1383,10 @@ void vorrechnen(const std::vector<Vorrechnung>& alle, const BspGeometry* geo) {
             (void)flugMitMerk(v.start, v.t, v.ts, spur, geo);
         }
     };
-    constexpr std::size_t kJeFaden = 64;   // darunter lohnt kein Faden
-    const unsigned kerne = std::max(1U, std::thread::hardware_concurrency());
-    const auto faeden = static_cast<unsigned>(
-        std::min<std::size_t>(std::min(kerne, 32U), offen.size() / kJeFaden));
-    if (faeden <= 1U) {
-        for (const Vorrechnung* v : offen) {
-            rechne(*v);
-        }
-        return;
-    }
-    std::atomic<std::size_t> naechste{0};
-    auto arbeite = [&]() {
-        for (;;) {
-            constexpr std::size_t kHappen = 8;
-            const std::size_t von = naechste.fetch_add(kHappen);
-            if (von >= offen.size()) {
-                return;
-            }
-            const std::size_t bis = std::min(offen.size(), von + kHappen);
-            for (std::size_t i = von; i < bis; ++i) {
-                rechne(*offen[i]);
-            }
-        }
-    };
-    std::vector<std::thread> mannschaft;
-    mannschaft.reserve(faeden - 1U);
-    for (unsigned i = 1; i < faeden; ++i) {
-        mannschaft.emplace_back(arbeite);
-    }
-    arbeite();
-    for (std::thread& th : mannschaft) {
-        th.join();
-    }
+    // Auf die festen Arbeitsfaeden (rc596) - bis rc595 je Aufruf neue
+    // std::thread. Darunter lohnt das Verteilen nicht.
+    constexpr std::size_t kJeFaden = 64;
+    arbeiter::verteilt(offen.size(), [&](std::size_t i) { rechne(*offen[i]); }, kJeFaden);
 }
 
 // --- Das zweite Ende einer Line oder eines Blitzes ----------------------
@@ -1789,6 +1835,7 @@ BspMesh buildEffectMesh(const std::vector<EffectInstance>& live, double nowMs,
                         const float right[3], const float up[3],
                         const EffectShaderSlots* slots, const BspGeometry* geo,
                         const EffectCull* cull) {
+    BHED_MESS("Effektnetz");
     BspMesh mesh;
     // Der Platz je Shadername eines Bausteins, einmal je Aufruf gesucht
     // (rc594): vorher fuer JEDES Teilchen eine kleingeschriebene Kopie des
@@ -1917,9 +1964,8 @@ BspMesh buildEffectMesh(const std::vector<EffectInstance>& live, double nowMs,
         const std::vector<double> starts =
             durchgaenge(inst, nowMs, laengsteMs(*inst.effect));
         for (const double began : starts) {
-        efx::sim::Random planRnd(planSamen(inst, began));
-        const std::vector<efx::sim::Spawn> spawns =
-            efx::sim::schedule(*inst.effect, planRnd);
+        const Plan plan = geplant(*inst.effect, planSamen(inst, began));
+        const std::vector<efx::sim::Spawn>& spawns = *plan;
 
         for (std::size_t si = 0; si < spawns.size(); ++si) {
             const efx::sim::Spawn& sp = spawns[si];
@@ -2392,9 +2438,8 @@ std::vector<EmitterModelDraw> emitterModelsAt(
         }
         for (const double began : durchgaenge(inst, nowMs,
                                               laengsteMs(*inst.effect))) {
-            efx::sim::Random planRnd(planSamen(inst, began));
-            const std::vector<efx::sim::Spawn> spawns =
-                efx::sim::schedule(*inst.effect, planRnd);
+            const Plan plan = geplant(*inst.effect, planSamen(inst, began));
+            const std::vector<efx::sim::Spawn>& spawns = *plan;
             for (std::size_t si = 0; si < spawns.size(); ++si) {
                 const auto at = static_cast<std::size_t>(spawns[si].primitiveIndex);
                 if (at >= inst.effect->primitives.size()) {
@@ -2482,9 +2527,8 @@ void folgeEffekte(const EffectInstance& inst, double nowMs,
                   std::vector<EffectImpact>& aus) {
     const efx::Effect& ef = *inst.effect;
     for (const double began : durchgaenge(inst, nowMs, rueckblickMs)) {
-        efx::sim::Random planRnd(planSamen(inst, began));
-        const std::vector<efx::sim::Spawn> spawns =
-            efx::sim::schedule(ef, planRnd);
+        const Plan plan = geplant(ef, planSamen(inst, began));
+        const std::vector<efx::sim::Spawn>& spawns = *plan;
         for (std::size_t si = 0; si < spawns.size(); ++si) {
             const auto at = static_cast<std::size_t>(spawns[si].primitiveIndex);
             if (at >= ef.primitives.size()) {
@@ -2747,8 +2791,8 @@ void sammleFolgeBahnen(const EffectInstance& inst, double nowMs,
                        std::vector<Vorrechnung>& aus) {
     const efx::Effect& ef = *inst.effect;
     for (const double began : durchgaenge(inst, nowMs, rueckblickMs)) {
-        efx::sim::Random planRnd(planSamen(inst, began));
-        const std::vector<efx::sim::Spawn> spawns = efx::sim::schedule(ef, planRnd);
+        const Plan plan = geplant(ef, planSamen(inst, began));
+        const std::vector<efx::sim::Spawn>& spawns = *plan;
         for (std::size_t si = 0; si < spawns.size(); ++si) {
             const auto at = static_cast<std::size_t>(spawns[si].primitiveIndex);
             if (at >= ef.primitives.size()) {
@@ -2955,9 +2999,8 @@ std::vector<ScreenFlash> effectScreenFlashesAt(
         }
         for (const double began :
              durchgaenge(inst, nowMs, laengsteMs(*inst.effect))) {
-            efx::sim::Random planRnd(planSamen(inst, began));
-            const std::vector<efx::sim::Spawn> spawns =
-                efx::sim::schedule(*inst.effect, planRnd);
+            const Plan plan = geplant(*inst.effect, planSamen(inst, began));
+            const std::vector<efx::sim::Spawn>& spawns = *plan;
             for (std::size_t si = 0; si < spawns.size(); ++si) {
                 const auto at = static_cast<std::size_t>(spawns[si].primitiveIndex);
                 if (at >= inst.effect->primitives.size() ||

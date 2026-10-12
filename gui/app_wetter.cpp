@@ -29,6 +29,7 @@
 // dasselbe Bild.
 #include "app_internal.h"
 #include "gpumap.h"
+#include "bhed/messpunkt.h"
 #include "bhed/gpuskin.h"
 
 #include <cmath>
@@ -321,6 +322,7 @@ int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
 // nach dem Winkel zur Flaeche; nur, wenn der Punkt nicht verdeckt ist
 // (RB_TestZFlare - hier ein Strahl von der Kamera).
 int flareSchilde(std::vector<gpu::KlingenQuad>& aus, const Camera& cam, float aspekt) {
+    BHED_MESS("Flares");
     g_app->flareZahl = 0;   // auch, wenn gleich nichts kommt
     if (!g_app->zeigeFlares || g_app->geo.empty()) { return 0; }
     float links[3];

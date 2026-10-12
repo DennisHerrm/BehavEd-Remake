@@ -6,6 +6,40 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc596 2026-10-12
+[en]
+- Laptops with two graphics chips (e.g. Intel plus NVIDIA): behaved now runs on the powerful card instead of the power-saving one. BHED_GPU=sparsam chooses the power-saving card (battery); computers with one card are unchanged.
+- The window is shown with the modern flip model instead of the old copy model (Windows 10 and newer; older Windows as before): on the NVIDIA card about half the time per frame in many scenes, same image.
+- Effect spawn plans are computed once instead of every frame.
+- When nothing happens, behaved stops redrawing after a second (saves battery and heat, leaves more power for working); any input wakes it at once.
+- If the graphics driver resets (driver update, GPU hang), behaved rebuilds its graphics and carries on instead of showing a black view; the script is untouched.
+- A crash now also writes behaved-absturz.dmp next to the log, and a hang of more than 30 seconds is noted in the log - both help to find the cause.
+- Fixed worker threads for ray tests and effect paths, one shared constant buffer per frame, and reading only the depth values that are needed: less work per frame.
+[de]
+- Laptops mit zwei Grafikchips (etwa Intel und NVIDIA): behaved läuft jetzt auf der leistungsstarken statt auf der sparsamen Karte. BHED_GPU=sparsam wählt die sparsame (Akku); Rechner mit einer Karte bleiben unverändert.
+- Das Fenster wird im modernen Flip-Modell statt im alten Kopiermodell gezeigt (ab Windows 10; ältere Windows wie bisher): auf der NVIDIA-Karte in vielen Szenen etwa halbe Zeit je Bild, gleiches Bild.
+- Die Spawn-Pläne der Effekte werden einmal statt in jedem Bild berechnet.
+- Wenn nichts passiert, zeichnet behaved nach einer Sekunde nicht mehr neu (spart Akku und Wärme und lässt mehr Leistung fürs Arbeiten); jede Eingabe weckt es sofort.
+- Setzt sich der Grafiktreiber zurück (Treiber-Update, hängende Grafik), baut behaved seine Grafik neu auf und läuft weiter statt mit schwarzer Ansicht; das Skript bleibt unberührt.
+- Ein Absturz schreibt jetzt zusätzlich behaved-absturz.dmp neben das Protokoll, und ein Hänger von mehr als 30 Sekunden steht im Protokoll - beides hilft, die Ursache zu finden.
+- Feste Arbeitsfäden für Strahltests und Effektbahnen, ein gemeinsamer Konstantenpuffer je Bild und nur die nötigen Tiefenwerte: weniger Arbeit je Bild.
+[zh]
+- 带两块显卡的笔记本(例如 Intel 加 NVIDIA):behaved 现在在高性能显卡而不是节能显卡上运行。BHED_GPU=sparsam 选择节能显卡(省电);只有一块显卡的电脑不受影响。
+- 窗口改用现代的翻转模型而不是旧的复制模型显示(Windows 10 及以上;更早的 Windows 不变):在 NVIDIA 显卡上许多场景每帧时间约减半,画面相同。
+- 特效的生成计划只计算一次,而不是每帧都算。
+- 没有任何操作时,behaved 一秒后停止重绘(省电、降温,并把更多性能留给工作);任何输入都会立即唤醒。
+- 如果显卡驱动重置(驱动更新、显卡挂起),behaved 会重建图形并继续运行,而不是显示黑屏;脚本不受影响。
+- 崩溃时现在还会在日志旁写入 behaved-absturz.dmp,超过 30 秒的卡死会记录在日志中——两者都有助于查明原因。
+- 光线测试和特效轨迹使用固定的工作线程,每帧共用一个常量缓冲区,只读取需要的深度值:每帧工作更少。
+[ja]
+- グラフィックチップを 2 つ持つノート PC(例:Intel と NVIDIA):behaved は省電力側ではなく高性能なカードで動作するようになりました。BHED_GPU=sparsam で省電力カードを選べます(バッテリー)。カードが 1 枚の PC は変わりません。
+- ウィンドウを古いコピーモデルではなく最新のフリップモデルで表示します(Windows 10 以降。それより古い Windows は従来どおり):NVIDIA カードでは多くのシーンで 1 フレームの時間がほぼ半分になり、画像は同じです。
+- エフェクトのスポーン計画は毎フレームではなく 1 回だけ計算します。
+- 何も操作がないとき、behaved は 1 秒後に再描画を止めます(バッテリーと発熱を抑え、作業に性能を回します)。どんな入力でもすぐに再開します。
+- グラフィックドライバーがリセットされた場合(ドライバー更新、GPU のハング)、behaved はグラフィックを作り直して動作を続けます。黒い画面にはならず、スクリプトも変更されません。
+- クラッシュ時にはログの隣に behaved-absturz.dmp も書き出し、30 秒を超えるフリーズはログに記録します。どちらも原因の特定に役立ちます。
+- レイテストとエフェクト軌道に固定のワーカースレッド、フレームごとに共有の定数バッファ、必要な深度値だけの読み取り:1 フレームあたりの処理が減りました。
+
 ## rc595 2026-10-12
 [en]
 - Flying around maps with many effects and entities is faster again (kor1 15 to 11 ms per frame): effect textures are looked up once per name instead of once per particle, the gizmos read only the depth values they need instead of copying the whole depth buffer, only the changed part of the gizmo overlay is uploaded, and repeated draw constants are not re-sent. Same image.

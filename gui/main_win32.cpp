@@ -28,11 +28,23 @@
 #include <windows.h>
 
 #include "platform.h"
+#include "wache.h"
+#include "bhed/messpunkt.h"
+
+// Auf Laptops mit zwei Grafikchips (NVIDIA Optimus, AMD PowerXpress) um die
+// leistungsstarke Karte bitten (rc596). Die Treiber lesen diese beiden
+// exportierten Werte beim Start der .exe; auf allen anderen Rechnern sind
+// sie bedeutungslos. Zusaetzlich waehlt initD3D11 die Karte ausdruecklich.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 
 #include <cstdio>
 #include <cstdlib>
 #include <cwchar>
 #include <cwctype>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <vector>
@@ -47,6 +59,8 @@ void destroyApp(App* a);
 void setApp(App* a);
 void draw();
 bool wantsQuit();
+bool darfRuhen();
+void grafikNeuAufgebaut();
 bool confirmQuit();
 void selbsttestVorBild();
 std::string windowTitle();
@@ -504,11 +518,44 @@ bool runSession(bhed::render::Backend preferred, HWND hwnd, bhed::gui::App* app)
     // darunter, weil die Klammer offen war.
     bhed::diag::info("Nachrichtenschleife laeuft");
 
+    // --- Nur zeichnen, wenn sich etwas tut (rc596) ---------------------------
+    //
+    // Bis rc595 lief die Schleife ununterbrochen mit 60 Bildern je Sekunde,
+    // auch wenn niemand etwas tat - die ganze Oberflaeche wurde neu gebaut
+    // und gezeigt. Das kostet Akku und Waerme, und auf Laptops teilen sich
+    // Prozessor und Grafik das Strombudget: was im Leerlauf verheizt wird,
+    // fehlt beim Arbeiten (Intel, GDC 2015 "Power efficient programming").
+    //
+    // Nach einer Sekunde ohne Eingabe, und nur wenn darfRuhen() es erlaubt
+    // (nichts spielt ab, kein Ton, kein Textfeld, keine Taste gedrueckt,
+    // kein Selbsttest), wartet die Schleife auf die naechste Nachricht -
+    // hoechstens 250 ms, damit Zeitanzeigen und Hintergrundergebnisse
+    // trotzdem erscheinen. Jede Eingabe weckt sofort.
+    // Eine echte Sekunde, nicht 60 Bilder: bei langsamen Bildern (ASan, ein
+    // schwacher Rechner) waeren 60 Bilder mehrere Sekunden.
+    constexpr auto kStille = std::chrono::seconds(1);
+    auto letzteUnruhe = std::chrono::steady_clock::now();
+    const bool imSelbsttestLauf = std::getenv("BHED_EDITORTEST") != nullptr;
+    bool neuaufbauOffen = false;   // Geraet verloren, noch kein neues (rc596)
+    int neuaufbauFehler = 0;
     while (!g_quit) {
+        if (std::chrono::steady_clock::now() - letzteUnruhe > kStille) {
+            MsgWaitForMultipleObjectsEx(0, nullptr, 250, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        // Im Selbsttest das Fenster nie minimiert lassen (rc596): ein
+        // "Desktop anzeigen" (Win+D) waehrend eines Laufs liess sonst alle
+        // folgenden Klicks ins Leere gehen. Wiederhergestellt wird OHNE es zu
+        // aktivieren - der Fokus bleibt, wo der Nutzer arbeitet.
+        if (imSelbsttestLauf && IsIconic(hwnd) != FALSE) {
+            ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            bhed::diag::detail("Selbsttest: Fenster war minimiert - wiederhergestellt (nicht aktiviert)");
+        }
         MSG msg;
+        bool nachricht = false;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            nachricht = true;
             if (msg.message == WM_QUIT) {
                 g_quit = true;
             }
@@ -516,6 +563,41 @@ bool runSession(bhed::render::Backend preferred, HWND hwnd, bhed::gui::App* app)
         if (g_quit) {
             break;
         }
+        // --- Verlorenes Geraet: neu aufbauen (rc596) ----------------------
+        //
+        // Abgebaut wird am Ende des Bildes, in dem Present den Verlust
+        // meldete (unten). Hier ein neues Geraet - wieder auf der
+        // gewuenschten Karte - und die ImGui-Teile dazu; Programmzustand und
+        // Skript bleiben, die Karte wird beim naechsten Zeichnen neu
+        // hochgeladen. Die Schriften NICHT neu bauen: ImGui legt Texturen,
+        // die das Backend freigegeben hat, selbst neu an. Solange es nicht
+        // geht, wird kein Bild gezeichnet; nach drei Fehlversuchen geordnet
+        // beenden statt mit einem toten Geraet weiterzulaufen.
+        if (neuaufbauOffen) {
+            if (bhed::render::init(preferred, reinterpret_cast<HWNDHandle>(hwnd))) {
+                ImGui_ImplWin32_Init(hwnd);
+                neuaufbauOffen = false;
+                neuaufbauFehler = 0;
+                bhed::gui::resetIconTexture();
+                bhed::gui::grafikNeuAufgebaut();
+                bhed::diag::info("Grafik neu aufgebaut");
+            } else if (++neuaufbauFehler >= 3) {
+                bhed::diag::error("Grafik: nach dem Geraeteverlust kein neues Geraet - Ende");
+                bhed::gui::wache::modalBeginn();
+                MessageBoxW(hwnd, L"Die Grafikkarte ist nicht mehr erreichbar. BehavEd wird beendet; "
+                                  L"das Skript wurde nicht veraendert.",
+                            L"BehavEd", MB_ICONERROR);
+                bhed::gui::wache::modalEnde();
+                break;
+            } else {
+                Sleep(500);
+                continue;
+            }
+        }
+        // Die wartbare Swapchain: erst zeichnen, wenn ein Puffer frei ist
+        // (siehe render::warteAufBild).
+        bhed::render::warteAufBild();
+        bhed::gui::wache::lebenszeichen();
         if (g_fontsDirty) {
             bhed::diag::Step fontStep("Schriften bauen");
             buildFonts();
@@ -566,6 +648,31 @@ bool runSession(bhed::render::Backend preferred, HWND hwnd, bhed::gui::App* app)
         const bhed::theme::Color bg = (t != nullptr) ? t->window
                                                      : bhed::theme::Color{0.2F, 0.2F, 0.2F, 1.0F};
         bhed::render::present(bg.r, bg.g, bg.b);
+        BHED_BILD();
+        if (nachricht || !bhed::gui::darfRuhen()) {
+            letzteUnruhe = std::chrono::steady_clock::now();
+        }
+
+        // --- Verlorenes Geraet: neu aufbauen (rc596) ----------------------
+        //
+        // Alles, was am alten Geraet hing, freigeben (GPU-Weg, Swapchain,
+        // ImGui-Teil fuer Direct3D) und ein neues anlegen - wieder auf der
+        // gewuenschten Karte. Programmzustand und Skript bleiben, wie sie
+        // sind; die Karte wird neu hochgeladen, sobald sie gezeichnet wird.
+        // Geht es dreimal hintereinander nicht, geordnet beenden statt mit
+        // einem toten Geraet weiterzulaufen.
+        if (bhed::render::geraetVerloren() && !neuaufbauOffen) {
+            bhed::diag::info("Grafik nach Geraeteverlust abbauen");
+            // Beide ImGui-Teile: der DX11-Teil raeumt beim Abbau auch die
+            // Plattformfenster ab (DestroyPlatformWindows), darunter die
+            // Daten des Hauptfensters, die dem Win32-Teil gehoeren - ohne
+            // dessen Neustart stuerzte das naechste NewFrame in
+            // ImGui_ImplWin32_GetWindowDpiScale ab (Kartentest).
+            ImGui_ImplWin32_Shutdown();
+            bhed::gpu::shutdown();
+            bhed::render::shutdown();
+            neuaufbauOffen = true;
+        }
     }
 
     // Der Bericht VOR dem Aufraeumen: danach gibt es kein Geraet mehr, und
@@ -573,6 +680,12 @@ bool runSession(bhed::render::Backend preferred, HWND hwnd, bhed::gui::App* app)
     // haengen daran. Ohne Zutun - es gibt keinen Knopf dafuer.
     bhed::gui::schreibeBericht();
 
+    if (neuaufbauOffen) {
+        // Nach einem Geraeteverlust ohne neues Geraet ist schon alles
+        // abgebaut.
+        ImGui::DestroyContext();
+        return true;
+    }
     ImGui_ImplWin32_Shutdown();
     // VOR render::shutdown(): die Puffer und Texturen des GPU-Wegs gehoeren
     // dem Geraet. Wer sie danach freigibt, gibt sie an ein Geraet zurueck,
@@ -627,6 +740,9 @@ LONG WINAPI logCrash(EXCEPTION_POINTERS* info) {
         if (!step.empty()) {
             bhed::diag::error("  waehrend: " + step);
         }
+        // Zuletzt das Abbild (rc596) - die Zeilen oben stehen dann schon im
+        // Protokoll, auch wenn das Schreiben des Abbilds scheitert.
+        bhed::gui::wache::absturz(info);
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -764,6 +880,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         (void)bhed::diag::openDetail(logDir + "\\behaved-detail.log");
     }
     SetUnhandledExceptionFilter(logCrash);
+    if (logging) {
+        bhed::gui::wache::starten(logDir);
+    }
 
     {
         bhed::diag::Step step("Start");

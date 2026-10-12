@@ -82,6 +82,7 @@ add_library(bhed_core STATIC
   src/efx_sim.cpp
   src/efx_curve.cpp
   src/efxdraw.cpp
+  src/arbeiter.cpp
   src/mission.cpp)
 target_include_directories(bhed_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # third_party als SYSTEM: dann schweigt der Uebersetzer ueber fremden Code.
@@ -204,6 +205,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/selbsttest.cpp
     gui/update_win32.cpp
     gui/vektoricons.cpp
+    gui/wache_win32.cpp
     # Symbol, Versionsangaben und Manifest. Ohne das zeigt der Explorer das
     # Standardsymbol, und Rechtsklick -> Details bleibt leer.
     res/behaved.rc)
@@ -224,6 +226,14 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     # unten laufen ebenfalls ueber target_link_options und wuerden dabei
     # lautlos verschwinden.
     target_link_options(behaved PRIVATE /MANIFEST:NO)
+    # Eine PDB auch im Release (rc596): ohne sie ist ein Absturzabbild
+    # (behaved-absturz.dmp, gui/wache.h) kaum zu lesen. Am Code aendert das
+    # nichts; /OPT:REF und /OPT:ICF stehen ausdruecklich da, weil /DEBUG sie
+    # sonst abschaltet. Die PDB wird nicht ausgeliefert, nur aufbewahrt.
+    target_compile_options(behaved PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_compile_options(bhed_core PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_compile_options(imgui PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_link_options(behaved PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
     # Der Selbsttest ist eine einzige grosse Datei voller Lambdas - mehr als
     # die 65536 Abschnitte einer normalen Objektdatei (C1128).
     set_source_files_properties(gui/selbsttest.cpp PROPERTIES COMPILE_OPTIONS /bigobj)
@@ -256,6 +266,42 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
             $<TARGET_FILE_DIR:behaved>/data/base)
 elseif(WIN32)
   message(STATUS "Oberflaeche wird nicht gebaut: -DIMGUI_DIR=<pfad> setzen")
+endif()
+
+# --- Tracy (rc596) ----------------------------------------------------
+#
+# Zuschaltbarer Profiler: -DBEHAVED_TRACY=ON holt Tracy (BSD-Lizenz) beim
+# Konfigurieren und schaltet die Messpunkte aus bhed/messpunkt.h ein. Ohne
+# die Option bleibt alles beim Alten.
+option(BEHAVED_TRACY "Messpunkte fuer den Profiler Tracy einbauen" OFF)
+if(BEHAVED_TRACY)
+  include(FetchContent)
+  FetchContent_Declare(tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG v0.11.1
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(tracy)
+  target_link_libraries(bhed_core PUBLIC TracyClient)
+  target_compile_definitions(bhed_core PUBLIC BHED_TRACY TRACY_ENABLE)
+endif()
+
+# --- Fuzzing (rc596) ---------------------------------------------------
+#
+# Ein libFuzzer-Ziel fuer alle Dateileser (tools/fuzzziel.cpp). Nur in einem
+# eigenen Build-Ordner, zusammen mit dem AddressSanitizer:
+#   cmake -B build-fuzz -DBEHAVED_FUZZ=ON -DBEHAVED_TESTS=OFF
+#         -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc /fsanitize=address /Zi"
+# Die Leser in bhed_core bekommen die Abdeckungszaehler, damit der Fuzzer
+# sieht, welche Wege eine Eingabe neu oeffnet.
+option(BEHAVED_FUZZ "libFuzzer-Ziel fuer die Dateileser bauen (MSVC)" OFF)
+if(BEHAVED_FUZZ AND MSVC)
+  target_compile_options(bhed_core PRIVATE
+    /fsanitize-coverage=inline-8bit-counters /fsanitize-coverage=edge
+    /fsanitize-coverage=trace-cmp /fsanitize-coverage=trace-div)
+  add_executable(fuzzziel tools/fuzzziel.cpp)
+  target_link_libraries(fuzzziel PRIVATE bhed_core)
+  target_compile_options(fuzzziel PRIVATE /fsanitize=fuzzer)
+  target_link_options(fuzzziel PRIVATE /INCREMENTAL:NO)
 endif()
 
 # --- Pruefstaende ------------------------------------------------------
@@ -292,7 +338,7 @@ if(BEHAVED_TESTS)
   # Die Proben des GPU-Wegs und des Gluehens. Sie lagen in tests/, wurden
   # aber nicht gebaut - Aenderungen an Konstantenlagen, Shadertext und
   # Zeichenliste liefen damit ungeprueft durch (rc568, gDeformSpread).
-  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover)
+  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter)
     add_executable(${t}_probe tests/${t}.cpp)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)

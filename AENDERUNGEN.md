@@ -1,5 +1,77 @@
 # Änderungen seit rc94
 
+## rc596 — Leistungsstarke Grafikkarte, Flip-Modell, Effektpläne
+
+Gewünscht: „okay mach damit weiter“ (Spawn-Plan), dann: „ich habe noch eine
+NVIDIA Grafik karte ganz wichtig“ – und: „das programm gibt es ja für alle
+leute das heißt es muss für alle funktionieren“.
+
+* **Grafikkarte** (`initD3D11`, `holeKarte`): behaved lief auf shanks Laptop
+  auf „Intel(R) UHD Graphics“, die RTX 4070 daneben stand still. Jetzt zuerst
+  die Karte, die Windows als leistungsstärkste nennt
+  (`IDXGIFactory6::EnumAdapterByGpuPreference`, dxgi.dll zur Laufzeit
+  geladen), dazu `NvOptimusEnablement`/`AmdPowerXpressRequestHighPerformance`
+  in der .exe. Rückfall: Windows wählt, dann WARP; vor Windows 10 1803 wie
+  bisher. `BHED_GPU=sparsam` wählt ausdrücklich die sparsamste – nur
+  „Windows wählen lassen“ reicht wegen NvOptimusEnablement nicht.
+  Nachgestellt im Kartentest („Grafikkarte: behaved läuft auf der gewünschten
+  Karte“, vorher FEHLER mit Intel), beide Wege geprüft.
+  Gemessen: reine GPU-Zeit je Bild Intel ~1,7 ms, NVIDIA ~0,25 ms; die
+  Bildzeit ist inzwischen überwiegend CPU.
+* **Flip-Modell** (`DXGI_SWAP_EFFECT_FLIP_DISCARD`, drei Puffer, gleiche
+  Flags bei `ResizeBuffers`; Rückfall auf das alte Blt-Modell vor
+  Windows 10): Microsoft nennt Zusatzarbeit des Blt-Modells auf Laptops mit
+  zwei Grafikchips. Auf der NVIDIA md_ga_jedi 13 → 5 ms, md_am_sith 9 → 5,
+  Flug md_jt 8,2 → 4,6; Fotos pixelgleich.
+* **Spawn-Pläne** (`geplant`): efx::sim::schedule je Durchgang gemerkt;
+  Schlüssel sind genau die Felder, die schedule liest, samt Samen, Bit für Bit
+  verglichen – ein neu geladener oder veränderter Effekt bekommt nie einen
+  alten Plan. Fotos der Effektszenen pixelgleich mit rc595.
+* Recherche (Hintergrundagent) zu CPU/GPU-Zusammenspiel, Stabilität und neuen
+  Erkenntnissen. shank: „alles was mittel und klein ist … der Umstieg auf
+  D3D12 und Vulkan bleibt offen“, „mach alle Änderungen und mach einen großen
+  Test am Ende“. Umgesetzt:
+* **Nur zeichnen bei Änderung** (`darfRuhen`, `MsgWaitForMultipleObjectsEx`
+  mit höchstens 250 ms): nach einer Sekunde ohne Eingabe, wenn nichts
+  abspielt, kein Ton läuft, kein Textfeld aktiv und keine Taste gedrückt ist;
+  nie im Selbsttest (außer der eigenen Probe mit `ruheImTest`).
+* **Wartbare Swapchain** (`FRAME_LATENCY_WAITABLE_OBJECT`,
+  `SetMaximumFrameLatency(2)`, `render::warteAufBild`), nur im Flip-Modell.
+* **Feste Arbeitsfäden** (`bhed/arbeiter.h`): `spurenVerteilt` und
+  `vorrechnen` legen keine Fäden mehr je Aufruf an; Probe `arbeiter` in ctest.
+* **Konstantenring** (`stapelKonstantenImRing`): 1 MB, `NO_OVERWRITE`,
+  `VSSetConstantBuffers1` mit Versatz; ohne D3D11.1-Merkmale der alte Weg.
+* Sortierung der deckenden Aufrufe nach Zustand gab es schon
+  (`buildDrawCalls`); feiner sortieren würde gleich tiefe Flächen anders
+  übereinanderlegen – nicht gemacht.
+* **Geräteverlust** (`render::geraetVerloren`): Present mit
+  `DXGI_ERROR_DEVICE_REMOVED`/`RESET` → Grund ins Protokoll, GPU-Weg und Gerät
+  neu, `grafikNeuAufgebaut`; dreimal vergeblich → geordnet beenden. Probe im
+  Kartentest (gespielter Verlust).
+* **Absturzabbild und Wächter** (`gui/wache_win32.cpp`): Minidump aus einem
+  vorab angelegten Faden (`behaved-absturz.dmp`), Hänger ab 30 s ins Protokoll
+  samt `behaved-haenger.dmp`, Dateidialoge zählen nicht. Probe im Kartentest.
+* **Tracy** zuschaltbar (`-DBEHAVED_TRACY=ON`, `bhed/messpunkt.h`), sonst leer.
+* **Fuzzing** (`-DBEHAVED_FUZZ=ON`, `tools/fuzzziel.cpp`): libFuzzer mit ASan
+  über alle Dateileser, Startkorpus aus den Spielarchiven. 20 Minuten,
+  63 408 Eingaben, 3054 neue Wege: kein Absturz, kein ASan-Treffer, kein Hänger.
+* **Gefunden im großen Test** (gespielter Geräteverlust im Kartentest):
+  Absturz im ersten NewFrame nach dem Neuaufbau. Mit dem neuen Absturzabbild
+  und einer PDB (jetzt auch im Release erzeugt, nicht ausgeliefert) lag er in
+  `ImGui_ImplWin32_GetWindowDpiScale`: der Abbau des DX11-Teils räumt die
+  Plattformfenster ab, auch die Daten des Hauptfensters des Win32-Teils.
+  Jetzt werden beide ImGui-Teile ab- und wieder angebaut; ein gescheitertes
+  neues Gerät wird erneut versucht statt vergessen. Außerdem fiel der
+  Neuaufbau auf das Blt-Modell zurück – `ClearState`/`Flush` vor dem
+  Freigeben (verzögerte Zerstörung in D3D11). Beides nachgestellt (Absturz,
+  „Flip-Modell nicht verfügbar“), behoben, im selben Test bestätigt.
+* **Gefunden unter ASan:** der Ruhezustand zählte „eine Sekunde“ als 60
+  Bilder – bei langsamen Bildern mehrere Sekunden; jetzt echte Zeit. Ein
+  minimiertes Testfenster (Win+D während eines Laufs) liess alle weiteren
+  Klicks ins Leere gehen, und eine Klickposition im Test las `keyMarks[2]`
+  ohne Größenprüfung (container-overflow); der Selbsttest stellt das Fenster
+  jetzt wieder her (ohne es zu aktivieren), die Zugriffe sind geprüft.
+
 ## rc595 — Leistung: Fliegen in Karten mit vielen Effekten (kor1)
 
 Gewünscht: „kor1 bleibt mit 15 ms beim Fliegen am langsamsten … okay dann

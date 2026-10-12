@@ -40,6 +40,7 @@
 #ifdef BHED_WITH_D3D11
 #include "imgui_impl_dx11.h"
 #include <d3d11.h>
+#include <dxgi1_6.h>
 #endif
 
 #include <cstdio>
@@ -47,6 +48,9 @@
 #include <vector>
 
 namespace bhed::render {
+#ifdef BHED_WITH_D3D11
+IDXGIAdapter1* holeKarte(bool leistung);   // weiter unten
+#endif
 namespace {
 
 Backend g_backend = Backend::Direct3D11;
@@ -58,6 +62,11 @@ HWND g_hwnd = nullptr;
 ID3D11Device* g_device = nullptr;
 ID3D11DeviceContext* g_context = nullptr;
 IDXGISwapChain* g_swap = nullptr;
+UINT g_swapFlags = 0;   // dieselben Flags fuer ResizeBuffers wie beim Anlegen
+bool g_swapFlip = false;
+HANDLE g_bildFrei = nullptr;   // wartbare Swapchain (rc596)
+bool g_geraetVerloren = false;
+bool g_verlustSpielen = false;
 ID3D11RenderTargetView* g_rtv = nullptr;
 
 void createRtv() {
@@ -80,7 +89,15 @@ void releaseRtv() {
 
 bool initD3D11(HWND hwnd) {
     DXGI_SWAP_CHAIN_DESC sd{};
-    sd.BufferCount = 2;
+    // --- Flip-Modell (rc596) ------------------------------------------------
+    //
+    // Bis rc595 DXGI_SWAP_EFFECT_DISCARD, das alte "Blt"-Modell: jedes Bild
+    // wird in eine Flaeche des Desktop-Compositors kopiert. Microsoft
+    // ("For best performance, use DXGI flip model"): auf Laptops mit zwei
+    // Grafikchips kostet das seit Windows 10 1803 zusaetzliche Arbeit - also
+    // genau dann, wenn behaved jetzt auf der NVIDIA zeichnet. FLIP_DISCARD
+    // mit drei Puffern; vor Windows 10 gibt es das nicht, dann wie bisher.
+    sd.BufferCount = 3;
     sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     sd.BufferDesc.RefreshRate.Numerator = 60;
     sd.BufferDesc.RefreshRate.Denominator = 1;
@@ -88,84 +105,149 @@ bool initD3D11(HWND hwnd) {
     sd.OutputWindow = hwnd;
     sd.SampleDesc.Count = 1;
     sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    // Wartbar (rc596): vor jedem Bild auf einen freien Puffer warten statt
+    // in Present - hoechstens zwei Bilder in der Warteschlange, damit die
+    // Eingabe nicht drei Bilder hinter dem Bildschirm herlaeuft (NVIDIA,
+    // "Advanced API Performance: Swap Chains"; Microsoft, "Reduce latency
+    // with DXGI 1.3 swap chains").
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
     const D3D_FEATURE_LEVEL wanted[] = {D3D_FEATURE_LEVEL_11_0,
                                         D3D_FEATURE_LEVEL_10_1,
                                         D3D_FEATURE_LEVEL_10_0};
     D3D_FEATURE_LEVEL got{};
 
-    // Erst die Grafikkarte. Nur wenn die nichts liefert, WARP - das rechnet
-    // auf der Hauptrechnereinheit und ist langsam, aber es laeuft ueberall.
-    for (const D3D_DRIVER_TYPE driver : {D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP}) {
-        // --- Die Direct3D-Debugschicht ---------------------------------
-        //
-        // Sie prueft JEDEN Aufruf und meldet im Klartext, was nicht stimmt:
-        // "Konstantenpuffer zu klein", "Eingabelayout passt nicht zum
-        // Shader", "Textur gleichzeitig gebunden und beschrieben".
-        //
-        // Der GPU-Weg ist blind geschrieben worden - ohne Windows laesst er
-        // sich hier nicht ausfuehren -, und ich habe dieses Werkzeug
-        // dreissig Runden lang nicht eingeschaltet. Mehrere Umwege dieser
-        // Sitzung haette es beim ersten Bild beendet.
-        //
-        // Nur mit BHED_D3D_DEBUG=1 in der Umgebung: die Schicht kostet
-        // Leistung und ist auf Rechnern ohne "Grafiktools" gar nicht da.
-        // Schlaegt das Anlegen damit fehl, wird es ohne sie wiederholt.
-        // Immer AN versuchen, nicht nur auf Anforderung.
-        //
-        // shanks Frage: "warum muss ich ueberhaupt einen extra Knopf
-        // aktivieren fuer das Debuggen? kann es das nicht immer automatisch
-        // machen?" - Sie ist berechtigt. Ein Werkzeug, das man erst
-        // einschalten muss, ist genau dann aus, wenn man es braucht.
-        //
-        // Die Schicht kostet Leistung, aber der Rasterer laeuft ohnehin bei
-        // 240 fps und der GPU-Weg bei ueber 800. Gemessen wird mit
-        // BHED_D3D_DEBUG=0, wenn es je darauf ankommt.
-        //
-        // Auf Rechnern ohne "Grafiktools" gibt es sie nicht - dann wird
-        // stillschweigend ohne sie wiederholt.
-        //
-        // rc594: nur noch im Selbsttest (BHED_EDITORTEST) oder mit
-        // BHED_D3D_DEBUG=1. Gemessen an den Kamerafahrten: mit der Schicht
-        // 33 statt 18 ms je Bild in md_am_sith, 19 statt 11 in kor1 - die
-        // "800 fps" oben stammen aus einer Zeit mit weit weniger Aufrufen.
-        // shank: "Nur in Tests an". Die Selbsttests finden D3D-Fehler damit
-        // weiter von selbst; BHED_D3D_DEBUG=0 schaltet sie auch dort ab.
-        const char* dbg = std::getenv("BHED_D3D_DEBUG");
-        const bool imTest = std::getenv("BHED_EDITORTEST") != nullptr;
-        UINT flags = 0;
-        if (dbg != nullptr ? dbg[0] == '1' : imTest) {
-            flags = D3D11_CREATE_DEVICE_DEBUG;
+    // --- Welche Karte (rc596) ----------------------------------------------
+    //
+    // Zuerst die, die Windows als leistungsstaerkste nennt. Auf einem Laptop
+    // mit Intel und NVIDIA (Optimus) bekam behaved sonst die Intel - bei
+    // shank lief alles auf "Intel(R) UHD Graphics", die RTX 4070 daneben
+    // stand still. Auf einem Rechner mit nur einer Karte ist das dieselbe
+    // wie vorher. Geht es dort nicht (alter Treiber, Karte abgeschaltet,
+    // Windows ohne IDXGIFactory6), wie bisher: Windows waehlt, dann WARP.
+    // BHED_GPU=sparsam nimmt ausdruecklich die sparsamste (Akku) - nur
+    // "Windows waehlen lassen" reicht nicht, denn NvOptimusEnablement (siehe
+    // main_win32.cpp) lenkt auch die Standardwahl auf die NVIDIA.
+    IDXGIAdapter1* stark = holeKarte(!sparsamGewuenscht());
+    struct Versuch {
+        IDXGIAdapter* karte;
+        D3D_DRIVER_TYPE typ;
+    };
+    std::vector<Versuch> versuche;
+    if (stark != nullptr) {
+        versuche.push_back({stark, D3D_DRIVER_TYPE_UNKNOWN});
+    }
+    // Dann die Grafikkarte, die Windows gibt. Nur wenn die nichts liefert,
+    // WARP - das rechnet auf der Hauptrechnereinheit und ist langsam, aber
+    // es laeuft ueberall.
+    versuche.push_back({nullptr, D3D_DRIVER_TYPE_HARDWARE});
+    versuche.push_back({nullptr, D3D_DRIVER_TYPE_WARP});
+    for (int modell = 0; modell < 2; ++modell) {
+        if (modell == 1) {
+            // Kein Flip-Modell (vor Windows 10): das alte, wie bis rc595.
+            diag::detail("Flip-Modell nicht verfuegbar - altes Blt-Modell");
+            sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+            sd.BufferCount = 2;
+            sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;   // wartbar gibt es nur mit Flip
         }
-        HRESULT hr = D3D11CreateDeviceAndSwapChain(
-            nullptr, driver, nullptr, flags, wanted,
-            static_cast<UINT>(sizeof(wanted) / sizeof(wanted[0])),
-            D3D11_SDK_VERSION, &sd, &g_swap, &g_device, &got, &g_context);
-        if (FAILED(hr) && flags != 0) {
-            // Ohne installierte Grafiktools gibt es die Schicht nicht.
-            diag::detail("D3D-Debugschicht nicht verfuegbar - ohne sie");
-            flags = 0;
-            hr = D3D11CreateDeviceAndSwapChain(
-                nullptr, driver, nullptr, 0, wanted,
+        for (const Versuch& versuch : versuche) {
+            const D3D_DRIVER_TYPE driver = versuch.typ;
+            // --- Die Direct3D-Debugschicht ---------------------------------
+            //
+            // Sie prueft JEDEN Aufruf und meldet im Klartext, was nicht stimmt:
+            // "Konstantenpuffer zu klein", "Eingabelayout passt nicht zum
+            // Shader", "Textur gleichzeitig gebunden und beschrieben".
+            //
+            // Der GPU-Weg ist blind geschrieben worden - ohne Windows laesst er
+            // sich hier nicht ausfuehren -, und ich habe dieses Werkzeug
+            // dreissig Runden lang nicht eingeschaltet. Mehrere Umwege dieser
+            // Sitzung haette es beim ersten Bild beendet.
+            //
+            // Nur mit BHED_D3D_DEBUG=1 in der Umgebung: die Schicht kostet
+            // Leistung und ist auf Rechnern ohne "Grafiktools" gar nicht da.
+            // Schlaegt das Anlegen damit fehl, wird es ohne sie wiederholt.
+            // Immer AN versuchen, nicht nur auf Anforderung.
+            //
+            // shanks Frage: "warum muss ich ueberhaupt einen extra Knopf
+            // aktivieren fuer das Debuggen? kann es das nicht immer automatisch
+            // machen?" - Sie ist berechtigt. Ein Werkzeug, das man erst
+            // einschalten muss, ist genau dann aus, wenn man es braucht.
+            //
+            // Die Schicht kostet Leistung, aber der Rasterer laeuft ohnehin bei
+            // 240 fps und der GPU-Weg bei ueber 800. Gemessen wird mit
+            // BHED_D3D_DEBUG=0, wenn es je darauf ankommt.
+            //
+            // Auf Rechnern ohne "Grafiktools" gibt es sie nicht - dann wird
+            // stillschweigend ohne sie wiederholt.
+            //
+            // rc594: nur noch im Selbsttest (BHED_EDITORTEST) oder mit
+            // BHED_D3D_DEBUG=1. Gemessen an den Kamerafahrten: mit der Schicht
+            // 33 statt 18 ms je Bild in md_am_sith, 19 statt 11 in kor1 - die
+            // "800 fps" oben stammen aus einer Zeit mit weit weniger Aufrufen.
+            // shank: "Nur in Tests an". Die Selbsttests finden D3D-Fehler damit
+            // weiter von selbst; BHED_D3D_DEBUG=0 schaltet sie auch dort ab.
+            const char* dbg = std::getenv("BHED_D3D_DEBUG");
+            const bool imTest = std::getenv("BHED_EDITORTEST") != nullptr;
+            UINT flags = 0;
+            if (dbg != nullptr ? dbg[0] == '1' : imTest) {
+                flags = D3D11_CREATE_DEVICE_DEBUG;
+            }
+            HRESULT hr = D3D11CreateDeviceAndSwapChain(
+                versuch.karte, driver, nullptr, flags, wanted,
                 static_cast<UINT>(sizeof(wanted) / sizeof(wanted[0])),
-                D3D11_SDK_VERSION, &sd, &g_swap, &g_device, &got,
-                &g_context);
-        } else if (SUCCEEDED(hr) && flags != 0) {
-            diag::detail("D3D-Debugschicht AN - Meldungen im Debugfenster");
-        }
-        if (SUCCEEDED(hr)) {
-            createRtv();
-            return ImGui_ImplDX11_Init(g_device, g_context);
+                D3D11_SDK_VERSION, &sd, &g_swap, &g_device, &got, &g_context);
+            if (FAILED(hr) && flags != 0) {
+                // Ohne installierte Grafiktools gibt es die Schicht nicht.
+                diag::detail("D3D-Debugschicht nicht verfuegbar - ohne sie");
+                flags = 0;
+                hr = D3D11CreateDeviceAndSwapChain(
+                    versuch.karte, driver, nullptr, 0, wanted,
+                    static_cast<UINT>(sizeof(wanted) / sizeof(wanted[0])),
+                    D3D11_SDK_VERSION, &sd, &g_swap, &g_device, &got,
+                    &g_context);
+            } else if (SUCCEEDED(hr) && flags != 0) {
+                diag::detail("D3D-Debugschicht AN - Meldungen im Debugfenster");
+            }
+            if (SUCCEEDED(hr)) {
+                createRtv();
+                if (stark != nullptr) { stark->Release(); }
+                g_swapFlags = sd.Flags;
+                g_swapFlip = (sd.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD);
+                if ((sd.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) != 0U) {
+                    IDXGISwapChain2* sc2 = nullptr;
+                    if (SUCCEEDED(g_swap->QueryInterface(__uuidof(IDXGISwapChain2), reinterpret_cast<void**>(&sc2))) &&
+                        sc2 != nullptr) {
+                        sc2->SetMaximumFrameLatency(2);
+                        g_bildFrei = sc2->GetFrameLatencyWaitableObject();
+                        sc2->Release();
+                    }
+                }
+                diag::detail("Grafikkarte: " + geraeteKarte() + (g_swapFlip ? " (Flip-Modell)" : " (Blt-Modell)"));
+                return ImGui_ImplDX11_Init(g_device, g_context);
+            }
+            if (versuch.karte != nullptr) {
+                diag::detail("Grafikkarte: auf der gewuenschten Karte kein Geraet - Windows waehlt");
+            }
         }
     }
+    if (stark != nullptr) { stark->Release(); }
     return false;
 }
 
 void shutdownD3D11() {
+    if (g_bildFrei != nullptr) { CloseHandle(g_bildFrei); g_bildFrei = nullptr; }
+    g_geraetVerloren = false;
     ImGui_ImplDX11_Shutdown();
     releaseRtv();
+    // D3D11 zerstoert verzoegert: ohne ClearState und Flush haengt die alte
+    // Swapchain noch am Fenster, und eine neue im Flip-Modell wird abgelehnt
+    // (Microsoft, "DXGI flip model": deferred destruction). Gesehen beim
+    // Neuaufbau nach einem Geraeteverlust - er fiel auf das Blt-Modell zurueck.
+    if (g_context != nullptr) {
+        g_context->ClearState();
+        g_context->Flush();
+    }
     if (g_swap != nullptr) { g_swap->Release(); g_swap = nullptr; }
     if (g_context != nullptr) { g_context->Release(); g_context = nullptr; }
     if (g_device != nullptr) { g_device->Release(); g_device = nullptr; }
@@ -391,6 +473,133 @@ void updateTextureBereich(void* handle, const unsigned char* rgba, int width, in
     updateTexture(handle, rgba, width, height);
 }
 
+#ifdef BHED_WITH_D3D11
+namespace {
+std::string kartenName(IDXGIAdapter* ad) {
+    std::string aus;
+    DXGI_ADAPTER_DESC beschr{};
+    if (ad != nullptr && SUCCEEDED(ad->GetDesc(&beschr))) {
+        for (const WCHAR* p = beschr.Description; *p != 0; ++p) {
+            aus += (*p < 128) ? static_cast<char>(*p) : '?';
+        }
+    }
+    return aus;
+}
+}  // namespace
+
+// Die leistungsstaerkste Karte laut Windows (IDXGIFactory6::
+// EnumAdapterByGpuPreference), ohne Software-Rasterer. dxgi.dll wird erst
+// hier geladen - fest gelinkt stuende sie als harter Import in der .exe
+// (siehe CMakeLists, DELAYLOAD). nullptr, wenn Windows es nicht sagen kann.
+IDXGIAdapter1* holeKarte(bool leistung) {
+    HMODULE dxgi = LoadLibraryW(L"dxgi.dll");
+    if (dxgi == nullptr) {
+        return nullptr;
+    }
+    using Fabrik = HRESULT(WINAPI*)(REFIID, void**);
+    const auto anlegen = reinterpret_cast<Fabrik>(reinterpret_cast<void*>(GetProcAddress(dxgi, "CreateDXGIFactory1")));
+    if (anlegen == nullptr) {
+        return nullptr;
+    }
+    IDXGIFactory6* fabrik = nullptr;
+    if (FAILED(anlegen(__uuidof(IDXGIFactory6), reinterpret_cast<void**>(&fabrik))) || fabrik == nullptr) {
+        return nullptr;
+    }
+    IDXGIAdapter1* gefunden = nullptr;
+    for (UINT i = 0;; ++i) {
+        IDXGIAdapter1* ad = nullptr;
+        const DXGI_GPU_PREFERENCE vorzug =
+            leistung ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+        if (FAILED(fabrik->EnumAdapterByGpuPreference(i, vorzug, __uuidof(IDXGIAdapter1), reinterpret_cast<void**>(&ad))) ||
+            ad == nullptr) {
+            break;
+        }
+        DXGI_ADAPTER_DESC1 d1{};
+        if (SUCCEEDED(ad->GetDesc1(&d1)) && (d1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0) {
+            gefunden = ad;
+            break;
+        }
+        ad->Release();
+    }
+    fabrik->Release();
+    return gefunden;
+}
+
+std::string geraeteKarte() {
+    if (g_device == nullptr) {
+        return "";
+    }
+    std::string aus;
+    IDXGIDevice* dxdev = nullptr;
+    if (SUCCEEDED(g_device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxdev))) &&
+        dxdev != nullptr) {
+        IDXGIAdapter* ad = nullptr;
+        if (SUCCEEDED(dxdev->GetAdapter(&ad)) && ad != nullptr) {
+            aus = kartenName(ad);
+            ad->Release();
+        }
+        dxdev->Release();
+    }
+    return aus;
+}
+
+namespace {
+std::string karteNach(bool leistung) {
+    IDXGIAdapter1* ad = holeKarte(leistung);
+    if (ad == nullptr) {
+        return "";
+    }
+    std::string aus = kartenName(ad);
+    ad->Release();
+    return aus;
+}
+}  // namespace
+
+std::string staerksteKarte() { return karteNach(true); }
+std::string sparsamsteKarte() { return karteNach(false); }
+#else
+std::string geraeteKarte() { return ""; }
+std::string staerksteKarte() { return ""; }
+std::string sparsamsteKarte() { return ""; }
+#endif
+
+void warteAufBild() {
+#ifdef BHED_WITH_D3D11
+    if (g_ready && g_backend == Backend::Direct3D11 && g_bildFrei != nullptr) {
+        // Hoechstens eine Sekunde - haengt die Grafik, soll die Oberflaeche
+        // nicht mit ihr stehen bleiben.
+        WaitForSingleObjectEx(g_bildFrei, 1000, TRUE);
+    }
+#endif
+}
+
+bool geraetVerloren() {
+#ifdef BHED_WITH_D3D11
+    return g_geraetVerloren;
+#else
+    return false;
+#endif
+}
+
+void geraetVerlorenSpielen() {
+#ifdef BHED_WITH_D3D11
+    g_verlustSpielen = true;
+#endif
+}
+
+bool flipModell() {
+#ifdef BHED_WITH_D3D11
+    return g_swapFlip;
+#else
+    return false;
+#endif
+}
+
+bool sparsamGewuenscht() {
+    const char* wahl = std::getenv("BHED_GPU");
+    return wahl != nullptr && std::string(wahl) == "sparsam";
+}
+
 void destroyTextures() {
 #ifdef BHED_WITH_D3D11
     for (ID3D11ShaderResourceView* t : g_d3dTextures) {
@@ -508,7 +717,18 @@ void present(float r, float g, float bl) {
         g_context->ClearRenderTargetView(g_rtv, clear);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         if (!g_fotoPfad.empty()) { fotoSchreiben(); }
-        g_swap->Present(1, 0);
+        const HRESULT hr = g_swap->Present(1, 0);
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || g_verlustSpielen) {
+            // Den Grund VOR dem Freigeben fragen - danach gibt es ihn nicht mehr.
+            const HRESULT grund = g_verlustSpielen ? S_OK : g_device->GetDeviceRemovedReason();
+            char z[160];
+            std::snprintf(z, sizeof(z), "Grafikgeraet verloren: Present 0x%08lX, Grund 0x%08lX%s",
+                          static_cast<unsigned long>(hr), static_cast<unsigned long>(grund),
+                          g_verlustSpielen ? " (Selbsttest)" : "");
+            diag::error(z);
+            g_verlustSpielen = false;
+            g_geraetVerloren = true;
+        }
         return;
     }
 #endif
@@ -531,7 +751,7 @@ void resize(int width, int height) {
     if (g_backend == Backend::Direct3D11) {
         releaseRtv();
         g_swap->ResizeBuffers(0, static_cast<UINT>(width), static_cast<UINT>(height),
-                              DXGI_FORMAT_UNKNOWN, 0);
+                              DXGI_FORMAT_UNKNOWN, g_swapFlags);
         createRtv();
     }
 #else

@@ -32,6 +32,7 @@
 #include "update.h"
 #include "app_internal.h"
 #include "backend.h"
+#include "wache.h"
 #include "gpumap.h"
 #include "bhed/changelog.h"
 #include "bhed/entdefs.h"
@@ -3781,8 +3782,9 @@ std::vector<Schritt> kartenBreitSchritte() {
     add(gezeichnet("Gizmo-Vorschau"));
     add(tu("Schreiben wie beim Loslassen (rc588: kein Apply-Knopf mehr)", [] { kameraVorschauSchreiben(); }));
     add(pruefe("Write to script: der MOVE-Vektor ist geaendert", [=] {
-        const Path w = g_app->keyMarks.empty() || g_app->selectedKey < 0 ? Path{}
-                       : g_app->keyMarks[static_cast<std::size_t>(g_app->selectedKey)].path;
+        const Path w = g_app->selectedKey < 0 || static_cast<std::size_t>(g_app->selectedKey) >= g_app->keyMarks.size()
+                           ? Path{}
+                           : g_app->keyMarks[static_cast<std::size_t>(g_app->selectedKey)].path;
         const Node* n = w.empty() ? nullptr : nodeAt(g_app->doc.script(), w);
         const std::string jetzt = (n != nullptr && n->args.size() > 1) ? n->args[1].text : "";
         diag::detail("Knopftest: MOVE vorher \"" + *moveVorher + "\" nachher \"" + jetzt + "\"");
@@ -3790,8 +3792,9 @@ std::vector<Schritt> kartenBreitSchritte() {
     }));
     add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
     add(pruefe("Strg+Z nimmt das Zurueckschreiben zurueck", [=] {
-        const Path w = g_app->keyMarks.empty() || g_app->selectedKey < 0 ? Path{}
-                       : g_app->keyMarks[static_cast<std::size_t>(g_app->selectedKey)].path;
+        const Path w = g_app->selectedKey < 0 || static_cast<std::size_t>(g_app->selectedKey) >= g_app->keyMarks.size()
+                           ? Path{}
+                           : g_app->keyMarks[static_cast<std::size_t>(g_app->selectedKey)].path;
         const Node* n = w.empty() ? nullptr : nodeAt(g_app->doc.script(), w);
         return n != nullptr && n->args.size() > 1 && n->args[1].text == *moveVorher;
     }));
@@ -8955,6 +8958,7 @@ std::vector<Schritt> kameraSchritte() {
     add(pause(0.25));
     add(gezeichnet("unterwegs"));
     add(pruefe("Unterwegs: Geisterkamera und Linie zum Zielpunkt, dort sitzt das Gizmo", [] {
+        if (g_app->keyMarks.size() < 2U) { return false; }
         const auto& k = g_app->keyMarks[1];
         return g_app->geisterKamera && g_app->selectedKey == 1 &&
                std::fabs(g_app->gizmoSx[0][0] - k.sx) < 3.0F;
@@ -9102,12 +9106,14 @@ std::vector<Schritt> kameraSchritte() {
         return g_app->keyMarks.size() == 3U && !g_app->keyMarks[0].imBild && g_app->keyMarks[2].imBild;
     }));
     add(klickAn("auf den dritten Schluessel", [] {
+        if (g_app->keyMarks.size() < 3U) { return ImVec2{-1.0F, -1.0F}; }
         const auto& k = g_app->keyMarks[2];
         return bildZuSchirm(k.sx, k.sy);
     }));
     add(pause(0.3));
     add(gezeichnet("dritter Schluessel gewaehlt"));
     add(pruefe("Angeklickt: der DRITTE Schluessel, und das Gizmo sitzt an ihm", [] {
+        if (g_app->keyMarks.size() < 3U) { return false; }
         const auto& k = g_app->keyMarks[2];
         diag::detail("Knopftest: gewaehlt " + std::to_string(g_app->selectedKey) + ", Gizmo " +
                      std::to_string(g_app->gizmoSx[0][0]) + ", Schluessel " + std::to_string(k.sx));
@@ -10528,6 +10534,21 @@ std::vector<Schritt> karteSchritte() {
                      ", Zuweisung " + (zuweisung ? "ok" : "beide halten"));
         return bau && zuweisung;
     }));
+    // rc596: auf einem Laptop mit Intel UND NVIDIA lief behaved auf der
+    // Intel ("Geraet: Intel(R) UHD Graphics") - die RTX 4070 daneben blieb
+    // ungenutzt. Gewaehlt werden soll die Karte, die Windows als
+    // leistungsstaerkste nennt (ausser mit BHED_GPU=sparsam).
+    add(pruefe("Grafikkarte: behaved laeuft auf der gewuenschten Karte", [] {
+        const std::string jetzt = render::geraeteKarte();
+        const bool sparsam = render::sparsamGewuenscht();
+        const std::string soll = sparsam ? render::sparsamsteKarte() : render::staerksteKarte();
+        diag::detail("Knopftest: Grafikkarte \"" + jetzt + "\", gewuenscht (" +
+                     (sparsam ? "sparsamste" : "staerkste") + ") \"" + soll + "\"");
+        if (soll.empty()) {
+            return true;   // Windows sagt es nicht (vor Windows 10 1803)
+        }
+        return jetzt == soll;
+    }));
     add(tu("Archiv mit maps/md_am_sith.bsp suchen", [=] {
         for (const GamePath& gp : g_app->gamePaths) {
             for (const Pk3& arc : gp.archives) {
@@ -10846,6 +10867,52 @@ std::vector<Schritt> karteSchritte() {
     add(klick(tr(Str::TlRewind), "###main"));
     add(pruefe("To start: zurueck auf 0", [] { return g_app->playMs < 0.5; }));
     add(stabil("Karte nach Play/Stop"));
+
+    // ---- rc596: Ruhezustand, Geraeteverlust, Absturzabbild ----------------
+    //
+    // Ruhe: im Selbsttest sonst aus (er geht Bild fuer Bild vor). Hier
+    // ausnahmsweise erlaubt - ohne Eingabe muss die Schleife nach einer
+    // Sekunde auf wenige Bilder je Sekunde zurueckgehen.
+    auto bilderVorher = std::make_shared<int>(0);
+    auto seit = std::make_shared<std::chrono::steady_clock::time_point>();
+    add(tu("Ruhe im Test erlauben", [] {
+        g_app->playing = false;
+        g_app->ruheImTest = true;
+    }));
+    add(pause(2.0));
+    add(tu("Ruhe: Bilder zaehlen", [=] {
+        *bilderVorher = ImGui::GetFrameCount();
+        *seit = std::chrono::steady_clock::now();
+    }));
+    add(pause(2.0));
+    add(pruefe("Ruhe: ohne Eingabe hoechstens wenige Bilder je Sekunde", [=] {
+        const double sek = std::chrono::duration<double>(std::chrono::steady_clock::now() - *seit).count();
+        const int bilder = ImGui::GetFrameCount() - *bilderVorher;
+        g_app->ruheImTest = false;
+        diag::detail("Knopftest: Ruhe - " + std::to_string(bilder) + " Bilder in " + std::to_string(sek) + " s");
+        return sek > 0.5 && static_cast<double>(bilder) / sek <= 8.0;
+    }));
+    add(pause(0.3));
+    // Geraeteverlust: so tun, als meldete Present DXGI_ERROR_DEVICE_REMOVED.
+    auto aufbauVorher = std::make_shared<int>(0);
+    auto flipVorher = std::make_shared<bool>(false);
+    add(tu("Grafikgeraet verlieren (gespielt)", [=] {
+        *aufbauVorher = g_app->grafikNeuAufbauten;
+        *flipVorher = render::flipModell();
+        render::geraetVerlorenSpielen();
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Grafik neu aufgebaut", [=] { return g_app->grafikNeuAufbauten > *aufbauVorher; }, 300));
+    add(neuZeichnen());
+    add(pruefe("Nach dem Geraeteverlust zeichnet die Karte wieder", [=] {
+        diag::detail("Knopftest: nach Neuaufbau " + std::to_string(g_app->gpuAufrufe) + " Aufrufe, Karte \"" +
+                     render::geraeteKarte() + "\"");
+        return g_app->grafikNeuAufbauten > *aufbauVorher && g_app->gpuAufrufe > 0 && gpu::zielTextur() != nullptr;
+    }));
+    add(pruefe("Nach dem Geraeteverlust wieder im Flip-Modell (wenn vorher)", [=] {
+        return !*flipVorher || render::flipModell();
+    }));
+    add(pruefe("Absturzabbild laesst sich schreiben (Minidump)", [] { return wache::probeAbbild(); }));
     return s;
 }
 

@@ -12,6 +12,8 @@
 
 #include "gpumap.h"
 
+#include "bhed/messpunkt.h"
+#include "bhed/arbeiter.h"
 #include "bhed/gpucam.h"
 #include "bhed/gpustate.h"
 #include "bhed/gpuskin.h"
@@ -177,6 +179,7 @@ int schluesselFuerZeit(double ms) {
 gpu::TiefenSicht g_gizmoTiefe;
 
 void drawCameraGizmos(MapImage& img) {
+    BHED_MESS("Gizmos");
     // Gizmo und Schluesselmarken gelten nur fuer DIESES Bild. Gesetzt werden
     // sie nur, wenn die Kamera gewaehlt ist - abgewaehlt blieben sie bis rc587
     // als unsichtbare Griffe stehen, und mit "Verschieben" als Vorgabe (rc588)
@@ -4372,6 +4375,7 @@ bool kameraMarkeOrt(const std::string& name, float* o, float* a) {
 }
 
 void prepareScene() {
+    BHED_MESS("Szene vorbereiten");
     diag::Step step("Ansicht vorbereiten");
     // Dieselbe Reihenfolge wie bisher im Zeichnen - sie ist begruendet:
     // die Szene braucht die Karte, die Effekte haengen an den Entities,
@@ -10097,30 +10101,16 @@ void schluesselMitZeit() {
 }
 
 void spurenVerteilt(std::size_t n, const std::function<void(std::size_t)>& je) {
+    BHED_MESS("Strahltests");
     if (n == 0U) {
         return;
     }
     // Der erste vorweg: beim ersten Strahl entsteht die Spurhilfe der Karte,
     // und darauf sollen nicht alle Faeden zugleich warten.
     je(0U);
-    const unsigned kerne = std::max(1U, std::thread::hardware_concurrency());
-    const std::size_t faeden = std::min<std::size_t>(kerne, n / 16U);
-    if (faeden <= 1U) {
-        for (std::size_t i = 1U; i < n; ++i) { je(i); }
-        return;
-    }
-    // Jeder holt sich den naechsten Platz selbst: die Strahlen sind sehr
-    // verschieden teuer (quer durch die Karte oder gleich vor der Wand), und
-    // mit festen Stuecken wartete der Hauptfaden auf den langsamsten.
-    std::atomic<std::size_t> naechster{1U};
-    const auto lauf = [&je, &naechster, n] {
-        for (std::size_t i = naechster.fetch_add(1U); i < n; i = naechster.fetch_add(1U)) { je(i); }
-    };
-    std::vector<std::thread> mannschaft;
-    mannschaft.reserve(faeden - 1U);
-    for (std::size_t f = 1U; f < faeden; ++f) { mannschaft.emplace_back(lauf); }
-    lauf();
-    for (std::thread& th : mannschaft) { th.join(); }
+    // Der Rest auf die festen Arbeitsfaeden (bhed/arbeiter.h, rc596) - jeder
+    // holt sich den naechsten Strahl selbst, sie sind sehr verschieden teuer.
+    arbeiter::verteilt(n - 1U, [&je](std::size_t i) { je(i + 1U); }, 16U);
 }
 
 // Balken und Vollbild-Blende ueber das GPU-Bild (rc594). Dieselben Zahlen
@@ -10150,6 +10140,7 @@ void blendeUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b, int bildHoehe) {
 }
 
 void drawMapView() {
+    BHED_MESS("Kartenansicht");
     schluesselMitZeit();
     // OHNE Karte kein frueher Ausstieg mehr.
     //

@@ -1104,6 +1104,8 @@ struct App {
     // Das Rechteck [x0, y0, x1, y1), in das die Gizmos in diesem und im
     // vorigen Bild gezeichnet haben (rc594): nur dort wird das Bild geleert
     // und hochgeladen, statt jedes Bild 13 MB.
+    int grafikNeuAufbauten = 0;   // wie oft das Geraet neu aufgebaut wurde (rc596)
+    bool ruheImTest = false;      // Selbsttest: den Ruhezustand ausnahmsweise erlauben
     int gizmoBox[4] = {0, 0, 0, 0};
     int gizmoBoxAlt[4] = {0, 0, 0, 0};
     void* gizmoTexture = nullptr;

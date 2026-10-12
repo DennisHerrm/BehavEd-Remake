@@ -69,6 +69,35 @@ void destroyTextures();
 Backend current();
 bool ready();
 
+// --- Welche Grafikkarte (rc596) -------------------------------------------
+//
+// Laptops mit Intel im Prozessor und einer NVIDIA-Karte daneben (Optimus):
+// ohne ausdrueckliche Bitte gibt Windows einem Programm die sparsame Intel.
+// Name der Karte, auf der das Direct3D-Geraet laeuft ("" ohne Geraet), und
+// Name der Karte, die Windows als leistungsstaerkste nennt ("" wenn es das
+// nicht sagen kann - aelter als Windows 10 1803).
+[[nodiscard]] std::string geraeteKarte();
+[[nodiscard]] std::string staerksteKarte();
+// --- Verlorenes Geraet (rc596) ---------------------------------------------
+//
+// Treiber-Update, Wechsel der Grafikkarte, ein haengender Shader (TDR): dann
+// meldet Present DXGI_ERROR_DEVICE_REMOVED oder _RESET, und das Geraet ist
+// unbrauchbar. Bis rc595 lief behaved danach mit einem toten Geraet weiter
+// (schwarzes Bild). Jetzt merkt present() es sich, schreibt den Grund ins
+// Protokoll, und die Hauptschleife baut die Grafik neu auf.
+[[nodiscard]] bool geraetVerloren();
+// Fuer den Selbsttest: so tun, als waere das Geraet verloren.
+void geraetVerlorenSpielen();
+// Vor jedem Bild: warten, bis die Swapchain einen Puffer frei hat (wartbare
+// Swapchain, rc596). Ohne sie sofort zurueck.
+void warteAufBild();
+// Zeigt die Swapchain im Flip-Modell (ab Windows 10)?
+[[nodiscard]] bool flipModell();
+// Die sparsamste Karte (BHED_GPU=sparsam), "" wenn Windows es nicht sagt.
+[[nodiscard]] std::string sparsamsteKarte();
+// true, wenn BHED_GPU=sparsam gesetzt ist.
+[[nodiscard]] bool sparsamGewuenscht();
+
 // Selbsttest: das naechste fertig gezeichnete Bild als BMP speichern (nur
 // Direct3D 11). Liest den eigenen Grafikpuffer - also genau das, was
 // behaved zeichnet, und nichts vom restlichen Bildschirm.

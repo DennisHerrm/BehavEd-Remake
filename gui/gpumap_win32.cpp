@@ -27,6 +27,7 @@
 // es richtig ist.
 
 #include "gpumap.h"
+#include "bhed/messpunkt.h"
 #include "bhed/diag.h"
 
 #ifdef BHED_WITH_D3D11
@@ -37,6 +38,7 @@
 #include <unordered_map>
 #include <utility>
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi1_4.h>
 #include <psapi.h>
 #include <d3dcompiler.h>
@@ -155,6 +157,23 @@ Netzpuffer g_netz[2];
 std::map<const BspMesh*, Netzpuffer> g_moverNetze;
 ID3D11Buffer* g_cbBild = nullptr;
 ID3D11Buffer* g_cbStapel = nullptr;
+// --- Ein grosser Ring fuer die Stapelkonstanten (rc596) -------------------
+//
+// Bis rc595 wurde fuer jeden Stapel g_cbStapel mit WRITE_DISCARD neu
+// abgebildet: der Treiber legt dafuer jedes Mal eine frische Kopie an
+// (NVIDIA, "Constant Buffers without Constant Pain": Map(DISCARD) plus
+// Bindung um ein Vielfaches teurer als der Zeichenaufruf selbst). Mit
+// D3D11.1 geht es anders: ein grosser Puffer, fortlaufend beschrieben mit
+// NO_OVERWRITE (nichts, was die Grafikkarte noch liest, wird ueberschrieben),
+// und je Stapel nur ein Versatz (VSSetConstantBuffers1). DISCARD nur, wenn
+// der Ring voll ist. Ohne D3D11.1 (oder ohne die beiden Merkmale) bleibt
+// der alte Weg.
+constexpr UINT kRingEintrag = 256;              // 16 Konstanten, die Teilung von *SetConstantBuffers1
+constexpr UINT kRingGroesse = 1024U * 1024U;    // 4096 Stapel bis zum naechsten DISCARD
+ID3D11Buffer* g_cbRing = nullptr;
+ID3D11DeviceContext1* g_ctx1 = nullptr;
+UINT g_ringStand = kRingGroesse;                // voll: der erste Eintrag beginnt mit DISCARD
+int g_ringGeht = -1;                            // -1 ungeprueft, 0 nein, 1 ja
 ID3D11SamplerState* g_sampler = nullptr;
 // --- Ein zweiter Abtaster fuer die Vollbild-Durchgaenge ----------------
 //
@@ -1708,6 +1727,59 @@ struct ListenSchluessel {
 std::map<ListenSchluessel, std::vector<DrawCall>> g_listen;
 std::uint64_t g_listenBild = 0;
 
+// Die Stapelkonstanten in den Ring schreiben und mit Versatz binden
+// (rc596, siehe g_cbRing). false: geht hier nicht, der Aufrufer nimmt den
+// alten Weg ueber g_cbStapel.
+bool stapelKonstantenImRing(ID3D11DeviceContext* c, const BatchState& stand, float zeit) {
+    if (g_ringGeht == 0) {
+        return false;
+    }
+    if (g_ringGeht < 0) {
+        g_ringGeht = 0;
+        ID3D11Device* d = dev();
+        D3D11_FEATURE_DATA_D3D11_OPTIONS opt{};
+        if (d == nullptr ||
+            FAILED(d->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &opt, sizeof(opt))) ||
+            opt.ConstantBufferOffsetting == FALSE || opt.MapNoOverwriteOnDynamicConstantBuffer == FALSE) {
+            return false;
+        }
+        if (FAILED(c->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&g_ctx1))) ||
+            g_ctx1 == nullptr) {
+            return false;
+        }
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = kRingGroesse;
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(d->CreateBuffer(&bd, nullptr, &g_cbRing)) || g_cbRing == nullptr) {
+            g_ctx1->Release();
+            g_ctx1 = nullptr;
+            return false;
+        }
+        g_ringStand = kRingGroesse;
+        g_ringGeht = 1;
+    }
+    D3D11_MAP art = D3D11_MAP_WRITE_NO_OVERWRITE;
+    if (g_ringStand + kRingEintrag > kRingGroesse) {
+        art = D3D11_MAP_WRITE_DISCARD;
+        g_ringStand = 0;
+    }
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(c->Map(g_cbRing, 0, art, 0, &m))) {
+        return false;
+    }
+    auto* ziel = reinterpret_cast<float*>(static_cast<unsigned char*>(m.pData) + g_ringStand);
+    packeKonstanten(stand, ziel, zeit);
+    c->Unmap(g_cbRing, 0);
+    const UINT erste = g_ringStand / 16U;   // in Konstanten zu 16 Bytes
+    const UINT anzahl = kRingEintrag / 16U;
+    g_ctx1->VSSetConstantBuffers1(1, 1, &g_cbRing, &erste, &anzahl);
+    g_ctx1->PSSetConstantBuffers1(1, 1, &g_cbRing, &erste, &anzahl);
+    g_ringStand += kRingEintrag;
+    return true;
+}
+
 const std::vector<DrawCall>& zeichenliste(const BspMesh& mesh, const TextureSet* textures, float zeitSekunden) {
     if (g_listenBild != g_bildNummer) {
         g_listen.clear();
@@ -1837,14 +1909,16 @@ int zeichneAufrufe(const std::vector<DrawCall>& calls, const BspMesh& mesh,
             zeitSekunden - mesh.batches[call.batch].shaderTime;
         if (!cbDa || platz != cbPlatz || stapelZeit != cbZeit) {
             cbStand = batchStateFor(textures, platz, stapelZeit);
-            D3D11_MAPPED_SUBRESOURCE m{};
-            if (SUCCEEDED(c->Map(g_cbStapel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
-                auto* f2 = static_cast<float*>(m.pData);
-                packeKonstanten(cbStand, f2, stapelZeit);
-                c->Unmap(g_cbStapel, 0);
+            if (!stapelKonstantenImRing(c, cbStand, stapelZeit)) {
+                D3D11_MAPPED_SUBRESOURCE m{};
+                if (SUCCEEDED(c->Map(g_cbStapel, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+                    auto* f2 = static_cast<float*>(m.pData);
+                    packeKonstanten(cbStand, f2, stapelZeit);
+                    c->Unmap(g_cbStapel, 0);
+                }
+                c->VSSetConstantBuffers(1, 1, &g_cbStapel);
+                c->PSSetConstantBuffers(1, 1, &g_cbStapel);
             }
-            c->VSSetConstantBuffers(1, 1, &g_cbStapel);
-            c->PSSetConstantBuffers(1, 1, &g_cbStapel);
             cbDa = true;
             cbPlatz = platz;
             cbZeit = stapelZeit;
@@ -4386,6 +4460,10 @@ void shutdown() {
     g_raster.clear();
     if (g_cbBild != nullptr) { g_cbBild->Release(); g_cbBild = nullptr; }
     if (g_cbStapel != nullptr) { g_cbStapel->Release(); g_cbStapel = nullptr; }
+    if (g_cbRing != nullptr) { g_cbRing->Release(); g_cbRing = nullptr; }
+    if (g_ctx1 != nullptr) { g_ctx1->Release(); g_ctx1 = nullptr; }
+    g_ringGeht = -1;
+    g_ringStand = kRingGroesse;
     if (g_sampler != nullptr) { g_sampler->Release(); g_sampler = nullptr; }
     if (g_samplerRand != nullptr) {
         g_samplerRand->Release();
@@ -4804,6 +4882,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
                  const float* vorn, const float* rechts, const float* hoch,
                  float fokus, std::string* fehler, int* uebersprungenAus,
                  Lage lage) {
+    BHED_MESS("Karte zeichnen");
     // Die Marke ganz nach vorn: die Pruefschleife weiter unten laeuft ueber
     // die Stapel des Netzes, und wenn DIE abstuerzt, soll der Bericht es
     // sagen.

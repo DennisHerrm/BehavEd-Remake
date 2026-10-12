@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "wache.h"
 
 #include "bhed/diag.h"
 
@@ -166,7 +167,12 @@ std::string runDialog(const char* title, const char* filter,
     }
 
     std::string result;
-    if (SUCCEEDED(dialog->Show(nullptr))) {
+    // Der Dialog haelt die Hauptschleife an - das ist kein Haenger (rc596,
+    // gui/wache.h).
+    bhed::gui::wache::modalBeginn();
+    const HRESULT gezeigt = dialog->Show(nullptr);
+    bhed::gui::wache::modalEnde();
+    if (SUCCEEDED(gezeigt)) {
         IShellItem* item = nullptr;
         if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr) {
             PWSTR path = nullptr;

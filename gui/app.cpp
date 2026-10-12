@@ -18,6 +18,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include "bhed/messpunkt.h"
 #include "bhed/changelog.h"
 #include "bhed/fassung.h"
 #include "update.h"
@@ -14103,6 +14104,50 @@ std::string windowTitle() {
     return t;
 }
 
+// Darf die Hauptschleife ruhen (rc596, siehe main_win32.cpp)? Nur, wenn
+// kein Bild aus sich heraus anders wird: nichts spielt ab, die Karte muss
+// nicht neu gezeichnet werden, kein Ton laeuft (der Mischer muss
+// nachgefuellt werden), kein Textfeld blinkt, keine Maustaste ist gedrueckt
+// - und nie im Selbsttest, der Bild fuer Bild vorgeht.
+bool darfRuhen() {
+    if (g_app == nullptr) {
+        return false;
+    }
+    static const bool imTest = std::getenv("BHED_EDITORTEST") != nullptr;
+    if ((imTest && !g_app->ruheImTest) || g_app->playing || g_app->mapDirty || g_app->tonVorab.valid()) {
+        return false;
+    }
+    if (g_app->audio.activeBuffers() > 0 || g_app->musicAudio.activeBuffers() > 0) {
+        return false;
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.WantTextInput) {
+        return false;
+    }
+    for (const bool unten : io.MouseDown) {
+        if (unten) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Nach einem neu aufgebauten Grafikgeraet (rc596): was an Texturen des alten
+// hing, ist weg - die Gizmo-Ueberlagerung neu anlegen, die Karte neu
+// zeichnen.
+void grafikNeuAufgebaut() {
+    if (g_app == nullptr) {
+        return;
+    }
+    g_app->gizmoTexture = nullptr;
+    g_app->gizmoTexW = 0;
+    g_app->gizmoTexH = 0;
+    g_app->gizmoBild.rgba.clear();
+    g_app->gizmoZeigen = false;
+    ++g_app->grafikNeuAufbauten;
+    g_app->mapDirty = true;
+}
+
 bool wantsQuit() {
     // Einmal abfragen und zuruecksetzen: sonst schliesst das Fenster in
     // jedem folgenden Bild erneut, und ein abgebrochener Speichern-Dialog
@@ -14113,6 +14158,7 @@ bool wantsQuit() {
 }
 
 void draw() {
+    BHED_MESS("Oberflaeche");
     if (g_app == nullptr) { return; }
     // Einmal: Reste eines Updates wegraeumen, und im Hintergrund nachsehen.
     dateienVonAussenOeffnen();
