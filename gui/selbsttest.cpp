@@ -3340,14 +3340,37 @@ ImVec2 ansichtMitte() {
 // Klick (oder Doppelklick) an eine berechnete Stelle.
 Schritt klickAn(const std::string& was, std::function<ImVec2()> ort, int taste = 0, bool doppelt = false) {
     auto z = std::make_shared<ImVec2>();
+    auto frist = std::make_shared<std::array<float, 2>>();
     return {"Klick " + was, [=](int b) {
                 ImGuiIO& io = ImGui::GetIO();
-                if (b == 0) { *z = ort(); setzeMaus(*z); return false; }
+                // Doppelklick: die Ereignisse liegen in Bild 2..5; in langsamen
+                // Laeufen (ASan) dauert das laenger als die 0,30 s von ImGui, darum
+                // gilt fuer diesen Schritt eine weite Frist, danach wieder die alte.
+                // ImGui verlangt MouseSingleClickDelay > MouseDoubleClickTime.
+                if (b == 0) {
+                    *z = ort();
+                    setzeMaus(*z);
+                    if (doppelt) {
+                        *frist = {io.MouseDoubleClickTime, io.MouseSingleClickDelay};
+                        io.MouseSingleClickDelay = 31.0f;
+                        io.MouseDoubleClickTime = 30.0f;
+                        // Frueherer Klick zaehlt nicht mit (sonst wird der erste
+                        // Klick eines zweiten Doppelklicks zum dritten).
+                        io.MouseClickedTime[taste] = -1.0e9;
+                        io.MouseClickedLastCount[taste] = 0;
+                    }
+                    return false;
+                }
                 if (b == 2) { io.AddMouseButtonEvent(taste, true); return false; }
                 if (b == 3) { io.AddMouseButtonEvent(taste, false); return false; }
                 if (doppelt && b == 4) { io.AddMouseButtonEvent(taste, true); return false; }
                 if (doppelt && b == 5) { io.AddMouseButtonEvent(taste, false); return false; }
-                return b >= 9;
+                if (b < 9) { return false; }
+                if (doppelt) {
+                    io.MouseDoubleClickTime = (*frist)[0];
+                    io.MouseSingleClickDelay = (*frist)[1];
+                }
+                return true;
             }};
 }
 
