@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class="aktiv"><a href="begriffe.html">Glossary</a><ul class="unter"></ul></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/begriffe.html" class="aktiv" lang="en">English</a><a href="../de/begriffe.html" class="" lang="de">Deutsch</a><a href="../zh/begriffe.html" class="" lang="zh">中文</a><a href="../ja/begriffe.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Reference</div>
+    <h1>Glossary</h1>
+    <p class="einleitung">The words of Jedi Academy scripting in one place.</p>
+    <table class="liste"><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td>ICARUS</td><td>The scripting system of the game. Scripts are text (<code>.txt</code>) and run compiled (<code>.ibi</code>).</td></tr><tr><td><code>.ibi</code></td><td>A compiled script - what the game actually runs. <strong><span class="ui">Compile!</span></strong> makes it.</td></tr><tr><td><code>.bhc</code></td><td>The command description file: every command, its fields and their choices.</td></tr><tr><td><code>affect</code></td><td>A block whose commands go to one named figure or entity.</td></tr><tr><td><code>task</code> / <code>do</code> / <code>dowait</code></td><td>A named group of commands; <code>do</code> starts it alongside, <code>dowait</code> waits until it is done.</td></tr><tr><td><code>wait</code></td><td>A pause in milliseconds. In the game it ends one frame (50 ms) later than written.</td></tr><tr><td><code>SET_NAVGOAL</code></td><td>Sends a figure walking to a <code>waypoint_navgoal</code>.</td></tr><tr><td><code>NPC_spawner</code></td><td>The entity that makes a character appear; <code>NPC_type</code> says which one, <code>NPC_targetname</code> names it for scripts.</td></tr><tr><td><code>ref_tag</code></td><td>A named mark in the map - for camera positions and look targets.</td></tr><tr><td><code>target_scriptrunner</code></td><td>Runs a script when it is used (by a trigger, another entity or a script).</td></tr><tr><td><code>func_static</code></td><td>A brush model of the map that scripts can move - ships, doors, platforms.</td></tr><tr><td>ROFF (<code>.rof</code>)</td><td>A recorded movement: one small step of position and angle per game frame. See <a href="animation.html#roff">How ROFF files work</a>.</td></tr><tr><td><code>.pk3</code></td><td>A zip archive the game reads its files from. A mission is packed into one.</td></tr><tr><td><code>.ent</code></td><td>The entities of a map in a separate file; Movie Duels keeps the map and puts its own entities next to it.</td></tr><tr><td>Movie Duels</td><td>A large Jedi Academy mod with cutscene missions - the main use of this program.</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="tasten.html"><span>Previous</span>Keyboard shortcuts</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

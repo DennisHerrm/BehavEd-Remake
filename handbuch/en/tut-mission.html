@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your own mission - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class="aktiv"><a href="tut-mission.html">Your own mission</a><ul class="unter"><li><a href="#schritte">Steps</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-mission.html" class="aktiv" lang="en">English</a><a href="../de/tut-mission.html" class="" lang="de">Deutsch</a><a href="../zh/tut-mission.html" class="" lang="zh">中文</a><a href="../ja/tut-mission.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Tutorials</div>
+    <h1>Your own mission</h1>
+    <p class="einleitung">From an empty map to a mission the game loads: create it, add an intro, check it and pack it into a .pk3.</p>
+    <h2 id="schritte">Steps<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>Create the mission.</strong> In the map tab press <strong><span class="ui">New mission</span></strong> (or the card on the start page). Pick a map, type a name such as <code>md_test_jedi</code> and press <strong><span class="ui">Create</span></strong>.</p><figure class="bild"><a href="../bilder/en/t4_1.webp" class="zoom"><img src="../bilder/en/t4_1.webp" alt="The new mission dialog." loading="lazy"></a><figcaption>The new mission dialog.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>Look at what was made.</strong> A player start, a script runner and the intro script are placed; the intro is open in a tab. The mission name stands in the map toolbar.</p><figure class="bild"><a href="../bilder/en/t4_2.webp" class="zoom"><img src="../bilder/en/t4_2.webp" alt="The fresh mission." loading="lazy"></a><figcaption>The fresh mission.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>Write the intro.</strong> Add a camera shot (<a href="tut-erste-szene.html">A first cutscene</a>) and a figure that walks (<a href="tut-figur.html">A figure walks</a>). Everything goes into the intro script.</p></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>Open Save mission.</strong> Press <strong><span class="ui">Save mission</span></strong>. The dialog lists every file that goes into the archive and checks the mission.</p><figure class="bild"><a href="../bilder/en/t4_4.webp" class="zoom"><img src="../bilder/en/t4_4.webp" alt="The checks before saving." loading="lazy"></a><figcaption>The checks before saving.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>Fix what is red, then save.</strong> Errors must go (for example a script an entity uses but that does not exist); warnings may stay. <strong><span class="ui">Save</span></strong> writes <code>zz_md_test_jedi.pk3</code> into the game folder.</p><figure class="bild"><a href="../bilder/en/t4_5.webp" class="zoom"><img src="../bilder/en/t4_5.webp" alt="Saved - the message shows where." loading="lazy"></a><figcaption>Saved - the message shows where.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>Play it.</strong> Start the game, open the console and type <code>devmap md_test_jedi</code>. Next time, <strong><span class="ui">File</span> → <span class="ui">Recent missions</span></strong> opens the whole project again.</p><figure class="bild"><a href="../bilder/en/t4_6.webp" class="zoom"><img src="../bilder/en/t4_6.webp" alt="The mission in the recent list." loading="lazy"></a><figcaption>The mission in the recent list.</figcaption></figure></div></div></li></ol>
+    <nav class="blaettern"><a class="vor" href="tut-roff.html"><span>Previous</span>A ship flies a ROFF path</a><a class="nach" href="einstellungen.html"><span>Next</span>Settings and updates</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

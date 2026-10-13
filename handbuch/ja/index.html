@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ようこそ - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>はじめに</summary><ul><li class="aktiv"><a href="index.html">ようこそ</a><ul class="unter"><li><a href="#wege">どこから始めるか</a></li><li><a href="#tutorials">チュートリアル</a></li><li><a href="#kann">できること</a></li></ul></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/index.html" class="" lang="en">English</a><a href="../de/index.html" class="" lang="de">Deutsch</a><a href="../zh/index.html" class="" lang="zh">中文</a><a href="../ja/index.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">はじめに</div>
+    <h1>ようこそ</h1>
+    <p class="einleitung">BehavEd-Remake は『ジェダイ・アカデミー』と Movie Duels のカットシーンやミッションを動かすスクリプトを書くためのツールです。書いている間、その内容をマップ上で見ることができます。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_fenster.webp" class="zoom"><img src="../bilder/ja/h_fenster.webp" alt="BehavEd-Remake で開いた Movie Duels のミッション。右にスクリプト、中央にマップ、下にタイムライン。" loading="lazy"></a><figcaption>BehavEd-Remake で開いた Movie Duels のミッション。右にスクリプト、中央にマップ、下にタイムライン。</figcaption></figure>
+<p>ゲームは <strong>ICARUS</strong> スクリプトでシーンを動かします。「この場所へ歩く」「この音を鳴らす」「カメラをそこへ動かす」といったコマンドの並びです。Raven のオリジナル BehavEd はボタンでこの並びを組み立てました。BehavEd-Remake も同じことをファイル互換で行い、オリジナルになかったものを加えています。3D のマップ、道を歩くキャラクター、ショットを飛ぶカメラ、そしてすべてを再生するタイムライン。ゲームを起動する前に確認できます。</p>
+<h2 id="wege">どこから始めるか<a class="anker" href="#wege">#</a></h2>
+<ul><li>はじめての方は <a href="erste-schritte.html">最初の一歩</a> と <a href="fenster.html">ウィンドウ</a> をお読みください。10 分ほどで、ほかのページがすべて分かりやすくなります。</li><li>すぐに何か作りたい方は、下のチュートリアルから選んでください。</li><li>特定の機能を探しているなら、左上の検索欄に入力してください。すべてのページを検索し、その場所へ移動します。</li></ul>
+<h2 id="tutorials">チュートリアル<a class="anker" href="#tutorials">#</a></h2>
+<div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/ja/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>はじめてのカットシーン</h3><p>2 つのカメラショットとその間のなめらかな移動を作り、カメラ視点で確認して、ゲーム用にコンパイルします。</p><div class="meta">カメラ · 6 ステップ · Movie Duels が必要</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/ja/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>キャラクターを歩かせる</h3><p>キャラクターと歩行目標を置き、スクリプトでそこへ向かわせ、マップ上で道を変えます。歩く/走る、途中の点。</p><div class="meta">エンティティと道 · 6 ステップ · どのマップでも</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/ja/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>船を ROFF のパスで飛ばす</h3><p>アリーナ上空を曲がりながら飛ぶ船の自由飛行を ROFF ファイルとして作り、ギズモで回転させ、ゲーム用に保存します。</p><div class="meta">アニメーション · 6 ステップ · Movie Duels が必要</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/ja/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>自分のミッション</h3><p>空のマップからゲームが読み込めるミッションまで。作成し、イントロを加え、チェックして .pk3 にまとめます。</p><div class="meta">ミッション · 6 ステップ · どのマップでも</div></div></a></div>
+<h2 id="kann">できること<a class="anker" href="#kann">#</a></h2>
+<table class="liste"><thead><tr><th>分野</th><th>概要</th></tr></thead><tbody><tr><td><a href="skripte.html">スクリプトを書く</a></td><td>コマンド一覧からスクリプトを組み、すべての値をダイアログで編集し、コピー・移動・元に戻す。オリジナル BehavEd と同じ操作です。</td></tr><tr><td><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></td><td>スクリプトをツリー、誰が誰を起動するかのグラフ、または時間に沿ったトラックとして表示します。</td></tr><tr><td><a href="karte.html">マップ</a></td><td>ライト・エフェクト・モデル付きの 3D マップ。飛び回り、エンティティを選択して動かせます。</td></tr><tr><td><a href="kamera.html">カメラ</a></td><td>カメラショットをマップ上のキーとして扱います。ギズモで移動・回転し、自分で飛ばし、プレビューできます。</td></tr><tr><td><a href="zeitleiste.html">タイムライン</a></td><td>シーンを再生し、各コマンドの時刻を確認し、ドラッグしてタイミングを変えられます。</td></tr><tr><td><a href="figuren.html">キャラクターと道</a></td><td>歩くキャラクターと飛ぶ船の道。始点・終点のハンドル、新しい点、歩く/走る、向き。</td></tr><tr><td><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></td><td>船・扉・プラットフォームをアニメーションさせます。move コマンドとしても、ROFF ファイルとしても、ここで作成・編集できます。</td></tr><tr><td><a href="missionen.html">ミッション</a></td><td>すべてのスクリプトを含むミッション全体を開き、自分のミッションを作り、ゲームが読み込める .pk3 にまとめます。</td></tr></tbody></table>
+<div class="hinweis"><strong>何も失われません。</strong> すべての変更は <kbd>Ctrl</kbd>+<kbd>Z</kbd> で元に戻せ、ファイルは保存したときだけ書き込まれます。ゲーム本体のファイルは決して変更されません。新しいものはスクリプトの隣か、自分の .pk3 に入ります。</div>
+    <nav class="blaettern"><span></span><a class="nach" href="erste-schritte.html"><span>次へ</span>最初の一歩</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

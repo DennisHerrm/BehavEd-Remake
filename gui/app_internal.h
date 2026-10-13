@@ -263,8 +263,22 @@ struct App {
         Path zwPfad;
         std::vector<ActorStep> zwSteps;
         float zwOrt[3] = {0.0F, 0.0F, 0.0F};
+        // Ein Schluessel zur eingestellten Zeit statt den Start zu aendern
+        // (rc599, "die Rotation beim Schiff und beim Character setzt keinen
+        // neuen Frame, es passt immer den ersten Punkt an"):
+        //   1  Schluessel des Animationsfensters (Drehen und Verschieben)
+        //   2  Schiff mitten in einem move: neuer Bahnpunkt mit Winkeln
+        //   3  Figur: set ( SET_ANGLES ) zu dieser Zeit (im Laufen: beim Ankommen)
+        // Die Vorschau haengt zwei Schritte an die Figur (zwSteps bleibt).
+        int dkArt = 0;
+        bool dkBewegt = false;
+        float dkOrt[3] = {0.0F, 0.0F, 0.0F};
+        float dkBasisOrt[3] = {0.0F, 0.0F, 0.0F};
+        float dkBasis[3] = {0.0F, 0.0F, 0.0F};
+        float dkWinkel[3] = {0.0F, 0.0F, 0.0F};
         float gierVersatz = 0.0F;                 // ebenso fuer die Blickrichtung
         float startWinkel = 0.0F;
+        float startWinkel3[3] = {0.0F, 0.0F, 0.0F};   // Nicken, Gier, Rollen beim Anfassen (rc599)
         float startMaus[2] = {0.0F, 0.0F};
         float achsLaenge = 0.0F;        // Weltlaenge der Gizmo-Achse beim Anfassen
         // Mehrfachauswahl (rc590): die anderen gewaehlten ziehen mit -
@@ -372,6 +386,12 @@ struct App {
     float animZugStart[3] = {0.0F, 0.0F, 0.0F};
     float animZugSkala = 1.0F;
     std::vector<AnimSchluessel> animVorschau;
+    // ROFF-Modus des Fensters (rc599): die Datei, deren Schluessel gerade
+    // bearbeitet werden ("md_x/roffs/schiff"). Leer: move-Animation.
+    std::string animRoff;
+    // Aus den Marken (bhed/roffanim.h) gebackene Bahnen, nach dem Text der
+    // Marke - die Szene fragt bei jedem Aufbau.
+    std::map<std::string, std::shared_ptr<const Roff>> roffAusMarke;
     float lastModelCam[7]{};
     // --- Feinheit des Netzes ---------------------------------------------
     //
@@ -490,6 +510,9 @@ struct App {
     // aufgeklappt sind, ob die Kameragruppe offen ist, ob waits als eigene
     // Bloecke erscheinen.
     std::set<std::string> tlOffen;
+    // Die Maus stand im letzten Bild ueber der Zeitleiste (rc599): dort
+    // zoomt Strg+Rad die Zeitleiste, die Oberflaeche bleibt gleich gross.
+    bool tlUnterMaus = false;
     bool tlKameraOffen = true;
     bool tlWaitsZeigen = false;
     // Auto-Key der Kamera (rc597): beim Anfassen des Gizmos mitten in einer
@@ -2184,6 +2207,10 @@ int figurFuerEntity(int ei);
 // Wird die Entity gerade gezogen? Dann um wie viel (Ursprung, Winkel) seit
 // dem Anfassen - damit Figur und Schiff live mitgehen (rc597).
 bool zugVersatz(int ei, float d[3], float& dGier);
+// Ebenso Nicken und Rollen seit dem Anfassen (rc599, Drehmodus).
+bool zugKippen(int ei, float& dNicken, float& dRollen);
+// Die Leiste Verschieben | Drehen fuer eine gewaehlte Entity (rc599).
+void entityGizmoLeiste();
 // Bahnpunkt mitten in einer Bewegung (rc597): bewegt sich die Figur bzw. das
 // Schiff der Entity zur Zeit ms gerade (Lauf oder move), welche Figur und
 // welcher Befehl - und laesst sich dort teilen?
@@ -2191,7 +2218,14 @@ bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf);
 // Die Bewegung bei ms teilen, mit dem neuen Punkt K: ein Schiff faehrt bis
 // ms nach K und von dort weiter; eine Figur bekommt ein neues Laufziel bei K.
 // Die Befehle danach behalten ihre Zeit.
-bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float k[3], double ms);
+bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float k[3], double ms,
+                        const float* kWinkel = nullptr);
+// Die Blickrichtung einer Figur zur Zeit ms als set ( SET_ANGLES ) - mitten
+// im Laufen beim Ankommen (rc599).
+bool figurBlickSetzen(int figur, double ms, float gier);
+// Gizmo am Zeiger, waehrend das Animationsfenster diese Entity zeigt (rc599).
+bool animKeyMoeglich(int ei, double ms);
+bool animKeySetzen(double ms, const float ort[3], const float winkel[3]);
 // Griffe auf der Bahn (rc597, gui/app_mission.cpp): Maus (vor entityZiehen),
 // Zeichnen samt Menue Gehen/Rennen, und fuer den Selbsttest, wo sie liegen.
 void bahnGriffeMaus();
@@ -2362,6 +2396,14 @@ int animSchluesselAmZeiger();
 void animUeberlagerung();
 void animMaus();
 void drawAnimFenster();
+// ROFF-Bahnen bauen und aendern (rc599): die Bahn aus der Marke eines
+// offenen Skripts (nullptr: keine Marke), die .rof-Dateien eines Skripts
+// beim Speichern (Anzahl geschrieben), wohin sie gehoeren, und eine fertige
+// Datei der gewaehlten Entity zum Bearbeiten in Schluessel zerlegen.
+std::shared_ptr<const Roff> roffAusMarken(const std::string& datei);
+int roffDateienSchreiben(const std::string& skriptDatei, const Script& s);
+std::string roffZielOrdner(const std::string& skriptDatei);
+bool roffBearbeiten(const std::string& datei);
 // --- Wetter (gui/app_wetter.cpp, rc592) ----------------------------------------
 // (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
 int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
@@ -2430,6 +2472,15 @@ bool kantenGriff(const Path& pfad, double startMs, double endMs, const ImVec2& a
 void missionsDateiSchreiben();
 std::vector<std::pair<std::string, std::string>> letzteMissionen();
 bool missionAusOrdnerLaden(const std::string& ordner, std::string* fehler);
+// Zuletzt geoeffnete Missionen (rc599): die gemerkten (Ordner und Archive)
+// und die Missionsordner, ohne Dubletten - fuer Menue und Startflaeche.
+struct LetzteMission {
+    std::string eintrag;   // wie in Settings::recentMissions
+    std::string name;      // "md_am_sith"
+    std::string ort;       // Ordner oder Archivname, zum Anzeigen
+};
+std::vector<LetzteMission> letzteMissionenAlle();
+void letzteMissionOeffnen(const std::string& eintrag);
 void missionsOrdnerWaehlen();
 void drawStartflaeche(float breite, float hoehe);
 void meldung(const std::string& text, const std::string& ordner, bool warnung = false);
@@ -2645,7 +2696,8 @@ void addGamePathDirectory(const std::string& dir);
 void loadMissionArchive();
 // Die Missionen eines Archivs suchen und die Auswahl zeigen - das, was
 // "Load mission..." nach dem Dateidialog tut.
-void missionenAusArchiv(const std::string& archiv);
+// wunsch: der Name einer Mission darin - dann gleich diese (zuletzt geoeffnet).
+void missionenAusArchiv(const std::string& archiv, const std::string& wunsch = std::string());
 void loadMission(const Mission& m);
 void drawMissionPicker();
 

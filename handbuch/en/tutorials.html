@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tutorials - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>Tutorials</summary><ul><li class="aktiv"><a href="tutorials.html">Tutorials</a><ul class="unter"></ul></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tutorials.html" class="aktiv" lang="en">English</a><a href="../de/tutorials.html" class="" lang="de">Deutsch</a><a href="../zh/tutorials.html" class="" lang="zh">中文</a><a href="../ja/tutorials.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Tutorials</div>
+    <h1>Tutorials</h1>
+    <p class="einleitung">Each tutorial follows one piece of work from the first click to a finished result, with a picture of every step. Choose one by what it makes.</p>
+    <div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/en/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A first cutscene</h3><p>Two camera shots, a smooth move between them, watched through the camera and compiled for the game.</p><div class="meta">Camera · six steps · needs Movie Duels</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/en/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A figure walks</h3><p>Place a character and a walk target, let the script send it there, then change the path on the map - walk or run, a point in between.</p><div class="meta">Entities and paths · six steps · any map</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/en/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A ship flies a ROFF path</h3><p>A free flight with curves for the ship over the arena - built as a ROFF file, turned with the gizmo, saved for the game.</p><div class="meta">Animation · six steps · needs Movie Duels</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/en/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Your own mission</h3><p>From an empty map to a mission the game loads: create it, add an intro, check it and pack it into a .pk3.</p><div class="meta">Missions · six steps · any map</div></div></a></div>
+<p>The tutorials use <strong>Movie Duels</strong> (<code>md_am_sith</code> from <code>MD_Missions_Ep3.pk3</code>) so that the pictures match what you see; any other mission works the same way. If the parts of the window are new to you, read <a href="fenster.html">The window</a> and <a href="karte.html#bewegen">Moving around</a> first.</p>
+    <nav class="blaettern"><a class="vor" href="modell.html"><span>Previous</span>Model view and characters</a><a class="nach" href="tut-erste-szene.html"><span>Next</span>A first cutscene</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

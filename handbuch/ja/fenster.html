@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ウィンドウ - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class="aktiv"><a href="fenster.html">ウィンドウ</a><ul class="unter"><li><a href="#bereiche">各部分</a></li><li><a href="#teilen">2 つのスクリプトを並べる</a></li><li><a href="#groesse">サイズ・外観・レイアウト</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/fenster.html" class="" lang="en">English</a><a href="../de/fenster.html" class="" lang="de">Deutsch</a><a href="../zh/fenster.html" class="" lang="zh">中文</a><a href="../ja/fenster.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">はじめに</div>
+    <h1>ウィンドウ</h1>
+    <p class="einleitung">ウィンドウは 1 つ、モードは 3 つ。左のモードバーで大きな領域の表示を切り替えます。スクリプト・マップ・タイムラインは常に連動しています。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_fenster.webp" class="zoom"><img src="../bilder/ja/h_fenster.webp" alt="ミッションを開いたマップモードのウィンドウ。" loading="lazy"></a><figcaption>ミッションを開いたマップモードのウィンドウ。</figcaption></figure>
+<h2 id="bereiche">各部分<a class="anker" href="#bereiche">#</a></h2>
+<table class="liste"><thead><tr><th>部分</th><th>役割</th></tr></thead><tbody><tr><td>メニューバー</td><td><span class="ui">ファイル</span>・<span class="ui">編集</span>・<span class="ui">デバッグ</span>・<span class="ui">表示</span>・<span class="ui">ヘルプ</span>。開く・保存、ゲームフォルダー、外観と言語、このガイド。</td></tr><tr><td>スクリプトタブ</td><td>開いているスクリプトごとに 1 つのタブ。<code>*</code> は未保存の変更、<code>+</code> で新しいスクリプト、ドラッグで並べ替えられます。同じミッションのタブはマップとカメラを共有します。</td></tr><tr><td>モードバー</td><td>左端の帯。<strong><span class="ui">イベント</span></strong>(スクリプト作成)、<strong><span class="ui">マップ</span></strong>(3D マップ)、<strong><span class="ui">モデル</span></strong>(キャラクターモデルの表示)。</td></tr><tr><td>左の列</td><td>モードによって、コマンド一覧、マップのエンティティとインスペクター、モデルのアニメーション一覧のいずれかになります。</td></tr><tr><td><span class="ui">スクリプトの流れ</span></td><td>スクリプトそのもの。ツリー(<span class="ui">クラシック</span>)、グラフ(<span class="ui">グラフ</span>)、時間軸(<span class="ui">トラック</span>)で表示します。<a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a> を参照。</td></tr><tr><td><span class="ui">操作</span></td><td>右のボタン列。オリジナルと同じく編集・ファイル・ツリー設定・<strong><span class="ui">コンパイル！</span></strong> があります。マップモードではマップに場所を譲ります。</td></tr><tr><td>タイムライン</td><td>マップの下。シーンを再生し、各コマンドの時刻を示します。<a href="zeitleiste.html">タイムライン</a> を参照。</td></tr><tr><td>ステータス行</td><td>メッセージ、エラーと注意の件数(クリックで一覧)、元に戻す履歴、最後にコンパイルした時刻。</td></tr></tbody></table>
+<h2 id="teilen">2 つのスクリプトを並べる<a class="anker" href="#teilen">#</a></h2>
+<p><strong><span class="ui">ファイル</span> → <span class="ui">分割表示</span></strong> で、イベントモードでは最大 4 つのスクリプトを並べて表示できます。比較やコマンドのコピーに便利です。ペイン間でコマンドをドラッグするとコピーされ、ペインをクリックするとそこで作業できます。</p>
+<h2 id="groesse">サイズ・外観・レイアウト<a class="anker" href="#groesse">#</a></h2>
+<ul><li><kbd>Ctrl</kbd> + マウスホイールでインターフェース全体を拡大縮小(50〜300 %)。<strong><span class="ui">表示</span> → <span class="ui">UI の拡大率</span></strong> でも同じです。</li><li><strong><span class="ui">表示</span> → <span class="ui">テーマ</span></strong>:<span class="ui">BehavEd クラシック</span>・<span class="ui">Windows</span>・<span class="ui">ダーク</span>・<span class="ui">ミッドナイト</span>・<span class="ui">ライト</span>・<span class="ui">ハイコントラスト</span>。</li><li>列の境界をドラッグして幅を変えられ、モードごとに記憶されます。<strong><span class="ui">デバッグ</span> → <span class="ui">レイアウトを戻す</span></strong> で元に戻します。</li><li>BehavEd-Remake の起動中にエクスプローラーでファイルを開くと、2 つ目を起動せず、開いているウィンドウに渡されます。</li></ul>
+    <nav class="blaettern"><a class="vor" href="erste-schritte.html"><span>前へ</span>最初の一歩</a><a class="nach" href="skripte.html"><span>次へ</span>スクリプトを書く</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

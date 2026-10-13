@@ -173,6 +173,10 @@ struct Settings {
     bool gFloats = false;
     bool foldMacros = true;
     std::vector<std::string> recent;   // zuletzt geoeffnet, neueste zuerst
+    // Zuletzt geoeffnete Missionen (rc599), neueste zuerst - ein ganzes
+    // Projekt statt einer Datei: "ordner|<Missionsordner>" oder
+    // "pk3|<Archiv>|<Name der Mission>" ('|' kommt in Windows-Pfaden nicht vor).
+    std::vector<std::string> recentMissions;
 
     // Eigene Tastenbelegungen.
     //
@@ -199,6 +203,8 @@ struct Settings {
 
     // Eine Datei in die Liste aufnehmen; Dubletten wandern nach vorn.
     void noteRecent(const std::string& path);
+    static constexpr std::size_t kMaxRecentMissions = 12;
+    void noteRecentMission(const std::string& eintrag);
 };
 
 // Text der Einstellungsdatei erzeugen und lesen. Unbekannte Schluessel

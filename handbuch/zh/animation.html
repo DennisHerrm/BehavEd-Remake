@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>移动物体动画与 ROFF 文件 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class="aktiv"><a href="animation.html">移动物体动画与 ROFF 文件</a><ul class="unter"><li><a href="#start">打开窗口</a></li><li><a href="#schluessel">关键帧</a></li><li><a href="#arten">脚本(move)还是 ROFF 文件</a></li><li><a href="#roff">ROFF 文件的原理</a></li><li><a href="#bearbeiten">编辑游戏中的 ROFF 文件</a></li></ul></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/animation.html" class="" lang="en">English</a><a href="../de/animation.html" class="" lang="de">Deutsch</a><a href="../zh/animation.html" class="aktiv" lang="zh">中文</a><a href="../ja/animation.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>移动物体动画与 ROFF 文件</h1>
+    <p class="einleitung">飞船、门和平台通过随时间变化的关键帧运动。可以将其保存为脚本中的 move 命令或 ROFF 文件,还能编辑游戏自带的 ROFF 文件。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_animation.webp" class="zoom"><img src="../bilder/zh/h_animation.webp" alt="ROFF 模式下的 动画 窗口以及地图上飞船的路径。" loading="lazy"></a><figcaption>ROFF 模式下的 <span class="ui">动画</span> 窗口以及地图上飞船的路径。</figcaption></figure>
+<h2 id="start">打开窗口<a class="anker" href="#start">#</a></h2>
+<p>选择一个可移动实体——例如 <code>func_static</code> 飞船、<code>func_door</code> 等 <code>func_*</code> 笔刷实体,以及 <code>misc_model_breakable</code>、<code>fx_runner</code>——然后在检查器中按 <strong><span class="ui">动画</span></strong>。如果它还没有 <code>script_targetname</code>,会自动获得一个,因为脚本只能移动有名字的对象。</p>
+<h2 id="schluessel">关键帧<a class="anker" href="#schluessel">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>把时间轴移到运动开始处,按 <strong><span class="ui">在播放头添加关键帧</span></strong>——第一个关键帧记录实体当前的位置。</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>在时间上前进后再按一次。然后在视图中拖动新的菱形(<kbd>Shift</kbd>:仅上下),或在表格中输入数值:时间、位置、方向。</p></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p>或者直接使用操纵器:只要窗口显示该实体且时间轴位于第一个关键帧或其后,用操纵器移动或旋转就会在播放头处设置关键帧(或修改已有的关键帧)。</p></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong><span class="ui">删除关键帧</span></strong> 和 <strong><span class="ui">转到关键帧</span></strong> 作用于所选行;<strong><span class="ui">移除动画</span></strong> 从脚本中移除整个动画。</p></div></div></li></ol>
+<h2 id="arten">脚本(move)还是 ROFF 文件<a class="anker" href="#arten">#</a></h2>
+<table class="liste"><thead><tr><th></th><th><span class="ui">脚本 (move)</span></th><th><span class="ui">ROFF 文件</span></th></tr></thead><tbody><tr><td>保存为</td><td>脚本开头带 <code>move</code> 和 <code>wait</code> 的 <code>affect</code> 块</td><td><code>scripts/&lt;名称&gt;.rof</code>,由 <code>play ( &quot;PLAY_ROFF&quot;, ... )</code> 播放</td></tr><tr><td>关键帧之间</td><td>每段移动开始快、结尾减速,与游戏的移动物体相同(或用 <span class="ui">线性</span> 匀速)</td><td>穿过所有关键帧的平滑曲线(<span class="ui">平滑</span>)或直线段</td></tr><tr><td>适合</td><td>门、升降机、穿过画面的飞船</td><td>多转弯的长距离自由飞行、精确到帧的特效</td></tr></tbody></table>
+<p>用窗口顶部的 <strong><span class="ui">脚本 (move)</span></strong> / <strong><span class="ui">ROFF 文件</span></strong> 切换——关键帧会被转换,不会丢失。ROFF 模式下 <strong><span class="ui">文件</span></strong> 字段指定文件名(例如 <code>md_am/roffs/sta2</code>);下方显示其帧数和秒数。</p>
+<h2 id="roff">ROFF 文件的原理<a class="anker" href="#roff">#</a></h2>
+<p>ROFF 文件(<code>.rof</code>,“Rotation and Origin File Format”)为每个游戏帧保存一小步:实体在接下来 50 毫秒内移动和旋转多少。游戏在 <code>PLAY_ROFF</code> 执行时,把这些步长累加到实体当时所在的位置——因此 ROFF 路径是<strong>相对的</strong>:移动实体,整条路径也随之移动。游戏和 Movie Duels 中的全部 108 个文件都是版本 2,除一个外均为每帧 50 毫秒——BehavEd-Remake 也按此格式写入。</p>
+<p>你编辑的关键帧作为注释行保存在脚本中 <code>play</code> 的正前方;<code>.rof</code> 由它们生成。因此撤销、复制和粘贴对 ROFF 路径与普通命令一样有效。<strong>保存脚本</strong>时,文件写入同一 scripts 文件夹下的 <code>scripts/&lt;名称&gt;.rof</code>;<strong><span class="ui">保存任务</span></strong> 会把它打包进任务的 <code>.pk3</code>。</p>
+<h2 id="bearbeiten">编辑游戏中的 ROFF 文件<a class="anker" href="#bearbeiten">#</a></h2>
+<p>当脚本在该实体上播放现成的 ROFF 时,窗口会在 <strong><span class="ui">此实体在脚本中的 ROFF 路径:</span></strong> 下列出。<strong><span class="ui">编辑</span></strong> 把它分解为关键帧——直线段或一条平滑曲线,取所需关键帧较少的一种——与原文件误差在半个单位以内。游戏文件永远不会被覆盖:你编辑的是副本(<code>…_2</code>),<code>play</code> 命令会指向该副本。</p>
+<figure class="bild breit anim"><a href="../bilder/zh/a_roff.webp" class="zoom"><img src="../bilder/zh/a_roff.webp" alt="飞船沿 ROFF 路径飞行。" loading="lazy"></a><span class="abzeichen">动画</span><figcaption>飞船沿 ROFF 路径飞行。</figcaption></figure>
+<div class="hinweis">在时间轴中,ROFF 飞行显示为 <strong><span class="ui">移动</span></strong> 下的条带;拖动可让飞行提前或推迟开始。</div>
+    <nav class="blaettern"><a class="vor" href="figuren.html"><span>上一页</span>角色与路径</a><a class="nach" href="wegpunkte.html"><span>下一页</span>NPC 路径点</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

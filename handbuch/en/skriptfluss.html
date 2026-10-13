@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Script Flow: Classic, Graph, Tracks - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class="aktiv"><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a><ul class="unter"><li><a href="#classic">Classic</a></li><li><a href="#graph">Graph: what starts what</a></li><li><a href="#spuren">Tracks: the script over time</a></li></ul></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skriptfluss.html" class="aktiv" lang="en">English</a><a href="../de/skriptfluss.html" class="" lang="de">Deutsch</a><a href="../zh/skriptfluss.html" class="" lang="zh">中文</a><a href="../ja/skriptfluss.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Scripts</div>
+    <h1>Script Flow: Classic, Graph, Tracks</h1>
+    <p class="einleitung">Three views of the same script - switch any time, nothing is lost.</p>
+    <p>The buttons <strong><span class="ui">Classic</span> / <span class="ui">Graph</span> / <span class="ui">Tracks</span></strong> at the top of the <span class="ui">Script Flow</span> column switch the view. In a split view every pane has its own.</p>
+<h2 id="classic">Classic<a class="anker" href="#classic">#</a></h2>
+<p>The tree of the original BehavEd - every command one line, blocks to fold open. This is where you edit; see <a href="skripte.html">Writing scripts</a>.</p>
+<h2 id="graph">Graph: what starts what<a class="anker" href="#graph">#</a></h2>
+<figure class="bild breit"><a href="../bilder/en/h_graph.webp" class="zoom"><img src="../bilder/en/h_graph.webp" alt="The graph of a mission: player start, triggers, script runners, figures and scripts with their connections." loading="lazy"></a><figcaption>The graph of a mission: player start, triggers, script runners, figures and scripts with their connections.</figcaption></figure>
+<p>A mission is held together by its entities: a <code>trigger</code> targets a <code>target_scriptrunner</code>, which runs a script, which affects figures and starts other scripts. The graph draws exactly that. Double-click a node to open its script or show the entity in the map; drag from the dot on the right of a node to another node to connect them - for a figure you choose what kind of script (spawnscript, deathscript, ...). Drag entities from the list or commands into the graph; a command dropped on free space creates a new script.</p>
+<p><strong><span class="ui">Fit</span></strong> shows everything, <strong><span class="ui">Arrange</span></strong> sorts the nodes, <strong><span class="ui">Right angles</span></strong> draws the wires at right angles through the gaps. Double-click a wire for a bend point; right-click removes it.</p>
+<h2 id="spuren">Tracks: the script over time<a class="anker" href="#spuren">#</a></h2>
+<figure class="bild breit"><a href="../bilder/en/h_spuren.webp" class="zoom"><img src="../bilder/en/h_spuren.webp" alt="Tracks: camera shots, figures, dialogue and script as blocks in time." loading="lazy"></a><figcaption>Tracks: camera shots, figures, dialogue and script as blocks in time.</figcaption></figure>
+<p>A compact timeline inside the script column: rows for <strong><span class="ui">Camera</span></strong>, every figure, <strong><span class="ui">Dialogue</span></strong> (voice lines) and <strong><span class="ui">Script</span></strong>. Click a block to select its line, drag its right edge to change the duration, drag in the ruler to move through time. The big <a href="zeitleiste.html">Timeline</a> under the map does the same with more detail.</p>
+    <nav class="blaettern"><a class="vor" href="skripte.html"><span>Previous</span>Writing scripts</a><a class="nach" href="speichern.html"><span>Next</span>Saving, compiling, checks</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

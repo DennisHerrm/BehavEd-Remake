@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">3</span>任务</summary><ul><li class="aktiv"><a href="missionen.html">任务</a><ul class="unter"><li><a href="#laden">打开任务</a></li><li><a href="#zuletzt">最近的任务</a></li><li><a href="#neu">新建任务</a></li><li><a href="#speichern">保存任务</a></li></ul></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/missionen.html" class="" lang="en">English</a><a href="../de/missionen.html" class="" lang="de">Deutsch</a><a href="../zh/missionen.html" class="aktiv" lang="zh">中文</a><a href="../ja/missionen.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">任务</div>
+    <h1>任务</h1>
+    <p class="einleitung">任务就是一张地图及其实体和全部脚本。可以完整打开任务、创建自己的任务,并打包成游戏可加载的 .pk3。</p>
+    <h2 id="laden">打开任务<a class="anker" href="#laden">#</a></h2>
+<p><strong><span class="ui">加载任务…</span></strong>(<span class="ui">文件</span> 菜单或地图工具栏)选择一个 <code>.pk3</code> 并列出其中的任务——带脚本的地图。选择一个,一切就绪:地图、包含任务角色的 <code>.ent</code>,以及<strong>任务的每个脚本各占一个标签页</strong>;第一个脚本(通常是开场)显示在最前。所有标签页共享地图和摄像机。</p>
+<figure class="bild"><a href="../bilder/zh/h_mission_wahl.webp" class="zoom"><img src="../bilder/zh/h_mission_wahl.webp" alt="压缩包中的任务——使用同一张地图的任务归为一组。" loading="lazy"></a><figcaption>压缩包中的任务——使用同一张地图的任务归为一组。</figcaption></figure>
+<h2 id="zuletzt">最近的任务<a class="anker" href="#zuletzt">#</a></h2>
+<p><strong><span class="ui">文件</span> → <span class="ui">最近的任务</span></strong> 和起始页面列出最近打开的任务——无论来自压缩包还是任务文件夹。单击即可重新打开整个项目:地图、实体和所有脚本。文件已不存在的条目会从列表中移除。</p>
+<figure class="bild"><a href="../bilder/zh/h_menue_missionen.webp" class="zoom"><img src="../bilder/zh/h_menue_missionen.webp" alt="文件 → 最近的任务。" loading="lazy"></a><figcaption><span class="ui">文件</span> → <span class="ui">最近的任务</span>。</figcaption></figure>
+<h2 id="neu">新建任务<a class="anker" href="#neu">#</a></h2>
+<p><strong><span class="ui">新建任务</span></strong> 可在任意地图上开始一个任务。选择地图,为任务命名(字母、数字和 <code>_</code>;游戏以 <code>maps/&lt;名称&gt;.bsp</code> 加载,即 <code>devmap &lt;名称&gt;</code>),并指定脚本文件夹。BehavEd-Remake 会创建玩家出生点、脚本启动器、开场脚本,以及位于 <code>文档\behaved\missions</code> 下的任务文件夹。玩家出生时开场脚本开始运行。</p>
+<figure class="bild"><a href="../bilder/zh/h_mission_neu.webp" class="zoom"><img src="../bilder/zh/h_mission_neu.webp" alt="新建任务 对话框。" loading="lazy"></a><figcaption><span class="ui">新建任务</span> 对话框。</figcaption></figure>
+<p>从未打包的任务保存在其文件夹中;重启后可用 <strong><span class="ui">打开任务文件夹</span></strong> 继续。</p>
+<h2 id="speichern">保存任务<a class="anker" href="#speichern">#</a></h2>
+<p><strong><span class="ui">保存任务</span></strong> 会显示将放入压缩包的内容——每个文件及其大小——并先检查任务:实体使用了但不存在的脚本、无法编译的脚本、缺少玩家出生点、指向不存在目标的引用、缺少 <code>ENDMARKER</code> 的 <code>.str</code>。错误(红色)必须修正,警告(橙色)可以保留。<strong><span class="ui">保存</span></strong> 保存所有脚本、写入 <code>.ent</code>、编译脚本、加入你自己的 ROFF 文件,并把 <code>.pk3</code> 打包到游戏文件夹。</p>
+<figure class="bild"><a href="../bilder/zh/h_mission_speichern.webp" class="zoom"><img src="../bilder/zh/h_mission_speichern.webp" alt="带检查结果的 保存任务 对话框。" loading="lazy"></a><figcaption>带检查结果的 <span class="ui">保存任务</span> 对话框。</figcaption></figure>
+<div class="hinweis">压缩包会写到其他模组压缩包旁边(Movie Duels 文件夹中的 <code>zz_&lt;名称&gt;.pk3</code>,以便优先于旧文件)。启动游戏并在控制台输入 <code>devmap &lt;名称&gt;</code> 即可游玩。</div>
+    <nav class="blaettern"><a class="vor" href="wegpunkte.html"><span>上一页</span>NPC 路径点</a><a class="nach" href="modell.html"><span>下一页</span>模型视图与角色</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

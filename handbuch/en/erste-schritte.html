@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class="aktiv"><a href="erste-schritte.html">Getting started</a><ul class="unter"><li><a href="#installieren">Install</a></li><li><a href="#spielordner">Tell it where the game is</a></li><li><a href="#oeffnen">Open something</a></li><li><a href="#sprache">Language</a></li></ul></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/erste-schritte.html" class="aktiv" lang="en">English</a><a href="../de/erste-schritte.html" class="" lang="de">Deutsch</a><a href="../zh/erste-schritte.html" class="" lang="zh">中文</a><a href="../ja/erste-schritte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Start here</div>
+    <h1>Getting started</h1>
+    <p class="einleitung">Unpack, tell the program where the game is, open a mission. That is all the setup there is.</p>
+    <h2 id="installieren">Install<a class="anker" href="#installieren">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>Download the latest <code>BehavEd-Remake-….zip</code> from the releases page and unpack it into a folder of your choice - for example next to your game. Nothing is installed into Windows.</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>Start <code>behaved.exe</code>. At startup the program looks for a newer version on GitHub and offers it; nothing is downloaded without asking you (the switch is in <strong><span class="ui">Help</span></strong>).</p></div></div></li></ol>
+<h2 id="spielordner">Tell it where the game is<a class="anker" href="#spielordner">#</a></h2>
+<p>Maps, models, sounds and the scripts of the game live in the game&#x27;s <code>.pk3</code> archives. Open <strong><span class="ui">Edit</span> → <span class="ui">Game folders</span></strong> and add the game folders with <strong><span class="ui">Add game folder</span></strong>: first <code>base</code>, then a mod such as Movie Duels (<code>MD</code>). The bottom folder wins, exactly as <code>fs_game</code> overrides <code>base</code> in the game.</p>
+<figure class="bild"><a href="../bilder/en/h_spielordner.webp" class="zoom"><img src="../bilder/en/h_spielordner.webp" alt="The game folders: base first, the mod below it - the bottom one wins." loading="lazy"></a><figcaption>The game folders: base first, the mod below it - the bottom one wins.</figcaption></figure>
+<h2 id="oeffnen">Open something<a class="anker" href="#oeffnen">#</a></h2>
+<p>There are several ways in. The start page in the map tab (shown while no map is open) offers a new mission, a mission from a <code>.pk3</code>, just a map, and your recent missions. From the menu:</p>
+<ul><li><strong>A mission</strong> - <strong><span class="ui">File</span> → <span class="ui">Load mission</span></strong> picks a <code>.pk3</code> and opens a mission with its map, its entities and all its scripts in tabs. See <a href="missionen.html">Missions</a>.</li><li><strong>A script</strong> - <strong><span class="ui">File</span> → <span class="ui">Open</span></strong> opens a <code>.txt</code> or a compiled <code>.ibi</code> from disk.</li><li><strong>Your last missions</strong> - <strong><span class="ui">File</span> → <span class="ui">Recent missions</span></strong> reopens a whole mission with one click.</li></ul>
+<figure class="bild"><a href="../bilder/en/h_start.webp" class="zoom"><img src="../bilder/en/h_start.webp" alt="The start page appears in the map tab while no map is open." loading="lazy"></a><figcaption>The start page appears in the map tab while no map is open.</figcaption></figure>
+<h2 id="sprache">Language<a class="anker" href="#sprache">#</a></h2>
+<p>The program speaks English, German, Chinese and Japanese. It starts in the language of Windows; change it under <strong><span class="ui">View</span> → <span class="ui">Language</span></strong>. Command names and values stay as the game writes them (<code>affect</code>, <code>SET_NAVGOAL</code>), because that is what goes into the file.</p>
+<div class="hinweis">This guide opens from <strong><span class="ui">Help</span> → <span class="ui">Guide and tutorials</span></strong>, and from the <strong><span class="ui">Guide</span></strong> button in <span class="ui">About BehavEd</span>. It lives in the <code>handbuch</code> folder next to <code>behaved.exe</code> and works without internet.</div>
+    <nav class="blaettern"><a class="vor" href="index.html"><span>Previous</span>Welcome</a><a class="nach" href="fenster.html"><span>Next</span>The window</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

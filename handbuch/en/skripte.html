@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing scripts - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Scripts</summary><ul><li class="aktiv"><a href="skripte.html">Writing scripts</a><ul class="unter"><li><a href="#grundlagen">How a script is built</a></li><li><a href="#einfuegen">Adding commands</a></li><li><a href="#editor">The event editor</a></li><li><a href="#bearbeiten">Selecting, moving, copying</a></li><li><a href="#suchen">Find, replace, bookmarks</a></li><li><a href="#rand">The change margin</a></li></ul></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skripte.html" class="aktiv" lang="en">English</a><a href="../de/skripte.html" class="" lang="de">Deutsch</a><a href="../zh/skripte.html" class="" lang="zh">中文</a><a href="../ja/skripte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Scripts</div>
+    <h1>Writing scripts</h1>
+    <p class="einleitung">An ICARUS script is a tree of commands. Pick commands from the list, put them in the right block, fill in their values.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_skriptbaum.webp" class="zoom"><img src="../bilder/en/h_skriptbaum.webp" alt="Events mode: the commands on the left, the script tree in the middle, the action buttons on the right." loading="lazy"></a><figcaption>Events mode: the commands on the left, the script tree in the middle, the action buttons on the right.</figcaption></figure>
+<h2 id="grundlagen">How a script is built<a class="anker" href="#grundlagen">#</a></h2>
+<p>Commands run from top to bottom. <code>affect ( &quot;name&quot;, FLUSH ) { ... }</code> sends the commands inside it to one figure or entity - that is how a cutscene moves its actors. <code>task</code> declares a group of commands, <code>do</code> starts it alongside, <code>dowait</code> waits for it, <code>wait</code> pauses. <code>if</code>, <code>else</code>, <code>loop</code> work as in other languages. Only <code>affect</code>, <code>task</code>, <code>if</code>, <code>else</code> and <code>loop</code> can hold commands.</p>
+<h2 id="einfuegen">Adding commands<a class="anker" href="#einfuegen">#</a></h2>
+<ul><li>In the <strong><span class="ui">Events</span></strong> list on the left, <strong>double-click</strong> a command to insert it after the selected line (or into the selected block).</li><li>Or <strong>drag</strong> it into the tree: where you let go decides whether it lands before, inside or after a line.</li><li>Macros at the end of the list insert several commands at once; <strong><span class="ui">Fold Macros</span></strong> shows them as one line.</li><li>Right-click a line for the same lists as submenus, plus edit, copy and <strong><span class="ui">Find similar</span></strong>.</li></ul>
+<h2 id="editor">The event editor<a class="anker" href="#editor">#</a></h2>
+<p>Double-click a line (or press <kbd>Enter</kbd>) to open the <strong><span class="ui">Event editor</span></strong>. The help text of the command stands on top, each value has its own field below: lists for fixed choices, number and text fields, file fields with <strong><span class="ui"></span></strong> to browse and <strong><span class="ui">Do</span></strong> to play a sound or open a script. When a map is loaded, an arrow next to name fields picks a name from the map.</p>
+<figure class="bild"><a href="../bilder/en/h_editor.webp" class="zoom"><img src="../bilder/en/h_editor.webp" alt="The event editor for a camera command." loading="lazy"></a><figcaption>The event editor for a camera command.</figcaption></figure>
+<ul><li><strong><span class="ui">Expr!</span></strong> turns a field into a free expression; <strong><span class="ui">Helper</span></strong> builds <code>get ( ... )</code>, <code>tag ( ... )</code> or <code>random ( ... )</code> with <strong><span class="ui">Get</span></strong>, <strong><span class="ui">Tag</span></strong> and <strong><span class="ui">Rnd</span></strong>; <strong><span class="ui">Revert</span></strong> goes back.</li><li>A value that is not in its list is allowed - mods bring their own - but marked <strong>unknown</strong>, because far more often it is a typo.</li><li><strong><span class="ui">Ok</span></strong> (<kbd>Enter</kbd>) writes the values, <strong><span class="ui">Cancel</span></strong> (<kbd>Esc</kbd>) drops them, <strong><span class="ui">Re-Evaluate</span></strong> resets the fields to the defaults.</li></ul>
+<h2 id="bearbeiten">Selecting, moving, copying<a class="anker" href="#bearbeiten">#</a></h2>
+<ul><li>Click selects a line, <kbd>Ctrl</kbd>+click adds one, <kbd>Shift</kbd>+click selects a range. Every action works on everything selected.</li><li>Drag lines to move them. Blocks move with everything inside; a block cannot go into itself.</li><li><strong><span class="ui">Copy</span></strong>, <strong><span class="ui">Cut</span></strong>, <strong><span class="ui">Paste</span></strong> - pasting into a block puts the commands in exactly once, also when the block and its lines were copied together.</li><li><strong><span class="ui">Duplicate</span></strong> inserts a copy right below, <strong><span class="ui">REM</span></strong> turns lines into comments and back, <strong><span class="ui">Delete</span></strong> removes them.</li><li><strong>Undo</strong> and <strong>Redo</strong> remember every step. Right-click either button for the full history - you can even undo one single step and keep everything after it.</li></ul>
+<h2 id="suchen">Find, replace, bookmarks<a class="anker" href="#suchen">#</a></h2>
+<p><strong><span class="ui">Find</span></strong> (<kbd>Ctrl</kbd>+<kbd>F</kbd>) opens a window that stays open: search by command name (<strong><span class="ui">Item called</span></strong>) or by a value (<strong><span class="ui">Item containing</span></strong>), step with <kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd>, replace in this script or in all open ones. Bookmarks work like Notepad++: <kbd>Ctrl</kbd>+<kbd>F2</kbd> sets one, <kbd>F2</kbd> jumps to the next. They are kept per file.</p>
+<h2 id="rand">The change margin<a class="anker" href="#rand">#</a></h2>
+<p>With <strong><span class="ui">View</span> → <span class="ui">Change history (margin)</span></strong> a coloured margin marks what you changed: orange = changed, not saved; green = changed and saved; blue = back to the original. Hover it to see the original line, right-click a line → <strong>Revert to original</strong> to restore just that command.</p>
+    <nav class="blaettern"><a class="vor" href="fenster.html"><span>Previous</span>The window</a><a class="nach" href="skriptfluss.html"><span>Next</span>Script Flow: Classic, Graph, Tracks</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

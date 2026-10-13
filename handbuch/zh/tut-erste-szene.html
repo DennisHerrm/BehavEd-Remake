@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第一个过场动画 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class="aktiv"><a href="tut-erste-szene.html">第一个过场动画</a><ul class="unter"><li><a href="#schritte">步骤</a></li><li><a href="#weiter">接下来</a></li></ul></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-erste-szene.html" class="" lang="en">English</a><a href="../de/tut-erste-szene.html" class="" lang="de">Deutsch</a><a href="../zh/tut-erste-szene.html" class="aktiv" lang="zh">中文</a><a href="../ja/tut-erste-szene.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">教程</div>
+    <h1>第一个过场动画</h1>
+    <p class="einleitung">两个摄像机镜头,中间一段平滑移动,透过摄像机观看,并为游戏编译。</p>
+    <h2 id="schritte">步骤<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>打开任务。</strong> <span class="ui">文件</span> → <span class="ui">加载任务…</span>,选择 <code>MD_Missions_Ep3.pk3</code>,点选 <code>md_am_sith</code>。地图打开,任务的所有脚本各在一个标签页中;停留在 <code>intro2_sith</code> 标签页。</p><figure class="bild"><a href="../bilder/zh/t1_1.webp" class="zoom"><img src="../bilder/zh/t1_1.webp" alt="任务已打开。" loading="lazy"></a><figcaption>任务已打开。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>选择摄像机。</strong> 单击地图上的摄像机图标(或时间轴的 <span class="ui">摄像机</span> 行)。左侧显示其镜头,地图上显示其路径。</p><figure class="bild"><a href="../bilder/zh/t1_2.webp" class="zoom"><img src="../bilder/zh/t1_2.webp" alt="已选中摄像机。" loading="lazy"></a><figcaption>已选中摄像机。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>飞到合适的位置并添加镜头。</strong> 按住鼠标右键,用 <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 飞行,直到视角满意。按 <strong><span class="ui">在此新建镜头</span></strong>:在所选镜头之后添加位于当前视角的 <code>camera ( MOVE )</code> 和 <code>camera ( PAN )</code>。</p><figure class="bild"><a href="../bilder/zh/t1_3.webp" class="zoom"><img src="../bilder/zh/t1_3.webp" alt="在当前视角新建的镜头。" loading="lazy"></a><figcaption>在当前视角新建的镜头。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>设置移动时间。</strong> 在 <strong><span class="ui">所选镜头</span></strong> 下把 <strong><span class="ui">移动时间</span></strong> 设为 <code>3</code>(秒):摄像机现在用三秒从上一个镜头飞到这个镜头。<code>0</code> 表示硬切。</p><figure class="bild"><a href="../bilder/zh/t1_4.webp" class="zoom"><img src="../bilder/zh/t1_4.webp" alt="摄像机面板中的移动时间。" loading="lazy"></a><figcaption>摄像机面板中的移动时间。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>观看。</strong> 打开 <strong><span class="ui">摄像机预览</span></strong>,单击小画面透过摄像机观看,然后按地图下方的播放按钮(▶)。时间轴会像游戏中一样播放场景——开启 <strong>声音</strong> 时还会播放声音。</p><figure class="bild"><a href="../bilder/zh/t1_5.webp" class="zoom"><img src="../bilder/zh/t1_5.webp" alt="播放时透过摄像机观看。" loading="lazy"></a><figcaption>播放时透过摄像机观看。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>保存并编译。</strong> 来自 <code>.pk3</code> 的脚本还没有对应的文件,因此第一次保存时会询问保存位置:选择模组的 <code>scripts</code> 文件夹(例如 <code>MD\scripts\md_am\</code>)。随后 <strong><span class="ui">编译！</span></strong> 会在旁边写出游戏运行的 <code>.ibi</code>。如果是你自己的任务,<strong><span class="ui">保存任务</span></strong> 会把一切打包进 <code>.pk3</code>——参见 <a href="tut-mission.html">你自己的任务</a>。</p><figure class="bild"><a href="../bilder/zh/t1_6.webp" class="zoom"><img src="../bilder/zh/t1_6.webp" alt="操作栏——编译！ 位于文件按钮下方,成功时会闪绿色。" loading="lazy"></a><figcaption>操作栏——<strong><span class="ui">编译！</span></strong> 位于文件按钮下方,成功时会闪绿色。</figcaption></figure></div></div></li></ol>
+<h2 id="weiter">接下来<a class="anker" href="#weiter">#</a></h2>
+<p>在两个镜头之间抓取摄像机操纵器即可在该处设置关键帧(<a href="kamera.html#gizmo">移动和旋转镜头</a>),或者用 <strong><span class="ui">驾驶</span></strong> 亲自驾驶整个镜头(<a href="kamera.html#steuern">亲自驾驶镜头</a>)。</p>
+    <nav class="blaettern"><a class="vor" href="tutorials.html"><span>上一页</span>教程</a><a class="nach" href="tut-figur.html"><span>下一页</span>让角色行走</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

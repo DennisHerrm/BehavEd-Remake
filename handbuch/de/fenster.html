@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Das Fenster - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class="aktiv"><a href="fenster.html">Das Fenster</a><ul class="unter"><li><a href="#bereiche">Die Bereiche</a></li><li><a href="#teilen">Zwei Skripte nebeneinander</a></li><li><a href="#groesse">Größe, Aussehen und Aufteilung</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/fenster.html" class="" lang="en">English</a><a href="../de/fenster.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/fenster.html" class="" lang="zh">中文</a><a href="../ja/fenster.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Einstieg</div>
+    <h1>Das Fenster</h1>
+    <p class="einleitung">Ein Fenster, drei Modi. Die Modusleiste links entscheidet, was die große Fläche zeigt; Skript, Karte und Zeitleiste sprechen immer miteinander.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_fenster.webp" class="zoom"><img src="../bilder/de/h_fenster.webp" alt="Das Fenster im Map-Modus mit einer offenen Mission." loading="lazy"></a><figcaption>Das Fenster im Map-Modus mit einer offenen Mission.</figcaption></figure>
+<h2 id="bereiche">Die Bereiche<a class="anker" href="#bereiche">#</a></h2>
+<table class="liste"><thead><tr><th>Bereich</th><th>Wofür</th></tr></thead><tbody><tr><td>Menüleiste</td><td><span class="ui">Datei</span>, <span class="ui">Bearbeiten</span>, <span class="ui">Debug</span>, <span class="ui">Ansicht</span>, <span class="ui">Hilfe</span> - öffnen und speichern, Spielordner, Aussehen und Sprache, das Handbuch.</td></tr><tr><td>Skript-Reiter</td><td>Ein Reiter je offenem Skript. Ein <code>*</code> heißt: ungespeicherte Änderungen, <code>+</code> öffnet ein neues Skript, Reiter lassen sich umsortieren. Alle Reiter einer Mission teilen sich Karte und Kamera.</td></tr><tr><td>Modusleiste</td><td>Der Streifen ganz links: <strong><span class="ui">Ereignisse</span></strong> (Skripte bauen), <strong><span class="ui">Karte</span></strong> (die Karte in 3D), <strong><span class="ui">Modell</span></strong> (ein Figurenmodell ansehen).</td></tr><tr><td>Linke Spalte</td><td>Hängt vom Modus ab: die Liste der Befehle, die Entities der Karte mit ihrem Inspektor oder die Animationen eines Modells.</td></tr><tr><td><span class="ui">Skriptablauf</span></td><td>Das Skript selbst - als Baum (<span class="ui">Classic</span>), als Graph (<span class="ui">Graph</span>) oder über die Zeit (<span class="ui">Spuren</span>). Siehe <a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a>.</td></tr><tr><td><span class="ui">Aktionen</span></td><td>Die Knopfspalte rechts, wie im Original: bearbeiten, Datei, Baumoptionen, <strong><span class="ui">Übersetzen!</span></strong>. Im Map-Modus macht sie der Karte Platz.</td></tr><tr><td>Zeitleiste</td><td>Unter der Karte: spielt die Szene ab und zeigt jeden Befehl in der Zeit. Siehe <a href="zeitleiste.html">Zeitleiste</a>.</td></tr><tr><td>Statuszeile</td><td>Meldungen, die Zähler für Fehler und Hinweise (anklicken zeigt die Liste), der Rückgängig-Verlauf und wann das Skript zuletzt übersetzt wurde.</td></tr></tbody></table>
+<h2 id="teilen">Zwei Skripte nebeneinander<a class="anker" href="#teilen">#</a></h2>
+<p><strong><span class="ui">Datei</span> → <span class="ui">Geteilte Ansicht</span></strong> zeigt im Events-Modus bis zu vier Skripte nebeneinander - zum Vergleichen und zum Herüberkopieren von Befehlen. Einen Befehl von einem Feld ins andere ziehen kopiert ihn; in ein Feld klicken, um darin zu arbeiten.</p>
+<h2 id="groesse">Größe, Aussehen und Aufteilung<a class="anker" href="#groesse">#</a></h2>
+<ul><li><kbd>Strg</kbd> + Mausrad skaliert die ganze Oberfläche (50 - 300 %); <strong><span class="ui">Ansicht</span> → <span class="ui">Bedienoberfläche skalieren</span></strong> tut dasselbe.</li><li><strong><span class="ui">Ansicht</span> → <span class="ui">Farbgebung</span></strong>: <span class="ui">BehavEd klassisch</span>, <span class="ui">Windows</span>, <span class="ui">Dunkel</span>, <span class="ui">Mitternacht</span>, <span class="ui">Hell</span>, <span class="ui">Hoher Kontrast</span>.</li><li>Die Grenzen zwischen den Spalten ziehen ändert ihre Breite; jeder Modus merkt sich seine. <strong><span class="ui">Debug</span> → <span class="ui">Aufteilung zuruecksetzen</span></strong> stellt alles zurück.</li><li>Eine Datei im Explorer öffnen, während BehavEd-Remake läuft, reicht sie an das offene Fenster weiter, statt ein zweites Programm zu starten.</li></ul>
+    <nav class="blaettern"><a class="vor" href="erste-schritte.html"><span>Zurück</span>Erste Schritte</a><a class="nach" href="skripte.html"><span>Weiter</span>Skripte schreiben</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings and updates - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>Reference</summary><ul><li class="aktiv"><a href="einstellungen.html">Settings and updates</a><ul class="unter"><li><a href="#spielordner">Game folders</a></li><li><a href="#prefs">Preferences</a></li><li><a href="#tasten">Changing keys</a></li><li><a href="#updates">Updates and changelog</a></li></ul></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/einstellungen.html" class="aktiv" lang="en">English</a><a href="../de/einstellungen.html" class="" lang="de">Deutsch</a><a href="../zh/einstellungen.html" class="" lang="zh">中文</a><a href="../ja/einstellungen.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Reference</div>
+    <h1>Settings and updates</h1>
+    <p class="einleitung">Where the program keeps its paths and options, how to change keys, and how updates arrive.</p>
+    <h2 id="spielordner">Game folders<a class="anker" href="#spielordner">#</a></h2>
+<p><strong><span class="ui">Edit</span> → <span class="ui">Game folders</span></strong> lists the folders whose <code>.pk3</code> archives the program reads, with <strong><span class="ui">Up</span></strong>, <strong><span class="ui">Down</span></strong>, <strong><span class="ui">Remove</span></strong> and <strong><span class="ui">Open</span></strong> for each. The bottom one wins over everything above it, as <code>fs_game</code> overrides <code>base</code> in the engine. A folder without archives says so - then the path is wrong.</p>
+<figure class="bild"><a href="../bilder/en/h_spielordner.webp" class="zoom"><img src="../bilder/en/h_spielordner.webp" alt="The game folders." loading="lazy"></a><figcaption>The game folders.</figcaption></figure>
+<h2 id="prefs">Preferences<a class="anker" href="#prefs">#</a></h2>
+<p><strong><span class="ui">Edit</span> → <span class="ui">Prefs</span></strong> (or <strong><span class="ui">Prefs</span></strong> in the action column, <kbd>Alt</kbd>+<kbd>P</kbd>) holds the options of the original BehavEd:</p>
+<ul><li><strong><span class="ui">Directories</span></strong>: <span class="ui">Script Path</span>, <span class="ui">Command Description File</span> (the <code>.bhc</code> that defines every command - <strong><span class="ui">Reload command model</span></strong> reads it again), <span class="ui">Source Files Path</span>.</li><li><strong><span class="ui">Re-open last file at startup</span></strong>, <strong><span class="ui">Alpha-sort edit pulldowns</span></strong>, <strong><span class="ui">Use Alternative Coloured Icons</span></strong>, <strong><span class="ui">Yes/No query on Open/New/Exit</span></strong>, <strong><span class="ui">File-Open dialog defaults to last dir</span></strong>.</li><li>Language, theme and interface size are in the <strong><span class="ui">View</span></strong> menu.</li></ul>
+<h2 id="tasten">Changing keys<a class="anker" href="#tasten">#</a></h2>
+<p><strong><span class="ui">Edit</span> → <span class="ui">Keyboard shortcuts</span></strong> lists every action that has a key. Click a shortcut and press the new key; <kbd>Esc</kbd> cancels, <kbd>Backspace</kbd> clears. A key that is already taken is named. The defaults are in <a href="tasten.html">Keyboard shortcuts</a>.</p>
+<h2 id="updates">Updates and changelog<a class="anker" href="#updates">#</a></h2>
+<p><strong><span class="ui">Help</span> → <span class="ui">Check for updates</span></strong> asks GitHub for a newer version and shows what is new; <strong><span class="ui">Download and install</span></strong> replaces the program files and offers a restart. The switch next to it decides whether this happens at startup. <strong><span class="ui">Help</span> → <span class="ui">Changelog</span></strong> shows what was fixed and added, version by version, in your language - it also opens once by itself after an update.</p>
+    <nav class="blaettern"><a class="vor" href="tut-mission.html"><span>Previous</span>Your own mission</a><a class="nach" href="tasten.html"><span>Next</span>Keyboard shortcuts</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class="aktiv"><a href="kamera.html">Camera</a><ul class="unter"><li><a href="#einstellungen">Shots</a></li><li><a href="#gizmo">Moving and turning a shot</a></li><li><a href="#bahnen">Camera paths</a></li><li><a href="#steuern">Fly a shot yourself (Pilot)</a></li><li><a href="#vorschau">Preview and looking through</a></li></ul></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/kamera.html" class="aktiv" lang="en">English</a><a href="../de/kamera.html" class="" lang="de">Deutsch</a><a href="../zh/kamera.html" class="" lang="zh">中文</a><a href="../ja/kamera.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>Camera</h1>
+    <p class="einleitung">Every camera MOVE and PAN of the script is a shot you can see, grab and fly - the script is rewritten as you drag.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_kamera.webp" class="zoom"><img src="../bilder/en/h_kamera.webp" alt="A selected camera: its path on the map, the gizmo, the toolbar on top and the list of shots on the left." loading="lazy"></a><figcaption>A selected camera: its path on the map, the gizmo, the toolbar on top and the list of shots on the left.</figcaption></figure>
+<h2 id="einstellungen">Shots<a class="anker" href="#einstellungen">#</a></h2>
+<p>In ICARUS a shot is <code>camera ( MOVE, &lt;position&gt;, &lt;time&gt; )</code> followed by <code>camera ( PAN, &lt;angles&gt;, &lt;time&gt; )</code>. BehavEd-Remake reads them in order and draws each as a camera symbol on the map. Click the camera symbol to select the camera; the list <strong><span class="ui">Shots</span></strong> on the left shows every shot with its time and travel time (<code>moves 6.0 s</code>). Click a line to jump there.</p>
+<ul><li><strong><span class="ui">Previous shot</span> / <span class="ui">Next shot</span></strong> step through the shots; <strong><span class="ui">Fly to shot</span></strong> puts your view exactly where the selected shot stands and looks.</li><li><strong><span class="ui">New camera shot here</span></strong> adds a MOVE and a PAN at your current view, after the selected shot. <strong><span class="ui">Set to view</span></strong> moves the selected shot to where you are looking.</li><li><strong><span class="ui">Delete shot</span></strong> removes it. Under <strong><span class="ui">Selected shot</span></strong> you type exact values: <span class="ui">Position</span>, <span class="ui">Direction</span> and <span class="ui">Travel time</span> (0 = a cut).</li></ul>
+<h2 id="gizmo">Moving and turning a shot<a class="anker" href="#gizmo">#</a></h2>
+<p>The toolbar above the view switches the gizmo: <strong><span class="ui">Move</span></strong> shows three arrows and a box in the middle - drag an arrow to move along one axis, the box to move in the view plane. <strong><span class="ui">Rotate</span></strong> shows three rings for pitch, yaw and roll. <strong><span class="ui">World</span> / <span class="ui">Local</span></strong> decides whether the arrows follow the map or the camera. Letting go writes the new values into the script - one undo step.</p>
+<div class="bildreihe"><figure class="bild"><a href="../bilder/en/h_kamera_verschieben.webp" class="zoom"><img src="../bilder/en/h_kamera_verschieben.webp" alt="Move: arrows and the centre box." loading="lazy"></a><figcaption><span class="ui">Move</span>: arrows and the centre box.</figcaption></figure><figure class="bild"><a href="../bilder/en/h_kamera_drehen.webp" class="zoom"><img src="../bilder/en/h_kamera_drehen.webp" alt="Rotate: three rings." loading="lazy"></a><figcaption><span class="ui">Rotate</span>: three rings.</figcaption></figure></div>
+<p>If the timeline stands <strong>between</strong> two keys when you grab the gizmo, a new key is created at that moment instead of changing the start - like the auto-key of animation programs. While piloting, <kbd>Enter</kbd> sets such a key too (<a href="kamera.html#steuern">Fly a shot yourself (Pilot)</a>).</p>
+<h2 id="bahnen">Camera paths<a class="anker" href="#bahnen">#</a></h2>
+<p>The selected camera draws its path: already flown parts in yellow, the rest in grey. With many shots that gets crowded - <strong><span class="ui">Active path</span></strong> shows only the move into the current shot and on to the next, <strong><span class="ui">All paths</span></strong> shows every move. Both buttons sit in the camera panel.</p>
+<h2 id="steuern">Fly a shot yourself (Pilot)<a class="anker" href="#steuern">#</a></h2>
+<p><strong><span class="ui">Pilot</span></strong> puts you into the shot: hold the right mouse button to look around, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, <kbd>Q</kbd> <kbd>E</kbd> for down and up. <strong><span class="ui">Apply</span></strong> writes the view into the script, <kbd>Esc</kbd> cancels. While piloting, move the timeline and press <kbd>Enter</kbd> (<strong><span class="ui">Set key</span></strong>) to set key after key along the way.</p>
+<h2 id="vorschau">Preview and looking through<a class="anker" href="#vorschau">#</a></h2>
+<p><strong><span class="ui">Camera preview</span></strong> (in the bar of the selected camera, top left in the view) shows a small picture of what the camera sees, bottom right in the view; it follows the gizmo while you drag. Click the picture to look through the camera full size; while you look through it, playing the timeline shows the cutscene as the game will. <strong><span class="ui">Through camera</span></strong> in the same bar does this directly.</p>
+<figure class="bild breit anim"><a href="../bilder/en/a_kamera.webp" class="zoom"><img src="../bilder/en/a_kamera.webp" alt="Looking through the camera while the timeline plays." loading="lazy"></a><span class="abzeichen">Animation</span><figcaption>Looking through the camera while the timeline plays.</figcaption></figure>
+<div class="hinweis">Some shots stand on a <code>ref_tag</code> or look at one. Then the panel says so, and moving the shot moves that ref_tag in the map - the script itself only names it.</div>
+    <nav class="blaettern"><a class="vor" href="entities.html"><span>Previous</span>Entities</a><a class="nach" href="zeitleiste.html"><span>Next</span>Timeline</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

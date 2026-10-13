@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用語集 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class="aktiv"><a href="begriffe.html">用語集</a><ul class="unter"></ul></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/begriffe.html" class="" lang="en">English</a><a href="../de/begriffe.html" class="" lang="de">Deutsch</a><a href="../zh/begriffe.html" class="" lang="zh">中文</a><a href="../ja/begriffe.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">リファレンス</div>
+    <h1>用語集</h1>
+    <p class="einleitung">『ジェダイ・アカデミー』のスクリプト用語をまとめました。</p>
+    <table class="liste"><thead><tr><th>用語</th><th>意味</th></tr></thead><tbody><tr><td>ICARUS</td><td>ゲームのスクリプトシステム。スクリプトはテキスト(<code>.txt</code>)で、コンパイルして(<code>.ibi</code>)実行されます。</td></tr><tr><td><code>.ibi</code></td><td>コンパイル済みのスクリプト。ゲームが実際に実行するもので、<strong><span class="ui">コンパイル！</span></strong> で作ります。</td></tr><tr><td><code>.bhc</code></td><td>コマンド定義ファイル。すべてのコマンドとその欄、選択肢。</td></tr><tr><td><code>affect</code></td><td>中のコマンドが名前付きの 1 つのキャラクターやエンティティに送られるブロック。</td></tr><tr><td><code>task</code> / <code>do</code> / <code>dowait</code></td><td>名前付きのコマンドのまとまり。<code>do</code> で並行して開始し、<code>dowait</code> で完了を待ちます。</td></tr><tr><td><code>wait</code></td><td>ミリ秒単位の一時停止。ゲームでは書かれた値より 1 フレーム(50 ms)遅れて終わります。</td></tr><tr><td><code>SET_NAVGOAL</code></td><td>キャラクターを <code>waypoint_navgoal</code> へ歩かせます。</td></tr><tr><td><code>NPC_spawner</code></td><td>キャラクターを出現させるエンティティ。<code>NPC_type</code> で種類、<code>NPC_targetname</code> でスクリプト用の名前を指定します。</td></tr><tr><td><code>ref_tag</code></td><td>マップ上の名前付きマーク。カメラ位置や視線目標に使います。</td></tr><tr><td><code>target_scriptrunner</code></td><td>使われたとき(トリガー、別のエンティティ、スクリプトから)スクリプトを実行します。</td></tr><tr><td><code>func_static</code></td><td>スクリプトで動かせるマップのブラシモデル。船・扉・プラットフォーム。</td></tr><tr><td>ROFF (<code>.rof</code>)</td><td>記録された動き。ゲームの 1 フレームごとの位置と角度の小さな 1 歩です。<a href="animation.html#roff">ROFF ファイルの仕組み</a> を参照。</td></tr><tr><td><code>.pk3</code></td><td>ゲームがファイルを読み込む zip アーカイブ。ミッションは 1 つにまとめられます。</td></tr><tr><td><code>.ent</code></td><td>マップのエンティティを別ファイルにしたもの。Movie Duels はマップをそのままにして、独自のエンティティを隣に置きます。</td></tr><tr><td>Movie Duels</td><td>カットシーン付きミッションを含む大型の『ジェダイ・アカデミー』MOD。このプログラムの主な用途です。</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="tasten.html"><span>前へ</span>キーボードショートカット</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

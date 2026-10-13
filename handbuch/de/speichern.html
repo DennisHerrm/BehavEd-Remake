@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speichern, Übersetzen, Prüfen - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class="aktiv"><a href="speichern.html">Speichern, Übersetzen, Prüfen</a><ul class="unter"><li><a href="#speichern">Speichern</a></li><li><a href="#uebersetzen">Übersetzen</a></li><li><a href="#pruefen">Hinweise und Fehler</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/speichern.html" class="" lang="en">English</a><a href="../de/speichern.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/speichern.html" class="" lang="zh">中文</a><a href="../ja/speichern.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Skripte</div>
+    <h1>Speichern, Übersetzen, Prüfen</h1>
+    <p class="einleitung">Das Spiel führt <code>.ibi</code>-Dateien aus. Du schreibst <code>.txt</code>; <strong>Compile!</strong> macht daraus die <code>.ibi</code> - Byte für Byte wie Ravens IBIZE.</p>
+    <h2 id="speichern">Speichern<a class="anker" href="#speichern">#</a></h2>
+<ul><li><strong><span class="ui">Speichern</span></strong> (<kbd>Strg</kbd>+<kbd>S</kbd>) schreibt immer die <code>.txt</code>-Quelle - auch wenn du eine <code>.ibi</code> geöffnet hast (sie landet daneben).</li><li><strong><span class="ui">Alle sichern</span></strong> (<kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>S</kbd>) speichert jeden geänderten Reiter; Reiter aus einem Archiv haben keine Datei zum Zurückschreiben und werden übersprungen.</li><li>Jedes Speichern und Übersetzen behält eine Kopie - <code>backup1.txt</code> (neueste) bis <code>backup10.txt</code> - im Ordner <code>backup</code> neben <code>behaved.exe</code>, je Skript ein Unterordner; <strong><span class="ui">Datei</span> → <span class="ui">Sicherungsordner öffnen</span></strong> zeigt sie. <strong><span class="ui">Sicherung</span></strong> / <strong><span class="ui">Wiederherstellen</span></strong> halten von Hand eine zusätzliche Kopie fest (<code>&lt;Skript&gt;.bak</code> neben dem Skript) und holen sie zurück.</li><li>Eigene ROFF-Bahnen werden zusammen mit dem Skript als <code>.rof</code>-Dateien geschrieben - siehe <a href="animation.html#roff">Wie ROFF-Dateien funktionieren</a>.</li></ul>
+<h2 id="uebersetzen">Übersetzen<a class="anker" href="#uebersetzen">#</a></h2>
+<p><strong><span class="ui">Übersetzen!</span></strong> in der Aktionsspalte schreibt <code>&lt;Skript&gt;.ibi</code> neben die <code>.txt</code> (und speichert die <code>.txt</code>). Der Knopf leuchtet grün mit <strong><span class="ui">Übersetzt</span></strong> oder rot mit <strong><span class="ui">Fehler</span></strong> - dann ist die erste fehlerhafte Zeile gewählt und die Statuszeile sagt, warum. Der Übersetzer ist eingebaut und wurde Byte für Byte an 1011 <code>.ibi</code>-Dateien aus Ravens IBIZE geprüft.</p>
+<h2 id="pruefen">Hinweise und Fehler<a class="anker" href="#pruefen">#</a></h2>
+<p>Während du schreibst, prüft das Programm jede Zeile: unbekannte Befehle, Werte außerhalb ihrer Liste, ein Textfeld ohne Anführungszeichen, ein vertipptes Feld (&quot;meintest du ...?&quot;). Die Zähler in der Statuszeile zeigen, wie viele es sind - anklicken zeigt die Liste, ein Klick auf eine Meldung springt zu ihrer Zeile. <strong><span class="ui">Ansicht</span> → <span class="ui">Zielspiel</span></strong> ergänzt Hinweise, was auf einem Multiplayer-Server nicht geht.</p>
+    <nav class="blaettern"><a class="vor" href="skriptfluss.html"><span>Zurück</span>Script Flow: Classic, Graph, Spuren</a><a class="nach" href="karte.html"><span>Weiter</span>Die Karte</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

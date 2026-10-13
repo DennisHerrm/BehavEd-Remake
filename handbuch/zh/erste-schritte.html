@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>快速上手 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class="aktiv"><a href="erste-schritte.html">快速上手</a><ul class="unter"><li><a href="#installieren">安装</a></li><li><a href="#spielordner">指定游戏文件夹</a></li><li><a href="#oeffnen">打开内容</a></li><li><a href="#sprache">语言</a></li></ul></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/erste-schritte.html" class="" lang="en">English</a><a href="../de/erste-schritte.html" class="" lang="de">Deutsch</a><a href="../zh/erste-schritte.html" class="aktiv" lang="zh">中文</a><a href="../ja/erste-schritte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">入门</div>
+    <h1>快速上手</h1>
+    <p class="einleitung">解压,告诉程序游戏在哪里,打开一个任务。设置就这么多。</p>
+    <h2 id="installieren">安装<a class="anker" href="#installieren">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>从发布页面下载最新的 <code>BehavEd-Remake-….zip</code>,解压到任意文件夹,例如游戏旁边。不会向 Windows 安装任何东西。</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>启动 <code>behaved.exe</code>。程序启动时会在 GitHub 上检查新版本并提示你;未经同意不会下载任何内容(开关位于 <strong><span class="ui">帮助</span></strong>)。</p></div></div></li></ol>
+<h2 id="spielordner">指定游戏文件夹<a class="anker" href="#spielordner">#</a></h2>
+<p>地图、模型、声音和游戏脚本都在游戏的 <code>.pk3</code> 压缩包中。打开 <strong><span class="ui">编辑</span> → <span class="ui">游戏目录</span></strong>,用 <strong><span class="ui">添加游戏目录…</span></strong> 添加游戏文件夹:先 <code>base</code>,再添加模组,例如 Movie Duels(<code>MD</code>)。最下面的文件夹优先,正如游戏中 <code>fs_game</code> 覆盖 <code>base</code>。</p>
+<figure class="bild"><a href="../bilder/zh/h_spielordner.webp" class="zoom"><img src="../bilder/zh/h_spielordner.webp" alt="游戏文件夹:先 base,模组在其下方——最下面的优先。" loading="lazy"></a><figcaption>游戏文件夹:先 base,模组在其下方——最下面的优先。</figcaption></figure>
+<h2 id="oeffnen">打开内容<a class="anker" href="#oeffnen">#</a></h2>
+<p>有多种打开方式。地图页的起始页面(未打开地图时显示)提供:新建任务、从 <code>.pk3</code> 打开任务、只打开地图,以及最近的任务。在菜单中:</p>
+<ul><li><strong>任务</strong>——<strong><span class="ui">文件</span> → <span class="ui">加载任务…</span></strong> 选择一个 <code>.pk3</code>,打开任务及其地图、实体和全部脚本(每个脚本一个标签页)。参见 <a href="missionen.html">任务</a>。</li><li><strong>脚本</strong>——<strong><span class="ui">文件</span> → <span class="ui">打开</span></strong> 从磁盘打开 <code>.txt</code> 或已编译的 <code>.ibi</code>。</li><li><strong>最近的任务</strong>——<strong><span class="ui">文件</span> → <span class="ui">最近的任务</span></strong> 一键重新打开整个任务。</li></ul>
+<figure class="bild"><a href="../bilder/zh/h_start.webp" class="zoom"><img src="../bilder/zh/h_start.webp" alt="未打开地图时,地图页显示起始页面。" loading="lazy"></a><figcaption>未打开地图时,地图页显示起始页面。</figcaption></figure>
+<h2 id="sprache">语言<a class="anker" href="#sprache">#</a></h2>
+<p>程序支持英语、德语、中文和日语。启动时使用 Windows 的语言,可在 <strong><span class="ui">视图</span> → <span class="ui">语言</span></strong> 中更改。命令名和值保持游戏中的写法(<code>affect</code>、<code>SET_NAVGOAL</code>),因为文件中就是这样写的。</p>
+<div class="hinweis">本手册可通过 <strong><span class="ui">帮助</span> → <span class="ui">手册与教程</span></strong> 打开,也可在 <span class="ui">关于 BehavEd</span> 中点击 <strong><span class="ui">手册</span></strong> 按钮。它位于 <code>behaved.exe</code> 旁边的 <code>handbuch</code> 文件夹中,无需联网。</div>
+    <nav class="blaettern"><a class="vor" href="index.html"><span>上一页</span>欢迎</a><a class="nach" href="fenster.html"><span>下一页</span>窗口</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マップ - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class="aktiv"><a href="karte.html">マップ</a><ul class="unter"><li><a href="#laden">マップを開く</a></li><li><a href="#bewegen">視点の操作</a></li><li><a href="#anzeige">表示内容</a></li></ul></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/karte.html" class="" lang="en">English</a><a href="../de/karte.html" class="" lang="de">Deutsch</a><a href="../zh/karte.html" class="" lang="zh">中文</a><a href="../ja/karte.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>マップ</h1>
+    <p class="einleitung">ゲームと同じように描かれる 3D マップ。ライト、グロー、霧、エフェクト、スクリプトのキャラクター付き。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_karte.webp" class="zoom"><img src="../bilder/ja/h_karte.webp" alt="マップビュー。上にツールバー、左に配置タイル。" loading="lazy"></a><figcaption>マップビュー。上にツールバー、左に配置タイル。</figcaption></figure>
+<h2 id="laden">マップを開く<a class="anker" href="#laden">#</a></h2>
+<p>モードバーで <strong><span class="ui">マップ</span></strong> に切り替えます。ミッションはマップも一緒に開きます(<a href="missionen.html">ミッション</a>)。ミッションなしなら <strong><span class="ui">マップとファイル</span></strong> でディスクや <code>.pk3</code> からマップを開くか、別の <code>.ent</code> ファイルを読み込みます。<strong>Scripts (N)</strong> はマップのエンティティが参照するスクリプトの一覧で、選ぶとそのカットシーンを読み込みます。</p>
+<h2 id="bewegen">視点の操作<a class="anker" href="#bewegen">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D(マウスがビュー上)</kbd></td><td>飛行。<kbd>Q</kbd> / <kbd>E</kbd> で下降・上昇、<kbd>Shift</kbd> で高速</td></tr><tr><td><kbd>右ドラッグ</kbd></td><td>見回す</td></tr><tr><td><kbd>中ドラッグ</kbd></td><td>パン</td></tr><tr><td><kbd>Alt + 中ボタン</kbd></td><td>周回</td></tr><tr><td><kbd>ホイール</kbd></td><td>ズーム</td></tr><tr><td><kbd>一覧でエンティティをダブルクリック</kbd></td><td>そこへ移動</td></tr><tr><td><kbd>Ctrl + 1 ... 9</kbd></td><td>視点を保存。<kbd>1</kbd>〜<kbd>9</kbd> で戻る(マップごと)</td></tr></tbody></table>
+<h2 id="anzeige">表示内容<a class="anker" href="#anzeige">#</a></h2>
+<p>ツールバー右のボタンで画面の要素を切り替えます。エンティティ、名前、スクリプトのキャラクター、エフェクト、グロー、動的ライト、霧、空。<strong><span class="ui">トップビュー</span></strong> は地図のように真上から見下ろし、切断高さより上を取り除きます。高さの欄をドラッグすると別の階を見られます。<strong><span class="ui">表示設定</span></strong>(歯車)には明るさ、環境光、詳細度、キャラクターの影、そしてアクティブなスクリプトが使わないエンティティを暗くする <strong><span class="ui">このスクリプトのエンティティを強調</span></strong> があります。</p>
+<figure class="bild"><a href="../bilder/ja/h_ansicht_einst.webp" class="zoom"><img src="../bilder/ja/h_ansicht_einst.webp" alt="表示設定。" loading="lazy"></a><figcaption><span class="ui">表示設定</span>。</figcaption></figure>
+<div class="hinweis">画面はゲームと同じに見えるように作られています。シェーダー、ライトマップ、グロー(<code>r_DynamicGlow</code> 相当)、霧(<code>r_drawfog</code>)、動的ライト、レンズフレア、天候、セイバーの軌跡。おかしく見えるときは <strong><span class="ui">統計</span></strong> でフレームレート、テクスチャ、グラフィックカードの値を確認できます。</div>
+    <nav class="blaettern"><a class="vor" href="speichern.html"><span>前へ</span>保存・コンパイル・チェック</a><a class="nach" href="entities.html"><span>次へ</span>エンティティ</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

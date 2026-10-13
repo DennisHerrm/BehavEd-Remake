@@ -146,6 +146,8 @@ int main(int argc, char** argv) {
     }
 
     int fehlerhaft = 0;
+    std::size_t schluesselSumme = 0;
+    std::size_t bilderSumme = 0;
     int mitHinweis = 0;
     int notizen = 0;
     std::map<int, int> fassungen;
@@ -203,6 +205,42 @@ int main(int argc, char** argv) {
             ++fehlerhaft;
             continue;
         }
+        // rc599: wieder schreiben - bytegleich - und in Schluessel zerlegen
+        // und neu backen: bis auf die Toleranz (0,5 Einheiten, 0,25 Grad)
+        // dieselbe Bahn, dieselben Notizen.
+        if (r.hinweise.empty() && schreibeRoff(r) != daten) {
+            std::printf("  FEHLER %s: wieder geschrieben nicht bytegleich\n", n.c_str());
+            ++fehlerhaft;
+            continue;
+        }
+        {
+            const RoffZerlegung z = zerlegeRoff(r, null3, null3);
+            const Roff neu = baueRoff(z.schluessel, z.weich, r.bildMs, roffNotizen(r));
+            const RoffBahn nb = roffBahn(neu, null3, null3);
+            double weitOrt = 0.0;
+            double weitWinkel = 0.0;
+            for (double t = 0.0; t <= ende + 100.0; t += 25.0) {
+                const RoffStand x = roffStand(r, b, t, false);
+                const RoffStand y = roffStand(neu, nb, t, false);
+                double d2 = 0.0;
+                for (int i = 0; i < 3; ++i) {
+                    d2 += static_cast<double>((x.ort[i] - y.ort[i]) * (x.ort[i] - y.ort[i]));
+                    weitWinkel = std::max(weitWinkel, static_cast<double>(std::fabs(x.winkel[i] - y.winkel[i])));
+                }
+                weitOrt = std::max(weitOrt, std::sqrt(d2));
+            }
+            schluesselSumme += z.schluessel.size();
+            bilderSumme += r.bilder.size();
+            const bool notizenGleich = roffAusloesungen(neu).size() == roffAusloesungen(r).size();
+            std::printf("  zerlegt %s: %zu Bilder -> %zu Schluessel (%s), daneben %.3f / %.3f Grad%s\n", n.c_str(),
+                        r.bilder.size(), z.schluessel.size(), z.weich ? "weich" : "gleichmaessig", weitOrt, weitWinkel,
+                        notizenGleich ? "" : ", NOTIZEN ANDERS");
+            if (weitOrt > 0.6 || weitWinkel > 0.3 || !notizenGleich || std::fabs(roffLaufzeitMs(neu) - ende) > 0.5) {
+                std::printf("  FEHLER %s: neu gebacken nicht dieselbe Bahn\n", n.c_str());
+                ++fehlerhaft;
+                continue;
+            }
+        }
         for (const RoffAusloesung& a : roffAusloesungen(r)) {
             ++notizen;
             const RoffNotizBefehl nb = zerlegeRoffNotiz(r.notizen[a.notiz]);
@@ -244,6 +282,7 @@ int main(int argc, char** argv) {
         std::printf(" %d ms x%d", t, a);
     }
     std::printf("\n%d mit Hinweis, %d ausgeloeste Notizen\n", mitHinweis, notizen);
+    std::printf("zerlegt: %zu Bilder -> %zu Schluessel\n", bilderSumme, schluesselSumme);
     std::printf("PLAY_ROFF in Skripten: %d Aufrufe, %zu Namen, %d ohne Datei\n", aufrufe, genannt.size(), fehlend);
     std::printf("%s (%d fehlerhafte Dateien)\n", fehlerhaft != 0 ? "FEHLGESCHLAGEN" : "alle ROFFs gelesen und abgespielt",
                 fehlerhaft);

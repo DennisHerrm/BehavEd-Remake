@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>脚本流程:经典、图表、轨道 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class="aktiv"><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a><ul class="unter"><li><a href="#classic">经典</a></li><li><a href="#graph">图表:谁启动谁</a></li><li><a href="#spuren">轨道:随时间展开的脚本</a></li></ul></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skriptfluss.html" class="" lang="en">English</a><a href="../de/skriptfluss.html" class="" lang="de">Deutsch</a><a href="../zh/skriptfluss.html" class="aktiv" lang="zh">中文</a><a href="../ja/skriptfluss.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">脚本</div>
+    <h1>脚本流程:经典、图表、轨道</h1>
+    <p class="einleitung">同一脚本的三种视图——随时切换,不会丢失任何内容。</p>
+    <p><span class="ui">脚本流程</span> 栏顶部的 <strong><span class="ui">经典</span> / <span class="ui">图表</span> / <span class="ui">轨道</span></strong> 按钮用于切换视图。分屏时每个窗格各有自己的视图。</p>
+<h2 id="classic">经典<a class="anker" href="#classic">#</a></h2>
+<p>原版 BehavEd 的树状视图——每条命令一行,块可以展开。编辑在这里进行;参见 <a href="skripte.html">编写脚本</a>。</p>
+<h2 id="graph">图表:谁启动谁<a class="anker" href="#graph">#</a></h2>
+<figure class="bild breit"><a href="../bilder/zh/h_graph.webp" class="zoom"><img src="../bilder/zh/h_graph.webp" alt="任务的关系图:玩家出生点、触发器、脚本启动器、角色和脚本及其连接。" loading="lazy"></a><figcaption>任务的关系图:玩家出生点、触发器、脚本启动器、角色和脚本及其连接。</figcaption></figure>
+<p>任务由其实体串联起来:<code>trigger</code> 指向 <code>target_scriptrunner</code>,后者运行脚本,脚本控制角色并启动其他脚本。关系图正是把这些画出来。双击节点打开其脚本或在地图中显示该实体;从节点右侧的圆点拖到另一个节点即可连接——对于角色,还要选择脚本类型(spawnscript、deathscript……)。可以把列表中的实体或命令拖进图中;把命令放在空白处会新建一个脚本。</p>
+<p><strong><span class="ui">适应</span></strong> 显示全部,<strong><span class="ui">排列</span></strong> 整理节点,<strong><span class="ui">直角连线</span></strong> 让连线以直角穿过空隙。双击连线添加拐点,右键删除。</p>
+<h2 id="spuren">轨道:随时间展开的脚本<a class="anker" href="#spuren">#</a></h2>
+<figure class="bild breit"><a href="../bilder/zh/h_spuren.webp" class="zoom"><img src="../bilder/zh/h_spuren.webp" alt="轨道:摄像机镜头、角色、对白和脚本以时间块显示。" loading="lazy"></a><figcaption>轨道:摄像机镜头、角色、对白和脚本以时间块显示。</figcaption></figure>
+<p>脚本栏中的紧凑时间轴:包含 <strong><span class="ui">摄像机</span></strong>、每个角色、<strong><span class="ui">对白</span></strong>(语音台词)和 <strong><span class="ui">脚本</span></strong> 等行。单击块选中其对应行,拖动右边缘修改时长,在标尺上拖动可浏览时间。地图下方的大 <a href="zeitleiste.html">时间轴</a> 提供更详细的同类功能。</p>
+    <nav class="blaettern"><a class="vor" href="skripte.html"><span>上一页</span>编写脚本</a><a class="nach" href="speichern.html"><span>下一页</span>保存、编译与检查</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

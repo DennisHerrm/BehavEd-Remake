@@ -14,14 +14,21 @@ game does (Jedi Academy / Movie Duels).
   split views, bookmarks, change markers with revert-to-original.
 - Built-in updater: new releases are offered at startup.
 - English, German, Chinese and Japanese.
+- A full guide with pictures, tutorials and search, in all four languages
+  (Help → *Guide and tutorials*).
 
 ## Download
 
 Get the latest build from
 [Releases](https://github.com/DennisHerrm/BehavEd-Remake/releases/latest):
 unzip it and start `BehavEd-Remake/behaved.exe` (Windows 10/11). Add your
-Jedi Academy / Movie Duels game folders under **Paths**. The program updates
-itself from here (File → *Check for updates…*).
+Jedi Academy / Movie Duels game folders under **Edit → Game folders**. The
+program updates itself from here (Help → *Check for updates…*).
+
+The guide (`handbuch/` next to `behaved.exe`) explains every function and walks
+through four tutorials: a first cutscene, a walking figure, a ship on a ROFF
+path and a mission of your own. It works offline; open it from
+Help → *Guide and tutorials*. Its source is in `tools/handbuch/`.
 
 ## Building
 

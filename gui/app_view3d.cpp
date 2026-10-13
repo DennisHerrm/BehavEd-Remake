@@ -25,6 +25,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <cstdint>
 #include <cstdio>
 #include <array>
@@ -1273,8 +1274,11 @@ void drawCameraGizmos(MapImage& img) {
                     float rdir[3][3];
                     achsenRichtungen(g_app->gizmoRotSpace, rdir);
                     const float ringRad = len * 0.6F;
-                    g_app->kamYawRingInMove = true;
-                    for (int t = 0; t < App::kRingPts; ++t) {
+                    // rc599: im Verschieben nur die Pfeile - gedreht wird im
+                    // Drehmodus ("bei Move ein Move-Target, bei Drehen ein
+                    // Rotation-Target"). Der Ring bleibt aus.
+                    g_app->kamYawRingInMove = false;
+                    for (int t = 0; t < App::kRingPts && g_app->kamYawRingInMove; ++t) {
                         const float w2 = 6.2831853F * static_cast<float>(t) / static_cast<float>(App::kRingPts - 1);
                         float pt[3];
                         for (int k = 0; k < 3; ++k) {
@@ -4294,6 +4298,11 @@ std::shared_ptr<const Roff> roffFuer(const std::string& name) {
     if (name.empty()) {
         return nullptr;
     }
+    // Eine eigene Bahn aus einem offenen Skript geht vor (rc599) - sie ist
+    // neuer als jede Datei.
+    if (std::shared_ptr<const Roff> eigen = roffAusMarken(name)) {
+        return eigen;
+    }
     const std::string pfad = roffPfad(name);
     std::string k = pfad;
     for (char& c : k) {
@@ -4305,7 +4314,26 @@ std::shared_ptr<const Roff> roffFuer(const std::string& name) {
     }
     std::shared_ptr<const Roff> r;
     std::string data;
-    if (readFromArchives(pfad, data)) {
+    // Archive, dann lose Dateien (rc599: so liegen die gebauten neben den
+    // Skripten). Wie in der Engine je Spielordner erst die Archive, dann
+    // der Ordner selbst - und der spaetere Spielordner gewinnt.
+    bool gefunden = false;
+    for (auto gp = g_app->gamePaths.rbegin(); gp != g_app->gamePaths.rend() && !gefunden; ++gp) {
+        for (auto a = gp->archives.rbegin(); a != gp->archives.rend() && !gefunden; ++a) {
+            if (const Pk3Entry* e = a->find(pfad)) {
+                gefunden = readPk3File(*a, *e, data);
+            }
+        }
+        if (!gefunden && !gp->directory.empty()) {
+            std::error_code ec;
+            const std::filesystem::path lose = std::filesystem::u8path(gp->directory + "/" + pfad);
+            if (std::filesystem::is_regular_file(lose, ec)) {
+                data = slurp(gp->directory + "/" + pfad);
+                gefunden = !data.empty();
+            }
+        }
+    }
+    if (gefunden) {
         auto neu = std::make_shared<Roff>();
         std::string grund;
         if (leseRoff(data, *neu, &grund)) {
@@ -7144,7 +7172,7 @@ void loadMissionArchive() {
     missionenAusArchiv(p);
 }
 
-void missionenAusArchiv(const std::string& p) {
+void missionenAusArchiv(const std::string& p, const std::string& wunsch) {
     diag::Step step("Mission suchen: " + p);
     g_app->settings.lastDir = directoryOf(p);
     g_app->missionArchive = p;
@@ -7175,6 +7203,15 @@ void missionenAusArchiv(const std::string& p) {
     });
     diag::info(std::to_string(g_app->missions.size()) + " Karten gefunden");
 
+    // Aus "zuletzt geoeffnet": die gemerkte Mission, ohne Auswahl (rc599).
+    if (!wunsch.empty()) {
+        for (const Mission& m : g_app->missions) {
+            if (m.name == wunsch) {
+                loadMission(m);
+                return;
+            }
+        }
+    }
     // Genau eine spielbare Mission? Dann direkt laden.
     //
     // Bei mehreren wird gefragt - und das ist der Normalfall: ein Mod bringt
@@ -7336,6 +7373,10 @@ void loadMission(const Mission& m) {
 
     // Und jetzt alles auf einmal, statt beim ersten Bewegen.
     prepareScene();
+    // Fuer "zuletzt geoeffnete Missionen" (rc599): Archiv und Name.
+    if (!g_app->missionArchive.empty()) {
+        g_app->settings.noteRecentMission("pk3|" + g_app->missionArchive + "|" + m.name);
+    }
     // Dem vorigen Reiter seine Karte zurueckgeben - siehe oben.
     //
     // Nur, wenn wirklich ein NEUER Reiter entstanden ist. Wurde die Mission
@@ -7602,11 +7643,18 @@ void drawEntityLayers(float height) {
         }
         ImGui::SameLine();
         if (augeKnopf(alleVersteckt ? "-" : "O", !alleVersteckt)) {
-            for (const std::string& k2 : klassen) {
-                if (alleVersteckt) {
-                    g_app->hiddenClasses.erase(k2);
-                } else {
-                    g_app->hiddenClasses.insert(k2);
+            if (ImGui::GetIO().KeyAlt) {
+                // Alt+Klick: nur diese Gruppe zeigen (so sagt es der Tooltip
+                // der Liste; rc599 - vorher schaltete Alt wie ein Klick).
+                for (const MapEntity& e2 : g_app->map.entities) { g_app->hiddenClasses.insert(e2.classname); }
+                for (const std::string& k2 : klassen) { g_app->hiddenClasses.erase(k2); }
+            } else {
+                for (const std::string& k2 : klassen) {
+                    if (alleVersteckt) {
+                        g_app->hiddenClasses.erase(k2);
+                    } else {
+                        g_app->hiddenClasses.insert(k2);
+                    }
                 }
             }
             g_app->mapDirty = true;
@@ -8541,6 +8589,13 @@ void klaengeVorladen() {
 }
 
 void drawTimeline() {
+    {
+        // Fuer Strg+Rad (siehe tlUnterMaus): steht die Maus ueber der Leiste?
+        const ImVec2 o = ImGui::GetCursorScreenPos();
+        const ImVec2 v = ImGui::GetContentRegionAvail();
+        g_app->tlUnterMaus = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+                             ImGui::IsMouseHoveringRect(o, ImVec2{o.x + v.x, o.y + v.y}, false);
+    }
     if (!g_app->camTrackValid) {
         // Ueber prepareScene(), damit es NUR EINE Stelle gibt, die die
         // Ansicht aufbaut. Vorher baute diese hier die Szene und leerte
@@ -9686,6 +9741,7 @@ void drawTimeline() {
                 return 4;
             default:
                 if (l.rfind("SIGNAL", 0) == 0 || l.rfind("WAITSIGNAL", 0) == 0 || l.rfind("WAIT", 0) == 0) { return 5; }
+                if (hat("PLAY_ROFF")) { return 0; }   // eine Bahn (rc599)
                 return 4;
         }
     };
@@ -10217,7 +10273,9 @@ void drawTimeline() {
             const ImU32 tuerkis = IM_COL32(90, 220, 190, 255);
             for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figIdx)].steps) {
                 const bool lauf = st.kind == ActorStep::Kind::WalkTo;
-                if ((!lauf && st.kind != ActorStep::Kind::Glide) || !(st.endMs > st.startMs)) { continue; }
+                // rc599: auch die ROFF-Bahnen (play ( "PLAY_ROFF", ... )).
+                const bool roff = st.kind == ActorStep::Kind::Roff;
+                if ((!lauf && !roff && st.kind != ActorStep::Kind::Glide) || !(st.endMs > st.startMs)) { continue; }
                 const ImVec2 a{xAt(st.startMs), p0.y + rowH - 2.0F - hb};
                 const ImVec2 b{std::max(xAt(st.endMs), a.x + 3.0F), p0.y + rowH - 2.0F};
                 const bool ueber = ImGui::IsMouseHoveringRect(a, b);
@@ -10230,9 +10288,14 @@ void drawTimeline() {
                     float weg = 0.0F;
                     for (int k = 0; k < 3; ++k) { weg += (st.to[k] - st.from[k]) * (st.to[k] - st.from[k]); }
                     ImGui::BeginTooltip();
-                    ImGui::Text(tr(Str::TlBewegung),
-                                tr(lauf ? (st.text == "BOTH_WALK1" ? Str::BahnGehtJetzt : Str::BahnRenntJetzt) : Str::TlFlug),
-                                (st.endMs - st.startMs) / 1000.0, static_cast<double>(std::sqrt(weg)));
+                    if (roff) {
+                        ImGui::Text("ROFF  %s  -  %.2f s, %.0f", st.text.c_str(), (st.endMs - st.startMs) / 1000.0,
+                                    static_cast<double>(std::sqrt(weg)));
+                    } else {
+                        ImGui::Text(tr(Str::TlBewegung),
+                                    tr(lauf ? (st.text == "BOTH_WALK1" ? Str::BahnGehtJetzt : Str::BahnRenntJetzt) : Str::TlFlug),
+                                    (st.endMs - st.startMs) / 1000.0, static_cast<double>(std::sqrt(weg)));
+                    }
                     if (lauf) { ImGui::TextDisabled("%s", tr(Str::BahnZielMenue)); }
                     ImGui::EndTooltip();
                     if (!st.path.empty() && st.fremd.empty() && !g_app->tlDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -11455,10 +11518,15 @@ void drawMapView() {
                     mdl != nullptr && mdl->size() > 1 && (*mdl)[0] == '*') {
                     nr = std::atoi(mdl->c_str() + 1);
                 }
+                float dn = 0.0F;
+                float dr = 0.0F;
+                (void)zugKippen(zi, dn, dr);
                 for (MoverDraw& mv : movers) {
                     if (mv.entity == zi || (nr > 0 && mv.brush == nr)) {
                         for (int k = 0; k < 3; ++k) { mv.offset[k] += zv[k]; }
                         mv.yaw += zg;
+                        mv.pitch += dn;
+                        mv.roll += dr;
                     }
                 }
             }
@@ -13974,6 +14042,8 @@ g_app->gizmoAxis = g_app->gizmoHover;
         const float bildB = g_app->kartenAnsicht[2] - g_app->kartenAnsicht[0];
         kameraVorschauZeigen();
         kameraUeberlagerung(bildB > 0.0F ? static_cast<float>(g_app->mapImage.width) / bildB : 1.0F);
+        // Die Leiste Verschieben | Drehen der Entity - aus demselben Grund hier.
+        entityGizmoLeiste();
     }
     platzierLeiste();
     // Draufsicht: die Schnitthoehe oben rechts (rc589).

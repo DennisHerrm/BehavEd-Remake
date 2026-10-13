@@ -2,12 +2,14 @@
 #include "bhed/roff.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bhed {
@@ -498,6 +500,326 @@ void roffEffektOrt(const RoffNotizBefehl& b, const float basisOrt[3], const floa
     for (int a = 0; a < 3; ++a) {
         ort[a] = basisOrt[a] + vorn[a] * b.versatz[0] + rechts[a] * b.versatz[1] + oben[a] * b.versatz[2];
     }
+}
+
+// --- Bauen und Schreiben (rc599) -------------------------------------------
+
+namespace {
+
+void legI32(std::string& d, std::int32_t v) {
+    std::uint32_t u = 0;
+    std::memcpy(&u, &v, sizeof(u));
+    for (unsigned i = 0; i < 4U; ++i) { d.push_back(static_cast<char>((u >> (8U * i)) & 0xFFU)); }
+}
+
+void legF32(std::string& d, float v) {
+    std::uint32_t u = 0;
+    std::memcpy(&u, &v, sizeof(u));
+    for (unsigned i = 0; i < 4U; ++i) { d.push_back(static_cast<char>((u >> (8U * i)) & 0xFFU)); }
+}
+
+// Ort und Winkel eines Schluessels als sechs Zahlen.
+using Sechs = std::array<double, 6>;
+
+Sechs sechs(const RoffSchluessel& k) {
+    return {k.ort[0], k.ort[1], k.ort[2], k.winkel[0], k.winkel[1], k.winkel[2]};
+}
+
+// Der Stand im Stueck i (von Schluessel i nach i+1) zur Zeit t.
+Sechs bahnImStueck(const std::vector<RoffSchluessel>& k, bool weich, std::size_t i, double t) {
+    const std::size_t n = k.size();
+    if (n == 1U || t <= k.front().ms) { return sechs(k.front()); }
+    if (t >= k.back().ms) { return sechs(k.back()); }
+    const double h = k[i + 1U].ms - k[i].ms;
+    const Sechs a = sechs(k[i]);
+    const Sechs b = sechs(k[i + 1U]);
+    if (h <= 1e-9) { return b; }
+    const double u = (t - k[i].ms) / h;
+    Sechs out{};
+    if (!weich) {
+        for (std::size_t c = 0; c < 6U; ++c) { out[c] = a[c] + (b[c] - a[c]) * u; }
+        return out;
+    }
+    // Tangenten je ms: aus den Nachbarn, an den Enden null.
+    const auto tangente = [&k, n](std::size_t j, std::size_t c) {
+        if (j == 0 || j + 1U >= n) { return 0.0; }
+        const double dt = k[j + 1U].ms - k[j - 1U].ms;
+        return dt > 1e-9 ? (sechs(k[j + 1U])[c] - sechs(k[j - 1U])[c]) / dt : 0.0;
+    };
+    const double u2 = u * u;
+    const double u3 = u2 * u;
+    const double h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
+    const double h10 = u3 - 2.0 * u2 + u;
+    const double h01 = -2.0 * u3 + 3.0 * u2;
+    const double h11 = u3 - u2;
+    for (std::size_t c = 0; c < 6U; ++c) {
+        out[c] = h00 * a[c] + h10 * h * tangente(i, c) + h01 * b[c] + h11 * h * tangente(i + 1U, c);
+    }
+    return out;
+}
+
+// Der Stand der Schluesselbahn zur Zeit t (ms ab dem ersten Schluessel).
+Sechs bahnBei(const std::vector<RoffSchluessel>& k, bool weich, double t) {
+    std::size_t i = 0;
+    while (i + 2U < k.size() && t > k[i + 1U].ms) { ++i; }
+    return bahnImStueck(k, weich, i, t);
+}
+
+}  // namespace
+
+std::string schreibeRoff(const Roff& r) {
+    std::string d = "ROFF";
+    if (r.fassung == kRoffFassung1) {
+        legI32(d, kRoffFassung1);
+        legF32(d, static_cast<float>(r.bilder.size()));
+        for (const RoffBild& b : r.bilder) {
+            for (float v : b.ort) { legF32(d, v); }
+            for (float v : b.winkel) { legF32(d, v); }
+        }
+        return d;
+    }
+    legI32(d, kRoffFassung2);
+    legI32(d, static_cast<std::int32_t>(r.bilder.size()));
+    legI32(d, r.bildMs > 0 ? r.bildMs : 50);
+    legI32(d, static_cast<std::int32_t>(r.notizen.size()));
+    for (const RoffBild& b : r.bilder) {
+        for (float v : b.ort) { legF32(d, v); }
+        for (float v : b.winkel) { legF32(d, v); }
+        legI32(d, b.ersteNotiz);
+        legI32(d, b.notizen);
+    }
+    for (const std::string& n : r.notizen) {
+        d += n;
+        d.push_back('\0');
+    }
+    return d;
+}
+
+Roff baueRoff(std::vector<RoffSchluessel> schluessel, bool weich, int bildMs, const std::vector<RoffNotiz>& notizen) {
+    Roff r;
+    r.fassung = kRoffFassung2;
+    r.bildMs = bildMs > 0 ? bildMs : 50;
+    r.lerp = 1000 / r.bildMs;
+    if (schluessel.empty()) { schluessel.push_back(RoffSchluessel{}); }
+    std::stable_sort(schluessel.begin(), schluessel.end(),
+                     [](const RoffSchluessel& a, const RoffSchluessel& b) { return a.ms < b.ms; });
+    const double t0 = schluessel.front().ms;
+    for (RoffSchluessel& k : schluessel) { k.ms -= t0; }
+    const double schritt = spielSchritt(r);
+    const double dauer = schluessel.back().ms;
+    const auto wege = static_cast<std::size_t>(std::max(0.0, std::ceil(dauer / schritt - 1e-9)));
+    r.bilder.resize(wege + 1U);
+    // Bild fuer Bild in float aufaddiert wie VectorAdd in G_Roff - der
+    // naechste Versatz gleicht die Rundung des vorigen wieder aus.
+    float stand[6];
+    const Sechs s0 = sechs(schluessel.front());
+    for (std::size_t c = 0; c < 6U; ++c) { stand[c] = static_cast<float>(s0[c]); }
+    for (std::size_t j = 0; j < wege; ++j) {
+        const Sechs ziel = bahnBei(schluessel, weich, std::min(static_cast<double>(j + 1U) * schritt, dauer));
+        RoffBild& b = r.bilder[j];
+        for (std::size_t c = 0; c < 6U; ++c) {
+            const float d = static_cast<float>(ziel[c]) - stand[c];
+            (c < 3U ? b.ort[c] : b.winkel[c - 3U]) = d;
+            stand[c] += d;
+        }
+    }
+    // Die Notizen, nach Bild geordnet.
+    std::vector<std::pair<std::size_t, const RoffNotiz*>> je;
+    for (const RoffNotiz& n : notizen) {
+        const double f = std::round((n.ms - t0) / schritt);
+        const std::size_t bild = f <= 0.0 ? 0U : std::min(r.bilder.size() - 1U, static_cast<std::size_t>(f));
+        je.emplace_back(bild, &n);
+    }
+    std::stable_sort(je.begin(), je.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& [bild, n] : je) {
+        RoffBild& b = r.bilder[bild];
+        if (b.ersteNotiz < 0) { b.ersteNotiz = static_cast<int>(r.notizen.size()); }
+        ++b.notizen;
+        r.notizen.push_back(n->text);
+    }
+    return r;
+}
+
+std::vector<RoffSchluessel> roffSchluessel(const Roff& r, const float startOrt[3], const float startWinkel[3],
+                                           float tolOrt, float tolWinkel) {
+    const RoffBahn bahn = roffBahn(r, startOrt, startWinkel);
+    const std::size_t n = std::max<std::size_t>(1U, r.bilder.size());
+    const double schritt = spielSchritt(r);
+    const auto wert = [&bahn](std::size_t j, std::size_t c) {
+        return static_cast<double>(c < 3U ? bahn.stand[j].ort[c] : bahn.stand[j].winkel[c - 3U]);
+    };
+    std::vector<char> behalten(n, 0);
+    behalten.front() = 1;
+    behalten.back() = 1;
+    const double to = std::max(1e-4, static_cast<double>(tolOrt));
+    const double tw = std::max(1e-4, static_cast<double>(tolWinkel));
+    std::vector<std::pair<std::size_t, std::size_t>> offen;
+    if (n > 2U) { offen.emplace_back(0U, n - 1U); }
+    while (!offen.empty()) {
+        const auto [a, b] = offen.back();
+        offen.pop_back();
+        double schlimmst = 1.0;
+        std::size_t wo = 0;
+        for (std::size_t j = a + 1U; j < b; ++j) {
+            const double u = static_cast<double>(j - a) / static_cast<double>(b - a);
+            double ort2 = 0.0;
+            double winkel = 0.0;
+            for (std::size_t c = 0; c < 6U; ++c) {
+                const double d = wert(j, c) - (wert(a, c) + (wert(b, c) - wert(a, c)) * u);
+                if (c < 3U) {
+                    ort2 += d * d;
+                } else {
+                    winkel = std::max(winkel, std::fabs(d));
+                }
+            }
+            const double mass = std::max(std::sqrt(ort2) / to, winkel / tw);
+            if (mass > schlimmst) {
+                schlimmst = mass;
+                wo = j;
+            }
+        }
+        if (wo != 0U) {
+            behalten[wo] = 1;
+            if (wo - a > 1U) { offen.emplace_back(a, wo); }
+            if (b - wo > 1U) { offen.emplace_back(wo, b); }
+        }
+    }
+    std::vector<RoffSchluessel> aus;
+    for (std::size_t j = 0; j < n; ++j) {
+        if (behalten[j] == 0) { continue; }
+        RoffSchluessel k;
+        k.ms = static_cast<double>(j) * schritt;
+        for (int c = 0; c < 3; ++c) {
+            k.ort[c] = bahn.stand[j].ort[c];
+            k.winkel[c] = bahn.stand[j].winkel[c];
+        }
+        aus.push_back(k);
+    }
+    return aus;
+}
+
+RoffZerlegung zerlegeRoff(const Roff& r, const float startOrt[3], const float startWinkel[3], float tolOrt,
+                          float tolWinkel) {
+    RoffZerlegung gerade;
+    gerade.schluessel = roffSchluessel(r, startOrt, startWinkel, tolOrt, tolWinkel);
+    gerade.weich = false;
+    if (gerade.schluessel.size() <= 2U) { return gerade; }
+    // Weich: Schluessel nacheinander dort, wo die Bahn am weitesten
+    // danebenliegt. Gezaehlt werden die Staende zu den Bildzeiten - genau
+    // die, die baueRoff spaeter trifft.
+    const RoffBahn bahn = roffBahn(r, startOrt, startWinkel);
+    const std::size_t n = std::max<std::size_t>(1U, r.bilder.size());
+    const double schritt = spielSchritt(r);
+    const double to = std::max(1e-4, static_cast<double>(tolOrt));
+    const double tw = std::max(1e-4, static_cast<double>(tolWinkel));
+    const auto schluesselBei = [&](std::size_t j) {
+        RoffSchluessel k;
+        k.ms = static_cast<double>(j) * schritt;
+        for (int c = 0; c < 3; ++c) {
+            k.ort[c] = bahn.stand[j].ort[c];
+            k.winkel[c] = bahn.stand[j].winkel[c];
+        }
+        return k;
+    };
+    // Startschluessel: wo die Beschleunigung springt. Eine Bahn aus Stuecken
+    // dritten Grades (so backt baueRoff weich, so rechnet 3ds max zwischen
+    // seinen Schluesseln) hat innerhalb eines Stuecks eine vierte Differenz
+    // von null - an einem Schluessel springt sie, je ein Bild davor und
+    // danach. Die Mitte so eines Paares ist der Schluessel.
+    std::vector<std::size_t> idx = {0U, n - 1U};
+    if (n >= 5U) {
+        std::vector<double> d4(n, 0.0);
+        for (std::size_t j = 2; j + 2U < n; ++j) {
+            double ort2 = 0.0;
+            double winkel = 0.0;
+            for (std::size_t c = 0; c < 6U; ++c) {
+                const auto w = [&bahn, c](std::size_t i) {
+                    return static_cast<double>(c < 3U ? bahn.stand[i].ort[c] : bahn.stand[i].winkel[c - 3U]);
+                };
+                const double v = w(j + 2U) - 4.0 * w(j + 1U) + 6.0 * w(j) - 4.0 * w(j - 1U) + w(j - 2U);
+                if (c < 3U) {
+                    ort2 += v * v;
+                } else {
+                    winkel = std::max(winkel, std::fabs(v));
+                }
+            }
+            d4[j] = std::sqrt(ort2) + winkel;
+        }
+        std::vector<double> sortiert(d4.begin() + 2, d4.end() - 2);
+        std::nth_element(sortiert.begin(), sortiert.begin() + static_cast<std::ptrdiff_t>(sortiert.size() / 2U),
+                         sortiert.end());
+        const double schwelle = 4.0 * sortiert[sortiert.size() / 2U] + 0.05;
+        std::vector<std::size_t> haufen;
+        const auto haufenZu = [&]() {
+            if (haufen.empty()) { return; }
+            std::size_t summe = 0;
+            for (std::size_t h : haufen) { summe += h; }
+            const std::size_t m = (summe + haufen.size() / 2U) / haufen.size();
+            if (m > 0U && m + 1U < n) { idx.insert(std::upper_bound(idx.begin(), idx.end(), m), m); }
+            haufen.clear();
+        };
+        for (std::size_t j = 2; j + 2U < n; ++j) {
+            if (!(d4[j] > schwelle && d4[j] >= d4[j - 1U] && d4[j] >= d4[j + 1U])) { continue; }
+            if (!haufen.empty() && j - haufen.back() > 3U) { haufenZu(); }
+            haufen.push_back(j);
+        }
+        haufenZu();
+        idx.erase(std::unique(idx.begin(), idx.end()), idx.end());
+    }
+    std::vector<RoffSchluessel> k;
+    // Mehr als die gleichmaessige Loesung lohnt nicht - dann bleibt es bei ihr.
+    while (idx.size() < gerade.schluessel.size()) {
+        k.clear();
+        for (std::size_t j : idx) { k.push_back(schluesselBei(j)); }
+        double schlimmst = 1.0;
+        std::size_t wo = 0;
+        std::size_t stueck = 0;
+        for (std::size_t j = 1; j + 1U < n; ++j) {
+            const double t = static_cast<double>(j) * schritt;
+            while (stueck + 2U < k.size() && t > k[stueck + 1U].ms) { ++stueck; }
+            const Sechs p = bahnImStueck(k, true, stueck, t);
+            double ort2 = 0.0;
+            double winkel = 0.0;
+            for (std::size_t c = 0; c < 6U; ++c) {
+                const double ist = c < 3U ? bahn.stand[j].ort[c] : bahn.stand[j].winkel[c - 3U];
+                const double d = ist - p[c];
+                if (c < 3U) {
+                    ort2 += d * d;
+                } else {
+                    winkel = std::max(winkel, std::fabs(d));
+                }
+            }
+            const double mass = std::max(std::sqrt(ort2) / to, winkel / tw);
+            if (mass > schlimmst) {
+                schlimmst = mass;
+                wo = j;
+            }
+        }
+        if (wo == 0U) {
+            RoffZerlegung w;
+            w.schluessel = std::move(k);
+            w.weich = true;
+            return w;
+        }
+        idx.insert(std::upper_bound(idx.begin(), idx.end(), wo), wo);
+    }
+    return gerade;
+}
+
+std::vector<RoffNotiz> roffNotizen(const Roff& r) {
+    std::vector<RoffNotiz> aus;
+    const double schritt = spielSchritt(r);
+    for (std::size_t k = 0; k < r.bilder.size(); ++k) {
+        const RoffBild& b = r.bilder[k];
+        if (b.ersteNotiz < 0) { continue; }
+        const int zahl = std::max(1, b.notizen);
+        for (int i = 0; i < zahl; ++i) {
+            const auto at = static_cast<std::size_t>(b.ersteNotiz) + static_cast<std::size_t>(i);
+            if (at >= r.notizen.size()) { break; }
+            aus.push_back(RoffNotiz{static_cast<double>(k) * schritt, r.notizen[at]});
+        }
+    }
+    return aus;
 }
 
 }  // namespace bhed

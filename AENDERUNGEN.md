@@ -1,5 +1,68 @@
 # Änderungen seit rc94
 
+## rc599 — Drehen am Zeiger, ROFF bauen, zuletzt geöffnete Missionen, Handbuch
+
+Gewünscht: „wenn ich right click und copy mache, kopiert er nur einen Befehl“,
+„Commands in einem affect werden beim Einfügen verdoppelt“, „ich kann die Sachen
+nicht mehr drehen … bei Move ein Move-Target und bei Drehen ein Rotation-Target“,
+„die Rotation beim Schiff und beim Character setzt keinen neuen Frame“, „ich will,
+dass man direkt eine ROFF-Datei bauen und ändern kann“, „ein Recent-Mission-Tab
+statt Recent File, so dass man ein komplettes Projekt öffnen kann“, dazu ein
+voller Test „alles, was Probleme machen könnte, gegeneinander“ und ein Handbuch
+mit Bildern und Tutorials in allen Sprachen. Jeder Fehler wurde im Selbsttest
+erst nachgestellt, dann behoben und im selben Test bestätigt.
+
+* **Kopieren/Einfügen** (app.cpp, edit.cpp `ohneNachfahren`): Rechtsklick →
+  Copy kopiert die ganze Mehrfachauswahl; Zeilen, deren Block mitmarkiert ist,
+  zählen nicht doppelt (Kopieren, Duplizieren, Löschen). Selbsttest `ablage`.
+* **Verschieben | Drehen** (`entityGizmoLeiste`, app_mission.cpp): eigene Leiste
+  in der Ansicht; im Drehen drei Ringe (Gier, Nicken, Rollen – `angles`) bei
+  Schiffen und Modellen, bei Figuren nur Gier (`angle`). Die Leiste steht am
+  Ende der Kartenansicht – vorher verschluckte sie als Kindfenster die Klicks
+  ins Bild (Kartentest: 16 Fehler).
+* **Schlüssel zur Zeit** (`EntZug::dkArt`): Drehen mitten in einem move legt einen
+  Bahnpunkt mit Winkeln an (`bahnPunktSchreiben` mit `kWinkel`), bei Figuren
+  `set ( SET_ANGLES )` zur Zeit bzw. beim Ankommen (`figurBlickSetzen`); zeigt
+  das Animationsfenster die Entity, setzt das Gizmo (Verschieben und Drehen)
+  einen Schlüssel am Zeiger (`animKeySetzen`). Vorschau über zwei Schritte in
+  der Bahn im Speicher.
+* **ROFF bauen und ändern** (roff.h/.cpp, neu roffanim.h/.cpp): `schreibeRoff`
+  (alle 108 Dateien der Spielordner kommen bytegleich zurück), `baueRoff`
+  (gleichmäßig oder Hermite-Bogen; hinten ein Bild ohne Versatz, weil G_Roff den
+  letzten bei Movern nie zeigt), `zerlegeRoff` (gerade nach Douglas-Peucker oder
+  weich mit Startknoten aus der vierten Differenz – 25 734 Bilder → 8 638
+  Schlüssel, höchstens 0,5 Einheiten daneben). Die Schlüssel stehen als
+  Kommentarzeile vor dem `play` (`//(BehavEd) roff "datei" weich 50 | …`), die
+  Bahn wird daraus gebacken (`roffAusMarken`) – Rückgängig, Kopieren und
+  Speichern wirken mit. Speichern schreibt `scripts/<Name>.rof`
+  (`roffDateienSchreiben`), Mission speichern packt sie ein. Eine Datei des
+  Spiels wird als Kopie `…_2` bearbeitet. `roffFuer` liest jetzt auch lose
+  Dateien der Spielordner. Zeitleiste: ROFF-Flug als Band. Gefunden und
+  behoben: das play lief ein Spielbild nach dem wait – geschrieben wurde die
+  Zeit aus der Szene, die Bahn rutschte je Änderung 50 ms; nach Strg+Z hing das
+  Fenster im ROFF-Modus (der Modus folgt jetzt der Marke); nach dem Umbenennen
+  der Entity war der eigene Block nicht mehr bearbeitbar (`findeRoffBlockNachDatei`).
+  Tests `roffbautest`, `roffmasse` (alle Spieldateien), Selbsttest `roff`.
+* **Zuletzt geöffnete Missionen** (`Settings::recentMissions`,
+  `letzteMissionenAlle`, `letzteMissionOeffnen`): Ordner (`mission.txt`) und
+  Archive (`pk3|<Archiv>|<Name>`), im Menü Datei und auf der Startfläche; ein
+  verschwundener Eintrag fällt heraus. Selbsttest `letzte`.
+* **Handbuch** (`handbuch/`, Quelle `tools/handbuch/`): 23 Seiten in vier
+  Sprachen aus einer Quelle (`T(en, de, zh, ja)`), Beschriftungen des Programms
+  über `{{Kennung}}` direkt aus `gen_i18n.py`, Suchindex je Sprache, Bilder
+  aus dem Selbsttest `handbuch` (nur das eigene Fenster, je Sprache, bewegte
+  WebP). Geöffnet über Hilfe → Handbuch und Tutorials und About → Handbuch
+  (`handbuchOeffnen`). Pflege: `tools/handbuch/LIESMICH.md`.
+* **Aus dem vollen Test und der Handbuchprüfung**: Strg+Rad über der Zeitleiste
+  vergrößerte zugleich die Oberfläche (`tlUnterMaus`); Alt+Klick auf ein Auge
+  zeigt nur diese Gruppe (versprach der Tooltip, fehlte); Meldung „…und do
+  können Befehle aufnehmen“ ohne `do`; Tooltips von Effects und Prefs
+  berichtigt. 41 Oberflächentexte standen nur in der erzeugten `i18n.cpp` –
+  zurück nach `gen_i18n.py`, damit ein Neuerzeugen sie nicht löscht. Der volle
+  Selbsttest setzt die Skriptansicht auf Classic (mit Graph in der behaved.cfg
+  kamen 443 Fehler), `ablauf` schließt das Klappfenster vor dem Klick auf Sky.
+  Voller Test 2494 OK, alle Einzelmodi ohne Fehler.
+
 ## rc598 — Auswahl, Bahnen, Zeitleiste wie im Sequencer, Kamera wie in Unreal
 
 Gewünscht in vielen Schritten an einem Tag – unter anderem: „wenn ich bei uns

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>船を ROFF のパスで飛ばす - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class="aktiv"><a href="tut-roff.html">船を ROFF のパスで飛ばす</a><ul class="unter"><li><a href="#schritte">手順</a></li></ul></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-roff.html" class="" lang="en">English</a><a href="../de/tut-roff.html" class="" lang="de">Deutsch</a><a href="../zh/tut-roff.html" class="" lang="zh">中文</a><a href="../ja/tut-roff.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">チュートリアル</div>
+    <h1>船を ROFF のパスで飛ばす</h1>
+    <p class="einleitung">アリーナ上空を曲がりながら飛ぶ船の自由飛行を ROFF ファイルとして作り、ギズモで回転させ、ゲーム用に保存します。</p>
+    <h2 id="schritte">手順<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>船を選ぶ。</strong> <code>md_am_sith</code> でマップ上の船 <code>sta2</code> をクリックします。インスペクターに <code>func_static</code> が表示されます。</p><figure class="bild"><a href="../bilder/ja/t3_1.webp" class="zoom"><img src="../bilder/ja/t3_1.webp" alt="船を選択した状態。" loading="lazy"></a><figcaption>船を選択した状態。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>ROFF としてアニメーションを開く。</strong> インスペクターで <strong><span class="ui">アニメート</span></strong> を押し、タイムラインを 1 秒にして <strong><span class="ui">ROFF ファイル</span></strong> を押します。スクリプトに <code>play ( &quot;PLAY_ROFF&quot;, &quot;md_am/roffs/sta2&quot; )</code> を含むブロックが入り、最初のキーは船の現在位置になります。</p><figure class="bild"><a href="../bilder/ja/t3_2.webp" class="zoom"><img src="../bilder/ja/t3_2.webp" alt="ROFF モードの アニメーション ウィンドウ。" loading="lazy"></a><figcaption>ROFF モードの <span class="ui">アニメーション</span> ウィンドウ。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>次のキーを設定する。</strong> タイムラインを 4 秒にして <strong><span class="ui">再生位置にキー</span></strong> を押し、新しいひし形をアリーナの向こうへドラッグします。7 秒と 10 秒でも繰り返します。<strong><span class="ui">スムーズ</span></strong> がオンなら、パスはすべてのひし形を通る曲線になります。</p><figure class="bild"><a href="../bilder/ja/t3_3.webp" class="zoom"><img src="../bilder/ja/t3_3.webp" alt="4 つのキーと 1 本のなめらかな曲線。" loading="lazy"></a><figcaption>4 つのキーと 1 本のなめらかな曲線。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>船を回転させる。</strong> タイムラインを 7 秒にし、ギズモを <strong><span class="ui">回転</span></strong> に切り替えて赤いリングをドラッグすると、船がカーブに合わせて傾きます。ウィンドウがこの船を表示しているので、ギズモは始点を変えずに 7 秒のキーを設定します。</p><figure class="bild"><a href="../bilder/ja/t3_4.webp" class="zoom"><img src="../bilder/ja/t3_4.webp" alt="赤いリングで 7 秒の船を傾ける。" loading="lazy"></a><figcaption>赤いリングで 7 秒の船を傾ける。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>確認する。</strong> マップ下の再生ボタン(▶)を押します。タイムラインの <strong><span class="ui">移動</span></strong> に飛行が帯で表示され、ドラッグで開始を前後できます。</p><figure class="bild"><a href="../bilder/ja/t3_5.webp" class="zoom"><img src="../bilder/ja/t3_5.webp" alt="飛行中の船。" loading="lazy"></a><figcaption>飛行中の船。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>保存する。</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd> でスクリプトを書き出します。初回は保存先を聞かれるので、MOD の <code>scripts</code> フォルダーを選びます。同じ scripts フォルダーに <code>md_am/roffs/sta2.rof</code> が書き出され、ステータス行にファイル名が表示されます。<strong><span class="ui">ミッションを保存</span></strong> でミッションの <code>.pk3</code> に入ります。</p><figure class="bild"><a href="../bilder/ja/t3_6.webp" class="zoom"><img src="../bilder/ja/t3_6.webp" alt="ウィンドウに表示されるファイル名と長さ。保存するとファイルが書き出されます。" loading="lazy"></a><figcaption>ウィンドウに表示されるファイル名と長さ。保存するとファイルが書き出されます。</figcaption></figure></div></div></li></ol>
+<p>ROFF ファイルの仕組みとゲームの ROFF の編集方法は <a href="animation.html">可動物のアニメーションと ROFF ファイル</a> を参照してください。</p>
+    <nav class="blaettern"><a class="vor" href="tut-figur.html"><span>前へ</span>キャラクターを歩かせる</a><a class="nach" href="tut-mission.html"><span>次へ</span>自分のミッション</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

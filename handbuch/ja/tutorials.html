@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>チュートリアル - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class="aktiv"><a href="tutorials.html">チュートリアル</a><ul class="unter"></ul></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tutorials.html" class="" lang="en">English</a><a href="../de/tutorials.html" class="" lang="de">Deutsch</a><a href="../zh/tutorials.html" class="" lang="zh">中文</a><a href="../ja/tutorials.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">チュートリアル</div>
+    <h1>チュートリアル</h1>
+    <p class="einleitung">各チュートリアルは 1 つの作業を最初のクリックから完成まで追い、各ステップに画像があります。作りたいもので選んでください。</p>
+    <div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/ja/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>はじめてのカットシーン</h3><p>2 つのカメラショットとその間のなめらかな移動を作り、カメラ視点で確認して、ゲーム用にコンパイルします。</p><div class="meta">カメラ · 6 ステップ · Movie Duels が必要</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/ja/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>キャラクターを歩かせる</h3><p>キャラクターと歩行目標を置き、スクリプトでそこへ向かわせ、マップ上で道を変えます。歩く/走る、途中の点。</p><div class="meta">エンティティと道 · 6 ステップ · どのマップでも</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/ja/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>船を ROFF のパスで飛ばす</h3><p>アリーナ上空を曲がりながら飛ぶ船の自由飛行を ROFF ファイルとして作り、ギズモで回転させ、ゲーム用に保存します。</p><div class="meta">アニメーション · 6 ステップ · Movie Duels が必要</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/ja/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>自分のミッション</h3><p>空のマップからゲームが読み込めるミッションまで。作成し、イントロを加え、チェックして .pk3 にまとめます。</p><div class="meta">ミッション · 6 ステップ · どのマップでも</div></div></a></div>
+<p>画面と一致するよう、チュートリアルでは <strong>Movie Duels</strong>(<code>MD_Missions_Ep3.pk3</code> の <code>md_am_sith</code>)を使います。他のミッションでも手順は同じです。ウィンドウの各部分に慣れていなければ、先に <a href="fenster.html">ウィンドウ</a> と <a href="karte.html#bewegen">視点の操作</a> をお読みください。</p>
+    <nav class="blaettern"><a class="vor" href="modell.html"><span>前へ</span>モデルビューとキャラクター</a><a class="nach" href="tut-erste-szene.html"><span>次へ</span>はじめてのカットシーン</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

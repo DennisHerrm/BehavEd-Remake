@@ -6,6 +6,40 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc599 2026-10-13
+[en]
+- New: a guide with pictures, tutorials and a search, in all four languages - Help → Guide and tutorials, or the Guide button in About. It explains every function and walks through four tutorials (a first cutscene, a walking figure, a ship on a ROFF path, a mission of your own). It works offline.
+- ROFF files can now be built and edited: in the Animate window choose "ROFF file", set keys, turn "Smooth" on or off. Saving the script writes scripts/<name>.rof next to it, Save mission packs it into the .pk3. A ROFF of the game is turned into keys and edited as a copy - the original is never overwritten. In the timeline a ROFF flight is a band you can drag.
+- Move and Rotate are separate: the bar in the view switches between arrows (Move) and rings (Rotate). Ships and models get three rings (yaw, pitch, roll), figures the yaw ring, the camera three rings.
+- Rotating in the middle of a movement sets a new key instead of changing the start: a new path point with the new angles for ships, set ( SET_ANGLES ) for figures (when walking: on arrival). While the Animate window shows the entity, moving or rotating with the gizmo sets a key at the playhead.
+- File → Recent missions (and the start page) reopens a whole mission - map, entities and all scripts - with one click.
+- Right-click → Copy copies every selected line; pasting into an affect block no longer doubles the commands.
+- Ctrl+mouse wheel over the timeline only zooms the timeline (the interface no longer grows at the same time); Alt+click on an eye in the entity list shows only that group.
+[de]
+- Neu: ein Handbuch mit Bildern, Tutorials und Suche in allen vier Sprachen - Hilfe → Handbuch und Tutorials oder der Knopf Handbuch im About-Fenster. Es erklärt jede Funktion und führt durch vier Tutorials (eine erste Zwischensequenz, eine laufende Figur, ein Schiff auf einer ROFF-Bahn, eine eigene Mission). Es geht ohne Internet.
+- ROFF-Dateien lassen sich jetzt bauen und ändern: im Fenster Animieren "ROFF-Datei" wählen, Schlüssel setzen, "Weich" an- oder ausschalten. Beim Speichern des Skripts entsteht scripts/<Name>.rof daneben, Mission speichern packt sie ins .pk3. Eine ROFF des Spiels wird in Schlüssel zerlegt und als Kopie bearbeitet - das Original wird nie überschrieben. In der Zeitleiste ist ein ROFF-Flug ein Band, das sich ziehen lässt.
+- Verschieben und Drehen sind getrennt: die Leiste in der Ansicht schaltet zwischen Pfeilen (Verschieben) und Ringen (Drehen). Schiffe und Modelle bekommen drei Ringe (Gier, Nicken, Rollen), Figuren den Gier-Ring, die Kamera drei Ringe.
+- Drehen mitten in einer Bewegung setzt einen neuen Schlüssel, statt den Anfang zu ändern: bei Schiffen einen neuen Bahnpunkt mit den neuen Winkeln, bei Figuren set ( SET_ANGLES ) (im Laufen: beim Ankommen). Zeigt das Fenster Animieren die Entity, setzt Verschieben oder Drehen mit dem Gizmo einen Schlüssel am Zeiger.
+- Datei → Zuletzt geöffnete Missionen (und die Startfläche) öffnet eine ganze Mission - Karte, Entities und alle Skripte - mit einem Klick.
+- Rechtsklick → Kopieren kopiert alle markierten Zeilen; Einfügen in einen affect-Block verdoppelt die Befehle nicht mehr.
+- Strg+Mausrad über der Zeitleiste zoomt nur noch die Zeitleiste (die Oberfläche wächst nicht mehr gleichzeitig); Alt+Klick auf ein Auge in der Entity-Liste zeigt nur diese Gruppe.
+[zh]
+- 新增:包含图片、教程和搜索的手册,支持全部四种语言——帮助 → 手册与教程,或关于窗口中的“手册”按钮。手册说明每项功能,并提供四个教程(第一个过场动画、让角色行走、飞船沿 ROFF 路径飞行、你自己的任务)。无需联网。
+- 现在可以创建和编辑 ROFF 文件:在动画窗口中选择“ROFF 文件”,设置关键帧,开关“平滑”。保存脚本时会在旁边写出 scripts/<名称>.rof,保存任务会把它打包进 .pk3。游戏自带的 ROFF 会被分解为关键帧并作为副本编辑——原文件永远不会被覆盖。在时间轴中,ROFF 飞行显示为可拖动的条带。
+- 移动与旋转分开:视图中的工具栏在箭头(移动)和圆环(旋转)之间切换。飞船和模型有三个圆环(偏航、俯仰、翻滚),角色有偏航圆环,摄像机有三个圆环。
+- 在运动途中旋转会设置新的关键帧,而不是修改起点:飞船会新增带新角度的路径点,角色会写入 set ( SET_ANGLES )(行走中则在到达时生效)。动画窗口显示该实体时,用操纵器移动或旋转会在播放头处设置关键帧。
+- 文件 → 最近的任务(以及起始页面)一键重新打开整个任务——地图、实体和所有脚本。
+- 右键 → 复制会复制所有选中的行;粘贴到 affect 块中不再重复命令。
+- 在时间轴上按 Ctrl+鼠标滚轮只缩放时间轴(界面不再同时放大);在实体列表中按 Alt+单击眼睛图标只显示该组。
+[ja]
+- 新機能: 画像・チュートリアル・検索付きのガイドを 4 言語で用意しました。ヘルプ → ガイドとチュートリアル、または About の「ガイド」ボタンから開けます。すべての機能を説明し、4 つのチュートリアル(はじめてのカットシーン、キャラクターを歩かせる、船を ROFF のパスで飛ばす、自分のミッション)を案内します。インターネット不要です。
+- ROFF ファイルを作成・編集できるようになりました。アニメーションウィンドウで「ROFF ファイル」を選び、キーを設定し、「スムーズ」を切り替えます。スクリプトを保存すると隣に scripts/<名前>.rof が書き出され、ミッションの保存で .pk3 に入ります。ゲームの ROFF はキーに分解してコピーとして編集し、元のファイルは上書きしません。タイムラインでは ROFF の飛行がドラッグできる帯になります。
+- 移動と回転を分けました。ビューのバーで矢印(移動)とリング(回転)を切り替えます。船とモデルには 3 つのリング(ヨー・ピッチ・ロール)、キャラクターにはヨーのリング、カメラには 3 つのリングがあります。
+- 動きの途中で回転すると、始点を変えずに新しいキーを設定します。船では新しい角度のパスポイント、キャラクターでは set ( SET_ANGLES )(歩行中は到着時)。アニメーションウィンドウがそのエンティティを表示している間は、ギズモで移動・回転すると再生位置にキーを設定します。
+- ファイル → 最近のミッション(とスタート画面)から、ミッション全体(マップ・エンティティ・すべてのスクリプト)をワンクリックで開き直せます。
+- 右クリック → コピーで選択中のすべての行をコピーします。affect ブロックへの貼り付けでコマンドが重複しなくなりました。
+- タイムライン上の Ctrl+マウスホイールはタイムラインのズームだけになりました(インターフェースが同時に大きくならない)。エンティティ一覧で目のアイコンを Alt+クリックすると、そのグループだけを表示します。
+
 ## rc598 2026-10-12
 [en]
 - Selected ships, doors, models and characters get an orange outline, like in Unreal.

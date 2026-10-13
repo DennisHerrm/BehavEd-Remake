@@ -2401,11 +2401,35 @@ bool Document::moveTo(const Path& from, const Path& to, Path* nachher) {
     return true;
 }
 
+namespace {
+// Wege, deren Block (ein Vorfahre) selbst in der Auswahl steht, weglassen:
+// der Block bringt sie ohnehin mit. Sonst kamen sie doppelt in die Ablage -
+// gemeldet als "if I copy and paste commands in a command block statement
+// (affect), the commands are duplicated" (rc599).
+std::vector<Path> ohneNachfahren(std::vector<Path> wege) {
+    std::sort(wege.begin(), wege.end());
+    wege.erase(std::unique(wege.begin(), wege.end()), wege.end());
+    std::vector<Path> aus;
+    for (const Path& x : wege) {
+        bool unter = false;
+        for (const Path& y : wege) {
+            if (y.size() < x.size() && std::equal(y.begin(), y.end(), x.begin())) {
+                unter = true;
+                break;
+            }
+        }
+        if (!unter) { aus.push_back(x); }
+    }
+    return aus;
+}
+}  // namespace
+
 bool Document::copyAll(std::vector<Path> paths) {
     if (paths.empty()) {
         return false;
     }
     paths = mitGruppen(std::move(paths));   // ein Makro samt seinen Befehlen
+    paths = ohneNachfahren(std::move(paths));
     // Zum Kopieren AUFSTEIGEND, damit die Reihenfolge in der Ablage der im
     // Skript entspricht.
     std::sort(paths.begin(), paths.end());
@@ -2428,6 +2452,7 @@ bool Document::cloneAll(std::vector<Path> paths) {
     if (paths.empty()) {
         return false;
     }
+    paths = ohneNachfahren(std::move(paths));   // ein Block nur als Ganzes
     // Einheiten: ein gewaehltes Makro als Ganzes (seine Befehle nicht noch
     // einmal einzeln); die Kopie steht hinter dem ganzen Makro. Ein Befehl in
     // einem Makro bleibt mit seiner Kopie darin.
@@ -2489,6 +2514,7 @@ bool Document::removeAll(std::vector<Path> paths) {
         return false;
     }
     paths = mitGruppen(std::move(paths));   // eine Makrozeile samt Befehlen
+    paths = ohneNachfahren(std::move(paths));
     sortDescending(paths);
     snapshot("delete");
     bool any = false;

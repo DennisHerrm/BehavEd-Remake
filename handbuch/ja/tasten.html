@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>キーボードショートカット - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class="aktiv"><a href="tasten.html">キーボードショートカット</a><ul class="unter"><li><a href="#skript">スクリプト</a></li><li><a href="#datei">ファイル</a></li><li><a href="#karte">マップとカメラ</a></li><li><a href="#zeit">タイムライン</a></li><li><a href="#fenster">ウィンドウ</a></li></ul></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tasten.html" class="" lang="en">English</a><a href="../de/tasten.html" class="" lang="de">Deutsch</a><a href="../zh/tasten.html" class="" lang="zh">中文</a><a href="../ja/tasten.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">リファレンス</div>
+    <h1>キーボードショートカット</h1>
+    <p class="einleitung">既定のキーです。ほとんどは 編集 → キーボードショートカット で変更できます。</p>
+    <h2 id="skript">スクリプト<a class="anker" href="#skript">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Enter</kbd></td><td>選択中のコマンドを編集</td></tr><tr><td><kbd>Insert</kbd></td><td>イベント一覧で選んだコマンドを挿入</td></tr><tr><td><kbd>Delete</kbd></td><td>削除</td></tr><tr><td><kbd>Space</kbd></td><td>複製</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td><td>コピー</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>X</kbd></td><td>切り取り(Ctrl+T でも可)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>V</kbd></td><td>貼り付け</td></tr><tr><td><kbd>Backspace</kbd></td><td>REM:コメント化/解除(Ctrl+Backspace:コメント解除)</td></tr><tr><td><kbd>Alt</kbd> + <kbd>Up</kbd></td><td>上へ移動(Alt+Down で下へ)。同じブロック内</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>元に戻す(Ctrl+Y または Ctrl+Shift+Z でやり直し)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>検索。F3 / Shift+F3 で次/前</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>F2</kbd></td><td>ブックマーク切替。F2 / Shift+F2 で次/前</td></tr><tr><td><kbd>Num+</kbd></td><td>項目と子を展開(Ctrl+Num+:すべて)</td></tr><tr><td><kbd>Num-</kbd></td><td>項目を折りたたむ(Ctrl+Num-:すべて)</td></tr></tbody></table>
+<h2 id="datei">ファイル<a class="anker" href="#datei">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd></td><td>開く</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>保存</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>名前を付けて保存(オリジナル BehavEd と同じ)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></td><td>すべて保存</td></tr><tr><td><kbd>Alt</kbd> + <kbd>B</kbd></td><td>バックアップ。Alt+R で復元</td></tr><tr><td><kbd>Alt</kbd> + <kbd>M</kbd></td><td>最近開いたファイル</td></tr><tr><td><kbd>Alt</kbd> + <kbd>P</kbd></td><td>設定。Alt+X で終了</td></tr></tbody></table>
+<h2 id="karte">マップとカメラ<a class="anker" href="#karte">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D</kbd></td><td>飛行(マウスがビュー上)。Q / E で下降/上昇、Shift で高速、右ボタンで見回す</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>1</kbd></td><td>視点 1 を保存(…9)。1〜9 で戻る</td></tr><tr><td><kbd>Ctrl</kbd></td><td>エンティティのドラッグ中:リングは 15 度刻み。グリッド設定時はグリッドを解除、未設定なら矢印が 8 ユニットにスナップ</td></tr><tr><td><kbd>Alt</kbd></td><td>エンティティを Alt+ドラッグ:先にコピー</td></tr><tr><td><kbd>Shift</kbd></td><td>飛行目標やキーのひし形のドラッグ中:上下のみ</td></tr><tr><td><kbd>Esc</kbd></td><td>配置・ウェイポイントツール・操縦を取り消す</td></tr><tr><td><kbd>Enter</kbd></td><td>操縦中:再生位置にカメラキーを設定</td></tr></tbody></table>
+<h2 id="zeit">タイムライン<a class="anker" href="#zeit">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>← / →</kbd></td><td>50 ms 戻る/進む。マウスがタイムライン上(Shift:1 秒)</td></tr><tr><td><kbd>Home / End</kbd></td><td>先頭/末尾へ(マウスがタイムライン上)</td></tr><tr><td><kbd>Alt</kbd></td><td>ブロックのドラッグ中:このブロックだけ動かす</td></tr></tbody></table>
+<h2 id="fenster">ウィンドウ<a class="anker" href="#fenster">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Ctrl + ホイール</kbd></td><td>インターフェースの大きさ(タイムラインのトラック上ではタイムラインのズーム)</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="einstellungen.html"><span>前へ</span>設定とアップデート</a><a class="nach" href="begriffe.html"><span>次へ</span>用語集</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

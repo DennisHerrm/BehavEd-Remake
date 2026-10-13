@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animating movers and ROFF files - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class="aktiv"><a href="animation.html">Animating movers and ROFF files</a><ul class="unter"><li><a href="#start">Opening the window</a></li><li><a href="#schluessel">Keys</a></li><li><a href="#arten">Script (move) or ROFF file</a></li><li><a href="#roff">How ROFF files work</a></li><li><a href="#bearbeiten">Editing a ROFF file of the game</a></li></ul></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/animation.html" class="aktiv" lang="en">English</a><a href="../de/animation.html" class="" lang="de">Deutsch</a><a href="../zh/animation.html" class="" lang="zh">中文</a><a href="../ja/animation.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>Animating movers and ROFF files</h1>
+    <p class="einleitung">Ships, doors and platforms move by keys over time. Store them as move commands in the script, or as a ROFF file - and edit the ROFF files of the game.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_animation.webp" class="zoom"><img src="../bilder/en/h_animation.webp" alt="The Animation window in ROFF mode and the path of the ship on the map." loading="lazy"></a><figcaption>The <span class="ui">Animation</span> window in ROFF mode and the path of the ship on the map.</figcaption></figure>
+<h2 id="start">Opening the window<a class="anker" href="#start">#</a></h2>
+<p>Select a movable entity - <code>func_*</code> brush entities such as <code>func_static</code> ships and <code>func_door</code>, <code>misc_model_breakable</code>, <code>fx_runner</code> - and press <strong><span class="ui">Animate</span></strong> in the inspector. If it has no <code>script_targetname</code> yet, it gets one, because a script can only move what has a name.</p>
+<h2 id="schluessel">Keys<a class="anker" href="#schluessel">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>Put the timeline where the movement starts and press <strong><span class="ui">Key at playhead</span></strong> - the first key stores where the entity stands.</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>Move on in time and press it again. Then drag the new diamond in the view (<kbd>Shift</kbd>: only up and down), or type values into the table: time, position, direction.</p></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p>Or simply use the gizmo: while the window shows this entity and the timeline stands at or after the first key, moving or rotating it with the gizmo sets a key at the playhead (or changes the one that is there).</p></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong><span class="ui">Delete key</span></strong> and <strong><span class="ui">Go to key</span></strong> work on the selected row; <strong><span class="ui">Remove animation</span></strong> takes the whole animation out of the script.</p></div></div></li></ol>
+<h2 id="arten">Script (move) or ROFF file<a class="anker" href="#arten">#</a></h2>
+<table class="liste"><thead><tr><th></th><th><span class="ui">Script (move)</span></th><th><span class="ui">ROFF file</span></th></tr></thead><tbody><tr><td>Stored as</td><td>an <code>affect</code> block with <code>move</code> and <code>wait</code> at the start of the script</td><td><code>scripts/&lt;name&gt;.rof</code>, played by <code>play ( &quot;PLAY_ROFF&quot;, ... )</code></td></tr><tr><td>Between keys</td><td>each move starts fast and slows down at the end, like the game&#x27;s movers (or constant with <span class="ui">Linear</span>)</td><td>one smooth curve through all keys (<span class="ui">Smooth</span>) or straight lines</td></tr><tr><td>Good for</td><td>doors, lifts, a ship crossing the screen</td><td>long free flights with many turns, effects at exact frames</td></tr></tbody></table>
+<p>Switch with <strong><span class="ui">Script (move)</span></strong> / <strong><span class="ui">ROFF file</span></strong> at the top of the window - the keys are converted, nothing is lost. In ROFF mode the field <strong><span class="ui">File</span></strong> names the file (for example <code>md_am/roffs/sta2</code>); below it you see how many frames and seconds it has.</p>
+<h2 id="roff">How ROFF files work<a class="anker" href="#roff">#</a></h2>
+<p>A ROFF file (<code>.rof</code>, &quot;Rotation and Origin File Format&quot;) stores one small step per game frame: how far the entity moves and turns in the next 50 ms. The game adds these steps to wherever the entity stands when <code>PLAY_ROFF</code> runs - so a ROFF path is <strong>relative</strong>: move the entity and the whole path moves with it. All 108 files of the game and Movie Duels are version 2, all but one with 50 ms per frame - and that is what BehavEd-Remake writes.</p>
+<p>The keys you edit are kept as a comment line in the script right before the <code>play</code>; the <code>.rof</code> is built from them. That is why undo, copy and paste work on ROFF paths like on any command. When you <strong>save the script</strong>, the file is written to <code>scripts/&lt;name&gt;.rof</code> in the same scripts folder; <strong><span class="ui">Save mission</span></strong> packs it into the mission&#x27;s <code>.pk3</code>.</p>
+<h2 id="bearbeiten">Editing a ROFF file of the game<a class="anker" href="#bearbeiten">#</a></h2>
+<p>When a script plays a finished ROFF on the entity, the window lists it under <strong><span class="ui">ROFF paths of this entity in the script:</span></strong>. <strong><span class="ui">Edit</span></strong> turns it into keys - either straight pieces or one smooth curve, whichever needs fewer keys - within half a unit of the original. The game&#x27;s file is never overwritten: you edit a copy (<code>…_2</code>), and the <code>play</code> command is pointed at it.</p>
+<figure class="bild breit anim"><a href="../bilder/en/a_roff.webp" class="zoom"><img src="../bilder/en/a_roff.webp" alt="A ship flying its ROFF path." loading="lazy"></a><span class="abzeichen">Animation</span><figcaption>A ship flying its ROFF path.</figcaption></figure>
+<div class="hinweis">In the timeline a ROFF flight is a band under <strong><span class="ui">Movement</span></strong>; drag it to start the flight earlier or later.</div>
+    <nav class="blaettern"><a class="vor" href="figuren.html"><span>Previous</span>Figures and paths</a><a class="nach" href="wegpunkte.html"><span>Next</span>NPC waypoints</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

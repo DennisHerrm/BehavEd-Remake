@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class="aktiv"><a href="zeitleiste.html">时间轴</a><ul class="unter"><li><a href="#abspielen">播放</a></li><li><a href="#zeilen">行与类别</a></li><li><a href="#ziehen">拖动以修改时间</a></li></ul></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/zeitleiste.html" class="" lang="en">English</a><a href="../de/zeitleiste.html" class="" lang="de">Deutsch</a><a href="../zh/zeitleiste.html" class="aktiv" lang="zh">中文</a><a href="../ja/zeitleiste.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>时间轴</h1>
+    <p class="einleitung">时间轴播放场景并显示每个命令何时发生。拖动一个块,脚本也会随之改变。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_zeitleiste.webp" class="zoom"><img src="../bilder/zh/h_zeitleiste.webp" alt="时间轴:上方是摄像机行,每个角色一行,按类型分为子行,橙色为播放头。" loading="lazy"></a><figcaption>时间轴:上方是摄像机行,每个角色一行,按类型分为子行,橙色为播放头。</figcaption></figure>
+<h2 id="abspielen">播放<a class="anker" href="#abspielen">#</a></h2>
+<p>地图下方的播放按钮(▶)用于开始和停止播放。在标尺上单击或拖动可设置时间。速度框可放慢场景(声音仅在 1x 时播放),<strong><span class="ui">循环</span></strong> 循环播放。在标尺上滚动滚轮可缩放,在轨道上按 <kbd>Ctrl</kbd>+滚轮也可缩放;<strong><span class="ui">全部</span></strong> 显示全部,鼠标中键拖动视图。单位按钮可在帧与秒之间切换。</p>
+<h2 id="zeilen">行与类别<a class="anker" href="#zeilen">#</a></h2>
+<p><strong><span class="ui">摄像机</span></strong> 行包含摄像机命令(移动、平移、缩放、淡入淡出)。下方,脚本涉及的每个角色或移动物体各占一行。单击名称旁的箭头展开:命令按 <strong><span class="ui">移动</span></strong>、<strong><span class="ui">动画</span></strong>、<strong><span class="ui">注视</span></strong>、<strong><span class="ui">声音</span></strong>、<strong><span class="ui">状态</span></strong> 和 <strong><span class="ui">流程(等待、信号)</span></strong> 分类。开始后没有任何事件的行会被隐藏;勾选 <strong><span class="ui">空闲轨道</span></strong> 即可显示。</p>
+<p><code>wait</code> 命令默认隐藏——它们仍然决定一切的时间位置,移动块时会自动调整它们。<strong><span class="ui">等待</span></strong> 将它们显示为独立的块。</p>
+<h2 id="ziehen">拖动以修改时间<a class="anker" href="#ziehen">#</a></h2>
+<p>向左或向右拖动块会改变它前面的 <code>wait</code>——命令提前或推迟发生,其后的一切随之移动。拖动摄像机块的末端可改变其时长。行走和飞行显示为角色行底部的条带;同样可以在时间上拖动,右键单击行走条带可在步行和奔跑之间切换。</p>
+<p>单击块会在脚本中选中对应行,地图也会跳到该时刻——时间轴、脚本和地图始终显示同一内容。</p>
+<div class="hinweis">时间来自对游戏 ICARUS 引擎的重现,包括其特性:<code>wait</code> 比写入值晚一个游戏帧(50 毫秒)结束,<code>dowait</code> 会等待它指定的任务。无法确定时间时(例如 <code>waitsignal</code>),时间轴会明确提示,而不是猜测。</div>
+    <nav class="blaettern"><a class="vor" href="kamera.html"><span>上一页</span>摄像机</a><a class="nach" href="figuren.html"><span>下一页</span>角色与路径</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

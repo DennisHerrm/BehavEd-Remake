@@ -1,6 +1,7 @@
 #include "bhed/settings.h"
 
 #include "bhed/num.h"
+#include <algorithm>
 
 #include <cstddef>
 #include <cstdio>
@@ -49,6 +50,17 @@ void Settings::noteRecent(const std::string& path) {
     recent.insert(recent.begin(), path);
     while (recent.size() > kMaxRecent) {
         recent.pop_back();
+    }
+}
+
+void Settings::noteRecentMission(const std::string& eintrag) {
+    if (eintrag.empty()) {
+        return;
+    }
+    recentMissions.erase(std::remove(recentMissions.begin(), recentMissions.end(), eintrag), recentMissions.end());
+    recentMissions.insert(recentMissions.begin(), eintrag);
+    while (recentMissions.size() > kMaxRecentMissions) {
+        recentMissions.pop_back();
     }
 }
 
@@ -111,6 +123,9 @@ std::string writeSettings(const Settings& s) {
     for (const std::string& r : s.recent) {
         put(o, "recent", r);
     }
+    for (const std::string& r : s.recentMissions) {
+        put(o, "recentMission", r);
+    }
     for (const std::string& g : s.gamePaths) {
         put(o, "gamePath", g);
     }
@@ -128,6 +143,7 @@ std::string writeSettings(const Settings& s) {
 
 bool readSettings(const std::string& text, Settings& out) {
     out.recent.clear();
+    out.recentMissions.clear();
     out.gamePaths.clear();
     out.keyBindings.clear();
     std::string line;
@@ -319,6 +335,9 @@ bool readSettings(const std::string& text, Settings& out) {
         }
         else if (key == "recent") {
             if (out.recent.size() < Settings::kMaxRecent) { out.recent.push_back(value); }
+        }
+        else if (key == "recentMission") {
+            if (out.recentMissions.size() < Settings::kMaxRecentMissions) { out.recentMissions.push_back(value); }
         }
         // Unbekannte Schluessel bleiben unbeachtet.
     }

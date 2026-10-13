@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>キャラクターを歩かせる - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class="aktiv"><a href="tut-figur.html">キャラクターを歩かせる</a><ul class="unter"><li><a href="#schritte">手順</a></li></ul></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-figur.html" class="" lang="en">English</a><a href="../de/tut-figur.html" class="" lang="de">Deutsch</a><a href="../zh/tut-figur.html" class="" lang="zh">中文</a><a href="../ja/tut-figur.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">チュートリアル</div>
+    <h1>キャラクターを歩かせる</h1>
+    <p class="einleitung">キャラクターと歩行目標を置き、スクリプトでそこへ向かわせ、マップ上で道を変えます。歩く/走る、途中の点。</p>
+    <h2 id="schritte">手順<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>キャラクターを置く。</strong> マップモードでビュー左端の <strong><span class="ui">キャラクター (NPC_spawner)</span></strong> タイルをクリックし、床をクリックします。インスペクターで <code>NPC_type</code>(<strong>...</strong> ボタンでゲームの全 NPC を検索)と <strong><span class="ui">名前</span></strong>(例 <code>walker</code>)を設定します。</p><figure class="bild"><a href="../bilder/ja/t2_1.webp" class="zoom"><img src="../bilder/ja/t2_1.webp" alt="床に置いたキャラクター。" loading="lazy"></a><figcaption>床に置いたキャラクター。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>歩行目標を置く。</strong> <strong><span class="ui">移動先 (waypoint_navgoal)</span></strong> タイルをクリックし、キャラクターを行かせたい場所をクリックします。</p><figure class="bild"><a href="../bilder/ja/t2_2.webp" class="zoom"><img src="../bilder/ja/t2_2.webp" alt="歩行目標。" loading="lazy"></a><figcaption>歩行目標。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>スクリプトで向かわせる。</strong> エンティティ一覧でキャラクターを右クリック → <strong><span class="ui">affect ブロックを挿入</span></strong> で <code>affect ( &quot;walker&quot;, FLUSH )</code> ブロックが入ります。一覧で歩行目標を右クリック → <strong><span class="ui">移動先として挿入 (SET_NAVGOAL)</span></strong> で選択行の下に行が入るので、それを affect ブロックの中へドラッグします。スクリプトは <code>affect ( &quot;walker&quot;, FLUSH ) { set ( SET_NAVGOAL, &quot;...&quot; ); }</code> になります。</p><figure class="bild"><a href="../bilder/ja/t2_3.webp" class="zoom"><img src="../bilder/ja/t2_3.webp" alt="ナビゴール付きの affect ブロック。" loading="lazy"></a><figcaption>ナビゴール付きの affect ブロック。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>再生する。</strong> 再生ボタン(▶)を押すとキャラクターが歩き、通った道が黄色になります。タイムラインの行に歩行が帯で表示されます。</p><figure class="bild"><a href="../bilder/ja/t2_4.webp" class="zoom"><img src="../bilder/ja/t2_4.webp" alt="移動中のキャラクター。" loading="lazy"></a><figcaption>移動中のキャラクター。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>歩く代わりに走る。</strong> 道の終点ハンドルを右クリック → <strong><span class="ui">走る(この移動から)</span></strong>。ナビゴールの前に <code>SET_RUNNING</code> が書かれ、早く到着します。</p><figure class="bild"><a href="../bilder/ja/t2_5.webp" class="zoom"><img src="../bilder/ja/t2_5.webp" alt="歩行目標のメニュー。" loading="lazy"></a><figcaption>歩行目標のメニュー。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>途中の点を作る。</strong> タイムラインを歩行の途中に合わせ、キャラクターをつかんで横へドラッグします。その瞬間に新しいナビゴールが作られ、キャラクターはまずそこへ歩きます。</p><figure class="bild"><a href="../bilder/ja/t2_6.webp" class="zoom"><img src="../bilder/ja/t2_6.webp" alt="歩行の途中に追加した点。" loading="lazy"></a><figcaption>歩行の途中に追加した点。</figcaption></figure></div></div></li></ol>
+<p>道・向き・後ろ歩きの詳細は <a href="figuren.html">キャラクターと道</a> を参照してください。</p>
+    <nav class="blaettern"><a class="vor" href="tut-erste-szene.html"><span>前へ</span>はじめてのカットシーン</a><a class="nach" href="tut-roff.html"><span>次へ</span>船を ROFF のパスで飛ばす</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

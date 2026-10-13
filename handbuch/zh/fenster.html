@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>窗口 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class="aktiv"><a href="fenster.html">窗口</a><ul class="unter"><li><a href="#bereiche">各个区域</a></li><li><a href="#teilen">并排显示两个脚本</a></li><li><a href="#groesse">大小、外观与布局</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/fenster.html" class="" lang="en">English</a><a href="../de/fenster.html" class="" lang="de">Deutsch</a><a href="../zh/fenster.html" class="aktiv" lang="zh">中文</a><a href="../ja/fenster.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">入门</div>
+    <h1>窗口</h1>
+    <p class="einleitung">一个窗口,三种模式。左侧的模式栏决定主区域显示什么;脚本、地图和时间轴始终相互联动。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_fenster.webp" class="zoom"><img src="../bilder/zh/h_fenster.webp" alt="打开任务后处于地图模式的窗口。" loading="lazy"></a><figcaption>打开任务后处于地图模式的窗口。</figcaption></figure>
+<h2 id="bereiche">各个区域<a class="anker" href="#bereiche">#</a></h2>
+<table class="liste"><thead><tr><th>区域</th><th>用途</th></tr></thead><tbody><tr><td>菜单栏</td><td><span class="ui">文件</span>、<span class="ui">编辑</span>、<span class="ui">调试</span>、<span class="ui">视图</span>、<span class="ui">帮助</span>——打开与保存、游戏文件夹、外观与语言、本手册。</td></tr><tr><td>脚本标签页</td><td>每个打开的脚本一个标签页。<code>*</code> 表示有未保存的修改,<code>+</code> 新建脚本,标签页可拖动排序。同一任务的所有标签页共享地图和摄像机。</td></tr><tr><td>模式栏</td><td>最左侧的竖条:<strong><span class="ui">事件</span></strong>(构建脚本)、<strong><span class="ui">地图</span></strong>(三维地图)、<strong><span class="ui">模型</span></strong>(查看角色模型)。</td></tr><tr><td>左栏</td><td>取决于模式:命令列表、地图实体及其检查器,或模型的动画列表。</td></tr><tr><td><span class="ui">脚本流程</span></td><td>脚本本身——以树(<span class="ui">经典</span>)、关系图(<span class="ui">图表</span>)或时间轨道(<span class="ui">轨道</span>)显示。参见 <a href="skriptfluss.html">脚本流程:经典、图表、轨道</a>。</td></tr><tr><td><span class="ui">操作</span></td><td>右侧的按钮栏,与原版一致:编辑、文件、树视图选项、<strong><span class="ui">编译！</span></strong>。在地图模式下会让位给地图。</td></tr><tr><td>时间轴</td><td>位于地图下方:播放场景并显示每个命令的时间。参见 <a href="zeitleiste.html">时间轴</a>。</td></tr><tr><td>状态栏</td><td>消息、错误与提示计数(单击查看列表)、撤销历史,以及脚本最近一次编译的时间。</td></tr></tbody></table>
+<h2 id="teilen">并排显示两个脚本<a class="anker" href="#teilen">#</a></h2>
+<p><strong><span class="ui">文件</span> → <span class="ui">分屏</span></strong> 在事件模式下最多并排显示四个脚本——用于比较和跨脚本复制命令。把命令从一个窗格拖到另一个即可复制;单击某个窗格即可在其中编辑。</p>
+<h2 id="groesse">大小、外观与布局<a class="anker" href="#groesse">#</a></h2>
+<ul><li><kbd>Ctrl</kbd> + 鼠标滚轮缩放整个界面(50% - 300%);<strong><span class="ui">视图</span> → <span class="ui">界面缩放</span></strong> 效果相同。</li><li><strong><span class="ui">视图</span> → <span class="ui">主题</span></strong>:<span class="ui">BehavEd 经典</span>、<span class="ui">Windows</span>、<span class="ui">深色</span>、<span class="ui">午夜</span>、<span class="ui">浅色</span>、<span class="ui">高对比度</span>。</li><li>拖动列之间的边界调整宽度;每种模式会记住自己的宽度。<strong><span class="ui">调试</span> → <span class="ui">恢复默认布局</span></strong> 恢复默认。</li><li>BehavEd-Remake 运行时在资源管理器中打开文件,会交给已打开的窗口,而不是启动第二个程序。</li></ul>
+    <nav class="blaettern"><a class="vor" href="erste-schritte.html"><span>上一页</span>快速上手</a><a class="nach" href="skripte.html"><span>下一页</span>编写脚本</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

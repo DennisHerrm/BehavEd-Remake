@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPC ウェイポイント - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class="aktiv"><a href="wegpunkte.html">NPC ウェイポイント</a><ul class="unter"></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/wegpunkte.html" class="" lang="en">English</a><a href="../de/wegpunkte.html" class="" lang="de">Deutsch</a><a href="../zh/wegpunkte.html" class="" lang="zh">中文</a><a href="../ja/wegpunkte.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>NPC ウェイポイント</h1>
+    <p class="einleitung">NPC が追いかけたり逃げたりするときに歩くネットワーク。手で置くか自動で作り、確認します。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_wegpunkte.webp" class="zoom"><img src="../bilder/ja/h_wegpunkte.webp" alt="NPC ウェイポイント ウィンドウとマップ上のネットワーク。" loading="lazy"></a><figcaption><span class="ui">NPC ウェイポイント</span> ウィンドウとマップ上のネットワーク。</figcaption></figure>
+<p>マップのツールバーの <strong><span class="ui">NPC ウェイポイント</span></strong> で開きます。<strong><span class="ui">ネットワーク表示</span></strong> で経路を描きます。緑は手動(<code>target</code>)、青は自動(ナビゴールと戦闘ポイント)、オレンジはジャンプ(<code>targetJump</code>)。</p>
+<ul><li><strong><span class="ui">ウェイポイントを置く</span></strong>:床をクリックすると、新しい点が直前の点とつながります。<kbd>Shift</kbd>+クリックで新しい経路、<kbd>Esc</kbd> で終了。</li><li><strong><span class="ui">接続</span></strong>:2 点をクリックで接続(<kbd>Ctrl</kbd>:ジャンプ)、接続済みの 2 点をクリックで切断。1 点の接続は最大 4 本です。</li><li><strong><span class="ui">ネットワーク生成</span></strong> は歩ける床にウェイポイントを配置して接続します(<strong><span class="ui">間隔</span></strong>:オリジナルのレベルは約 230)。1 回で元に戻せます。<strong><span class="ui">生成分を削除</span></strong> は自動で作ったものだけを削除し、手動のものは残ります。</li><li><strong><span class="ui">ネットワークをチェック</span></strong> はゲームが拒否するものや NPC が使えないものを見つけます。問題をクリックするとそこへ移動します。</li></ul>
+    <nav class="blaettern"><a class="vor" href="animation.html"><span>前へ</span>可動物のアニメーションと ROFF ファイル</a><a class="nach" href="missionen.html"><span>次へ</span>ミッション</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スクリプトを書く - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>スクリプト</summary><ul><li class="aktiv"><a href="skripte.html">スクリプトを書く</a><ul class="unter"><li><a href="#grundlagen">スクリプトの構造</a></li><li><a href="#einfuegen">コマンドを追加する</a></li><li><a href="#editor">イベントエディター</a></li><li><a href="#bearbeiten">選択・移動・コピー</a></li><li><a href="#suchen">検索・置換・ブックマーク</a></li><li><a href="#rand">変更マージン</a></li></ul></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skripte.html" class="" lang="en">English</a><a href="../de/skripte.html" class="" lang="de">Deutsch</a><a href="../zh/skripte.html" class="" lang="zh">中文</a><a href="../ja/skripte.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">スクリプト</div>
+    <h1>スクリプトを書く</h1>
+    <p class="einleitung">ICARUS スクリプトはコマンドのツリーです。一覧からコマンドを選び、正しいブロックに入れ、値を入力します。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_skriptbaum.webp" class="zoom"><img src="../bilder/ja/h_skriptbaum.webp" alt="イベントモード。左にコマンド、中央にスクリプトツリー、右に操作ボタン。" loading="lazy"></a><figcaption>イベントモード。左にコマンド、中央にスクリプトツリー、右に操作ボタン。</figcaption></figure>
+<h2 id="grundlagen">スクリプトの構造<a class="anker" href="#grundlagen">#</a></h2>
+<p>コマンドは上から下へ実行されます。<code>affect ( &quot;名前&quot;, FLUSH ) { ... }</code> は中のコマンドを 1 つのキャラクターやエンティティに送ります。カットシーンはこうして役者を動かします。<code>task</code> はコマンドのまとまりを宣言し、<code>do</code> で並行して開始し、<code>dowait</code> でその完了を待ち、<code>wait</code> は一時停止します。<code>if</code>・<code>else</code>・<code>loop</code> は他の言語と同じです。コマンドを含められるのは <code>affect</code>・<code>task</code>・<code>if</code>・<code>else</code>・<code>loop</code> だけです。</p>
+<h2 id="einfuegen">コマンドを追加する<a class="anker" href="#einfuegen">#</a></h2>
+<ul><li>左の <strong><span class="ui">イベント</span></strong> 一覧でコマンドを<strong>ダブルクリック</strong>すると、選択中の行の後ろ(または選択中のブロックの中)に挿入されます。</li><li>またはツリーへ<strong>ドラッグ</strong>します。離した位置で、行の前・中・後ろのどこに入るかが決まります。</li><li>一覧の最後にあるマクロは複数のコマンドを一度に挿入します。<strong><span class="ui">マクロを畳む</span></strong> で 1 行にまとめて表示します。</li><li>行を右クリックすると、同じ一覧がサブメニューとして表示され、編集・コピー・<strong><span class="ui">類似を検索</span></strong> も使えます。</li></ul>
+<h2 id="editor">イベントエディター<a class="anker" href="#editor">#</a></h2>
+<p>行をダブルクリック(または <kbd>Enter</kbd>)すると <strong><span class="ui">イベントエディタ</span></strong> が開きます。上にコマンドのヘルプ、下に値ごとの欄があります。固定の選択肢はリスト、数値とテキストの欄、ファイル欄には参照用の <strong><span class="ui"></span></strong> と、サウンド再生やスクリプトを開く <strong><span class="ui">再生</span></strong> があります。マップを読み込んでいれば、名前欄の横の矢印でマップから名前を選べます。</p>
+<figure class="bild"><a href="../bilder/ja/h_editor.webp" class="zoom"><img src="../bilder/ja/h_editor.webp" alt="カメラコマンドのイベントエディター。" loading="lazy"></a><figcaption>カメラコマンドのイベントエディター。</figcaption></figure>
+<ul><li><strong><span class="ui">式！</span></strong> で欄を自由な式にし、<strong><span class="ui">ヘルパー</span></strong> で <strong><span class="ui">Get</span></strong>・<strong><span class="ui">Tag</span></strong>・<strong><span class="ui">Rnd</span></strong> を使って <code>get ( ... )</code>・<code>tag ( ... )</code>・<code>random ( ... )</code> を作ります。<strong><span class="ui">戻す</span></strong> で戻します。</li><li>リストにない値も使えます(MOD は独自の値を持ちます)が、<strong>不明</strong>と表示されます。たいていは入力ミスだからです。</li><li><strong><span class="ui">OK</span></strong>(<kbd>Enter</kbd>)で値を書き込み、<strong><span class="ui">キャンセル</span></strong>(<kbd>Esc</kbd>)で破棄、<strong><span class="ui">再評価</span></strong> で既定値に戻します。</li></ul>
+<h2 id="bearbeiten">選択・移動・コピー<a class="anker" href="#bearbeiten">#</a></h2>
+<ul><li>クリックで 1 行選択、<kbd>Ctrl</kbd>+クリックで追加、<kbd>Shift</kbd>+クリックで範囲選択。すべての操作は選択中のもの全体に作用します。</li><li>行をドラッグすると移動します。ブロックは中身ごと動き、自分自身の中には入れられません。</li><li><strong><span class="ui">コピー</span></strong>・<strong><span class="ui">切り取り</span></strong>・<strong><span class="ui">貼り付け</span></strong>。ブロックとその中の行を一緒にコピーした場合でも、ブロックへの貼り付けでコマンドは 1 回だけ入ります。</li><li><strong><span class="ui">複製</span></strong> は直下にコピーを挿入、<strong><span class="ui">コメント化</span></strong> は行をコメント化/解除、<strong><span class="ui">削除</span></strong> は削除します。</li><li><strong>元に戻す</strong>と<strong>やり直し</strong>はすべての手順を記憶します。どちらかを右クリックすると全履歴が表示され、1 つの手順だけを取り消して後の変更を残すこともできます。</li></ul>
+<h2 id="suchen">検索・置換・ブックマーク<a class="anker" href="#suchen">#</a></h2>
+<p><strong><span class="ui">検索</span></strong>(<kbd>Ctrl</kbd>+<kbd>F</kbd>)は開いたままのウィンドウを開きます。コマンド名(<strong><span class="ui">名前が</span></strong>)や値(<strong><span class="ui">次を含む</span></strong>)で検索し、<kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd> で移動し、このスクリプトまたは開いているすべてで置換できます。ブックマークは Notepad++ と同じく <kbd>Ctrl</kbd>+<kbd>F2</kbd> で設定、<kbd>F2</kbd> で次へ。ファイルごとに保存されます。</p>
+<h2 id="rand">変更マージン<a class="anker" href="#rand">#</a></h2>
+<p><strong><span class="ui">表示</span> → <span class="ui">変更履歴（余白）</span></strong> を有効にすると、色付きのマージンが変更箇所を示します。オレンジ = 変更・未保存、緑 = 変更・保存済み、青 = 元に戻った状態。マウスを乗せると元の行が表示され、行を右クリック → <strong>元に戻す</strong> でそのコマンドだけを復元できます。</p>
+    <nav class="blaettern"><a class="vor" href="fenster.html"><span>前へ</span>ウィンドウ</a><a class="nach" href="skriptfluss.html"><span>次へ</span>スクリプトの流れ:クラシック・グラフ・トラック</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

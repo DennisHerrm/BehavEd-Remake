@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角色与路径 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class="aktiv"><a href="figuren.html">角色与路径</a><ul class="unter"><li><a href="#folgen">选择角色和飞船</a></li><li><a href="#griffe">起点、终点与新路径点</a></li><li><a href="#gangart">步行或奔跑、共享目标</a></li></ul></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/figuren.html" class="" lang="en">English</a><a href="../de/figuren.html" class="" lang="de">Deutsch</a><a href="../zh/figuren.html" class="aktiv" lang="zh">中文</a><a href="../ja/figuren.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>角色与路径</h1>
+    <p class="einleitung">角色走向它们的导航点,飞船按 move 飞行——你能看到完整路径,并直接在地图上修改。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_figur_bahn.webp" class="zoom"><img src="../bilder/zh/h_figur_bahn.webp" alt="行走中的角色:前方路径为灰色,已走过的部分为黄色,起点和终点有控制柄。" loading="lazy"></a><figcaption>行走中的角色:前方路径为灰色,已走过的部分为黄色,起点和终点有控制柄。</figcaption></figure>
+<h2 id="folgen">选择角色和飞船<a class="anker" href="#folgen">#</a></h2>
+<p>在视图中单击角色或飞船即可选中其实体——角色的生成器、飞船的笔刷实体。模型移动时标记和操纵器会跟随,轮廓线显示选中的对象。角色身上的箭头指示模型的朝向。</p>
+<h2 id="griffe">起点、终点与新路径点<a class="anker" href="#griffe">#</a></h2>
+<ul><li><strong>拖动终点控制柄</strong>可移动行走目标(<code>waypoint_navgoal</code>)或飞行终点。</li><li><strong>拖动起点控制柄</strong>只移动起点,而不是整条线。</li><li><strong>在行走途中抓取角色</strong>(时间轴位于出发与到达之间)并拖动:会在该时刻创建新的路径点——角色为新的导航点,飞船为拆分后的 <code>move</code>。</li><li><strong>旋转</strong>同理:在飞行途中,圆环会以新角度创建新的路径点;对于角色,会在该时刻写入 <code>set ( SET_ANGLES )</code>——行走中则在到达时生效,因为游戏会让行走的角色面向行进方向。</li></ul>
+<h2 id="gangart">步行或奔跑、共享目标<a class="anker" href="#gangart">#</a></h2>
+<p>右键单击行走路径的终点控制柄(或时间轴中的条带)打开菜单:</p>
+<ul><li><strong><span class="ui">行走(从此段起)</span></strong> / <strong><span class="ui">奔跑(从此段起)</span></strong>——在导航点前写入 <code>SET_WALKING</code> 或 <code>SET_RUNNING</code>。</li><li><strong><span class="ui">行走时注视</span></strong>——角色行走时持续转向另一个角色(<code>SET_WATCHTARGET</code>)。</li><li><strong><span class="ui">倒退行走(保持向后看)</span></strong>——在起点后方放置注视标记使其倒退行走;<strong><span class="ui">面向行走方向</span></strong> 取消。</li></ul>
+<p>多个角色共用一个导航点时,移动它会影响所有角色。BehavEd-Remake 会察觉这一点,先为这段行走复制一个独立目标——状态栏会告诉你新建了哪个。</p>
+<div class="hinweis">已有脚本中的倒退行走也会被识别:角色朝与面向相反的方向移动时,场景会像游戏一样播放 <code>BOTH_WALKBACK1</code> 或 <code>BOTH_RUNBACK1</code>。</div>
+    <nav class="blaettern"><a class="vor" href="zeitleiste.html"><span>上一页</span>时间轴</a><a class="nach" href="animation.html"><span>下一页</span>移动物体动画与 ROFF 文件</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

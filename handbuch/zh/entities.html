@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>实体 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class="aktiv"><a href="entities.html">实体</a><ul class="unter"><li><a href="#liste">实体列表</a></li><li><a href="#waehlen">在视图中选择</a></li><li><a href="#gizmo">移动与旋转</a></li><li><a href="#inspektor">检查器</a></li><li><a href="#setzen">放置新实体</a></li></ul></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/entities.html" class="" lang="en">English</a><a href="../de/entities.html" class="" lang="de">Deutsch</a><a href="../zh/entities.html" class="aktiv" lang="zh">中文</a><a href="../ja/entities.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>实体</h1>
+    <p class="einleitung">地图中脚本能够操作的一切——角色、行走目标、摄像机标记、触发器、飞船——都是实体。可以选择、修改、移动,也可以放置新的实体。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_entity.webp" class="zoom"><img src="../bilder/zh/h_entity.webp" alt="选中的飞船:左侧是列表,其下是检查器,视图中是操纵器。" loading="lazy"></a><figcaption>选中的飞船:左侧是列表,其下是检查器,视图中是操纵器。</figcaption></figure>
+<h2 id="liste">实体列表<a class="anker" href="#liste">#</a></h2>
+<p>左栏把实体分组——摄像机标记、行走目标、注视目标、角色、脚本启动器、特效、声音、可移动物体、可破坏物体、NPC 路径点。眼睛图标可在视图中隐藏某组(<kbd>Alt</kbd>+单击:只显示该组),搜索框按名称或类别筛选。单击选择,双击飞过去,右键为其插入命令:行走目标、注视目标、affect 块、摄像机移到此标记。</p>
+<h2 id="waehlen">在视图中选择<a class="anker" href="#waehlen">#</a></h2>
+<p>单击标记、角色或模型即可选择;<kbd>Ctrl</kbd>/<kbd>Shift</kbd>+单击追加;在空白处拖出框可选择框内所有对象。悬停时显示边框和名称。地图下方的控制栏会显示所选实体在脚本中被使用的次数,并提供跳转到这些行的按钮。</p>
+<h2 id="gizmo">移动与旋转<a class="anker" href="#gizmo">#</a></h2>
+<p>视图角落的小工具栏在 <strong><span class="ui">移动</span></strong> 和 <strong><span class="ui">旋转</span></strong> 之间切换操纵器。移动模式下,可在地面上拖动实体或沿彩色箭头拖动;工具栏中设置的网格会吸附,拖动时按 <kbd>Ctrl</kbd> 可暂时关闭——未设置网格时,<kbd>Ctrl</kbd> 让箭头拖动吸附到 8 单位。旋转模式下显示圆环(<kbd>Ctrl</kbd>:15 度一步):蓝色左右旋转;飞船和模型还有绿色(俯仰)和红色(翻滚);角色只有蓝色圆环,因为游戏对角色只认 <code>angle</code>。<kbd>Alt</kbd>+拖动会先复制。多个选中的实体作为整体移动和旋转。</p>
+<div class="bildreihe"><figure class="bild"><a href="../bilder/zh/h_gizmo_verschieben.webp" class="zoom"><img src="../bilder/zh/h_gizmo_verschieben.webp" alt="移动:只有箭头。" loading="lazy"></a><figcaption><span class="ui">移动</span>:只有箭头。</figcaption></figure><figure class="bild"><a href="../bilder/zh/h_gizmo_drehen.webp" class="zoom"><img src="../bilder/zh/h_gizmo_drehen.webp" alt="旋转:飞船上的三个圆环。" loading="lazy"></a><figcaption><span class="ui">旋转</span>:飞船上的三个圆环。</figcaption></figure></div>
+<div class="hinweis">当时间轴位于某段运动中间时,操纵器不会修改起点,而是在该时刻设置新的路径点。参见 <a href="figuren.html#griffe">起点、终点与新路径点</a> 和 <a href="animation.html#schluessel">关键帧</a>。</div>
+<h2 id="inspektor">检查器<a class="anker" href="#inspektor">#</a></h2>
+<p>列表下方的检查器显示所选实体:来自游戏代码的类别说明、<strong><span class="ui">名称</span></strong>、<strong><span class="ui">位置</span></strong>、<strong><span class="ui">地面</span></strong>(脚离地面的高度——陷入地面时显示红色)和 <strong><span class="ui">朝向 (度)</span></strong>,生成标志以复选框显示,其余所有键以字段显示。脚本字段带有 <strong><span class="ui">打开</span></strong>,<code>NPC_type</code> 可搜索游戏中的所有 NPC。图标栏可以飞过去、<strong><span class="ui">放到地面</span></strong>、复制、删除、制作动画(<a href="animation.html">移动物体动画与 ROFF 文件</a>)以及显示 <strong><span class="ui">全部键 (原始)</span></strong>。鼠标位于地图或列表上时,实体的修改有独立的撤销记录。</p>
+<h2 id="setzen">放置新实体<a class="anker" href="#setzen">#</a></h2>
+<p>视图左边缘的图块用于放置常见类型:角色、行走目标、摄像机/注视标记、注视目标、脚本启动器、特效、声音、NPC 路径点、玩家出生点。单击图块,再在视图中单击——或把图块拖进视图;按住 <kbd>Shift</kbd> 可连续放置。列表上方的 <strong><span class="ui">+ 实体</span></strong> 和视图中的右键菜单(<strong><span class="ui">在此新建实体</span></strong>)提供所有类别。<strong>网格</strong>按钮可吸附到 8、16、32 或 64 单位。</p>
+    <nav class="blaettern"><a class="vor" href="karte.html"><span>上一页</span>地图</a><a class="nach" href="kamera.html"><span>下一页</span>摄像机</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

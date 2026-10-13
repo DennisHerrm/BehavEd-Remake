@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Script Flow: Classic, Graph, Spuren - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class="aktiv"><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a><ul class="unter"><li><a href="#classic">Classic</a></li><li><a href="#graph">Graph: was startet was</a></li><li><a href="#spuren">Spuren: das Skript über die Zeit</a></li></ul></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skriptfluss.html" class="" lang="en">English</a><a href="../de/skriptfluss.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/skriptfluss.html" class="" lang="zh">中文</a><a href="../ja/skriptfluss.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Skripte</div>
+    <h1>Script Flow: Classic, Graph, Spuren</h1>
+    <p class="einleitung">Drei Ansichten desselben Skripts - jederzeit umschaltbar, nichts geht verloren.</p>
+    <p>Die Knöpfe <strong><span class="ui">Classic</span> / <span class="ui">Graph</span> / <span class="ui">Spuren</span></strong> oben in der Spalte <span class="ui">Skriptablauf</span> schalten die Ansicht. In einer geteilten Ansicht hat jedes Feld seine eigene.</p>
+<h2 id="classic">Classic<a class="anker" href="#classic">#</a></h2>
+<p>Der Baum des Original-BehavEd - jeder Befehl eine Zeile, Blöcke zum Aufklappen. Hier wird bearbeitet; siehe <a href="skripte.html">Skripte schreiben</a>.</p>
+<h2 id="graph">Graph: was startet was<a class="anker" href="#graph">#</a></h2>
+<figure class="bild breit"><a href="../bilder/de/h_graph.webp" class="zoom"><img src="../bilder/de/h_graph.webp" alt="Der Graph einer Mission: Spielerstart, Auslöser, Skriptstarter, Figuren und Skripte mit ihren Verbindungen." loading="lazy"></a><figcaption>Der Graph einer Mission: Spielerstart, Auslöser, Skriptstarter, Figuren und Skripte mit ihren Verbindungen.</figcaption></figure>
+<p>Eine Mission wird von ihren Entities zusammengehalten: ein <code>trigger</code> zielt auf einen <code>target_scriptrunner</code>, der ein Skript startet, das Figuren steuert und andere Skripte startet. Genau das zeichnet der Graph. Doppelklick auf einen Knoten öffnet sein Skript oder zeigt die Entity in der Karte; vom Punkt rechts an einem Knoten zu einem anderen ziehen verbindet sie - bei einer Figur wählst du die Art des Skripts (spawnscript, deathscript, ...). Entities aus der Liste oder Befehle lassen sich in den Graphen ziehen; ein Befehl auf freier Fläche legt ein neues Skript an.</p>
+<p><strong><span class="ui">Einpassen</span></strong> zeigt alles, <strong><span class="ui">Anordnen</span></strong> ordnet die Knoten, <strong><span class="ui">Rechtwinklig</span></strong> zieht die Leitungen rechtwinklig durch die Lücken. Doppelklick auf eine Leitung setzt einen Umlenkpunkt; Rechtsklick entfernt ihn.</p>
+<h2 id="spuren">Spuren: das Skript über die Zeit<a class="anker" href="#spuren">#</a></h2>
+<figure class="bild breit"><a href="../bilder/de/h_spuren.webp" class="zoom"><img src="../bilder/de/h_spuren.webp" alt="Spuren: Kameraeinstellungen, Figuren, Dialog und Skript als Blöcke in der Zeit." loading="lazy"></a><figcaption>Spuren: Kameraeinstellungen, Figuren, Dialog und Skript als Blöcke in der Zeit.</figcaption></figure>
+<p>Eine kompakte Zeitleiste in der Skriptspalte: Zeilen für <strong><span class="ui">Kamera</span></strong>, jede Figur, <strong><span class="ui">Dialog</span></strong> (Sprachzeilen) und <strong><span class="ui">Skript</span></strong>. Klick auf einen Block wählt seine Zeile, seinen rechten Rand ziehen ändert die Dauer, im Lineal ziehen bewegt durch die Zeit. Die große <a href="zeitleiste.html">Zeitleiste</a> unter der Karte tut dasselbe genauer.</p>
+    <nav class="blaettern"><a class="vor" href="skripte.html"><span>Zurück</span>Skripte schreiben</a><a class="nach" href="speichern.html"><span>Weiter</span>Speichern, Übersetzen, Prüfen</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

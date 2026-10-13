@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figures and paths - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class="aktiv"><a href="figuren.html">Figures and paths</a><ul class="unter"><li><a href="#folgen">Selecting figures and ships</a></li><li><a href="#griffe">Start, end and new points</a></li><li><a href="#gangart">Walk or run, shared targets</a></li></ul></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/figuren.html" class="aktiv" lang="en">English</a><a href="../de/figuren.html" class="" lang="de">Deutsch</a><a href="../zh/figuren.html" class="" lang="zh">中文</a><a href="../ja/figuren.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>Figures and paths</h1>
+    <p class="einleitung">Figures walk to their navgoals and ships fly their moves - you see the whole path and can change it on the map.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_figur_bahn.webp" class="zoom"><img src="../bilder/en/h_figur_bahn.webp" alt="A walking figure: the path ahead in grey, the part already walked in yellow, the handles at start and end." loading="lazy"></a><figcaption>A walking figure: the path ahead in grey, the part already walked in yellow, the handles at start and end.</figcaption></figure>
+<h2 id="folgen">Selecting figures and ships<a class="anker" href="#folgen">#</a></h2>
+<p>Click a figure or a ship in the view to select its entity - the spawner of the figure, the brush entity of the ship. Marker and gizmo follow the model while it moves, and an outline shows what is selected. The arrow at the figure points where the model looks.</p>
+<h2 id="griffe">Start, end and new points<a class="anker" href="#griffe">#</a></h2>
+<ul><li><strong>Drag the end handle</strong> to move the walk target (the <code>waypoint_navgoal</code>) or the end of a flight.</li><li><strong>Drag the start handle</strong> to move only the start, not the whole line.</li><li><strong>Grab the figure in the middle of its walk</strong> (timeline between start and arrival) and drag: a new point is created at that moment - a new navgoal for figures, a split <code>move</code> for ships.</li><li><strong>Rotate</strong> works the same way: in the middle of a flight the rings create a new point with the new angles; for a figure they write <code>set ( SET_ANGLES )</code> at that time - while walking it applies when the figure arrives, because the game turns walking figures toward their direction.</li></ul>
+<h2 id="gangart">Walk or run, shared targets<a class="anker" href="#gangart">#</a></h2>
+<p>Right-click the end handle of a walk (or its band in the timeline) for its menu:</p>
+<ul><li><strong><span class="ui">Walk (from this walk on)</span></strong> / <strong><span class="ui">Run (from this walk on)</span></strong> - writes <code>SET_WALKING</code> or <code>SET_RUNNING</code> before the navgoal.</li><li><strong><span class="ui">Look at while walking</span></strong> - the figure keeps turning toward another figure while it walks (<code>SET_WATCHTARGET</code>).</li><li><strong><span class="ui">Walk backwards (keeps looking back)</span></strong> - a look mark behind the start makes it walk backwards; <strong><span class="ui">Face the walking direction</span></strong> ends that.</li></ul>
+<p>When several figures share one navgoal, moving it would move all of them. BehavEd-Remake notices and gives this walk its own copy of the target first - the status line tells you which one it created.</p>
+<div class="hinweis">Walking backwards is detected in existing scripts too: when a figure moves against the way it faces, the scene plays <code>BOTH_WALKBACK1</code> or <code>BOTH_RUNBACK1</code> like the game.</div>
+    <nav class="blaettern"><a class="vor" href="zeitleiste.html"><span>Previous</span>Timeline</a><a class="nach" href="animation.html"><span>Next</span>Animating movers and ROFF files</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

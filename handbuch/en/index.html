@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Start here</summary><ul><li class="aktiv"><a href="index.html">Welcome</a><ul class="unter"><li><a href="#wege">Where to start</a></li><li><a href="#tutorials">Tutorials</a></li><li><a href="#kann">What the program can do</a></li></ul></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/index.html" class="aktiv" lang="en">English</a><a href="../de/index.html" class="" lang="de">Deutsch</a><a href="../zh/index.html" class="" lang="zh">中文</a><a href="../ja/index.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Start here</div>
+    <h1>Welcome</h1>
+    <p class="einleitung">BehavEd-Remake writes the scripts that run cutscenes and missions in Jedi Academy and Movie Duels - and shows them on the map while you write them.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_fenster.webp" class="zoom"><img src="../bilder/en/h_fenster.webp" alt="A Movie Duels mission open in BehavEd-Remake: the script on the right, the map in the middle, the timeline below." loading="lazy"></a><figcaption>A Movie Duels mission open in BehavEd-Remake: the script on the right, the map in the middle, the timeline below.</figcaption></figure>
+<p>The game runs its scenes with <strong>ICARUS</strong> scripts: lists of commands such as &quot;walk to this spot&quot;, &quot;play this sound&quot;, &quot;move the camera there&quot;. Raven&#x27;s original BehavEd let you build those lists from buttons. BehavEd-Remake does the same, file for file compatible, and adds what the original never had: the map in 3D, the figures walking their paths, the camera flying its shots, and a timeline that plays it all - before you ever start the game.</p>
+<h2 id="wege">Where to start<a class="anker" href="#wege">#</a></h2>
+<ul><li>New here? Read <a href="erste-schritte.html">Getting started</a> and <a href="fenster.html">The window</a> - ten minutes, and every later page makes sense.</li><li>Want to make something right away? Pick one of the tutorials below.</li><li>Looking for one thing? Type it into the search box at the top left - it searches every page and jumps to the spot.</li></ul>
+<h2 id="tutorials">Tutorials<a class="anker" href="#tutorials">#</a></h2>
+<div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/en/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A first cutscene</h3><p>Two camera shots, a smooth move between them, watched through the camera and compiled for the game.</p><div class="meta">Camera · six steps · needs Movie Duels</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/en/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A figure walks</h3><p>Place a character and a walk target, let the script send it there, then change the path on the map - walk or run, a point in between.</p><div class="meta">Entities and paths · six steps · any map</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/en/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>A ship flies a ROFF path</h3><p>A free flight with curves for the ship over the arena - built as a ROFF file, turned with the gizmo, saved for the game.</p><div class="meta">Animation · six steps · needs Movie Duels</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/en/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Your own mission</h3><p>From an empty map to a mission the game loads: create it, add an intro, check it and pack it into a .pk3.</p><div class="meta">Missions · six steps · any map</div></div></a></div>
+<h2 id="kann">What the program can do<a class="anker" href="#kann">#</a></h2>
+<table class="liste"><thead><tr><th>Area</th><th>In short</th></tr></thead><tbody><tr><td><a href="skripte.html">Writing scripts</a></td><td>Build scripts from the command list, edit every value in a dialog, copy, move, undo - like the original BehavEd.</td></tr><tr><td><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></td><td>See a script as a tree, as a graph of who starts whom, or as tracks over time.</td></tr><tr><td><a href="karte.html">The map</a></td><td>The map in 3D with lights, effects and models; fly through it, select and move entities.</td></tr><tr><td><a href="kamera.html">Camera</a></td><td>Camera shots as keys on the map: move and turn them with the gizmo, fly them yourself, preview them.</td></tr><tr><td><a href="zeitleiste.html">Timeline</a></td><td>Play the scene, see every command in time, drag commands to change when they happen.</td></tr><tr><td><a href="figuren.html">Figures and paths</a></td><td>Paths of walking figures and flying ships: start and end handles, new points, walk or run, facing.</td></tr><tr><td><a href="animation.html">Animating movers and ROFF files</a></td><td>Animate ships, doors and platforms - as move commands or as a ROFF file, built and edited right here.</td></tr><tr><td><a href="missionen.html">Missions</a></td><td>Open a whole mission with all its scripts, build your own, and pack it into a .pk3 the game loads.</td></tr></tbody></table>
+<div class="hinweis"><strong>Nothing is lost.</strong> Every change can be undone with <kbd>Ctrl</kbd>+<kbd>Z</kbd>, and files are only written when you save. The game files themselves are never changed: new things go next to your scripts or into your own .pk3.</div>
+    <nav class="blaettern"><span></span><a class="nach" href="erste-schritte.html"><span>Next</span>Getting started</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

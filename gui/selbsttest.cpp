@@ -36,6 +36,7 @@
 #include "gpumap.h"
 #include "bhed/changelog.h"
 #include "bhed/entdefs.h"
+#include "bhed/roffanim.h"
 
 #include <algorithm>
 #include <array>
@@ -297,6 +298,10 @@ Schritt antworteNein();
 // "Yes/No query" des Benutzers - der Test setzt es an und stellt es am Ende
 // zurueck, weil die Einstellungen beim Beenden gespeichert werden.
 bool g_queryVorher = true;
+// Die Skriptansicht des Benutzers (Classic/Graph/Spuren) - der Test braucht
+// Classic und gibt sie am Ende zurueck (rc599: mit Graph in der behaved.cfg
+// fanden die Klicks im Baum nichts, 443 Fehler im vollen Lauf).
+int g_flussVorher = -1;
 
 Schritt klick(const std::string& label, const std::string& fenster = "",
               int nte = 0, bool praefix = false,
@@ -4109,6 +4114,44 @@ std::vector<Schritt> kartenBreitSchritte() {
     add(klickAn("rechts kurz (Gizmomenue)", ansichtMitte, 1));
     add(klick(tr(Str::GizmoRotate), "##Popup"));
     add(pruefe("Gizmo: Modus Drehen", [] { return g_app->gizmoMode == App::GizmoMode::Rotate; }));
+    // rc599: "bei Drehen ein Rotation-Target" - die drei Ringe muessen da sein
+    // und jeder einzeln greifen.
+    add(gezeichnet("Drehringe"));
+    add(foto("kamera_drehringe"));
+    for (int achse = 0; achse < 3; ++achse) {
+        add(tu("Kamera-Drehring " + std::to_string(achse) + ": Maus drauf", [achse] {
+            // Der Punkt des Rings, der am weitesten von den anderen beiden liegt.
+            int best = -1;
+            float bestAbst = -1.0F;
+            for (int t = 0; t + 1 < App::kRingPts; ++t) {
+                const float x = g_app->gizmoRingSx[achse][t];
+                const float y = g_app->gizmoRingSy[achse][t];
+                if (x < 0.0F) { continue; }
+                float naechst = 1.0e9F;
+                for (int b = 0; b < 3; ++b) {
+                    if (b == achse) { continue; }
+                    for (int u = 0; u + 1 < App::kRingPts; ++u) {
+                        if (g_app->gizmoRingSx[b][u] < 0.0F) { continue; }
+                        const float dx = g_app->gizmoRingSx[b][u] - x;
+                        const float dy = g_app->gizmoRingSy[b][u] - y;
+                        naechst = std::min(naechst, dx * dx + dy * dy);
+                    }
+                }
+                if (naechst > bestAbst) {
+                    bestAbst = naechst;
+                    best = t;
+                }
+            }
+            if (best >= 0) { setzeMaus(bildZuSchirm(g_app->gizmoRingSx[achse][best], g_app->gizmoRingSy[achse][best])); }
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.25));
+        add(pruefe("Kamera-Drehring " + std::to_string(achse) + " greift", [achse] {
+            diag::detail("Knopftest: Kamera-Drehring " + std::to_string(achse) + " - unter der Maus " +
+                         std::to_string(g_app->gizmoHover));
+            return g_app->gizmoHover == achse;
+        }));
+    }
     auto panVorher = std::make_shared<std::string>();
     auto panWeg = std::make_shared<Path>();
     add(tu("Um 15 Grad drehen (wie gezogen)", [=] {
@@ -6388,6 +6431,7 @@ std::vector<Schritt> neustartSchritte() {
     }));
     s.push_back(tu("Zusammenfassung", [] {
         g_app->settings.queryOnDiscard = g_queryVorher;
+        if (g_flussVorher >= 0) { g_app->settings.flussAnsicht = g_flussVorher; }
         char z[120];
         std::snprintf(z, sizeof(z), "Knopftest fertig: %d OK, %d FEHLER", g_ok, g_fehler);
         diag::detail(z);
@@ -6395,6 +6439,61 @@ std::vector<Schritt> neustartSchritte() {
     }));
     s.push_back(tu("Neustart wie nach einem Update", [] { updater::neuStarten(); }));
     s.push_back(antworteNein());
+    return s;
+}
+
+// --- Zuletzt geoeffnete Missionen (rc599, BHED_EDITORTEST=letzte) -------------
+//
+// shank: "ich wuerde gerne ein recent mission tab haben im editor statt recent
+// file, so dass man ein komplettes Projekt oeffnen kann".
+//   BHED_MISSION_ARCHIV, BHED_MISSION_NAME wie bei missionfoto
+std::vector<Schritt> letzteMissionSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const std::string archiv = std::getenv("BHED_MISSION_ARCHIV") ? std::getenv("BHED_MISSION_ARCHIV") : "";
+    const std::string name = std::getenv("BHED_MISSION_NAME") ? std::getenv("BHED_MISSION_NAME") : "";
+    add(tu("Letzte: Liste leer, Mission aus der pk3 laden", [=] {
+        g_app->settings.recentMissions.clear();
+        g_app->leftMode = 1;
+        missionenAusArchiv(archiv);
+    }));
+    add(pause(0.5));
+    add(tu("Letzte: Auswahl oder gleich geladen", [=] {
+        if (g_app->missionPickOpen) { schritteEinfuegen({waehleInListe(name, false, 0, "##missionpick")}); }
+    }));
+    add(warteBis("Letzte: Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 1500));
+    auto merk = std::make_shared<std::pair<std::string, std::size_t>>();
+    add(pruefe("Letzte: die Mission steht vorn in der Liste (Archiv und Name)", [=] {
+        const std::string soll = "pk3|" + g_app->missionArchive + "|" + name;
+        diag::detail("Knopftest: Letzte - " + std::string(g_app->settings.recentMissions.empty() ? "-" : g_app->settings.recentMissions[0]) +
+                     ", Reiter " + std::to_string(g_app->tabs.size()) + ", Karte " + g_app->map.path);
+        merk->first = g_app->map.path;
+        merk->second = g_app->tabs.size();
+        return !g_app->settings.recentMissions.empty() && g_app->settings.recentMissions[0] == soll;
+    }));
+    add(tu("Letzte: ein neuer, leerer Reiter", [] { neuerReiter(); }));
+    add(pause(0.5));
+    add(pruefe("Letzte: im neuen Reiter kein Skript", [] { return g_app->doc.script().nodes.size() <= 1U; }));
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::RecentMissions), "##Menu"));
+    add(klick(name, "##Menu"));
+    add(warteBis("Letzte: wieder geladen", [] { return g_app->camTrackValid && g_app->doc.script().nodes.size() > 1U; }, 1500));
+    add(pruefe("Letzte: File > Recent missions oeffnet das ganze Projekt - Karte und die Reiter der Mission, das erste vorn", [=] {
+        diag::detail("Knopftest: Letzte - danach aktiv " + g_app->shownName + ", erstes Skript " + g_app->missionErstesSkript +
+                     ", Karte " + g_app->map.path + ", Reiter " + std::to_string(g_app->tabs.size()));
+        return g_app->map.path == merk->first && g_app->tabs.size() <= merk->second + 1U &&
+               g_app->doc.script().nodes.size() > 1U && g_app->missionAktiv;
+    }));
+    add(tu("Letzte: einen Eintrag, den es nicht mehr gibt, oeffnen", [] {
+        g_app->settings.noteRecentMission("ordner|C:\\gibt\\es\\nicht\\md_weg");
+        letzteMissionOeffnen("ordner|C:\\gibt\\es\\nicht\\md_weg");
+    }));
+    add(pruefe("Letzte: ein verschwundener Eintrag faellt aus der Liste", [] {
+        for (const std::string& e : g_app->settings.recentMissions) {
+            if (e.find("md_weg") != std::string::npos) { return false; }
+        }
+        return true;
+    }));
     return s;
 }
 
@@ -6897,11 +6996,15 @@ std::vector<Schritt> missionsbauSchritte() {
         const MapEntity* e = mb::gewaehlt();
         if (e != nullptr) { (void)entityOrt(*e, z->ortVorher); }
     }));
+    // Seit rc599 dreht der Ring nur im Drehmodus (Verschieben: nur Pfeile).
+    add(tu("Gizmo: Drehmodus", [] { g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
+    add(pause(0.2));
     add(ziehenAn("Gizmo-Ring drehen", [] {
         ImVec2 q{0.0F, 0.0F};
         (void)entityGizmoPunkt(4, q);
         return q;
     }, 45.0F, -10.0F, 0));
+    add(tu("Gizmo: wieder Verschieben", [] { g_app->gizmoMode = App::GizmoMode::Move; g_app->mapDirty = true; }));
     add(pause(0.3));
     add(pruefe("Gizmo-Ring: die Blickrichtung dreht sich, der Ort bleibt", [=] {
         const MapEntity* e = mb::gewaehlt();
@@ -9880,6 +9983,13 @@ std::vector<Schritt> ablaufSchritte() {
     vergleiche("Detail runter und hoch");
 
     // --- 4. Himmel aus und an -------------------------------------------------
+    // Das Klappfenster "Ansicht einstellen" vom Detail-Schritt ist noch offen -
+    // der erste Klick auf "Sky" schloesse nur es (rc599: Himmel blieb danach
+    // aus, und jeder folgende Vergleich wich ab).
+    add(klickAn("in die Statuszeile (Klappfenster zu)", [] {
+        return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F};
+    }));
+    add(pause(0.3));
     add(tu("Ablauf: Himmel ist an", [] { g_app->showSky = true; }));
     add(klick(tr(Str::MapSky)));
     ansicht("Himmel aus");
@@ -11325,6 +11435,7 @@ std::vector<Schritt> endeSchritte(bool voll) {
     std::vector<Schritt> s;
     const Schritt zusammenfassung = tu("Zusammenfassung", [] {
         g_app->settings.queryOnDiscard = g_queryVorher;
+        if (g_flussVorher >= 0) { g_app->settings.flussAnsicht = g_flussVorher; }
         char z[120];
         std::snprintf(z, sizeof(z), "Knopftest fertig: %d OK, %d FEHLER",
                       g_ok, g_fehler);
@@ -11843,6 +11954,7 @@ void folgeKameraVor(const FolgeZiel& z, float abst, float hoch) {
     g_app->mapDirty = true;
 }
 std::vector<Schritt> folgeSchritte2(std::shared_ptr<FolgeZiel> schiff, std::shared_ptr<FolgeZiel> figur);
+std::vector<Schritt> drehSchritte(std::shared_ptr<FolgeZiel> schiff, std::shared_ptr<FolgeZiel> figur);
 
 std::vector<Schritt> folgeSchritte() {
     std::vector<Schritt> s;
@@ -12349,6 +12461,7 @@ std::vector<Schritt> folgeSchritte() {
         return std::fabs(std::remainder(schl - st.angles[1], 360.0F)) > 5.0F && d < 1.0F;
     }));
     for (Schritt& x : folgeSchritte2(schiff, figur)) { s.push_back(std::move(x)); }
+    for (Schritt& x : drehSchritte(schiff, figur)) { s.push_back(std::move(x)); }
     add(tu("Folgen: Auswahl weg, Zeit auf 0", [] {
         g_app->cameraSelected = false;
         g_app->selectedActor = -1;
@@ -12357,6 +12470,243 @@ std::vector<Schritt> folgeSchritte() {
         g_app->mapDirty = true;
     }));
     add(pause(0.2));
+    return s;
+}
+
+// --- Drehen um alle drei Achsen (rc599) --------------------------------------
+//
+// shank: "ich kann Charaktere, Schiffe und Kameras nicht mehr drehen, weil kein
+// Dreh-Gizmo mehr da ist ... bei Move ein Move-Target und bei Drehen ein
+// Rotation-Target".
+std::vector<Schritt> drehSchritte(std::shared_ptr<FolgeZiel> schiff, std::shared_ptr<FolgeZiel> figur) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    struct DrehProbe {
+        float w0[3]{};
+        float o0[3]{};
+        std::size_t entTiefe = 0;
+    };
+    auto dp = std::make_shared<DrehProbe>();
+    const auto winkel3 = [](int ei, float w[3]) {
+        w[0] = 0.0F;
+        w[1] = 0.0F;
+        w[2] = 0.0F;
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(ei)];
+        if (const std::string* a = e.find("angles")) {
+            (void)std::sscanf(a->c_str(), "%f %f %f", &w[0], &w[1], &w[2]);
+        } else if (const std::string* a1 = e.find("angle")) {
+            w[1] = std::strtof(a1->c_str(), nullptr);
+        }
+    };
+    add(tu("Drehen: das Schiff vor dem Flug waehlen, Verschieben", [=] {
+        folgeKameraVor(*schiff, 420.0F, 200.0F);
+        g_app->playMs = 0.0;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(schiff->entity);
+        g_app->gizmoMode = App::GizmoMode::Move;
+        winkel3(schiff->entity, dp->w0);
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(schiff->entity)], dp->o0);
+        dp->entTiefe = g_app->entUndo.size();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(tu("Drehen: Maus auf die Stelle des Nick-Rings (im Verschieben)", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(5, q);
+        setzeMaus(q);
+    }));
+    add(pause(0.2));
+    add(pruefe("Drehen: im Verschieben gibt es keine Ringe, nur Pfeile", [] {
+        return g_app->entGizmoHover < 4;
+    }));
+    add(klick(tr(Str::GizmoRotate), "##entgizmoleiste"));
+    add(pause(0.3));
+    add(pruefe("Drehen: die Leiste schaltet in den Drehmodus", [] { return g_app->gizmoMode == App::GizmoMode::Rotate; }));
+    add(foto("drehen_schiff"));
+    add(ziehenAn("Drehen: am Nick-Ring ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(5, q);
+        return q;
+    }, 50.0F, 30.0F, 0));
+    add(pause(0.4));
+    add(pruefe("Drehen: der gruene Ring nickt das Schiff - Gier und Ort bleiben", [=] {
+        float w[3];
+        winkel3(schiff->entity, w);
+        float o[3];
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(schiff->entity)], o);
+        const float ort = std::fabs(o[0] - dp->o0[0]) + std::fabs(o[1] - dp->o0[1]) + std::fabs(o[2] - dp->o0[2]);
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Drehen - Schiff vorher %.0f %.0f %.0f, nachher %.0f %.0f %.0f, Ort %.1f",
+                      static_cast<double>(dp->w0[0]), static_cast<double>(dp->w0[1]), static_cast<double>(dp->w0[2]),
+                      static_cast<double>(w[0]), static_cast<double>(w[1]), static_cast<double>(w[2]), static_cast<double>(ort));
+        diag::detail(z);
+        const float dNick = std::fabs(std::remainder(w[0] - dp->w0[0], 360.0F));
+        const float dGier = std::fabs(std::remainder(w[1] - dp->w0[1], 360.0F));
+        return dNick > 2.0F && dGier < 0.5F && ort < 0.5F;
+    }));
+    add(tu("Drehen: Nicken merken", [=] { winkel3(schiff->entity, dp->w0); }));
+    add(ziehenAn("Drehen: am Roll-Ring ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(6, q);
+        return q;
+    }, 50.0F, 30.0F, 0));
+    add(pause(0.4));
+    add(pruefe("Drehen: der rote Ring rollt das Schiff", [=] {
+        float w[3];
+        winkel3(schiff->entity, w);
+        const float dRoll = std::fabs(std::remainder(w[2] - dp->w0[2], 360.0F));
+        diag::detail("Knopftest: Drehen - Rollen " + std::to_string(dp->w0[2]) + " -> " + std::to_string(w[2]));
+        return dRoll > 2.0F;
+    }));
+    add(tu("Drehen: Gier merken", [=] { winkel3(schiff->entity, dp->w0); }));
+    add(ziehenAn("Drehen: am Gier-Ring ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 50.0F, -20.0F, 0));
+    add(pause(0.4));
+    add(pruefe("Drehen: der blaue Ring dreht die Gier, Nicken und Rollen bleiben", [=] {
+        float w[3];
+        winkel3(schiff->entity, w);
+        const float dGier = std::fabs(std::remainder(w[1] - dp->w0[1], 360.0F));
+        const float dRest = std::fabs(std::remainder(w[0] - dp->w0[0], 360.0F)) + std::fabs(std::remainder(w[2] - dp->w0[2], 360.0F));
+        diag::detail("Knopftest: Drehen - Gier " + std::to_string(dp->w0[1]) + " -> " + std::to_string(w[1]));
+        return dGier > 2.0F && dRest < 0.5F;
+    }));
+    add(tu("Drehen: zuruecknehmen", [=] {
+        while (g_app->entUndo.size() > dp->entTiefe && entityRueckgaengig()) {}
+        g_app->mapDirty = true;
+    }));
+    // Eine Figur hat nur ihre Gier.
+    add(tu("Drehen: den Spawner der Figur waehlen", [=] {
+        folgeKameraVor(*figur, 170.0F, 120.0F);
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.4));
+    add(tu("Drehen: Maus auf die Stelle des Nick-Rings", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(5, q);
+        setzeMaus(q);
+    }));
+    add(pause(0.2));
+    add(pruefe("Drehen: eine Figur bekommt nur den Gier-Ring (die Engine kennt fuer NPCs nur angle)", [] {
+        diag::detail("Knopftest: Drehen - Figur, Griff unter der Maus " + std::to_string(g_app->entGizmoHover));
+        return g_app->entGizmoHover != 5 && g_app->entGizmoHover != 6;
+    }));
+    // rc599: "die Rotation beim Schiff und beim Character setzt keinen neuen
+    // Frame, es passt immer den ersten Punkt an". Mitten in der Fahrt bzw.
+    // nach dem ersten Befehl der Figur: ein Schluessel zur Zeit.
+    const auto zaehle = [](const char* name, const char* setTyp) {
+        int n = 0;
+        std::function<void(const std::vector<Node>&)> geh = [&](const std::vector<Node>& ns) {
+            for (const Node& x : ns) {
+                if (x.kind == Node::Kind::Command && x.name == name &&
+                    (setTyp == nullptr || (!x.args.empty() && x.args[0].text == setTyp))) {
+                    ++n;
+                }
+                geh(x.children);
+            }
+        };
+        geh(g_app->doc.script().nodes);
+        return n;
+    };
+    struct DrehKey {
+        double t = -1.0;
+        int moves = 0;
+        int setAngles = 0;
+        float w0[3]{};
+        float gier = 0.0F;
+        std::size_t tiefe = 0;
+    };
+    auto dk = std::make_shared<DrehKey>();
+    add(tu("Drehkey: das Schiff mitten in einer move-Fahrt waehlen, Drehmodus", [=] {
+        dk->t = -1.0;
+        if (schiff->actor >= 0) {
+            for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(schiff->actor)].steps) {
+                if (st.kind != ActorStep::Kind::Glide || st.path.empty() || !st.fremd.empty() || st.endMs - st.startMs < 1500.0) { continue; }
+                const Node* n = nodeAt(g_app->doc.script(), st.path);
+                if (n == nullptr || n->name != "move") { continue; }
+                dk->t = std::floor((st.startMs + st.endMs) * 0.5 / 50.0) * 50.0;
+                break;
+            }
+        }
+        FolgeZiel z = *schiff;
+        z.ms = dk->t;
+        folgeKameraVor(z, 420.0F, 200.0F);
+        g_app->playMs = dk->t;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(schiff->entity);
+        g_app->gizmoMode = App::GizmoMode::Rotate;
+        winkel3(schiff->entity, dk->w0);
+        dk->moves = zaehle("move", nullptr);
+        dk->tiefe = g_app->doc.undoDepth();
+        const ActorState st = g_app->scene.actors[static_cast<std::size_t>(schiff->actor)].at(dk->t);
+        dk->gier = st.angles[1];
+        diag::detail("Knopftest: Drehkey - Schiff mitten im move bei " + std::to_string(dk->t) + " ms, " +
+                     std::to_string(dk->moves) + " moves");
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Drehkey: am Gier-Ring des fliegenden Schiffs ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 50.0F, -25.0F, 0));
+    add(pause(0.5));
+    add(pruefe("Drehkey: Schiff im Flug - ein neuer Bahnpunkt mit Winkeln, der Start bleibt", [=] {
+        float w[3];
+        winkel3(schiff->entity, w);
+        const float start = std::fabs(w[0] - dk->w0[0]) + std::fabs(w[1] - dk->w0[1]) + std::fabs(w[2] - dk->w0[2]);
+        prepareScene();
+        const ActorState st = g_app->scene.actors[static_cast<std::size_t>(schiff->actor)].at(dk->t + 1.0);
+        const float dGier = std::fabs(std::remainder(st.angles[1] - dk->gier, 360.0F));
+        diag::detail("Knopftest: Drehkey - Schiff: moves " + std::to_string(dk->moves) + " -> " +
+                     std::to_string(zaehle("move", nullptr)) + ", Start geaendert um " + std::to_string(start) +
+                     ", Gier bei t " + std::to_string(dk->gier) + " -> " + std::to_string(st.angles[1]));
+        return dk->t > 0.0 && zaehle("move", nullptr) == dk->moves + 1 && start < 0.01F && dGier > 2.0F;
+    }));
+    add(tu("Drehkey: zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > dk->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(tu("Drehkey: die Figur nach ihrem ersten Befehl waehlen", [=] {
+        FolgeZiel z = *figur;
+        folgeKameraVor(z, 170.0F, 120.0F);
+        g_app->playMs = figur->ms;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(figur->entity);
+        g_app->gizmoMode = App::GizmoMode::Rotate;
+        winkel3(figur->entity, dk->w0);
+        dk->setAngles = zaehle("set", "SET_ANGLES");
+        dk->tiefe = g_app->doc.undoDepth();
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Drehkey: am Gier-Ring der Figur ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 50.0F, -25.0F, 0));
+    add(pause(0.5));
+    add(pruefe("Drehkey: Figur - set ( SET_ANGLES ) im Skript, der Spawner bleibt", [=] {
+        float w[3];
+        winkel3(figur->entity, w);
+        const float start = std::fabs(w[1] - dk->w0[1]);
+        diag::detail("Knopftest: Drehkey - Figur: SET_ANGLES " + std::to_string(dk->setAngles) + " -> " +
+                     std::to_string(zaehle("set", "SET_ANGLES")) + ", Spawner geaendert um " + std::to_string(start));
+        return zaehle("set", "SET_ANGLES") == dk->setAngles + 1 && start < 0.01F;
+    }));
+    add(tu("Drehkey: zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > dk->tiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+    }));
+    add(tu("Drehen: zurueck ins Verschieben", [] { g_app->gizmoMode = App::GizmoMode::Move; g_app->mapDirty = true; }));
     return s;
 }
 
@@ -12921,6 +13271,128 @@ std::vector<Schritt> folgeSchritte2(std::shared_ptr<FolgeZiel> schiff, std::shar
         g_app->mapDirty = true;
     }));
     add(pause(0.5));
+    return s;
+}
+
+// --- Kopieren und Einfuegen im Skriptbaum (rc599) ------------------------------
+//
+// Gemeldet (englisch): "if I right click and select copy, it only copies one
+// command. It should copy everything highlighted." und "if I copy and paste
+// commands in a command block statement (affect), the commands are
+// duplicated."
+std::vector<Schritt> ablageSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const auto kinder = [] {
+        const Node* n = nodeAt(g_app->doc.script(), Path{1});
+        return n != nullptr ? n->children.size() : 0U;
+    };
+    add(tu("Ablage: Skript mit einem affect-Block, Baum offen", [] {
+        openScriptFromMemory("//Generated by BehavEd\n"
+                             "rem ( \"vorher\" );\n"
+                             "affect ( \"player\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                             "\twait ( 300.000 );\n"
+                             "\tsound ( /*@CHANNELS*/ CHAN_VOICE_GLOBAL, \"sound/a.mp3\" );\n"
+                             "\twait ( 16250.000 );\n"
+                             "\tsound ( /*@CHANNELS*/ CHAN_VOICE_GLOBAL, \"sound/b.mp3\" );\n}\n"
+                             "rem ( \"nachher\" );\n",
+                             "ablage.txt");
+        g_app->settings.flussAnsicht = 0;
+        g_app->splitPanes[0].ansicht = 0;
+        g_app->expanded.openAll();
+        rebuildTree();
+    }));
+    add(pause(0.4));
+    add(tu("Ablage: im Block das zweite wait und den zweiten sound markieren", [] {
+        g_app->selection = {Path{1, 2}, Path{1, 3}};
+        g_app->selectedPath = Path{1, 3};
+        g_app->doc.setClipboard({});
+        rebuildTree();
+    }));
+    add(pause(0.3));
+    add(klick("sound", "/pane0_", 1, false, "", 1));   // Rechtsklick auf die markierte Zeile
+    add(pause(0.3));
+    add(klick(tr(Str::ActCopy), "##Popup"));
+    add(pause(0.3));
+    add(pruefe("Ablage: Rechtsklick > Copy kopiert ALLE markierten Zeilen", [] {
+        diag::detail("Knopftest: Ablage - " + std::to_string(g_app->doc.clipboard().size()) + " Zeilen kopiert");
+        return g_app->doc.clipboard().size() == 2U;
+    }));
+    auto vorher = std::make_shared<std::size_t>(0);
+    add(tu("Ablage: nur den letzten sound im Block waehlen", [=] {
+        *vorher = kinder();
+        g_app->selection = {Path{1, 3}};
+        g_app->selectedPath = Path{1, 3};
+        rebuildTree();
+    }));
+    add(pause(0.3));
+    add(klick("sound", "/pane0_", 1, false, "", 1));
+    add(pause(0.3));
+    add(klick(tr(Str::ActPaste), "##Popup"));
+    add(pause(0.4));
+    add(pruefe("Ablage: Einfuegen im affect-Block fuegt die zwei Zeilen genau einmal ein", [=] {
+        std::string folge;
+        if (const Node* n = nodeAt(g_app->doc.script(), Path{1})) {
+            for (const Node& k : n->children) { folge += " " + k.name; }
+        }
+        diag::detail("Knopftest: Ablage - Block vorher " + std::to_string(*vorher) + " Zeilen, jetzt " +
+                     std::to_string(kinder()) + ":" + folge + "; oben " + std::to_string(g_app->doc.script().nodes.size()));
+        return kinder() == *vorher + 2U && g_app->doc.script().nodes.size() == 3U;
+    }));
+    // Dasselbe mit der Tastatur (Strg+C / Strg+V) - der zweite Weg.
+    add(tu("Ablage: zuruecknehmen, zwei Zeilen markieren", [=] {
+        while (g_app->doc.undo()) {}
+        g_app->expanded.openAll();
+        rebuildTree();
+        g_app->selection = {Path{1, 0}, Path{1, 1}};
+        g_app->selectedPath = Path{1, 1};
+        g_app->doc.setClipboard({});
+        rebuildTree();
+    }));
+    add(pause(0.3));
+    add(klick("sound", "/pane0_", 0));   // Fokus in den Baum, waehlt den ersten sound
+    add(tu("Ablage: wieder beide markieren", [] {
+        g_app->selection = {Path{1, 0}, Path{1, 1}};
+        g_app->selectedPath = Path{1, 1};
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_C, "Strg+C"));
+    add(pause(0.2));
+    add(tu("Ablage: den letzten sound waehlen", [=] {
+        *vorher = kinder();
+        g_app->selection = {Path{1, 3}};
+        g_app->selectedPath = Path{1, 3};
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_V, "Strg+V"));
+    add(pause(0.4));
+    add(pruefe("Ablage: Strg+C / Strg+V im Block - auch genau einmal", [=] {
+        std::string folge;
+        if (const Node* n = nodeAt(g_app->doc.script(), Path{1})) {
+            for (const Node& k : n->children) { folge += " " + k.name; }
+        }
+        diag::detail("Knopftest: Ablage (Tastatur) - Ablage " + std::to_string(g_app->doc.clipboard().size()) + ", Block " +
+                     std::to_string(*vorher) + " -> " + std::to_string(kinder()) + ":" + folge);
+        return g_app->doc.clipboard().size() == 2U && kinder() == *vorher + 2U && g_app->doc.script().nodes.size() == 3U;
+    }));
+    // Mit Umschalt vom affect bis zur letzten Zeile markiert: der Block UND
+    // seine Zeilen sind in der Auswahl. Kopiert werden darf der Block nur
+    // einmal - nicht zusaetzlich jede seiner Zeilen.
+    add(tu("Ablage: zuruecknehmen, affect samt seinen Zeilen markieren", [] {
+        while (g_app->doc.undo()) {}
+        g_app->expanded.openAll();
+        rebuildTree();
+        g_app->selection = {Path{1}, Path{1, 0}, Path{1, 1}, Path{1, 2}, Path{1, 3}};
+        g_app->selectedPath = Path{1, 3};
+        g_app->doc.setClipboard({});
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_C, "Strg+C"));
+    add(pause(0.2));
+    add(pruefe("Ablage: Block samt Zeilen markiert - der Block kommt einmal in die Ablage, seine Zeilen nicht doppelt", [] {
+        std::size_t zeilen = 0;
+        for (const Node& n : g_app->doc.clipboard()) { zeilen += 1U + n.children.size(); }
+        diag::detail("Knopftest: Ablage (Block) - " + std::to_string(g_app->doc.clipboard().size()) + " oben, " +
+                     std::to_string(zeilen) + " Zeilen insgesamt");
+        return g_app->doc.clipboard().size() == 1U && zeilen == 5U;
+    }));
     return s;
 }
 
@@ -13547,6 +14019,915 @@ std::vector<Schritt> lichtSchritte() {
     return s;
 }
 
+// --- Bilder fuer das Handbuch (rc599, BHED_EDITORTEST=handbuch) ----------------
+//
+// shank: "Dokumentation mit Bildern und Tutorials ... fuer alle Sprachen".
+// Nimmt jede Szene des Handbuchs auf - nur das eigene Fenster. Neben jedes
+// Bild <name>.bmp schreibt fotoTeil <name>.rect (x0 y0 x1 y1 in Bildpunkten),
+// tools/handbuch/bilder.py schneidet danach zu und macht .webp daraus.
+//   BHED_FOTOS           Zielordner
+//   BHED_SPRACHE         en / de / zh / ja
+//   BHED_MISSION_ARCHIV  MD_Missions_Ep3.pk3, BHED_MISSION_NAME md_am_sith
+namespace hb {
+
+ImRect fensterRect(const char* teil) {
+    for (ImGuiWindow* w : GImGui->Windows) {
+        if (w->WasActive && !w->Hidden && std::strstr(w->Name, teil) != nullptr) { return w->Rect(); }
+    }
+    return ImRect{};
+}
+
+ImRect karte() {
+    return ImRect{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1], g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]};
+}
+
+ImRect um(ImVec2 c, float halbB, float halbH) { return ImRect{c.x - halbB, c.y - halbH, c.x + halbB, c.y + halbH}; }
+
+ImRect vereint(ImRect a, ImRect b) {
+    if (a.GetWidth() <= 0.0F) { return b; }
+    if (b.GetWidth() <= 0.0F) { return a; }
+    a.Add(b);
+    return a;
+}
+
+Schritt fotoTeil(const std::string& name, std::function<ImRect()> ausschnitt) {
+    return {"Foto " + name, [=](int b) {
+                const char* ordner = std::getenv("BHED_FOTOS");
+                if (ordner == nullptr) { return true; }
+                if (b == 1) {
+                    ImRect r = ausschnitt ? ausschnitt() : ImRect{};
+                    const ImVec2 d = ImGui::GetIO().DisplaySize;
+                    r.Min.x = std::max(0.0F, r.Min.x);
+                    r.Min.y = std::max(0.0F, r.Min.y);
+                    r.Max.x = std::min(d.x, r.Max.x);
+                    r.Max.y = std::min(d.y, r.Max.y);
+                    std::ofstream f(std::filesystem::u8path(std::string(ordner) + "\\" + name + ".rect"));
+                    if (r.GetWidth() > 8.0F && r.GetHeight() > 8.0F) {
+                        f << static_cast<int>(r.Min.x) << " " << static_cast<int>(r.Min.y) << " " << static_cast<int>(r.Max.x)
+                          << " " << static_cast<int>(r.Max.y) << "\n";
+                    }
+                }
+                if (b == 2) { render::fotoAnfordern(std::string(ordner) + "\\" + name + ".bmp"); }
+                return b >= 5;
+            }};
+}
+
+int entityMitName(const char* klasse, const char* name) {
+    for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+        const MapEntity& e = g_app->map.entities[i];
+        const std::string* st = e.find("script_targetname");
+        if (e.classname == klasse && st != nullptr && *st == name) { return static_cast<int>(i); }
+    }
+    return -1;
+}
+
+ImVec2 entityAufSchirm(int ei) {
+    float o[3] = {0, 0, 0};
+    if (ei < 0 || !entityOrtAnzeige(g_app->map.entities[static_cast<std::size_t>(ei)], o)) { return ImVec2{0, 0}; }
+    ImVec2 s{0, 0};
+    (void)kartenPunktAufSchirm(o, s);
+    return s;
+}
+
+void kameraZurueck(float weg, float hoch) {
+    float f[3];
+    g_app->cam.forward(f);
+    for (int k = 0; k < 3; ++k) { g_app->cam.pos[k] -= f[k] * weg; }
+    g_app->cam.pos[2] += hoch;
+    g_app->mapDirty = true;
+}
+
+// Erster Befehl camera ( MOVE ... ) auf oberster oder zweiter Ebene.
+bool sucheMove(const std::vector<Node>& ns, Path& weg) {
+    for (std::size_t i = 0; i < ns.size(); ++i) {
+        weg.push_back(i);
+        const Node& n = ns[i];
+        if (n.name == "camera" && !n.args.empty() && n.args[0].text == "MOVE") { return true; }
+        if (sucheMove(n.children, weg)) { return true; }
+        weg.pop_back();
+    }
+    return false;
+}
+
+Path kameraMove() {
+    Path weg;
+    return sucheMove(g_app->doc.script().nodes, weg) ? weg : Path{};
+}
+
+}  // namespace hb
+
+std::vector<Schritt> handbuchSchritte() {
+    // Die Sprache schon JETZT: die Klicks unten tragen ihre Beschriftung
+    // (tr) beim Aufbau der Liste - vorher suchten sie auf Deutsch "Cancel".
+    if (const char* sp = std::getenv("BHED_SPRACHE")) {
+        if (const i18n::LanguageInfo* l = i18n::findLanguage(sp)) { i18n::setLanguage(l->language); }
+    }
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const std::string archiv = std::getenv("BHED_MISSION_ARCHIV") ? std::getenv("BHED_MISSION_ARCHIV") : "";
+    const std::string name = std::getenv("BHED_MISSION_NAME") ? std::getenv("BHED_MISSION_NAME") : "md_am_sith";
+    const auto voll = [] { return ImRect{0.0F, 0.0F, ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y}; };
+    const auto kartePlusLeiste = [] {
+        ImRect r = hb::karte();
+        r.Min.y -= ImGui::GetFontSize() * 2.6F;
+        return r;
+    };
+    const auto zeitleiste = [] {
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        return ImRect{0.0F, g_app->kartenAnsicht[3] + 2.0F, d.x, d.y - ImGui::GetFontSize() * 1.9F};
+    };
+    const auto linksUndKarte = [] {
+        ImRect r = hb::karte();
+        r.Min.x = 0.0F;
+        r.Min.y -= ImGui::GetFontSize() * 2.6F;
+        return r;
+    };
+    auto schiff = std::make_shared<int>(-1);
+
+    add(tu("Handbuch: Sprache, Missionsordner im Laufordner", [] {
+        if (const char* sp = std::getenv("BHED_SPRACHE")) {
+            if (const i18n::LanguageInfo* l = i18n::findLanguage(sp)) { i18n::setLanguage(l->language); }
+        }
+        // Missionen: ueber BHED_MISSIONEN (der Bildlauf legt sie auf ein
+        // Laufwerk X: aus subst - so steht kein Benutzerpfad im Bild).
+        if (std::getenv("BHED_MISSIONEN") == nullptr) {
+            const std::string wurzel = mb::verbinde(mb::laufOrdner(), "missionen");
+            _putenv_s("BHED_MISSIONEN", wurzel.c_str());
+        }
+        g_app->settings.recentMissions.clear();
+        g_app->leftMode = 1;
+        g_app->settings.flussAnsicht = 0;
+        // Lesbar auf den Bildern: die Oberflaeche groesser.
+        g_app->uiScale = 1.6F;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_start", [] { return hb::fensterRect("##startflaeche"); }));
+    add(tu("Handbuch: Spielordner", [] { g_app->pathsOpen = true; }));
+    add(pause(0.5));
+    add(hb::fotoTeil("h_spielordner", [] { return hb::fensterRect(tr(Str::PathsTitle)); }));
+    add(tu("Handbuch: Spielordner zu, Missionen der pk3", [=] {
+        g_app->pathsOpen = false;
+        missionenAusArchiv(archiv);
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_mission_wahl", [] { return hb::fensterRect("##missionpick"); }));
+    add(tu("Handbuch: Mission waehlen", [=] {
+        if (g_app->missionPickOpen) { schritteEinfuegen({waehleInListe(name, false, 0, "##missionpick")}); }
+    }));
+    add(warteBis("Handbuch: Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 1500));
+    add(tu("Handbuch: intro2_sith vorn, Kamera bei 8 s", [] {
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const std::string& n = static_cast<int>(i) == g_app->activeTab ? g_app->shownName : g_app->tabs[i].shownName;
+            if (n.find("intro2") != std::string::npos) { g_app->tabRequest = static_cast<int>(i); }
+        }
+    }));
+    add(pause(1.0));
+    add(warteBis("Handbuch: Szene", [] { return g_app->camTrackValid; }, 600));
+    add(tu("Handbuch: Gesamtbild", [=] {
+        *schiff = hb::entityMitName("func_static", "sta2");
+        g_app->playMs = 8000.0;
+        g_app->playing = false;
+        g_app->cameraSelected = false;
+        if (*schiff >= 0) {
+            zurEntityFliegen(static_cast<std::size_t>(*schiff));
+            hb::kameraZurueck(500.0F, 250.0F);
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.2));
+    add(hb::fotoTeil("h_fenster", voll));
+    add(hb::fotoTeil("h_zeitleiste", zeitleiste));
+    add(hb::fotoTeil("t1_1", voll));
+    add(hb::fotoTeil("h_karte", kartePlusLeiste));
+    add(tu("Handbuch: Draufsicht", [] { g_app->draufsicht = true; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_draufsicht", kartePlusLeiste));
+    add(tu("Handbuch: Draufsicht aus, Ansicht einstellen", [] {
+        g_app->draufsicht = false;
+        g_app->ansichtEinstellungenOeffnen = true;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_ansicht_einst", [] {
+        ImRect r = hb::fensterRect("##Popup");
+        r.Expand(ImGui::GetFontSize() * 0.6F);
+        return r;
+    }));
+    add(klickAn("Klappfenster zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // --- Entities und Gizmo ---------------------------------------------------
+    add(tu("Handbuch: das Schiff waehlen", [=] {
+        if (*schiff >= 0) {
+            entityAuswahlSetzen(*schiff);
+            zurEntityFliegen(static_cast<std::size_t>(*schiff));
+            hb::kameraZurueck(150.0F, 60.0F);
+        }
+        g_app->gizmoMode = App::GizmoMode::Move;
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("h_entity", voll));
+    add(hb::fotoTeil("t3_1", linksUndKarte));
+    add(hb::fotoTeil("h_gizmo_verschieben", [=] { return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F); }));
+    add(tu("Handbuch: Drehmodus", [] { g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_gizmo_drehen", [=] { return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F); }));
+    add(tu("Handbuch: Verschieben, nichts gewaehlt", [] {
+        g_app->gizmoMode = App::GizmoMode::Move;
+        entityAuswahlSetzen(-1);
+        g_app->mapDirty = true;
+    }));
+    // --- Kamera -----------------------------------------------------------------
+    add(tu("Handbuch: Kamera waehlen, zweite Einstellung", [] {
+        g_app->cameraSelected = true;
+        kameraSchluesselWaehlen(1, true);
+        kameraVorDenSchluessel();
+        hb::kameraZurueck(200.0F, 80.0F);
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("h_kamera", voll));
+    add(hb::fotoTeil("t1_2", linksUndKarte));
+    add(hb::fotoTeil("h_kamera_verschieben", [] {
+        return hb::um(bildZuSchirm(g_app->cameraSx, g_app->cameraSy), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F);
+    }));
+    add(tu("Handbuch: Kamera drehen", [] { g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_kamera_drehen", [] {
+        return hb::um(bildZuSchirm(g_app->cameraSx, g_app->cameraSy), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F);
+    }));
+    add(tu("Handbuch: Kamera verschieben, Fahrzeit sichtbar", [] { g_app->gizmoMode = App::GizmoMode::Move; g_app->mapDirty = true; }));
+    add(pause(0.4));
+    add(hb::fotoTeil("t1_4", [] {
+        ImRect r = hb::karte();
+        return ImRect{0.0F, r.Min.y - ImGui::GetFontSize() * 2.6F, r.Min.x, r.Max.y};
+    }));
+    add(tu("Handbuch: neue Einstellung an der Ansicht", [] { kameraNeueEinstellung(); }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t1_3", linksUndKarte));
+    add(tu("Handbuch: die neue Einstellung zuruecknehmen", [] {
+        (void)g_app->doc.undo();
+        rebuildTree();
+        g_app->camTrackValid = false;
+    }));
+    add(pause(0.6));
+    // Zeitleiste mit offener Kamera und Figuren.
+    add(tu("Handbuch: Zeitleiste", [] {
+        g_app->tlKameraOffen = true;
+        g_app->tlOffen.clear();
+        g_app->playMs = 12000.0;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+    // Durch die Kamera, Bildfolge.
+    add(tu("Handbuch: Vorschau an", [] { g_app->kameraBildImBild = true; g_app->mapDirty = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("t1_5", kartePlusLeiste));
+    add(tu("Handbuch: durch die Kamera", [] {
+        g_app->kameraBildImBild = false;
+        g_app->throughCamera = true;
+        g_app->mapDirty = true;
+    }));
+    for (int k = 0; k < 14; ++k) {
+        add(tu("Handbuch: Kamerafahrt " + std::to_string(k), [k] {
+            g_app->playMs = 1000.0 + 1500.0 * k;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.35));
+        char n[32];
+        std::snprintf(n, sizeof(n), "a_kamera_%02d", k);
+        add(hb::fotoTeil(n, [] { return hb::karte(); }));
+        if (k == 6) { add(hb::fotoTeil("t1_ergebnis", [] { return hb::karte(); })); }
+    }
+    add(tu("Handbuch: Kamera aus", [] {
+        g_app->throughCamera = false;
+        g_app->kameraBildImBild = true;
+        g_app->cameraSelected = false;
+        g_app->mapDirty = true;
+    }));
+    // --- Figur mit Weg ------------------------------------------------------------
+    add(tu("Handbuch: eine laufende Figur waehlen", [] {
+        int beste = -1;
+        double t = 0.0;
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size() && beste < 0; ++ai) {
+            for (const ActorStep& st : g_app->scene.actors[ai].steps) {
+                if (st.kind == ActorStep::Kind::WalkTo && st.endMs - st.startMs > 1500.0 && !st.path.empty()) {
+                    beste = static_cast<int>(ai);
+                    t = (st.startMs + st.endMs) * 0.5;
+                    break;
+                }
+            }
+        }
+        if (beste >= 0) {
+            g_app->selectedActor = beste;
+            g_app->playMs = t;
+            const int ei = entityFuerFigur(beste);
+            if (ei >= 0) {
+                entityAuswahlSetzen(ei);
+                zurEntityFliegen(static_cast<std::size_t>(ei));
+                hb::kameraZurueck(260.0F, 260.0F);
+            }
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("h_figur_bahn", kartePlusLeiste));
+    add(hb::fotoTeil("t2_4", kartePlusLeiste));
+    add(hb::fotoTeil("t2_ergebnis", kartePlusLeiste));
+    add(hb::fotoTeil("t2_1", linksUndKarte));
+    // Das Laufziel dieser Figur: der waypoint_navgoal am Ende des Wegs.
+    auto lauf = std::make_shared<std::array<float, 6>>();
+    add(tu("Handbuch: das Laufziel waehlen", [=] {
+        const int a = g_app->selectedActor;
+        if (a < 0) { return; }
+        for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(a)].steps) {
+            if (st.kind != ActorStep::Kind::WalkTo || !(g_app->playMs >= st.startMs && g_app->playMs <= st.endMs)) { continue; }
+            *lauf = {st.from[0], st.from[1], st.from[2], st.to[0], st.to[1], st.to[2]};
+        }
+        int best = -1;
+        float bestD = 80.0F * 80.0F;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            float o[3];
+            if (g_app->map.entities[i].classname != "waypoint_navgoal" || !entityOrt(g_app->map.entities[i], o)) { continue; }
+            const float d = (o[0] - (*lauf)[3]) * (o[0] - (*lauf)[3]) + (o[1] - (*lauf)[4]) * (o[1] - (*lauf)[4]);
+            if (d < bestD) {
+                bestD = d;
+                best = static_cast<int>(i);
+            }
+        }
+        if (best >= 0) { entityAuswahlSetzen(best); }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("t2_2", linksUndKarte));
+    add(klickAn("Rechtsklick auf den Endgriff", [=] {
+        const float w[3] = {(*lauf)[3], (*lauf)[4], (*lauf)[5]};
+        ImVec2 q{0, 0};
+        (void)kartenPunktAufSchirm(w, q);
+        return q;
+    }, 1));
+    add(pause(0.5));
+    add(hb::fotoTeil("t2_5", [=] {
+        ImRect r = hb::fensterRect("##gangart");
+        const float w[3] = {(*lauf)[3], (*lauf)[4], (*lauf)[5]};
+        ImVec2 q{0, 0};
+        (void)kartenPunktAufSchirm(w, q);
+        r = hb::vereint(r, hb::um(q, ImGui::GetFontSize() * 6.0F, ImGui::GetFontSize() * 4.0F));
+        r.Expand(ImGui::GetFontSize() * 2.0F);
+        return r;
+    }));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // Mitten im Lauf: die Figur greifen und zur Seite ziehen - ein neuer Punkt.
+    auto tiefe = std::make_shared<std::pair<std::size_t, std::size_t>>();
+    add(tu("Handbuch: die Figur waehlen (mitten im Lauf)", [=] {
+        tiefe->first = g_app->doc.undoDepth();
+        tiefe->second = g_app->entUndo.size();
+        const int ei = entityFuerFigur(g_app->selectedActor);
+        if (ei >= 0) { entityAuswahlSetzen(ei); }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Handbuch: die Figur zur Seite ziehen", [] {
+        const int ei = entityFuerFigur(g_app->selectedActor);
+        return hb::entityAufSchirm(ei);
+    }, 140.0F, 30.0F, 0));
+    add(pause(0.8));
+    add(hb::fotoTeil("t2_6", kartePlusLeiste));
+    add(tu("Handbuch: neuen Punkt zuruecknehmen, Figur ab", [=] {
+        while (g_app->doc.undoDepth() > tiefe->first && g_app->doc.undo()) {}
+        while (g_app->entUndo.size() > tiefe->second && entityRueckgaengig()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->selectedActor = -1;
+        entityAuswahlSetzen(-1);
+    }));
+    // --- Wegpunkte -------------------------------------------------------------------
+    add(tu("Handbuch: Wegpunkte", [] { g_app->wegFensterOffen = true; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_wegpunkte", voll));
+    add(tu("Handbuch: Wegpunkte zu", [] { g_app->wegFensterOffen = false; }));
+    // --- Skript, Editor, Graph, Spuren ----------------------------------------------
+    add(tu("Handbuch: Events-Modus", [] { g_app->leftMode = 0; g_app->settings.flussAnsicht = 0; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_skriptbaum", voll));
+    add(hb::fotoTeil("t2_3", voll));
+    add(hb::fotoTeil("t1_6", [] {
+        ImRect r = hb::fensterRect(tr(Str::GroupActions));
+        return r.GetWidth() > 0.0F ? r : ImRect{ImGui::GetIO().DisplaySize.x * 0.82F, 0.0F, ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y};
+    }));
+    // Der Weg erst jetzt - beim Aufbau der Liste war die Mission noch nicht da.
+    add({"Handbuch: Editor fuer camera MOVE", [](int b) {
+             if (b == 0) {
+                 const Path weg = hb::kameraMove();
+                 diag::detail("Knopftest: Handbuch - camera MOVE bei " + std::to_string(weg.size()) + " Ebenen");
+                 openEditorForNode(weg);
+                 return false;
+             }
+             return g_app->editorOpen || b > 20;
+         }});
+    add(pause(0.6));
+    add(hb::fotoTeil("h_editor", [] { return hb::fensterRect("###editor"); }));
+    add(klick(tr(Str::EditorCancel), "###editor"));
+    add(pause(0.3));
+    add(tu("Handbuch: Graph", [] { g_app->settings.flussAnsicht = 1; }));
+    add(pause(1.2));
+    add(hb::fotoTeil("h_graph", [] { return hb::fensterRect("##flowarea"); }));
+    add(tu("Handbuch: Spuren", [] { g_app->settings.flussAnsicht = 2; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_spuren", [] { return hb::fensterRect("##flowarea"); }));
+    add(tu("Handbuch: zurueck zu Classic und Karte", [] { g_app->settings.flussAnsicht = 0; g_app->leftMode = 1; }));
+    add(pause(0.6));
+    // --- ROFF am Schiff -------------------------------------------------------------
+    add(tu("Handbuch: Schiff animieren (ROFF)", [=] {
+        if (*schiff < 0) { return; }
+        entityAuswahlSetzen(*schiff);
+        animStarten(*schiff);
+        g_app->playMs = 1000.0;
+    }));
+    add(pause(0.5));
+    add(klick(tr(Str::AnimModeRoff), "###animation"));
+    add(tu("Handbuch: Maus weg, Fenster rechts neben die Karte", [] {
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+        // Rechts an den Bildschirmrand, ganz sichtbar (es ist breiter als die
+        // Skriptspalte) - so liegt es nicht ueber der Bahn auf der Karte.
+        const ImGuiWindow* w = ImGui::FindWindowByName("###animation");
+        const float breit = w != nullptr ? w->Size.x : ImGui::GetFontSize() * 30.0F;
+        ImGui::SetWindowPos("###animation", ImVec2{ImGui::GetIO().DisplaySize.x - breit - 8.0F, g_app->kartenAnsicht[1] + 8.0F});
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t3_2", [] { return hb::fensterRect("###animation"); }));
+    add(tu("Handbuch: vier Schluessel", [=] {
+        std::vector<AnimSchluessel> k(4);
+        float o[3] = {0, 0, 0};
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(*schiff)], o);
+        const float wege[4][3] = {{0, 0, 0}, {700, 250, 180}, {1100, -350, 320}, {450, -800, 240}};
+        const float rollen[4] = {0.0F, 15.0F, 35.0F, 0.0F};
+        for (int i = 0; i < 4; ++i) {
+            k[static_cast<std::size_t>(i)].ms = 1000.0 + 3000.0 * i;
+            for (int c = 0; c < 3; ++c) { k[static_cast<std::size_t>(i)].ort[static_cast<std::size_t>(c)] = o[c] + wege[i][c]; }
+            k[static_cast<std::size_t>(i)].winkel = {0.0F, 20.0F * i, rollen[i]};
+        }
+        (void)animSchreiben(k);
+        g_app->playMs = 5500.0;
+        zurEntityFliegen(static_cast<std::size_t>(*schiff));
+        hb::kameraZurueck(800.0F, 500.0F);
+    }));
+    add(pause(1.2));
+    add(hb::fotoTeil("h_animation", voll));
+    add(hb::fotoTeil("t3_3", kartePlusLeiste));
+    add(hb::fotoTeil("t3_6", [] { return hb::fensterRect("###animation"); }));
+    add(tu("Handbuch: Drehring bei 7 s", [] { g_app->playMs = 7000.0; g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t3_4", kartePlusLeiste));
+    add(tu("Handbuch: Gizmo verschieben", [] { g_app->gizmoMode = App::GizmoMode::Move; entityAuswahlSetzen(-1); }));
+    for (int k = 0; k < 16; ++k) {
+        add(tu("Handbuch: Flug " + std::to_string(k), [k] {
+            g_app->playMs = 800.0 + 700.0 * k;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.3));
+        char n[32];
+        std::snprintf(n, sizeof(n), "a_roff_%02d", k);
+        add(hb::fotoTeil(n, [] { return hb::karte(); }));
+        if (k == 8) { add(hb::fotoTeil("t3_5", [] { return hb::karte(); })); }
+        if (k == 9) { add(hb::fotoTeil("t3_ergebnis", [] { return hb::karte(); })); }
+    }
+    add(tu("Handbuch: Animation entfernen, Fenster zu", [] {
+        while (g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->animFensterOffen = false;
+        g_app->camTrackValid = false;
+    }));
+    add(pause(0.6));
+    // --- Modell ---------------------------------------------------------------------
+    add(tu("Handbuch: Modell", [] {
+        g_app->leftMode = 2;
+        (void)npcLaden("luke");
+    }));
+    add(pause(1.5));
+    add(hb::fotoTeil("h_modell", voll));
+    add(tu("Handbuch: zurueck zur Karte", [] { g_app->leftMode = 1; }));
+    add(pause(0.5));
+    // --- Menue: zuletzt geoeffnete Missionen ------------------------------------------
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::RecentMissions), "##Menu"));
+    add(pause(0.5));
+    add(hb::fotoTeil("h_menue_missionen", [] {
+        ImRect r{0.0F, 0.0F, 0.0F, 0.0F};
+        for (ImGuiWindow* w : GImGui->Windows) {
+            if (w->WasActive && !w->Hidden && std::strstr(w->Name, "##Menu") != nullptr) { r = hb::vereint(r, w->Rect()); }
+        }
+        r.Expand(ImGui::GetFontSize() * 0.5F);
+        r.Min.y = 0.0F;
+        return r;
+    }));
+    add(hb::fotoTeil("t4_6", [] {
+        ImRect r{0.0F, 0.0F, 0.0F, 0.0F};
+        for (ImGuiWindow* w : GImGui->Windows) {
+            if (w->WasActive && !w->Hidden && std::strstr(w->Name, "##Menu") != nullptr) { r = hb::vereint(r, w->Rect()); }
+        }
+        r.Expand(ImGui::GetFontSize() * 0.5F);
+        r.Min.y = 0.0F;
+        return r;
+    }));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // --- Eigene Mission (im Laufordner) ---------------------------------------------------
+    add(tu("Handbuch: Neue Mission (Fenster)", [] { g_app->neueMissionOffen = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_mission_neu", [] { return hb::fensterRect("##neuemission"); }));
+    add(hb::fotoTeil("t4_1", [] { return hb::fensterRect("##neuemission"); }));
+    add(tu("Handbuch: Fenster zu, Mission anlegen", [] {
+        g_app->neueMissionOffen = false;
+        std::string fehler;
+        (void)neueMissionAnlegen("maps/md_am_sith.bsp", "md_test_jedi", "md_test", &fehler);
+        diag::detail("Knopftest: Handbuch - neue Mission " + fehler);
+    }));
+    add(pause(1.5));
+    add(warteBis("Handbuch: neue Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 900));
+    add(tu("Handbuch: Blick auf den Spielerstart", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == "info_player_start") {
+                entityAuswahlSetzen(static_cast<int>(i));
+                zurEntityFliegen(i);
+                hb::kameraZurueck(200.0F, 120.0F);
+                break;
+            }
+        }
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("t4_2", voll));
+    add(hb::fotoTeil("t4_3", voll));
+    add(hb::fotoTeil("t4_ergebnis", kartePlusLeiste));
+    add(tu("Handbuch: Mission speichern (Fenster), Ziel im Laufordner", [] {
+        const char* ziel = std::getenv("BHED_HB_ZIEL");
+        g_app->mission.zielPk3 = ziel != nullptr ? std::string(ziel) : mb::verbinde(mb::laufOrdner(), "zz_md_test_jedi.pk3");
+        g_app->missionSpeichernOffen = true;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_mission_speichern", [] { return hb::fensterRect("##missionspeichern"); }));
+    add(hb::fotoTeil("t4_4", [] { return hb::fensterRect("##missionspeichern"); }));
+    add(tu("Handbuch: speichern", [] {
+        g_app->missionSpeichernOffen = false;
+        std::string fehler;
+        (void)missionSpeichernNach(g_app->mission.zielPk3, &fehler);
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t4_5", [] {
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        return ImRect{d.x * 0.58F, d.y * 0.80F, d.x, d.y};
+    }));
+    return s;
+}
+
+// --- ROFF-Bahnen bauen und aendern (rc599) ------------------------------------
+//
+// shank: "ich will das man auch direkt eine Roff datei bauen und aendern kann".
+std::vector<Schritt> roffSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    // --- Zwei Kombinationen aus der Handbuch-Pruefung (rc599) ------------------
+    // 1. Strg+Rad ueber den Spuren der Zeitleiste zoomt die Zeitleiste - und
+    //    vergroesserte bisher zugleich die ganze Oberflaeche.
+    auto skala = std::make_shared<float>(1.0F);
+    add({"Strg+Rad ueber der Zeitleiste", [=](int b) {
+             ImGuiIO& io = ImGui::GetIO();
+             if (b == 0) {
+                 *skala = g_app->uiScale;
+                 setzeMaus(ImVec2{(g_app->kartenAnsicht[0] + g_app->kartenAnsicht[2]) * 0.5F,
+                                  g_app->kartenAnsicht[3] + ImGui::GetFontSize() * 7.0F});
+                 return false;
+             }
+             if (b == 2) { io.AddKeyEvent(ImGuiMod_Ctrl, true); return false; }
+             if (b == 3) { io.AddMouseWheelEvent(0.0F, 1.0F); return false; }
+             if (b == 5) { io.AddKeyEvent(ImGuiMod_Ctrl, false); return false; }
+             return b >= 9;
+         }});
+    add(pruefe("Strg+Rad ueber der Zeitleiste: nur die Zeitleiste zoomt, die Oberflaeche bleibt gleich gross", [=] {
+        const float jetzt = g_app->uiScale;
+        diag::detail("Knopftest: Kombi - Oberflaeche " + std::to_string(*skala) + " -> " + std::to_string(jetzt));
+        g_app->uiScale = *skala;
+        return std::fabs(jetzt - *skala) < 0.001F;
+    }));
+    // 2. Alt+Klick auf das Auge einer Gruppe zeigt nur diese Gruppe - so
+    //    verspricht es der Tooltip der Liste.
+    add(tu("Kombi: alle Gruppen sichtbar, Alt halten", [] {
+        g_app->hiddenClasses.clear();
+        g_app->expandedClass.clear();
+        g_app->leftMode = 1;
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+    }));
+    add(pause(0.2));
+    add(klick("O", "", 3));   // das Auge der vierten Gruppe: Figuren (NPC_*)
+    add(tu("Kombi: Alt los", [] { ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false); }));
+    add(pause(0.2));
+    add(pruefe("Alt+Klick auf ein Auge: nur diese Gruppe bleibt sichtbar", [] {
+        const bool npcSichtbar = g_app->hiddenClasses.count("NPC_spawner") == 0U;
+        const bool tagVersteckt = g_app->hiddenClasses.count("ref_tag") != 0U;
+        diag::detail("Knopftest: Kombi - versteckt " + std::to_string(g_app->hiddenClasses.size()) + " Klassen, NPC_spawner " +
+                     (npcSichtbar ? "sichtbar" : "versteckt") + ", ref_tag " + (tagVersteckt ? "versteckt" : "sichtbar"));
+        const bool ok = npcSichtbar && tagVersteckt;
+        g_app->hiddenClasses.clear();
+        g_app->mapDirty = true;
+        return ok;
+    }));
+    auto idx = std::make_shared<int>(-1);
+    const auto schiffName = [] {
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(g_app->animEntity)];
+        const std::string* st = e.find("script_targetname");
+        return st != nullptr ? *st : e.targetname;
+    };
+    const auto marke = [] {
+        const auto f = findeRoffMarke(g_app->doc.script(), g_app->animRoff);
+        return f ? f->anim : RoffAnim{};
+    };
+    const auto waehle = [idx](const char* text, const char* name) {
+        openScriptFromMemory(text, name);
+        *idx = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            const std::string* st = e.find("script_targetname");
+            if (e.classname == "func_static" && st != nullptr && *st == "sta2") { *idx = static_cast<int>(i); }
+        }
+        if (*idx >= 0) {
+            entityAuswahlSetzen(*idx);
+            zurEntityFliegen(static_cast<std::size_t>(*idx));
+        }
+        g_app->playMs = 0.0;
+        g_app->playing = false;
+        prepareScene();
+    };
+    add(tu("ROFF: ein Skript, das Schiff waehlen", [=] {
+        waehle("//Generated by BehavEd\ncamera ( /*@CAMERA_COMMANDS*/ ENABLE );\nwait ( 6000.000 );\n", "rofftest.txt");
+        diag::detail("Knopftest: ROFF - Entity " + std::to_string(*idx));
+    }));
+    add(pause(0.6));
+    add(klick(tr(Str::EntAnimate), "###main"));
+    add(pause(0.3));
+    add(tu("Zeit 1 s", [] { g_app->playMs = 1000.0; g_app->mapDirty = true; }));
+    add(klick(tr(Str::AnimModeRoff), "###animation"));
+    add(pause(0.4));
+    add(pruefe("ROFF: Umschalten legt eine Bahn an - Marke, affect-Block, play ( PLAY_ROFF ) am Skriptanfang", [=] {
+        const auto blk = findeRoffBlock(g_app->doc.script(), schiffName());
+        const std::string text = writeScript(g_app->doc.script());
+        diag::detail("Knopftest: ROFF - Datei \"" + g_app->animRoff + "\", erste Zeile " +
+                     (g_app->doc.script().nodes.empty() ? std::string("-") : g_app->doc.script().nodes[0].raw));
+        return !g_app->animRoff.empty() && blk.has_value() && *blk == 0U &&
+               text.find("\"PLAY_ROFF\", \"" + g_app->animRoff + "\"") != std::string::npos && marke().schluessel.size() == 1U;
+    }));
+    // Rueckgaengig und Wiederholen: der Modus des Fensters folgt dem Skript
+    // (rc599: nach Strg+Z blieb es im ROFF-Modus haengen, ohne Block).
+    auto roffName = std::make_shared<std::string>();
+    add(tu("ROFF: Name merken, Maus weg (Strg+Z gehoert dann dem Skript)", [=] {
+        *roffName = g_app->animRoff;
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x - 30.0F, 200.0F});
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.4));
+    add(pruefe("ROFF: Strg+Z nimmt den Block zurueck - das Fenster ist wieder bei Skript (move)", [=] {
+        diag::detail("Knopftest: ROFF - nach Strg+Z Datei \"" + g_app->animRoff + "\", Block " +
+                     std::to_string(findeRoffBlock(g_app->doc.script(), schiffName()).has_value()));
+        return g_app->animRoff.empty() && !findeRoffBlock(g_app->doc.script(), schiffName()).has_value();
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Y, "Strg+Y"));
+    add(pause(0.4));
+    add(pruefe("ROFF: Strg+Y bringt den Block zurueck - das Fenster ist wieder bei der ROFF-Datei", [=] {
+        diag::detail("Knopftest: ROFF - nach Strg+Y Datei \"" + g_app->animRoff + "\"");
+        return !g_app->animRoff.empty() && g_app->animRoff == *roffName;
+    }));
+    add(tu("Zeit 4 s", [] { g_app->playMs = 4000.0; g_app->mapDirty = true; }));
+    add(klick(tr(Str::AnimAddKey), "###animation"));
+    add(pause(0.4));
+    add(pruefe("ROFF: zweiter Schluessel 3 s nach dem ersten", [=] {
+        const RoffAnim a = marke();
+        diag::detail("Knopftest: ROFF - " + std::to_string(a.schluessel.size()) + " Schluessel, Marke " + roffMarke(a));
+        return a.schluessel.size() == 2U && std::fabs(a.schluessel[1].ms - 3000.0) < 1.0;
+    }));
+    // Die Raute des zweiten Schluessels ziehen.
+    const auto raute = [] {
+        const RoffAnim a = [] {
+            const auto f = findeRoffMarke(g_app->doc.script(), g_app->animRoff);
+            return f ? f->anim : RoffAnim{};
+        }();
+        ImVec2 sp{0, 0};
+        float o[3] = {0, 0, 0};
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(g_app->animEntity)];
+        (void)entityOrt(e, o);
+        if (a.schluessel.size() == 2U) {
+            const float w[3] = {o[0] + a.schluessel[1].ort[0], o[1] + a.schluessel[1].ort[1], o[2] + a.schluessel[1].ort[2]};
+            (void)kartenPunktAufSchirm(w, sp);
+        }
+        return sp;
+    };
+    add(ziehenAn("ROFF: die Raute des zweiten Schluessels ziehen", raute, 150.0F, -50.0F, 0));
+    add(pause(0.5));
+    add(pruefe("ROFF: der zweite Schluessel ist verschoben, der erste bleibt der Start (0 0 0)", [=] {
+        const RoffAnim a = marke();
+        if (a.schluessel.size() != 2U) { return false; }
+        const float d = std::fabs(a.schluessel[1].ort[0]) + std::fabs(a.schluessel[1].ort[1]) + std::fabs(a.schluessel[1].ort[2]);
+        const float d0 = std::fabs(a.schluessel[0].ort[0]) + std::fabs(a.schluessel[0].ort[1]) + std::fabs(a.schluessel[0].ort[2]);
+        diag::detail("Knopftest: ROFF - zweiter Schluessel " + std::to_string(d) + " vom Start, erster " + std::to_string(d0));
+        return d > 10.0F && d0 < 0.01F;
+    }));
+    add(tu("Szene neu", [] { prepareScene(); }));
+    add(pause(0.3));
+    add(foto("roff_bahn"));
+    add(pruefe("ROFF: die Szene spielt die gebackene Datei - bei 4 s am zweiten Schluessel", [=] {
+        const RoffAnim a = marke();
+        const std::string name = schiffName();
+        for (const Actor& ac : g_app->scene.actors) {
+            if (ac.name != name) { continue; }
+            const ActorStep* roff = nullptr;
+            for (const ActorStep& st : ac.steps) {
+                if (st.kind == ActorStep::Kind::Roff) { roff = &st; }
+            }
+            if (roff == nullptr || a.schluessel.size() != 2U) { return false; }
+            const ActorState s4 = ac.at(4000.0);
+            float d = 0.0F;
+            for (int c = 0; c < 3; ++c) { d += std::fabs(s4.pos[c] - (roff->from[c] + a.schluessel[1].ort[c])); }
+            diag::detail("Knopftest: ROFF - play bei " + std::to_string(roff->startMs) + " ms, bei 4 s " +
+                         std::to_string(d) + " vom Schluessel");
+            return std::fabs(roff->startMs - 950.0) < 1.0 && d < 1.0F;
+        }
+        return false;
+    }));
+    auto rtiefe = std::make_shared<std::size_t>(0);
+    add(tu("ROFF: Zeiger auf 2,5 s, Drehmodus, das Schiff gewaehlt", [=] {
+        *rtiefe = g_app->doc.undoDepth();
+        g_app->playMs = 2500.0;
+        g_app->playing = false;
+        entityAuswahlSetzen(*idx);
+        g_app->gizmoMode = App::GizmoMode::Rotate;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("ROFF: am Gier-Ring ziehen (Gizmo am Zeiger)", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 50.0F, -25.0F, 0));
+    add(pause(0.5));
+    add(pruefe("ROFF: Drehen mit dem Gizmo setzt einen Schluessel bei 2,5 s - der Start bleibt", [=] {
+        const RoffAnim a = marke();
+        std::string z;
+        for (const RoffSchluessel& k : a.schluessel) { z += " " + std::to_string(static_cast<int>(k.ms)) + "/" + std::to_string(k.winkel[1]); }
+        diag::detail("Knopftest: ROFF - Gizmo am Zeiger:" + z);
+        return a.schluessel.size() == 3U && std::fabs(a.schluessel[1].ms - 1500.0) < 1.0 &&
+               std::fabs(a.schluessel[1].winkel[1]) > 2.0F && std::fabs(a.schluessel[0].winkel[1]) < 0.01F;
+    }));
+    add(tu("ROFF: zuruecknehmen, Verschieben", [=] {
+        while (g_app->doc.undoDepth() > *rtiefe && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+        g_app->gizmoMode = App::GizmoMode::Move;
+    }));
+    add(pruefe("ROFF: die Zeitleiste zeigt die Fahrt als Band (Bewegung) am play", [] {
+        int roffBalken = 0;
+        for (const App::TlBalken& bk : g_app->tlBalken) {
+            const Node* n = nodeAt(g_app->doc.script(), bk.pfad);
+            if (n != nullptr && n->name == "play") { ++roffBalken; }
+        }
+        diag::detail("Knopftest: ROFF - Baender am play " + std::to_string(roffBalken) + " von " +
+                     std::to_string(g_app->tlBalken.size()));
+        return roffBalken > 0;
+    }));
+    // Kombination: die Entity bekommt einen anderen Namen, nachdem die Bahn
+    // angelegt ist (rc599). Der eigene Block muss weiter bearbeitbar sein -
+    // und es darf kein zweiter entstehen.
+    add(tu("ROFF: Schiff umbenennen (script_targetname sta2 -> sta2b)", [=] {
+        (void)entityKeySetzen(g_app->animEntity, "script_targetname", "sta2b");
+        g_app->playMs = 5500.0;
+    }));
+    add(pause(0.3));
+    add(klick(tr(Str::AnimAddKey), "###animation"));
+    add(pause(0.4));
+    add(pruefe("ROFF: nach dem Umbenennen - ein Schluessel mehr, ein einziger Block, affect auf den neuen Namen", [=] {
+        const RoffAnim a = marke();
+        int bloecke = 0;
+        std::string affect;
+        for (const RoffMarkeFund& f : alleRoffMarken(g_app->doc.script())) {
+            if (f.path.size() == 1U && f.path[0] + 1U < g_app->doc.script().nodes.size()) {
+                ++bloecke;
+                const Node& n = g_app->doc.script().nodes[f.path[0] + 1U];
+                if (!n.args.empty()) { affect = n.args[0].text; }
+            }
+        }
+        diag::detail("Knopftest: ROFF - nach Umbenennen " + std::to_string(a.schluessel.size()) + " Schluessel, " +
+                     std::to_string(bloecke) + " Bloecke, affect \"" + affect + "\"");
+        return a.schluessel.size() == 3U && bloecke == 1 && affect == "sta2b";
+    }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.3));
+    add(tu("ROFF: Namen zurueck", [=] {
+        (void)entityKeySetzen(g_app->animEntity, "script_targetname", "sta2");
+        g_app->camTrackValid = false;
+    }));
+    add(pause(0.3));
+    add(klick(tr(Str::AnimRoffSmooth), "###animation"));
+    add(pause(0.3));
+    add(pruefe("ROFF: Weich aus - gleichmaessig", [=] { return !marke().weich; }));
+    add(tu("Maus weg (Strg+Z gehoert dann dem Skript)", [] { setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x - 30.0F, 200.0F}); }));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_Z, "Strg+Z"));
+    add(pause(0.3));
+    add(pruefe("ROFF: Strg+Z - wieder weich, Schluessel unveraendert", [=] {
+        const RoffAnim a = marke();
+        return a.weich && a.schluessel.size() == 2U;
+    }));
+    // Speichern: die .rof entsteht neben dem Skript.
+    auto ordner = std::make_shared<std::string>();
+    add(tu("ROFF: Skript in einen scripts-Ordner speichern", [=] {
+        std::error_code ec;
+        const std::filesystem::path w = std::filesystem::temp_directory_path(ec) / "bhed_rofftest";
+        std::filesystem::remove_all(w, ec);
+        std::filesystem::create_directories(w / "scripts" / "md_test", ec);
+        const auto u = w.u8string();
+        *ordner = std::string(u.begin(), u.end());
+        (void)speichernUnterPfad(*ordner + "\\scripts\\md_test\\rofftest.txt");
+    }));
+    add(pause(0.3));
+    add(pruefe("ROFF: gespeichert als scripts/<datei>.rof - die Engine liest sie (G_ValidRoff), Bahn wie im Skript", [=] {
+        const RoffAnim a = marke();
+        const std::string pfad = *ordner + "/scripts/" + a.datei + ".rof";
+        std::ifstream f(std::filesystem::u8path(pfad), std::ios::binary);
+        const std::string daten((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        Roff r;
+        const bool ok = leseRoff(daten, r);
+        const Roff soll = roffAusAnim(a);
+        diag::detail("Knopftest: ROFF - " + pfad + ": " + std::to_string(daten.size()) + " Byte, " +
+                     std::to_string(r.bilder.size()) + " Bilder");
+        return ok && r.fassung == 2 && r.bildMs == 50 && r.bilder.size() == soll.bilder.size() && daten == schreibeRoff(soll);
+    }));
+    add(klick(tr(Str::AnimModeMove), "###animation"));
+    add(pause(0.4));
+    add(pruefe("ROFF: zurueck zu Skript (move) - zwei move-Schluessel, keine Marke mehr", [=] {
+        const auto at = findeAnimBlock(g_app->doc.script(), schiffName());
+        const auto k = at ? leseAnimBlock(g_app->doc.script(), *at) : std::vector<AnimSchluessel>{};
+        return g_app->animRoff.empty() && k.size() == 2U && alleRoffMarken(g_app->doc.script()).empty();
+    }));
+    add(tu("Fenster zu, gespeichert, Ordner weg", [=] {
+        g_app->animFensterOffen = false;
+        g_app->doc.markSaved();
+        std::error_code ec;
+        std::filesystem::remove_all(std::filesystem::u8path(*ordner), ec);
+    }));
+    add(pause(0.2));
+
+    // Eine fertige Datei des Spiels bearbeiten: kor2/roffs/boulder.
+    auto vorher = std::make_shared<std::vector<std::array<float, 3>>>();
+    add(tu("ROFF: ein Skript mit PLAY_ROFF auf eine Datei des Spiels", [=] {
+        waehle("//Generated by BehavEd\naffect ( \"sta2\", /*@AFFECT_TYPE*/ FLUSH )\n{\n\twait ( 500.000 );\n"
+               "\tplay ( /*@PLAY_TYPES*/ \"PLAY_ROFF\", \"kor2/roffs/boulder\" );\n}\n",
+               "roffedit.txt");
+        vorher->clear();
+        const std::string name = schiffName();
+        for (const Actor& ac : g_app->scene.actors) {
+            if (ac.name != name) { continue; }
+            for (double t = 0.0; t <= 2500.0; t += 100.0) {
+                const ActorState st = ac.at(t);
+                vorher->push_back({st.pos[0], st.pos[1], st.pos[2]});
+            }
+        }
+    }));
+    add(pause(0.5));
+    add(klick(tr(Str::EntAnimate), "###main"));
+    add(pause(0.4));
+    add(pruefe("ROFF: das Fenster bietet die Bahn der Datei zum Bearbeiten an", [=] {
+        diag::detail("Knopftest: ROFF - Staende vorher " + std::to_string(vorher->size()));
+        return g_app->animFensterOffen && g_app->animRoff.empty() && vorher->size() == 26U;
+    }));
+    add(klick(tr(Str::AnimRoffEdit), "###animation"));
+    add(pause(0.5));
+    add(pruefe("ROFF: Bearbeiten - Kopie boulder_2, Marke vor dem play, das play zeigt auf die Kopie", [=] {
+        const RoffAnim a = marke();
+        const std::string text = writeScript(g_app->doc.script());
+        diag::detail("Knopftest: ROFF - bearbeitet \"" + g_app->animRoff + "\", " + std::to_string(a.schluessel.size()) +
+                     " Schluessel, " + (a.weich ? "weich" : "gleichmaessig"));
+        return g_app->animRoff == "kor2/roffs/boulder_2" && a.schluessel.size() >= 2U &&
+               text.find("\"PLAY_ROFF\", \"kor2/roffs/boulder_2\"") != std::string::npos &&
+               text.find("\"kor2/roffs/boulder\"") == std::string::npos;
+    }));
+    add(tu("Szene neu", [] { prepareScene(); }));
+    add(pruefe("ROFF: die Kopie faehrt wie das Original (hoechstens 1 Einheit daneben)", [=] {
+        const std::string name = schiffName();
+        float weit = 0.0F;
+        std::size_t i = 0;
+        for (const Actor& ac : g_app->scene.actors) {
+            if (ac.name != name) { continue; }
+            for (double t = 0.0; t <= 2500.0 && i < vorher->size(); t += 100.0, ++i) {
+                const ActorState st = ac.at(t);
+                for (int c = 0; c < 3; ++c) { weit = std::max(weit, std::fabs(st.pos[c] - (*vorher)[i][static_cast<std::size_t>(c)])); }
+            }
+        }
+        diag::detail("Knopftest: ROFF - Kopie gegen Original: " + std::to_string(weit));
+        return i == vorher->size() && weit <= 1.0F;
+    }));
+    add(tu("Fenster zu, gespeichert", [] { g_app->animFensterOffen = false; g_app->doc.markSaved(); }));
+    add(pause(0.2));
+    return s;
+}
+
 std::vector<Schritt> animSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
@@ -13660,6 +15041,40 @@ std::vector<Schritt> animSchritte() {
             return am && s2.pos[0] >= lo && s2.pos[0] <= hi;
         }
         return false;
+    }));
+    // Kombination (rc599): das Gizmo am Zeiger, waehrend das Fenster im
+    // move-Modus ist - Drehen setzt einen dritten Schluessel bei 2,5 s, der
+    // Ursprung der Entity bleibt.
+    auto vorDreh = std::make_shared<std::pair<std::size_t, std::string>>();
+    add(tu("Gizmo am Zeiger: 2,5 s, Drehmodus", [=] {
+        vorDreh->first = g_app->doc.undoDepth();
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(g_app->animEntity)];
+        vorDreh->second = e.find("angles") != nullptr ? *e.find("angles") : (e.find("angle") != nullptr ? *e.find("angle") : "");
+        entityAuswahlSetzen(g_app->animEntity);
+        g_app->playMs = 2500.0;
+        g_app->gizmoMode = App::GizmoMode::Rotate;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Gizmo am Zeiger: am Gier-Ring ziehen", [] {
+        ImVec2 q{-1.0F, -1.0F};
+        (void)entityGizmoPunkt(4, q);
+        return q;
+    }, 50.0F, -25.0F, 0));
+    add(pause(0.5));
+    add(pruefe("Gizmo am Zeiger (move-Modus): ein dritter Schluessel bei 2,5 s mit gedrehter Gier, die Entity selbst unveraendert", [=] {
+        const auto k = schluessel();
+        const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(g_app->animEntity)];
+        const std::string jetzt = e.find("angles") != nullptr ? *e.find("angles") : (e.find("angle") != nullptr ? *e.find("angle") : "");
+        diag::detail("Knopftest: Animation - Gizmo am Zeiger: " + std::to_string(k.size()) + " Schluessel" +
+                     (k.size() == 3U ? ", Gier bei 2,5 s " + std::to_string(k[1].winkel[1]) : std::string()));
+        return k.size() == 3U && std::fabs(k[1].ms - 2500.0) < 1.0 && std::fabs(k[1].winkel[1]) > 2.0F && jetzt == vorDreh->second;
+    }));
+    add(tu("Gizmo am Zeiger: zuruecknehmen, Verschieben", [=] {
+        while (g_app->doc.undoDepth() > vorDreh->first && g_app->doc.undo()) {}
+        rebuildTree();
+        g_app->camTrackValid = false;
+        g_app->gizmoMode = App::GizmoMode::Move;
     }));
     add(tu("ersten Schluessel waehlen", [] { g_app->animSchluessel = 0; }));
     add(klick(tr(Str::AnimDeleteKey), "###animation"));
@@ -13936,6 +15351,12 @@ void selbsttest() {
     // Nur die Reiterpruefungen (Schliessen, doppelt Oeffnen, Ungesichertes) -
     // schnell nachzustellen, ohne den ganzen Lauf.
     static const bool nurReiter = std::strcmp(modus, "reiter") == 0;
+    // Kopieren und Einfuegen im Skriptbaum (rc599).
+    static const bool nurAblage = std::strcmp(modus, "ablage") == 0;
+    // ROFF-Bahnen bauen und aendern (rc599).
+    static const bool nurRoff = std::strcmp(modus, "roff") == 0;
+    // Bilder fuer das Handbuch (rc599).
+    static const bool nurHandbuch = std::strcmp(modus, "handbuch") == 0;
     // Ein zweiter Start reicht an diesen weiter (braucht BHED_EINZEL).
     static const bool nurEinzel = std::strcmp(modus, "einzel") == 0;
     // Mission laden mit leerem Reiter vorn (braucht die Spieldaten).
@@ -13944,6 +15365,8 @@ void selbsttest() {
     static const bool nurPruefung = std::strcmp(modus, "pruefung") == 0;
     // Eine eigene Mission aus einer pk3 laden und fotografieren (BHED_MISSION_ARCHIV, ..._NAME, BHED_ZEIT).
     static const bool nurMissionFoto = std::strcmp(modus, "missionfoto") == 0;
+    // Zuletzt geoeffnete Missionen (rc599).
+    static const bool nurLetzte = std::strcmp(modus, "letzte") == 0;
     // Missionsbau im Map-Tab: jeder Knopf, Kombinationen, Zufall (11.10.).
     static const bool nurMissionsbau = std::strcmp(modus, "missionsbau") == 0;
     ImGuiContext& g = *ImGui::GetCurrentContext();
@@ -13957,6 +15380,9 @@ void selbsttest() {
             // Stand des Benutzers merken - er wird beim Beenden gespeichert.
             g_queryVorher = g_app->settings.queryOnDiscard;
             g_app->settings.queryOnDiscard = true;
+            g_flussVorher = g_app->settings.flussAnsicht;
+            g_app->settings.flussAnsicht = 0;
+            for (auto& feld : g_app->splitPanes) { feld.ansicht = 0; }
             // Kein Ton aus dem Lautsprecher, solange getestet wird.
             g_app->stumm = true;
         }
@@ -13986,6 +15412,14 @@ void selbsttest() {
                 a.teil = 2;
             } else if (nurMissionsbau) {
                 a.schritte = missionsbauSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurHandbuch) {
+                a.schritte = handbuchSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurLetzte) {
+                a.schritte = letzteMissionSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurMissionFoto) {
@@ -14056,9 +15490,12 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff) {
                 a.schritte = karteSchritte();
-                if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
+                if (nurRoff) {
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    for (Schritt& x : roffSchritte()) { a.schritte.push_back(std::move(x)); }
+                } else if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
                     // Nur laden (die ersten Schritte von karteSchritte bis
                     // "Kartenansicht gezeichnet"), dann Lava oder Holotisch.
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
@@ -14084,6 +15521,10 @@ void selbsttest() {
                 a.teil = 2;
             } else if (nurModell) {
                 a.schritte = modellSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurAblage) {
+                a.schritte = ablageSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurOriginal) {

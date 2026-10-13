@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPC waypoints - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class="aktiv"><a href="wegpunkte.html">NPC waypoints</a><ul class="unter"></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/wegpunkte.html" class="aktiv" lang="en">English</a><a href="../de/wegpunkte.html" class="" lang="de">Deutsch</a><a href="../zh/wegpunkte.html" class="" lang="zh">中文</a><a href="../ja/wegpunkte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>NPC waypoints</h1>
+    <p class="einleitung">The network NPCs walk on when they chase or flee. Place it by hand or let the program build it, then check it.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_wegpunkte.webp" class="zoom"><img src="../bilder/en/h_wegpunkte.webp" alt="The NPC waypoints window and the network on the map." loading="lazy"></a><figcaption>The <span class="ui">NPC waypoints</span> window and the network on the map.</figcaption></figure>
+<p>Open it with <strong><span class="ui">NPC waypoints</span></strong> in the map toolbar. <strong><span class="ui">Show network</span></strong> draws the paths: green set by hand (<code>target</code>), blue automatic (nav goals and combat points), orange jumps (<code>targetJump</code>).</p>
+<ul><li><strong><span class="ui">Place waypoints</span></strong>: click the floor - each new point is connected to the one before. <kbd>Shift</kbd>+click starts a new path, <kbd>Esc</kbd> ends.</li><li><strong><span class="ui">Connect</span></strong>: click two points to connect them (<kbd>Ctrl</kbd>: a jump); clicking two connected points disconnects them. A point has at most four connections.</li><li><strong><span class="ui">Create network</span></strong> spreads waypoints over the walkable floor (<strong><span class="ui">spacing</span></strong>: the original levels use about 230) and connects them - one undo step. <strong><span class="ui">Remove created</span></strong> removes only those, hand-placed ones stay.</li><li><strong><span class="ui">Check network</span></strong> finds what the game would reject or NPCs cannot use; click a problem to fly there.</li></ul>
+    <nav class="blaettern"><a class="vor" href="animation.html"><span>Previous</span>Animating movers and ROFF files</a><a class="nach" href="missionen.html"><span>Next</span>Missions</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

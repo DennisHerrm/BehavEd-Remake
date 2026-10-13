@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skripte schreiben - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Skripte</summary><ul><li class="aktiv"><a href="skripte.html">Skripte schreiben</a><ul class="unter"><li><a href="#grundlagen">Wie ein Skript aufgebaut ist</a></li><li><a href="#einfuegen">Befehle einfügen</a></li><li><a href="#editor">Der Event-Editor</a></li><li><a href="#bearbeiten">Wählen, verschieben, kopieren</a></li><li><a href="#suchen">Suchen, Ersetzen, Lesezeichen</a></li><li><a href="#rand">Der Änderungsrand</a></li></ul></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skripte.html" class="" lang="en">English</a><a href="../de/skripte.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/skripte.html" class="" lang="zh">中文</a><a href="../ja/skripte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Skripte</div>
+    <h1>Skripte schreiben</h1>
+    <p class="einleitung">Ein ICARUS-Skript ist ein Baum aus Befehlen. Befehle aus der Liste nehmen, in den richtigen Block setzen, ihre Werte ausfüllen.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_skriptbaum.webp" class="zoom"><img src="../bilder/de/h_skriptbaum.webp" alt="Events-Modus: links die Befehle, in der Mitte der Skriptbaum, rechts die Aktionsknöpfe." loading="lazy"></a><figcaption>Events-Modus: links die Befehle, in der Mitte der Skriptbaum, rechts die Aktionsknöpfe.</figcaption></figure>
+<h2 id="grundlagen">Wie ein Skript aufgebaut ist<a class="anker" href="#grundlagen">#</a></h2>
+<p>Befehle laufen von oben nach unten. <code>affect ( &quot;Name&quot;, FLUSH ) { ... }</code> schickt die Befehle darin an eine Figur oder Entity - so bewegt eine Zwischensequenz ihre Darsteller. <code>task</code> legt eine Gruppe von Befehlen an, <code>do</code> startet sie nebenher, <code>dowait</code> wartet auf sie, <code>wait</code> pausiert. <code>if</code>, <code>else</code>, <code>loop</code> wirken wie in anderen Sprachen. Nur <code>affect</code>, <code>task</code>, <code>if</code>, <code>else</code> und <code>loop</code> können Befehle enthalten.</p>
+<h2 id="einfuegen">Befehle einfügen<a class="anker" href="#einfuegen">#</a></h2>
+<ul><li>In der Liste <strong><span class="ui">Ereignisse</span></strong> links fügt ein <strong>Doppelklick</strong> einen Befehl hinter der gewählten Zeile ein (oder in den gewählten Block).</li><li>Oder in den Baum <strong>ziehen</strong>: wo du loslässt, entscheidet, ob er vor, in oder hinter einer Zeile landet.</li><li>Makros am Ende der Liste fügen mehrere Befehle auf einmal ein; <strong><span class="ui">Makros falten</span></strong> zeigt sie als eine Zeile.</li><li>Ein Rechtsklick auf eine Zeile bietet dieselben Listen als Untermenüs, dazu bearbeiten, kopieren und <strong><span class="ui">Ähnliche suchen</span></strong>.</li></ul>
+<h2 id="editor">Der Event-Editor<a class="anker" href="#editor">#</a></h2>
+<p>Ein Doppelklick auf eine Zeile (oder <kbd>Enter</kbd>) öffnet den <strong><span class="ui">Ereignis-Editor</span></strong>. Oben steht der Hilfetext des Befehls, darunter hat jeder Wert sein Feld: Listen für feste Auswahl, Zahlen- und Textfelder, Dateifelder mit <strong><span class="ui"></span></strong> zum Suchen und <strong><span class="ui">Abspielen</span></strong> zum Abspielen eines Klangs oder Öffnen eines Skripts. Ist eine Karte geladen, wählt ein Pfeil neben Namensfeldern einen Namen aus der Karte.</p>
+<figure class="bild"><a href="../bilder/de/h_editor.webp" class="zoom"><img src="../bilder/de/h_editor.webp" alt="Der Event-Editor für einen Kamerabefehl." loading="lazy"></a><figcaption>Der Event-Editor für einen Kamerabefehl.</figcaption></figure>
+<ul><li><strong><span class="ui">Ausdruck!</span></strong> macht ein Feld zum freien Ausdruck; <strong><span class="ui">Helfer</span></strong> baut <code>get ( ... )</code>, <code>tag ( ... )</code> oder <code>random ( ... )</code> mit <strong><span class="ui">Get</span></strong>, <strong><span class="ui">Tag</span></strong> und <strong><span class="ui">Rnd</span></strong>; <strong><span class="ui">Zurücknehmen</span></strong> geht zurück.</li><li>Ein Wert, der nicht in seiner Liste steht, ist erlaubt - Mods bringen eigene mit - wird aber als <strong>unbekannt</strong> markiert, weil es viel öfter ein Tippfehler ist.</li><li><strong><span class="ui">Ok</span></strong> (<kbd>Enter</kbd>) schreibt die Werte, <strong><span class="ui">Abbrechen</span></strong> (<kbd>Esc</kbd>) verwirft sie, <strong><span class="ui">Neu auswerten</span></strong> setzt die Felder auf die Vorgaben zurück.</li></ul>
+<h2 id="bearbeiten">Wählen, verschieben, kopieren<a class="anker" href="#bearbeiten">#</a></h2>
+<ul><li>Klick wählt eine Zeile, <kbd>Strg</kbd>+Klick nimmt eine dazu, <kbd>Umschalt</kbd>+Klick wählt einen Bereich. Jede Aktion wirkt auf alles Gewählte.</li><li>Zeilen ziehen verschiebt sie. Blöcke ziehen alles darin mit; ein Block kann nicht in sich selbst.</li><li><strong><span class="ui">Kopieren</span></strong>, <strong><span class="ui">Ausschneiden</span></strong>, <strong><span class="ui">Einfügen</span></strong> - Einfügen in einen Block setzt die Befehle genau einmal ein, auch wenn Block und Zeilen zusammen kopiert wurden.</li><li><strong><span class="ui">Klonen</span></strong> fügt direkt darunter eine Kopie ein, <strong><span class="ui">Auskommentieren</span></strong> macht Zeilen zu Kommentaren und zurück, <strong><span class="ui">Löschen</span></strong> entfernt sie.</li><li><strong>Rückgängig</strong> und <strong>Wiederholen</strong> merken sich jeden Schritt. Ein Rechtsklick auf einen der Knöpfe zeigt den ganzen Verlauf - dort lässt sich sogar ein einzelner Schritt zurücknehmen, während alles danach bleibt.</li></ul>
+<h2 id="suchen">Suchen, Ersetzen, Lesezeichen<a class="anker" href="#suchen">#</a></h2>
+<p><strong><span class="ui">Suchen</span></strong> (<kbd>Strg</kbd>+<kbd>F</kbd>) öffnet ein Fenster, das offen bleibt: nach Befehlsnamen (<strong><span class="ui">Element mit Namen</span></strong>) oder nach einem Wert (<strong><span class="ui">Element enthält</span></strong>) suchen, mit <kbd>F3</kbd> / <kbd>Umschalt</kbd>+<kbd>F3</kbd> weiterspringen, in diesem oder allen offenen Skripten ersetzen. Lesezeichen wirken wie in Notepad++: <kbd>Strg</kbd>+<kbd>F2</kbd> setzt eines, <kbd>F2</kbd> springt zum nächsten. Sie bleiben je Datei erhalten.</p>
+<h2 id="rand">Der Änderungsrand<a class="anker" href="#rand">#</a></h2>
+<p>Mit <strong><span class="ui">Ansicht</span> → <span class="ui">Änderungsrand</span></strong> markiert ein farbiger Rand, was du geändert hast: orange = geändert, nicht gespeichert; grün = geändert und gespeichert; blau = wieder wie das Original. Darüberfahren zeigt die Originalzeile, Rechtsklick auf eine Zeile → <strong>Original wiederherstellen</strong> stellt nur diesen Befehl zurück.</p>
+    <nav class="blaettern"><a class="vor" href="fenster.html"><span>Zurück</span>Das Fenster</a><a class="nach" href="skriptfluss.html"><span>Weiter</span>Script Flow: Classic, Graph, Spuren</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

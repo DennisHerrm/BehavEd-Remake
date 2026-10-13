@@ -197,6 +197,74 @@ struct RoffNotizBefehl {
 void roffEffektOrt(const RoffNotizBefehl& b, const float basisOrt[3], const float basisWinkel[3],
                    float ort[3], float winkel[3]);
 
+// --- Bauen und Schreiben (rc599) -------------------------------------------
+//
+// Gewuenscht (13.10.2026): "ich will das man auch direkt eine Roff datei
+// bauen und aendern kann". Die Dateien der Spielordner sind alle Fassung 2
+// mit 50 ms je Bild (107 von 108, md_arena/roll.rof hat 42) - so entstehen
+// auch die gebauten.
+
+// Ein Schluessel einer Bahn. ms zaehlt ab dem ERSTEN Bild (roffBildZeitMs(r,
+// 0) nach dem play-Befehl); Ort und Winkel sind absolut - die Datei selbst
+// traegt nur Versaetze, der Start ist der erste Schluessel.
+struct RoffSchluessel {
+    double ms = 0.0;
+    float ort[3]{};
+    float winkel[3]{};
+};
+
+// Eine Notiz an einer Zeit (ms wie bei RoffSchluessel).
+struct RoffNotiz {
+    double ms = 0.0;
+    std::string text;
+};
+
+// Die Bytes einer .rof, so wie G_LoadRoff sie liest. Fassung 1 bleibt
+// Fassung 1 (ohne Notizen), alles andere wird Fassung 2. Eine gelesene
+// Datei kommt bytegleich wieder heraus.
+[[nodiscard]] std::string schreibeRoff(const Roff& r);
+
+// Aus Schluesseln eine Bahn backen. Je Bild ein Versatz, so gewaehlt, dass
+// der Mover-Weg (roffStand, figur = false) zu jeder Schluesselzeit genau am
+// Schluessel steht - Bild fuer Bild in float aufaddiert wie in der Engine.
+// Hinten kommt ein Bild ohne Versatz dazu: den letzten Versatz zeigt G_Roff
+// bei Movern nie, so endet die Bahn trotzdem am letzten Schluessel.
+//
+// weich = false: gerade von Schluessel zu Schluessel, gleichmaessig.
+// weich = true: ein Bogen durch alle Schluessel (Hermite, Tangenten aus den
+// Nachbarn wie bei Catmull-Rom, nach der Zeit gewichtet), am Anfang und am
+// Ende sanft an- und abfahrend.
+//
+// Winkel werden nicht auf den kurzen Weg gelegt: 0 -> 720 sind zwei
+// Umdrehungen.
+[[nodiscard]] Roff baueRoff(std::vector<RoffSchluessel> schluessel, bool weich, int bildMs = 50,
+                            const std::vector<RoffNotiz>& notizen = {});
+
+// Umgekehrt: aus einer Bahn die wenigen Schluessel, aus denen sie sich
+// gleichmaessig wieder backen laesst - bis auf `tolOrt` Einheiten und
+// `tolWinkel` Grad (Douglas-Peucker ueber die Zeit). Zum Bearbeiten einer
+// fertigen Datei. Gezaehlt wird der Mover-Weg: der Stand nach dem letzten
+// Bild, den die Engine nie zeigt, gehoert nicht dazu.
+[[nodiscard]] std::vector<RoffSchluessel> roffSchluessel(const Roff& r, const float startOrt[3],
+                                                         const float startWinkel[3], float tolOrt = 0.5F,
+                                                         float tolWinkel = 0.25F);
+
+// Zerlegen mit der Wahl der Form: gleichmaessig wie oben ODER weich (die
+// Schluessel nacheinander an die Stelle gesetzt, die am weitesten
+// danebenliegt, bis alles passt). Genommen wird, was mit weniger
+// Schluesseln auskommt - eine Bahn aus 3ds max beschleunigt und bremst, mit
+// geraden Stuecken braeuchte sie fast jedes Bild.
+struct RoffZerlegung {
+    std::vector<RoffSchluessel> schluessel;
+    bool weich = false;
+};
+[[nodiscard]] RoffZerlegung zerlegeRoff(const Roff& r, const float startOrt[3], const float startWinkel[3],
+                                        float tolOrt = 0.5F, float tolWinkel = 0.25F);
+
+// Die Notizen einer Datei mit ihrer Zeit - alle eines Bildes, auch die, die
+// G_Roff nicht ausloest (es nimmt nur die erste).
+[[nodiscard]] std::vector<RoffNotiz> roffNotizen(const Roff& r);
+
 }  // namespace bhed
 
 #endif

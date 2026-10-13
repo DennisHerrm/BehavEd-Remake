@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tastenkürzel - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class="aktiv"><a href="tasten.html">Tastenkürzel</a><ul class="unter"><li><a href="#skript">Skript</a></li><li><a href="#datei">Dateien</a></li><li><a href="#karte">Karte und Kamera</a></li><li><a href="#zeit">Zeitleiste</a></li><li><a href="#fenster">Fenster</a></li></ul></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tasten.html" class="" lang="en">English</a><a href="../de/tasten.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/tasten.html" class="" lang="zh">中文</a><a href="../ja/tasten.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Nachschlagen</div>
+    <h1>Tastenkürzel</h1>
+    <p class="einleitung">Die vorgegebenen Tasten. Die meisten lassen sich unter Bearbeiten → Tastenkürzel ändern.</p>
+    <h2 id="skript">Skript<a class="anker" href="#skript">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Enter</kbd></td><td>Gewählten Befehl bearbeiten</td></tr><tr><td><kbd>Einfg</kbd></td><td>Den in der Events-Liste gewählten Befehl einfügen</td></tr><tr><td><kbd>Entf</kbd></td><td>Löschen</td></tr><tr><td><kbd>Leertaste</kbd></td><td>Duplizieren</td></tr><tr><td><kbd>Strg</kbd> + <kbd>C</kbd></td><td>Kopieren</td></tr><tr><td><kbd>Strg</kbd> + <kbd>X</kbd></td><td>Ausschneiden (auch Strg+T)</td></tr><tr><td><kbd>Strg</kbd> + <kbd>V</kbd></td><td>Einfügen</td></tr><tr><td><kbd>Rücktaste</kbd></td><td>REM: auskommentieren / zurück (Strg+Rücktaste: Kommentar entfernen)</td></tr><tr><td><kbd>Alt</kbd> + <kbd>Oben</kbd></td><td>Nach oben (Alt+Unten: nach unten), im selben Block</td></tr><tr><td><kbd>Strg</kbd> + <kbd>Z</kbd></td><td>Rückgängig (Strg+Y oder Strg+Umschalt+Z: wiederholen)</td></tr><tr><td><kbd>Strg</kbd> + <kbd>F</kbd></td><td>Suchen; F3 / Umschalt+F3 nächster / voriger</td></tr><tr><td><kbd>Strg</kbd> + <kbd>F2</kbd></td><td>Lesezeichen setzen; F2 / Umschalt+F2 nächstes / voriges</td></tr><tr><td><kbd>Num+</kbd></td><td>Eintrag und Kinder aufklappen (Strg+Num+: alles)</td></tr><tr><td><kbd>Num-</kbd></td><td>Eintrag zuklappen (Strg+Num-: alles)</td></tr></tbody></table>
+<h2 id="datei">Dateien<a class="anker" href="#datei">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Strg</kbd> + <kbd>O</kbd></td><td>Öffnen</td></tr><tr><td><kbd>Strg</kbd> + <kbd>S</kbd></td><td>Speichern</td></tr><tr><td><kbd>Strg</kbd> + <kbd>A</kbd></td><td>Speichern unter (wie im Original-BehavEd)</td></tr><tr><td><kbd>Strg</kbd> + <kbd>Umschalt</kbd> + <kbd>S</kbd></td><td>Alle speichern</td></tr><tr><td><kbd>Alt</kbd> + <kbd>B</kbd></td><td>Sicherung; Alt+R wiederherstellen</td></tr><tr><td><kbd>Alt</kbd> + <kbd>M</kbd></td><td>Zuletzt geöffnete Dateien</td></tr><tr><td><kbd>Alt</kbd> + <kbd>P</kbd></td><td>Einstellungen; Alt+X beenden</td></tr></tbody></table>
+<h2 id="karte">Karte und Kamera<a class="anker" href="#karte">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D</kbd></td><td>Fliegen (Maus über der Ansicht); Q / E runter / hoch, Umschalt schneller; rechte Maus schaut umher</td></tr><tr><td><kbd>Strg</kbd> + <kbd>1</kbd></td><td>Ansicht 1 merken (… 9); 1 … 9 springt zurück</td></tr><tr><td><kbd>Strg</kbd></td><td>Beim Ziehen einer Entity: Ringe in 15-Grad-Schritten; mit eingestelltem Raster schaltet es das Raster aus, ohne rastet ein Pfeil auf 8 Einheiten</td></tr><tr><td><kbd>Alt</kbd></td><td>Alt+Ziehen einer Entity: erst kopieren</td></tr><tr><td><kbd>Umschalt</kbd></td><td>Beim Ziehen eines Flugziels oder einer Schlüsselraute: nur hoch und runter</td></tr><tr><td><kbd>Esc</kbd></td><td>Platzieren, Wegpunktwerkzeug oder Steuern abbrechen</td></tr><tr><td><kbd>Enter</kbd></td><td>Beim Steuern: Kameraschlüssel am Zeiger setzen</td></tr></tbody></table>
+<h2 id="zeit">Zeitleiste<a class="anker" href="#zeit">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Links / Rechts</kbd></td><td>50 ms zurück / vor, Maus über der Zeitleiste (Umschalt: 1 s)</td></tr><tr><td><kbd>Pos1 / Ende</kbd></td><td>Zum Anfang / Ende (Maus über der Zeitleiste)</td></tr><tr><td><kbd>Alt</kbd></td><td>Beim Ziehen eines Blocks: nur diesen Block verschieben</td></tr></tbody></table>
+<h2 id="fenster">Fenster<a class="anker" href="#fenster">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Strg + Mausrad</kbd></td><td>Oberflächengröße (über den Spuren der Zeitleiste: die Zeitleiste zoomen)</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="einstellungen.html"><span>Zurück</span>Einstellungen und Updates</a><a class="nach" href="begriffe.html"><span>Weiter</span>Begriffe</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

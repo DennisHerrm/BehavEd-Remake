@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>术语表 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class="aktiv"><a href="begriffe.html">术语表</a><ul class="unter"></ul></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/begriffe.html" class="" lang="en">English</a><a href="../de/begriffe.html" class="" lang="de">Deutsch</a><a href="../zh/begriffe.html" class="aktiv" lang="zh">中文</a><a href="../ja/begriffe.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">参考</div>
+    <h1>术语表</h1>
+    <p class="einleitung">《绝地学院》脚本相关术语一览。</p>
+    <table class="liste"><thead><tr><th>术语</th><th>含义</th></tr></thead><tbody><tr><td>ICARUS</td><td>游戏的脚本系统。脚本是文本(<code>.txt</code>),以编译后的形式(<code>.ibi</code>)运行。</td></tr><tr><td><code>.ibi</code></td><td>编译后的脚本——游戏真正运行的文件。由 <strong><span class="ui">编译！</span></strong> 生成。</td></tr><tr><td><code>.bhc</code></td><td>命令描述文件:所有命令、其字段及可选值。</td></tr><tr><td><code>affect</code></td><td>其中命令发送给某个指定角色或实体的块。</td></tr><tr><td><code>task</code> / <code>do</code> / <code>dowait</code></td><td>命名的命令组;<code>do</code> 并行启动,<code>dowait</code> 等待其完成。</td></tr><tr><td><code>wait</code></td><td>以毫秒计的暂停。游戏中会比写入值晚一帧(50 毫秒)结束。</td></tr><tr><td><code>SET_NAVGOAL</code></td><td>让角色走向某个 <code>waypoint_navgoal</code>。</td></tr><tr><td><code>NPC_spawner</code></td><td>使角色出现的实体;<code>NPC_type</code> 指定角色种类,<code>NPC_targetname</code> 为脚本提供名字。</td></tr><tr><td><code>ref_tag</code></td><td>地图中的命名标记——用于摄像机位置和注视目标。</td></tr><tr><td><code>target_scriptrunner</code></td><td>被使用时(由触发器、其他实体或脚本)运行脚本。</td></tr><tr><td><code>func_static</code></td><td>脚本可以移动的地图笔刷模型——飞船、门、平台。</td></tr><tr><td>ROFF (<code>.rof</code>)</td><td>记录下来的运动:每个游戏帧一小步位置和角度变化。参见 <a href="animation.html#roff">ROFF 文件的原理</a>。</td></tr><tr><td><code>.pk3</code></td><td>游戏从中读取文件的 zip 压缩包。任务会打包成一个 .pk3。</td></tr><tr><td><code>.ent</code></td><td>单独文件中的地图实体;Movie Duels 保留原地图,并在旁边放置自己的实体。</td></tr><tr><td>Movie Duels</td><td>一个大型《绝地学院》模组,包含带过场动画的任务——本程序的主要用途。</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="tasten.html"><span>上一页</span>键盘快捷键</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

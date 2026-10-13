@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard shortcuts - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class="aktiv"><a href="tasten.html">Keyboard shortcuts</a><ul class="unter"><li><a href="#skript">Script</a></li><li><a href="#datei">Files</a></li><li><a href="#karte">Map and camera</a></li><li><a href="#zeit">Timeline</a></li><li><a href="#fenster">Window</a></li></ul></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tasten.html" class="aktiv" lang="en">English</a><a href="../de/tasten.html" class="" lang="de">Deutsch</a><a href="../zh/tasten.html" class="" lang="zh">中文</a><a href="../ja/tasten.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Reference</div>
+    <h1>Keyboard shortcuts</h1>
+    <p class="einleitung">The default keys. Most of them can be changed under Edit → Keyboard shortcuts.</p>
+    <h2 id="skript">Script<a class="anker" href="#skript">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Enter</kbd></td><td>Edit the selected command</td></tr><tr><td><kbd>Insert</kbd></td><td>Insert the command selected in the Events list</td></tr><tr><td><kbd>Delete</kbd></td><td>Delete</td></tr><tr><td><kbd>Space</kbd></td><td>Duplicate</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td><td>Copy</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>X</kbd></td><td>Cut (also Ctrl+T)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>V</kbd></td><td>Paste</td></tr><tr><td><kbd>Backspace</kbd></td><td>REM: comment out / back (Ctrl+Backspace: uncomment)</td></tr><tr><td><kbd>Alt</kbd> + <kbd>Up</kbd></td><td>Move up (Alt+Down: down), staying in the block</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Undo (Ctrl+Y or Ctrl+Shift+Z: redo)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>Find; F3 / Shift+F3 next / previous</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>F2</kbd></td><td>Toggle bookmark; F2 / Shift+F2 next / previous</td></tr><tr><td><kbd>Num+</kbd></td><td>Expand item and children (Ctrl+Num+: all)</td></tr><tr><td><kbd>Num-</kbd></td><td>Collapse item (Ctrl+Num-: all)</td></tr></tbody></table>
+<h2 id="datei">Files<a class="anker" href="#datei">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd></td><td>Open</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>Save</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>Save as (as in the original BehavEd)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></td><td>Save all</td></tr><tr><td><kbd>Alt</kbd> + <kbd>B</kbd></td><td>Backup; Alt+R restore</td></tr><tr><td><kbd>Alt</kbd> + <kbd>M</kbd></td><td>Recently opened files</td></tr><tr><td><kbd>Alt</kbd> + <kbd>P</kbd></td><td>Prefs; Alt+X exit</td></tr></tbody></table>
+<h2 id="karte">Map and camera<a class="anker" href="#karte">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D</kbd></td><td>Fly (mouse over the view); Q / E down / up, Shift faster; right mouse looks around</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>1</kbd></td><td>Save view 1 (… 9); 1 … 9 jumps back</td></tr><tr><td><kbd>Ctrl</kbd></td><td>While dragging an entity: rings in 15-degree steps; with a grid set it turns the grid off, without one an arrow snaps to 8 units</td></tr><tr><td><kbd>Alt</kbd></td><td>Alt+drag an entity: copy it first</td></tr><tr><td><kbd>Shift</kbd></td><td>While dragging a flight target or a key diamond: only up and down</td></tr><tr><td><kbd>Esc</kbd></td><td>Cancel placing, the waypoint tool or piloting</td></tr><tr><td><kbd>Enter</kbd></td><td>While piloting: set a camera key at the playhead</td></tr></tbody></table>
+<h2 id="zeit">Timeline<a class="anker" href="#zeit">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Left / Right</kbd></td><td>50 ms back / forward, mouse over the timeline (Shift: 1 s)</td></tr><tr><td><kbd>Home / End</kbd></td><td>Jump to start / end (mouse over the timeline)</td></tr><tr><td><kbd>Alt</kbd></td><td>While dragging a block: move only this block</td></tr></tbody></table>
+<h2 id="fenster">Window<a class="anker" href="#fenster">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>Ctrl + wheel</kbd></td><td>Interface size (over the timeline tracks: zoom the timeline)</td></tr></tbody></table>
+    <nav class="blaettern"><a class="vor" href="einstellungen.html"><span>Previous</span>Settings and updates</a><a class="nach" href="begriffe.html"><span>Next</span>Glossary</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

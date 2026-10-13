@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>摄像机 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class="aktiv"><a href="kamera.html">摄像机</a><ul class="unter"><li><a href="#einstellungen">镜头</a></li><li><a href="#gizmo">移动和旋转镜头</a></li><li><a href="#bahnen">摄像机路径</a></li><li><a href="#steuern">亲自驾驶镜头</a></li><li><a href="#vorschau">预览与透过镜头观看</a></li></ul></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/kamera.html" class="" lang="en">English</a><a href="../de/kamera.html" class="" lang="de">Deutsch</a><a href="../zh/kamera.html" class="aktiv" lang="zh">中文</a><a href="../ja/kamera.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>摄像机</h1>
+    <p class="einleitung">脚本中的每个 camera MOVE 和 PAN 都是一个可以看到、抓取和驾驶的镜头——拖动时脚本会随之改写。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_kamera.webp" class="zoom"><img src="../bilder/zh/h_kamera.webp" alt="选中的摄像机:地图上的路径、操纵器、顶部工具栏以及左侧的镜头列表。" loading="lazy"></a><figcaption>选中的摄像机:地图上的路径、操纵器、顶部工具栏以及左侧的镜头列表。</figcaption></figure>
+<h2 id="einstellungen">镜头<a class="anker" href="#einstellungen">#</a></h2>
+<p>在 ICARUS 中,一个镜头就是 <code>camera ( MOVE, &lt;位置&gt;, &lt;时间&gt; )</code> 后接 <code>camera ( PAN, &lt;角度&gt;, &lt;时间&gt; )</code>。BehavEd-Remake 按顺序读取它们,并在地图上把每个镜头画成摄像机图标。单击图标选择摄像机;左侧的 <strong><span class="ui">镜头</span></strong> 列表显示每个镜头的时间和移动时间(<code>移动 6.0 秒</code>)。单击某行即可跳转。</p>
+<ul><li><strong><span class="ui">上一个镜头</span> / <span class="ui">下一个镜头</span></strong> 在镜头间切换;<strong><span class="ui">飞到镜头</span></strong> 把你的视角精确移到所选镜头的位置和朝向。</li><li><strong><span class="ui">在此新建镜头</span></strong> 在当前视角、所选镜头之后添加 MOVE 和 PAN。<strong><span class="ui">设为当前视角</span></strong> 把所选镜头移到你当前注视的位置。</li><li><strong><span class="ui">删除镜头</span></strong> 删除镜头。在 <strong><span class="ui">所选镜头</span></strong> 下可输入精确数值:<span class="ui">位置</span>、<span class="ui">方向</span> 和 <span class="ui">移动时间</span>(0 = 硬切)。</li></ul>
+<h2 id="gizmo">移动和旋转镜头<a class="anker" href="#gizmo">#</a></h2>
+<p>视图上方的工具栏用于切换操纵器:<strong><span class="ui">移动</span></strong> 显示三个箭头和中间的方块——拖动箭头沿某一轴移动,拖动方块在视平面内移动。<strong><span class="ui">旋转</span></strong> 显示俯仰、偏航和翻滚三个圆环。<strong><span class="ui">世界</span> / <span class="ui">本地</span></strong> 决定箭头跟随地图还是摄像机。松开鼠标时新数值写入脚本——可一步撤销。</p>
+<div class="bildreihe"><figure class="bild"><a href="../bilder/zh/h_kamera_verschieben.webp" class="zoom"><img src="../bilder/zh/h_kamera_verschieben.webp" alt="移动:箭头和中间的方块。" loading="lazy"></a><figcaption><span class="ui">移动</span>:箭头和中间的方块。</figcaption></figure><figure class="bild"><a href="../bilder/zh/h_kamera_drehen.webp" class="zoom"><img src="../bilder/zh/h_kamera_drehen.webp" alt="旋转:三个圆环。" loading="lazy"></a><figcaption><span class="ui">旋转</span>:三个圆环。</figcaption></figure></div>
+<p>如果抓取操纵器时时间轴位于两个关键帧<strong>之间</strong>,会在该时刻新建关键帧,而不是修改起点——就像动画软件的自动关键帧。驾驶时按 <kbd>Enter</kbd> 也会设置这样的关键帧(<a href="kamera.html#steuern">亲自驾驶镜头</a>)。</p>
+<h2 id="bahnen">摄像机路径<a class="anker" href="#bahnen">#</a></h2>
+<p>选中的摄像机会绘制其路径:已飞过的部分为黄色,其余为灰色。镜头很多时会显得杂乱——<strong><span class="ui">当前路径</span></strong> 只显示进入当前镜头和通往下一个镜头的移动,<strong><span class="ui">全部路径</span></strong> 显示所有移动。两个按钮都在摄像机面板中。</p>
+<h2 id="steuern">亲自驾驶镜头<a class="anker" href="#steuern">#</a></h2>
+<p><strong><span class="ui">驾驶</span></strong> 让你进入镜头:按住鼠标右键环顾四周,<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 移动,<kbd>Q</kbd> <kbd>E</kbd> 下降和上升。<strong><span class="ui">应用</span></strong> 把视角写入脚本,<kbd>Esc</kbd> 取消。驾驶时移动时间轴并按 <kbd>Enter</kbd>(<strong><span class="ui">设置关键帧</span></strong>),即可沿途逐个设置关键帧。</p>
+<h2 id="vorschau">预览与透过镜头观看<a class="anker" href="#vorschau">#</a></h2>
+<p><strong><span class="ui">摄像机预览</span></strong>(位于所选摄像机的工具栏中,视图左上角)在视图右下角显示摄像机看到的小画面;拖动时会跟随操纵器。单击画面即可全屏透过摄像机观看;此时播放时间轴,就能看到与游戏中一致的过场动画。同一工具栏中的 <strong><span class="ui">通过摄像机</span></strong> 可直接切换到摄像机视角。</p>
+<figure class="bild breit anim"><a href="../bilder/zh/a_kamera.webp" class="zoom"><img src="../bilder/zh/a_kamera.webp" alt="播放时间轴时透过摄像机观看。" loading="lazy"></a><span class="abzeichen">动画</span><figcaption>播放时间轴时透过摄像机观看。</figcaption></figure>
+<div class="hinweis">有些镜头位于某个 <code>ref_tag</code> 上或注视某个 <code>ref_tag</code>。此时面板会提示,移动镜头就会移动地图中的该 ref_tag——脚本只引用它的名字。</div>
+    <nav class="blaettern"><a class="vor" href="entities.html"><span>上一页</span>实体</a><a class="nach" href="zeitleiste.html"><span>下一页</span>时间轴</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

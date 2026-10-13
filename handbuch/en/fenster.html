@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The window - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class="aktiv"><a href="fenster.html">The window</a><ul class="unter"><li><a href="#bereiche">The parts</a></li><li><a href="#teilen">Two scripts side by side</a></li><li><a href="#groesse">Size, look and layout</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/fenster.html" class="aktiv" lang="en">English</a><a href="../de/fenster.html" class="" lang="de">Deutsch</a><a href="../zh/fenster.html" class="" lang="zh">中文</a><a href="../ja/fenster.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Start here</div>
+    <h1>The window</h1>
+    <p class="einleitung">One window, three modes. The mode bar on the left decides what the big area shows; script, map and timeline always talk to each other.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_fenster.webp" class="zoom"><img src="../bilder/en/h_fenster.webp" alt="The window in Map mode with a mission open." loading="lazy"></a><figcaption>The window in Map mode with a mission open.</figcaption></figure>
+<h2 id="bereiche">The parts<a class="anker" href="#bereiche">#</a></h2>
+<table class="liste"><thead><tr><th>Part</th><th>What it is for</th></tr></thead><tbody><tr><td>Menu bar</td><td><span class="ui">File</span>, <span class="ui">Edit</span>, <span class="ui">Debug</span>, <span class="ui">View</span>, <span class="ui">Help</span> - opening and saving, game folders, look and language, the guide.</td></tr><tr><td>Script tabs</td><td>One tab per open script. A <code>*</code> means unsaved changes, <code>+</code> opens a new script, tabs can be dragged into another order. All tabs of a mission share the map and the camera.</td></tr><tr><td>Mode bar</td><td>The strip at the far left: <strong><span class="ui">Events</span></strong> (build scripts), <strong><span class="ui">Map</span></strong> (the 3D map), <strong><span class="ui">Model</span></strong> (look at a character model).</td></tr><tr><td>Left column</td><td>Depends on the mode: the list of commands, the entities of the map with their inspector, or the animations of a model.</td></tr><tr><td><span class="ui">Script Flow</span></td><td>The script itself - as a tree (<span class="ui">Classic</span>), a graph (<span class="ui">Graph</span>) or over time (<span class="ui">Tracks</span>). See <a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a>.</td></tr><tr><td><span class="ui">Actions</span></td><td>The button column on the right, as in the original: edit, file, tree options, <strong><span class="ui">Compile!</span></strong>. In Map mode it makes room for the map.</td></tr><tr><td>Timeline</td><td>Under the map: plays the scene and shows every command in time. See <a href="zeitleiste.html">Timeline</a>.</td></tr><tr><td>Status line</td><td>Messages, the error and note counters (click them for the list), the undo history and when the script was last compiled.</td></tr></tbody></table>
+<h2 id="teilen">Two scripts side by side<a class="anker" href="#teilen">#</a></h2>
+<p><strong><span class="ui">File</span> → <span class="ui">Split view</span></strong> shows up to four scripts beside each other in Events mode - for comparing and for copying commands across. Drag a command from one pane into another to copy it; click into a pane to work in it.</p>
+<h2 id="groesse">Size, look and layout<a class="anker" href="#groesse">#</a></h2>
+<ul><li><kbd>Ctrl</kbd> + mouse wheel scales the whole interface (50 - 300 %); <strong><span class="ui">View</span> → <span class="ui">Interface Scale</span></strong> does the same.</li><li><strong><span class="ui">View</span> → <span class="ui">Theme</span></strong>: <span class="ui">BehavEd Classic</span>, <span class="ui">Windows</span>, <span class="ui">Dark</span>, <span class="ui">Midnight</span>, <span class="ui">Light</span>, <span class="ui">High Contrast</span>.</li><li>Drag the borders between the columns to resize them; each mode remembers its widths. <strong><span class="ui">Debug</span> → <span class="ui">Restore default layout</span></strong> puts everything back.</li><li>Opening a file in Explorer while BehavEd-Remake runs hands it to the open window instead of starting a second program.</li></ul>
+    <nav class="blaettern"><a class="vor" href="erste-schritte.html"><span>Previous</span>Getting started</a><a class="nach" href="skripte.html"><span>Next</span>Writing scripts</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

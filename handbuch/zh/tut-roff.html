@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>飞船沿 ROFF 路径飞行 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class="aktiv"><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a><ul class="unter"><li><a href="#schritte">步骤</a></li></ul></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-roff.html" class="" lang="en">English</a><a href="../de/tut-roff.html" class="" lang="de">Deutsch</a><a href="../zh/tut-roff.html" class="aktiv" lang="zh">中文</a><a href="../ja/tut-roff.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">教程</div>
+    <h1>飞船沿 ROFF 路径飞行</h1>
+    <p class="einleitung">为竞技场上空的飞船制作一段带转弯的自由飞行——生成 ROFF 文件,用操纵器旋转,并为游戏保存。</p>
+    <h2 id="schritte">步骤<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>选择飞船。</strong> 在 <code>md_am_sith</code> 中单击地图上的飞船 <code>sta2</code>。检查器显示一个 <code>func_static</code>。</p><figure class="bild"><a href="../bilder/zh/t3_1.webp" class="zoom"><img src="../bilder/zh/t3_1.webp" alt="已选中飞船。" loading="lazy"></a><figcaption>已选中飞船。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>以 ROFF 方式打开动画。</strong> 在检查器中按 <strong><span class="ui">动画</span></strong>,把时间轴设为 1 秒,按 <strong><span class="ui">ROFF 文件</span></strong>。脚本中会加入带有 <code>play ( &quot;PLAY_ROFF&quot;, &quot;md_am/roffs/sta2&quot; )</code> 的块;第一个关键帧就是飞船当前的位置。</p><figure class="bild"><a href="../bilder/zh/t3_2.webp" class="zoom"><img src="../bilder/zh/t3_2.webp" alt="ROFF 模式下的 动画 窗口。" loading="lazy"></a><figcaption>ROFF 模式下的 <span class="ui">动画</span> 窗口。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>设置后续关键帧。</strong> 把时间轴移到 4 秒,按 <strong><span class="ui">在播放头添加关键帧</span></strong>,把新菱形拖过竞技场。在 7 秒和 10 秒重复。开启 <strong><span class="ui">平滑</span></strong> 后,路径会成为穿过所有菱形的一条曲线。</p><figure class="bild"><a href="../bilder/zh/t3_3.webp" class="zoom"><img src="../bilder/zh/t3_3.webp" alt="四个关键帧,一条平滑曲线。" loading="lazy"></a><figcaption>四个关键帧,一条平滑曲线。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>旋转飞船。</strong> 把时间轴设为 7 秒,将操纵器切换到 <strong><span class="ui">旋转</span></strong>,拖动红色圆环:飞船在转弯中倾斜。由于窗口正显示这艘飞船,操纵器会在 7 秒处设置关键帧,而不是修改起点。</p><figure class="bild"><a href="../bilder/zh/t3_4.webp" class="zoom"><img src="../bilder/zh/t3_4.webp" alt="红色圆环让飞船在 7 秒处倾斜。" loading="lazy"></a><figcaption>红色圆环让飞船在 7 秒处倾斜。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>观看。</strong> 按地图下方的播放按钮(▶)。时间轴在 <strong><span class="ui">移动</span></strong> 下以条带显示这段飞行;拖动可让它提前或推迟开始。</p><figure class="bild"><a href="../bilder/zh/t3_5.webp" class="zoom"><img src="../bilder/zh/t3_5.webp" alt="飞行中的飞船。" loading="lazy"></a><figcaption>飞行中的飞船。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>保存。</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd> 写入脚本——第一次会询问保存位置,请选择模组的 <code>scripts</code> 文件夹。在同一 scripts 文件夹中会写出 <code>md_am/roffs/sta2.rof</code>;状态栏会显示文件名。<strong><span class="ui">保存任务</span></strong> 会把它放进任务的 <code>.pk3</code>。</p><figure class="bild"><a href="../bilder/zh/t3_6.webp" class="zoom"><img src="../bilder/zh/t3_6.webp" alt="窗口中的文件名和时长——保存时写出文件。" loading="lazy"></a><figcaption>窗口中的文件名和时长——保存时写出文件。</figcaption></figure></div></div></li></ol>
+<p>ROFF 文件的原理以及如何编辑游戏中的 ROFF:<a href="animation.html">移动物体动画与 ROFF 文件</a>。</p>
+    <nav class="blaettern"><a class="vor" href="tut-figur.html"><span>上一页</span>让角色行走</a><a class="nach" href="tut-mission.html"><span>下一页</span>你自己的任务</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

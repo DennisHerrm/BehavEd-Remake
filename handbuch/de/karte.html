@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Die Karte - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class="aktiv"><a href="karte.html">Die Karte</a><ul class="unter"><li><a href="#laden">Eine Karte öffnen</a></li><li><a href="#bewegen">Sich bewegen</a></li><li><a href="#anzeige">Was gezeigt wird</a></li></ul></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/karte.html" class="" lang="en">English</a><a href="../de/karte.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/karte.html" class="" lang="zh">中文</a><a href="../ja/karte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Karte und Szene</div>
+    <h1>Die Karte</h1>
+    <p class="einleitung">Die Karte in 3D, gezeichnet wie im Spiel - mit Licht, Glühen, Nebel, Effekten und den Figuren des Skripts.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_karte.webp" class="zoom"><img src="../bilder/de/h_karte.webp" alt="Die Kartenansicht mit ihrer Leiste oben und den Platzier-Kacheln links." loading="lazy"></a><figcaption>Die Kartenansicht mit ihrer Leiste oben und den Platzier-Kacheln links.</figcaption></figure>
+<h2 id="laden">Eine Karte öffnen<a class="anker" href="#laden">#</a></h2>
+<p>Schalte in der Modusleiste auf <strong><span class="ui">Karte</span></strong>. Eine Mission bringt ihre Karte mit (<a href="missionen.html">Missionen</a>). Ohne Mission öffnet <strong><span class="ui">Karten  Dateien</span></strong> eine Karte von der Platte oder aus einem <code>.pk3</code> oder lädt eine eigene <code>.ent</code>-Datei. <strong>Scripts (N)</strong> nennt die Skripte, auf die die Entities der Karte zeigen - eines wählen lädt seine Zwischensequenz.</p>
+<h2 id="bewegen">Sich bewegen<a class="anker" href="#bewegen">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D (Maus über der Ansicht)</kbd></td><td>Fliegen; <kbd>Q</kbd> / <kbd>E</kbd> runter und hoch, <kbd>Umschalt</kbd> schneller</td></tr><tr><td><kbd>Rechte Maus ziehen</kbd></td><td>Umsehen</td></tr><tr><td><kbd>Mittlere Maus ziehen</kbd></td><td>Verschieben</td></tr><tr><td><kbd>Alt + mittlere Maus</kbd></td><td>Umkreisen</td></tr><tr><td><kbd>Mausrad</kbd></td><td>Zoomen</td></tr><tr><td><kbd>Doppelklick auf eine Entity in der Liste</kbd></td><td>Hinfliegen</td></tr><tr><td><kbd>Strg + 1 ... 9</kbd></td><td>Ansicht merken; <kbd>1</kbd> ... <kbd>9</kbd> springt zurück (je Karte)</td></tr></tbody></table>
+<h2 id="anzeige">Was gezeigt wird<a class="anker" href="#anzeige">#</a></h2>
+<p>Die Knöpfe rechts in der Leiste schalten Teile des Bildes an und aus: Entities, Namen, die Figuren des Skripts, Effekte, Glühen, dynamisches Licht, Nebel und Himmel. <strong><span class="ui">Draufsicht</span></strong> schaut wie eine Landkarte senkrecht hinunter und schneidet alles über der Schnitthöhe weg - die Höhe ziehen zeigt ein anderes Stockwerk. <strong><span class="ui">Ansicht einstellen</span></strong> (Zahnrad) enthält Helligkeit, Umgebungslicht, Detail, Figurenschatten und <strong><span class="ui">Entities dieses Skripts hervorheben</span></strong>, das alle Entities abblendet, die das aktive Skript nicht benutzt.</p>
+<figure class="bild"><a href="../bilder/de/h_ansicht_einst.webp" class="zoom"><img src="../bilder/de/h_ansicht_einst.webp" alt="Ansicht einstellen." loading="lazy"></a><figcaption><span class="ui">Ansicht einstellen</span>.</figcaption></figure>
+<div class="hinweis">Das Bild soll aussehen wie im Spiel: Shader, Lightmaps, Glühen (wie <code>r_DynamicGlow</code>), Nebel (<code>r_drawfog</code>), dynamische Lichter, Lens-Flares, Wetter und Klingenspuren. <strong><span class="ui">Statistik</span></strong> zeigt Bildrate, Texturen und Werte der Grafikkarte, wenn etwas falsch aussieht.</div>
+    <nav class="blaettern"><a class="vor" href="speichern.html"><span>Zurück</span>Speichern, Übersetzen, Prüfen</a><a class="nach" href="entities.html"><span>Weiter</span>Entities</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

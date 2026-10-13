@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeitleiste - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class="aktiv"><a href="zeitleiste.html">Zeitleiste</a><ul class="unter"><li><a href="#abspielen">Abspielen</a></li><li><a href="#zeilen">Zeilen und Arten</a></li><li><a href="#ziehen">Zeit durch Ziehen ändern</a></li></ul></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/zeitleiste.html" class="" lang="en">English</a><a href="../de/zeitleiste.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/zeitleiste.html" class="" lang="zh">中文</a><a href="../ja/zeitleiste.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Karte und Szene</div>
+    <h1>Zeitleiste</h1>
+    <p class="einleitung">Die Zeitleiste spielt die Szene ab und zeigt, wann jeder Befehl geschieht. Einen Block ziehen ändert das Skript mit.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_zeitleiste.webp" class="zoom"><img src="../bilder/de/h_zeitleiste.webp" alt="Die Zeitleiste: oben die Kamerazeilen, je Figur eine Zeile, Unterzeilen nach Art, der Zeiger in Orange." loading="lazy"></a><figcaption>Die Zeitleiste: oben die Kamerazeilen, je Figur eine Zeile, Unterzeilen nach Art, der Zeiger in Orange.</figcaption></figure>
+<h2 id="abspielen">Abspielen<a class="anker" href="#abspielen">#</a></h2>
+<p>Der Abspielknopf (▶) unter der Karte startet und hält an. Auf das Lineal klicken oder ziehen stellt die Zeit. Das Tempofeld verlangsamt die Szene (Ton nur bei 1x), <strong><span class="ui">Schleife</span></strong> wiederholt sie. Das Mausrad über dem Lineal zoomt, <kbd>Strg</kbd>+Rad über den Spuren ebenso; <strong><span class="ui">Alles</span></strong> zeigt alles, die mittlere Maustaste verschiebt. Bilder oder Sekunden - der Einheitenknopf schaltet um.</p>
+<h2 id="zeilen">Zeilen und Arten<a class="anker" href="#zeilen">#</a></h2>
+<p>Die Zeile <strong><span class="ui">Kamera</span></strong> enthält die Kamerabefehle (Fahrt, Schwenk, Zoom, Blende). Darunter hat jede Figur und jeder Mover, den das Skript anfasst, eine eigene Zeile. Ein Klick auf den Pfeil am Namen klappt sie auf: die Befehle sind sortiert nach <strong><span class="ui">Bewegung</span></strong>, <strong><span class="ui">Animation</span></strong>, <strong><span class="ui">Blick</span></strong>, <strong><span class="ui">Ton</span></strong>, <strong><span class="ui">Zustand</span></strong> und <strong><span class="ui">Ablauf (waits, Signale)</span></strong>. Zeilen, in denen nach dem Start nichts geschieht, sind ausgeblendet; <strong><span class="ui">Ruhige Spuren</span></strong> zeigt sie.</p>
+<p>Die <code>wait</code>-Befehle sind zunächst ausgeblendet - sie setzen trotzdem alles in die Zeit, und das Verschieben eines Blocks passt sie an. <strong><span class="ui">waits</span></strong> zeigt sie als eigene Blöcke.</p>
+<h2 id="ziehen">Zeit durch Ziehen ändern<a class="anker" href="#ziehen">#</a></h2>
+<p>Einen Block nach links oder rechts ziehen ändert das <code>wait</code> davor - der Befehl kommt früher oder später, alles danach rückt mit. Einen Kamerablock an seinem Ende ziehen ändert seine Dauer. Laufen und Fliegen erscheinen als Bänder am unteren Rand der Zeile einer Figur; sie lassen sich genauso in der Zeit ziehen, ein Rechtsklick auf einen Lauf schaltet zwischen Gehen und Rennen.</p>
+<p>Ein Klick auf einen Block wählt seine Zeile im Skript, und die Karte springt zu diesem Augenblick - Zeitleiste, Skript und Karte zeigen immer dasselbe.</p>
+<div class="hinweis">Die Zeiten kommen aus einem Nachbau der ICARUS-Maschine des Spiels, samt ihrer Eigenheiten: ein <code>wait</code> endet ein Spielbild (50 ms) später als geschrieben, und ein <code>dowait</code> wartet auf die genannte Aufgabe. Lässt sich eine Zeit nicht wissen (ein <code>waitsignal</code>), sagt die Zeitleiste das, statt zu raten.</div>
+    <nav class="blaettern"><a class="vor" href="kamera.html"><span>Zurück</span>Kamera</a><a class="nach" href="figuren.html"><span>Weiter</span>Figuren und Wege</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

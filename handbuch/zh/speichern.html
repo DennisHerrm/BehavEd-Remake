@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>保存、编译与检查 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class="aktiv"><a href="speichern.html">保存、编译与检查</a><ul class="unter"><li><a href="#speichern">保存</a></li><li><a href="#uebersetzen">编译</a></li><li><a href="#pruefen">提示与错误</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/speichern.html" class="" lang="en">English</a><a href="../de/speichern.html" class="" lang="de">Deutsch</a><a href="../zh/speichern.html" class="aktiv" lang="zh">中文</a><a href="../ja/speichern.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">脚本</div>
+    <h1>保存、编译与检查</h1>
+    <p class="einleitung">游戏运行 <code>.ibi</code> 文件。你编写 <code>.txt</code>;<strong>Compile!</strong> 将其编译为 <code>.ibi</code>——与 Raven 的 IBIZE 逐字节一致。</p>
+    <h2 id="speichern">保存<a class="anker" href="#speichern">#</a></h2>
+<ul><li><strong><span class="ui">保存</span></strong>(<kbd>Ctrl</kbd>+<kbd>S</kbd>)始终写入 <code>.txt</code> 源文件——即使你打开的是 <code>.ibi</code>(会保存在它旁边)。</li><li><strong><span class="ui">全部保存</span></strong>(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)保存所有有修改的标签页;来自压缩包的标签页没有可写回的文件,会被跳过。</li><li>每次保存和编译都会保留一份副本——<code>backup1.txt</code>(最新)到 <code>backup10.txt</code>——位于 <code>behaved.exe</code> 旁的 <code>backup</code> 文件夹中,每个脚本一个子文件夹;<strong><span class="ui">文件</span> → <span class="ui">打开备份文件夹</span></strong> 可查看。<strong><span class="ui">备份</span></strong> / <strong><span class="ui">还原</span></strong> 用于手动保留和恢复一份额外副本(脚本旁的 <code>&lt;脚本&gt;.bak</code>)。</li><li>自建的 ROFF 路径会随脚本一起写成 <code>.rof</code> 文件——参见 <a href="animation.html#roff">ROFF 文件的原理</a>。</li></ul>
+<h2 id="uebersetzen">编译<a class="anker" href="#uebersetzen">#</a></h2>
+<p>操作栏中的 <strong><span class="ui">编译！</span></strong> 会在 <code>.txt</code> 旁写入 <code>&lt;脚本&gt;.ibi</code>(并保存 <code>.txt</code>)。按钮闪绿色显示 <strong><span class="ui">已编译</span></strong>,或闪红色显示 <strong><span class="ui">失败</span></strong>——此时第一处出错的行会被选中,状态栏说明原因。编译器内置,并已与 Raven IBIZE 生成的 1011 个 <code>.ibi</code> 文件逐字节核对。</p>
+<h2 id="pruefen">提示与错误<a class="anker" href="#pruefen">#</a></h2>
+<p>编写时程序会检查每一行:未知命令、不在列表中的值、缺少引号的文本字段、拼错的字段(“你是否想输入……?”)。状态栏中的计数显示数量——单击查看列表,单击某条消息跳到对应行。<strong><span class="ui">视图</span> → <span class="ui">目标游戏</span></strong> 会额外提示哪些内容在多人服务器上无效。</p>
+    <nav class="blaettern"><a class="vor" href="skriptfluss.html"><span>上一页</span>脚本流程:经典、图表、轨道</a><a class="nach" href="karte.html"><span>下一页</span>地图</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

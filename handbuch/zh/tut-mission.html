@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>你自己的任务 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class="aktiv"><a href="tut-mission.html">你自己的任务</a><ul class="unter"><li><a href="#schritte">步骤</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-mission.html" class="" lang="en">English</a><a href="../de/tut-mission.html" class="" lang="de">Deutsch</a><a href="../zh/tut-mission.html" class="aktiv" lang="zh">中文</a><a href="../ja/tut-mission.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">教程</div>
+    <h1>你自己的任务</h1>
+    <p class="einleitung">从一张空地图到游戏可加载的任务:创建任务、添加开场、检查并打包成 .pk3。</p>
+    <h2 id="schritte">步骤<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>创建任务。</strong> 在地图页按 <strong><span class="ui">新建任务</span></strong>(或起始页面上的卡片)。选择地图,输入名称(例如 <code>md_test_jedi</code>),按 <strong><span class="ui">创建</span></strong>。</p><figure class="bild"><a href="../bilder/zh/t4_1.webp" class="zoom"><img src="../bilder/zh/t4_1.webp" alt="新建任务对话框。" loading="lazy"></a><figcaption>新建任务对话框。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>查看生成的内容。</strong> 已放置玩家出生点、脚本启动器和开场脚本;开场脚本在一个标签页中打开。任务名称显示在地图工具栏中。</p><figure class="bild"><a href="../bilder/zh/t4_2.webp" class="zoom"><img src="../bilder/zh/t4_2.webp" alt="新建的任务。" loading="lazy"></a><figcaption>新建的任务。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>编写开场。</strong> 添加摄像机镜头(<a href="tut-erste-szene.html">第一个过场动画</a>)和一个行走的角色(<a href="tut-figur.html">让角色行走</a>)。所有内容都写入开场脚本。</p></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>打开保存任务。</strong> 按 <strong><span class="ui">保存任务</span></strong>。对话框列出将放入压缩包的每个文件,并检查任务。</p><figure class="bild"><a href="../bilder/zh/t4_4.webp" class="zoom"><img src="../bilder/zh/t4_4.webp" alt="保存前的检查。" loading="lazy"></a><figcaption>保存前的检查。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>修正红色项目后保存。</strong> 错误必须修正(例如实体使用了但不存在的脚本);警告可以保留。<strong><span class="ui">保存</span></strong> 会把 <code>zz_md_test_jedi.pk3</code> 写入游戏文件夹。</p><figure class="bild"><a href="../bilder/zh/t4_5.webp" class="zoom"><img src="../bilder/zh/t4_5.webp" alt="已保存——消息显示保存位置。" loading="lazy"></a><figcaption>已保存——消息显示保存位置。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>开始游玩。</strong> 启动游戏,打开控制台并输入 <code>devmap md_test_jedi</code>。下次可用 <strong><span class="ui">文件</span> → <span class="ui">最近的任务</span></strong> 重新打开整个项目。</p><figure class="bild"><a href="../bilder/zh/t4_6.webp" class="zoom"><img src="../bilder/zh/t4_6.webp" alt="最近列表中的任务。" loading="lazy"></a><figcaption>最近列表中的任务。</figcaption></figure></div></div></li></ol>
+    <nav class="blaettern"><a class="vor" href="tut-roff.html"><span>上一页</span>飞船沿 ROFF 路径飞行</a><a class="nach" href="einstellungen.html"><span>下一页</span>设置与更新</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

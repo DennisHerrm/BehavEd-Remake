@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The map - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class="aktiv"><a href="karte.html">The map</a><ul class="unter"><li><a href="#laden">Opening a map</a></li><li><a href="#bewegen">Moving around</a></li><li><a href="#anzeige">What is shown</a></li></ul></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/karte.html" class="aktiv" lang="en">English</a><a href="../de/karte.html" class="" lang="de">Deutsch</a><a href="../zh/karte.html" class="" lang="zh">中文</a><a href="../ja/karte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>The map</h1>
+    <p class="einleitung">The map in 3D, drawn like the game draws it - with lights, glow, fog, effects and the figures of the script.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_karte.webp" class="zoom"><img src="../bilder/en/h_karte.webp" alt="The map view with its toolbar on top and the placement tiles on the left." loading="lazy"></a><figcaption>The map view with its toolbar on top and the placement tiles on the left.</figcaption></figure>
+<h2 id="laden">Opening a map<a class="anker" href="#laden">#</a></h2>
+<p>Switch to <strong><span class="ui">Map</span></strong> in the mode bar. A mission brings its map along (<a href="missionen.html">Missions</a>). Without a mission, <strong><span class="ui">Maps  files</span></strong> opens a map from disk or from a <code>.pk3</code>, or loads a separate <code>.ent</code> file. <strong>Scripts (N)</strong> lists the scripts the map&#x27;s entities point to - pick one to load its cutscene.</p>
+<h2 id="bewegen">Moving around<a class="anker" href="#bewegen">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D (mouse over the view)</kbd></td><td>Fly; <kbd>Q</kbd> / <kbd>E</kbd> down and up, <kbd>Shift</kbd> faster</td></tr><tr><td><kbd>Right mouse drag</kbd></td><td>Look around</td></tr><tr><td><kbd>Middle mouse drag</kbd></td><td>Pan</td></tr><tr><td><kbd>Alt + middle mouse</kbd></td><td>Orbit</td></tr><tr><td><kbd>Wheel</kbd></td><td>Zoom</td></tr><tr><td><kbd>Double-click an entity in the list</kbd></td><td>Fly there</td></tr><tr><td><kbd>Ctrl + 1 ... 9</kbd></td><td>Save the view; <kbd>1</kbd> ... <kbd>9</kbd> jumps back (kept per map)</td></tr></tbody></table>
+<h2 id="anzeige">What is shown<a class="anker" href="#anzeige">#</a></h2>
+<p>The buttons on the right of the toolbar switch parts of the picture on and off: entities, names, the figures of the script, effects, glow, dynamic light, fog and sky. <strong><span class="ui">Top view</span></strong> looks straight down like a map and cuts away everything above the cut height - drag the height box to look at another floor. <strong><span class="ui">View settings</span></strong> (gear) holds brightness, ambient light, detail, character shadows and <strong><span class="ui">Highlight this script&#x27;s entities</span></strong>, which dims every entity the active script does not use.</p>
+<figure class="bild"><a href="../bilder/en/h_ansicht_einst.webp" class="zoom"><img src="../bilder/en/h_ansicht_einst.webp" alt="View settings." loading="lazy"></a><figcaption><span class="ui">View settings</span>.</figcaption></figure>
+<div class="hinweis">The picture is meant to look like the game: shaders, lightmaps, glow (like <code>r_DynamicGlow</code>), fog (<code>r_drawfog</code>), dynamic lights, lens flares, weather and saber trails. <strong><span class="ui">Statistics</span></strong> shows frame rate, textures and graphics card values when something looks wrong.</div>
+    <nav class="blaettern"><a class="vor" href="speichern.html"><span>Previous</span>Saving, compiling, checks</a><a class="nach" href="entities.html"><span>Next</span>Entities</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

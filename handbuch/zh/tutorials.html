@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教程 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>教程</summary><ul><li class="aktiv"><a href="tutorials.html">教程</a><ul class="unter"></ul></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tutorials.html" class="" lang="en">English</a><a href="../de/tutorials.html" class="" lang="de">Deutsch</a><a href="../zh/tutorials.html" class="aktiv" lang="zh">中文</a><a href="../ja/tutorials.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">教程</div>
+    <h1>教程</h1>
+    <p class="einleitung">每个教程都从第一次点击开始,一直带你完成一项工作,每一步都有配图。按想做的内容选择一个。</p>
+    <div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/zh/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>第一个过场动画</h3><p>两个摄像机镜头,中间一段平滑移动,透过摄像机观看,并为游戏编译。</p><div class="meta">摄像机 · 六个步骤 · 需要 Movie Duels</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/zh/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>让角色行走</h3><p>放置一个角色和一个行走目标,让脚本把角色送过去,然后在地图上修改路径——步行或奔跑、中途增加路径点。</p><div class="meta">实体与路径 · 六个步骤 · 任意地图</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/zh/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>飞船沿 ROFF 路径飞行</h3><p>为竞技场上空的飞船制作一段带转弯的自由飞行——生成 ROFF 文件,用操纵器旋转,并为游戏保存。</p><div class="meta">动画 · 六个步骤 · 需要 Movie Duels</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/zh/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>你自己的任务</h3><p>从一张空地图到游戏可加载的任务:创建任务、添加开场、检查并打包成 .pk3。</p><div class="meta">任务 · 六个步骤 · 任意地图</div></div></a></div>
+<p>教程使用 <strong>Movie Duels</strong>(<code>MD_Missions_Ep3.pk3</code> 中的 <code>md_am_sith</code>),以便图片与你看到的一致;其他任务的操作方法相同。如果你还不熟悉窗口各部分,请先阅读 <a href="fenster.html">窗口</a> 和 <a href="karte.html#bewegen">视角操作</a>。</p>
+    <nav class="blaettern"><a class="vor" href="modell.html"><span>上一页</span>模型视图与角色</a><a class="nach" href="tut-erste-szene.html"><span>下一页</span>第一个过场动画</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

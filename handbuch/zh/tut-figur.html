@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>让角色行走 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class="aktiv"><a href="tut-figur.html">让角色行走</a><ul class="unter"><li><a href="#schritte">步骤</a></li></ul></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-figur.html" class="" lang="en">English</a><a href="../de/tut-figur.html" class="" lang="de">Deutsch</a><a href="../zh/tut-figur.html" class="aktiv" lang="zh">中文</a><a href="../ja/tut-figur.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">教程</div>
+    <h1>让角色行走</h1>
+    <p class="einleitung">放置一个角色和一个行走目标,让脚本把角色送过去,然后在地图上修改路径——步行或奔跑、中途增加路径点。</p>
+    <h2 id="schritte">步骤<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>放置角色。</strong> 在地图模式下单击视图左边缘的 <strong><span class="ui">角色 (NPC_spawner)</span></strong> 图块,再单击地面。在检查器中设置 <code>NPC_type</code>(<strong>...</strong> 按钮可搜索游戏中的所有 NPC)和 <strong><span class="ui">名称</span></strong>,例如 <code>walker</code>。</p><figure class="bild"><a href="../bilder/zh/t2_1.webp" class="zoom"><img src="../bilder/zh/t2_1.webp" alt="放在地面上的角色。" loading="lazy"></a><figcaption>放在地面上的角色。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>放置行走目标。</strong> 单击 <strong><span class="ui">行走目标 (waypoint_navgoal)</span></strong> 图块,再单击角色要去的位置。</p><figure class="bild"><a href="../bilder/zh/t2_2.webp" class="zoom"><img src="../bilder/zh/t2_2.webp" alt="行走目标。" loading="lazy"></a><figcaption>行走目标。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>让脚本发送命令。</strong> 在实体列表中右键单击角色 → <strong><span class="ui">插入 affect 块</span></strong>:会出现一个 <code>affect ( &quot;walker&quot;, FLUSH )</code> 块。在列表中右键单击行走目标 → <strong><span class="ui">作为行走目标插入 (SET_NAVGOAL)</span></strong>:该行出现在所选行下方——把它拖进 affect 块。脚本现在是 <code>affect ( &quot;walker&quot;, FLUSH ) { set ( SET_NAVGOAL, &quot;...&quot; ); }</code>。</p><figure class="bild"><a href="../bilder/zh/t2_3.webp" class="zoom"><img src="../bilder/zh/t2_3.webp" alt="带导航点的 affect 块。" loading="lazy"></a><figcaption>带导航点的 affect 块。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>播放。</strong> 按地图下方的播放按钮(▶):角色开始行走,身后的路径变成黄色。时间轴中它所在的行以条带显示这段行走。</p><figure class="bild"><a href="../bilder/zh/t2_4.webp" class="zoom"><img src="../bilder/zh/t2_4.webp" alt="行进中的角色。" loading="lazy"></a><figcaption>行进中的角色。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>改为奔跑。</strong> 右键单击路径的终点控制柄 → <strong><span class="ui">奔跑(从此段起)</span></strong>。<code>SET_RUNNING</code> 会写在导航点之前,角色会更早到达。</p><figure class="bild"><a href="../bilder/zh/t2_5.webp" class="zoom"><img src="../bilder/zh/t2_5.webp" alt="行走目标的菜单。" loading="lazy"></a><figcaption>行走目标的菜单。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>中途增加路径点。</strong> 把时间轴移到行走途中,抓住角色拖向一侧:会在该时刻创建新的导航点,角色会先走到那里。</p><figure class="bild"><a href="../bilder/zh/t2_6.webp" class="zoom"><img src="../bilder/zh/t2_6.webp" alt="行走途中新增的路径点。" loading="lazy"></a><figcaption>行走途中新增的路径点。</figcaption></figure></div></div></li></ol>
+<p>关于路径、朝向和倒退行走的更多内容:<a href="figuren.html">角色与路径</a>。</p>
+    <nav class="blaettern"><a class="vor" href="tut-erste-szene.html"><span>上一页</span>第一个过场动画</a><a class="nach" href="tut-roff.html"><span>下一页</span>飞船沿 ROFF 路径飞行</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

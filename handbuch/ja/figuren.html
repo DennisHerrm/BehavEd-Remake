@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>キャラクターと道 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class="aktiv"><a href="figuren.html">キャラクターと道</a><ul class="unter"><li><a href="#folgen">キャラクターと船の選択</a></li><li><a href="#griffe">始点・終点・新しい点</a></li><li><a href="#gangart">歩く/走る、共有目標</a></li></ul></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/figuren.html" class="" lang="en">English</a><a href="../de/figuren.html" class="" lang="de">Deutsch</a><a href="../zh/figuren.html" class="" lang="zh">中文</a><a href="../ja/figuren.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>キャラクターと道</h1>
+    <p class="einleitung">キャラクターはナビゴールへ歩き、船は move で飛びます。道全体が見え、マップ上で変更できます。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_figur_bahn.webp" class="zoom"><img src="../bilder/ja/h_figur_bahn.webp" alt="歩いているキャラクター。前方の道は灰色、歩き終えた部分は黄色、始点と終点にハンドル。" loading="lazy"></a><figcaption>歩いているキャラクター。前方の道は灰色、歩き終えた部分は黄色、始点と終点にハンドル。</figcaption></figure>
+<h2 id="folgen">キャラクターと船の選択<a class="anker" href="#folgen">#</a></h2>
+<p>ビューでキャラクターや船をクリックすると、そのエンティティ(キャラクターのスポナー、船のブラシエンティティ)が選択されます。モデルが動いてもマーカーとギズモが追従し、輪郭線で選択中のものが分かります。キャラクターの矢印はモデルの向きを示します。</p>
+<h2 id="griffe">始点・終点・新しい点<a class="anker" href="#griffe">#</a></h2>
+<ul><li><strong>終点のハンドルをドラッグ</strong>すると、歩行の目標(<code>waypoint_navgoal</code>)や飛行の終点が動きます。</li><li><strong>始点のハンドルをドラッグ</strong>すると、線全体ではなく始点だけが動きます。</li><li><strong>歩いている途中のキャラクターをつかんで</strong>(タイムラインが出発と到着の間)ドラッグすると、その瞬間に新しい点が作られます。キャラクターは新しいナビゴール、船は分割された <code>move</code> になります。</li><li><strong>回転</strong>も同様です。飛行の途中ではリングが新しい角度の点を作り、キャラクターではその時刻に <code>set ( SET_ANGLES )</code> を書きます。歩行中は到着時に適用されます。ゲームは歩くキャラクターを進行方向に向けるからです。</li></ul>
+<h2 id="gangart">歩く/走る、共有目標<a class="anker" href="#gangart">#</a></h2>
+<p>歩行の終点ハンドル(またはタイムラインの帯)を右クリックするとメニューが開きます。</p>
+<ul><li><strong><span class="ui">歩く(この移動から)</span></strong> / <strong><span class="ui">走る(この移動から)</span></strong> - ナビゴールの前に <code>SET_WALKING</code> または <code>SET_RUNNING</code> を書きます。</li><li><strong><span class="ui">歩きながら見る</span></strong> - 歩きながら別のキャラクターの方を向き続けます(<code>SET_WATCHTARGET</code>)。</li><li><strong><span class="ui">後ろ向きに歩く(後ろを見たまま)</span></strong> - 始点の後ろに視線マークを置いて後ろ向きに歩かせます。<strong><span class="ui">進行方向を向く</span></strong> で解除します。</li></ul>
+<p>複数のキャラクターが 1 つのナビゴールを共有している場合、動かすと全員が動いてしまいます。BehavEd-Remake はそれを検知し、先にこの歩行専用の目標のコピーを作ります。どれを作ったかはステータス行に表示されます。</p>
+<div class="hinweis">既存のスクリプトの後ろ歩きも認識されます。キャラクターが向きと逆に動くと、ゲームと同じく <code>BOTH_WALKBACK1</code> または <code>BOTH_RUNBACK1</code> が再生されます。</div>
+    <nav class="blaettern"><a class="vor" href="zeitleiste.html"><span>前へ</span>タイムライン</a><a class="nach" href="animation.html"><span>次へ</span>可動物のアニメーションと ROFF ファイル</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -26,6 +26,7 @@
 
 #include "bhed/entdefs.h"
 #include "bhed/missionbau.h"
+#include "bhed/roffanim.h"
 #include "bhed/scene.h"
 
 #include <algorithm>
@@ -964,7 +965,91 @@ void kasten(const MapEntity& e, float mins[3], float maxs[3]) {
 
 float winkelVon(const MapEntity& e) {
     const std::string* a = e.find("angle");
-    return a != nullptr ? std::strtof(a->c_str(), nullptr) : 0.0F;
+    if (a != nullptr) { return std::strtof(a->c_str(), nullptr); }
+    // Ohne "angle": die Gier aus "angles" (Schiffe, Modelle, rc599).
+    if (const std::string* w = e.find("angles")) {
+        float p = 0.0F;
+        float y = 0.0F;
+        float r = 0.0F;
+        if (std::sscanf(w->c_str(), "%f %f %f", &p, &y, &r) >= 2) { return y; }
+    }
+    return 0.0F;
+}
+
+// --- Drehen um alle drei Achsen (rc599) -------------------------------------
+//
+// shank: "ich kann die Sachen wie Charaktere, Schiffe und Kameras nicht mehr
+// drehen, weil kein Dreh-Gizmo mehr da ist ... bei Move ein Move-Target und
+// bei Drehen ein Rotation-Target". Im Drehmodus drei Ringe wie in Unreal:
+// blau um die Hochachse (Gier), gruen um die Querachse (Nicken), rot um die
+// Laengsachse (Rollen). Nicken und Rollen nur, wo die Engine sie liest
+// ("angles": Brush-Modelle, Kartenmodelle) - eine Figur hat nur ihre Gier.
+void winkel3Von(const MapEntity& e, float w[3]) {
+    w[0] = 0.0F;
+    w[1] = winkelVon(e);
+    w[2] = 0.0F;
+    if (const std::string* a = e.find("angles")) {
+        float p = 0.0F;
+        float y = w[1];
+        float r = 0.0F;
+        if (std::sscanf(a->c_str(), "%f %f %f", &p, &y, &r) == 3) {
+            w[0] = p;
+            w[1] = y;
+            w[2] = r;
+        }
+    }
+}
+
+bool kannKippen(const MapEntity& e) {
+    if (istNpcKlasse(e.classname) || e.classname == "info_player_start") { return false; }
+    const std::string* mdl = e.find("model");
+    return e.find("angles") != nullptr || (mdl != nullptr && !mdl->empty()) || e.classname.rfind("misc_model", 0) == 0;
+}
+
+// Die Winkel schreiben: "angles", wenn die Entity sie hat oder sie gekippt
+// ist, sonst wie bisher "angle".
+void setzeWinkel3(MapEntity& e, const float w[3]) {
+    const auto norm = [](float v) { return static_cast<int>(std::lround(std::fmod(std::fmod(v, 360.0F) + 360.0F, 360.0F))) % 360; };
+    const bool gekippt = std::fabs(w[0]) > 0.01F || std::fabs(w[2]) > 0.01F;
+    if (e.find("angles") != nullptr || gekippt) {
+        char t[64];
+        std::snprintf(t, sizeof(t), "%d %d %d", norm(w[0]), norm(w[1]), norm(w[2]));
+        setKey(e, "angles", t);
+    }
+    if (e.find("angle") != nullptr || !(e.find("angles") != nullptr || gekippt)) {
+        setKey(e, "angle", std::to_string(norm(w[1])));
+    }
+}
+
+// Ein Punkt auf dem Ring einer Achse (0 Gier, 1 Nicken, 2 Rollen) um o.
+void ringPunkt(const float o[3], int achse, float gierGrad, float radius, float a, float out[3]) {
+    const float g = gierGrad * 3.14159265F / 180.0F;
+    const float vor[3] = {std::cos(g), std::sin(g), 0.0F};
+    const float rechts[3] = {std::sin(g), -std::cos(g), 0.0F};
+    const float hoch[3] = {0.0F, 0.0F, 1.0F};
+    const float xw[3] = {1.0F, 0.0F, 0.0F};
+    const float yw[3] = {0.0F, 1.0F, 0.0F};
+    const float* u = achse == 0 ? xw : (achse == 1 ? vor : rechts);
+    const float* v = achse == 0 ? yw : hoch;
+    for (int k = 0; k < 3; ++k) { out[k] = o[k] + (u[k] * std::cos(a) + v[k] * std::sin(a)) * radius; }
+}
+
+// Die Drehachse eines Rings in Weltrichtung (fuer den Drehsinn auf dem Schirm).
+void ringAchse(int achse, float gierGrad, float out[3]) {
+    const float g = gierGrad * 3.14159265F / 180.0F;
+    if (achse == 0) {
+        out[0] = 0.0F;
+        out[1] = 0.0F;
+        out[2] = 1.0F;
+    } else if (achse == 1) {   // Nicken: um die Querachse (rechts)
+        out[0] = std::sin(g);
+        out[1] = -std::cos(g);
+        out[2] = 0.0F;
+    } else {                   // Rollen: um die Laengsachse (vorn)
+        out[0] = std::cos(g);
+        out[1] = std::sin(g);
+        out[2] = 0.0F;
+    }
 }
 
 bool hatRichtung(const MapEntity& e) {
@@ -979,10 +1064,36 @@ float laengeFuerPx(const Proj& p, const float o[3], float px) {
 }
 
 // Welcher Griff des Gizmos liegt unter der Maus? 0 keiner.
-int gizmoGriff(const Proj& p, const float o[3], float L, ImVec2 m) {
+int gizmoGriff(const Proj& p, const float o[3], float L, ImVec2 m, bool drehen = false, bool kippen = false,
+               float gierGrad = 0.0F) {
     ImVec2 so;
     if (!aufSchirm(p, o, so)) { return 0; }
     const float reich = ImGui::GetFontSize() * 0.45F;
+    if (drehen) {
+        // Die Ringe: 4 Gier, 5 Nicken, 6 Rollen. Der naechste gewinnt.
+        int best = 0;
+        float bestD = reich;
+        for (int achse = 0; achse < (kippen ? 3 : 1); ++achse) {
+            ImVec2 vorher;
+            bool hat = false;
+            for (int k = 0; k <= 48; ++k) {
+                float w[3];
+                ringPunkt(o, achse, gierGrad, L * 0.8F, static_cast<float>(k) / 48.0F * 6.2831853F, w);
+                ImVec2 s;
+                if (!aufSchirm(p, w, s)) { hat = false; continue; }
+                if (hat) {
+                    const float d = abstandZuStrecke(m, vorher, s);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = 4 + achse;
+                    }
+                }
+                vorher = s;
+                hat = true;
+            }
+        }
+        return best;
+    }
     for (int k = 0; k < 3; ++k) {
         float e[3] = {o[0], o[1], o[2]};
         e[k] += L;
@@ -994,24 +1105,57 @@ int gizmoGriff(const Proj& p, const float o[3], float L, ImVec2 m) {
             return k + 1;
         }
     }
-    // Ring in der Waagerechten
-    ImVec2 vorher;
-    bool hat = false;
-    for (int k = 0; k <= 32; ++k) {
-        const float a = static_cast<float>(k) / 32.0F * 6.2831853F;
-        const float w[3] = {o[0] + std::cos(a) * L * 0.8F, o[1] + std::sin(a) * L * 0.8F, o[2]};
-        ImVec2 s;
-        if (!aufSchirm(p, w, s)) { hat = false; continue; }
-        if (hat && abstandZuStrecke(m, vorher, s) < reich) { return 4; }
-        vorher = s;
-        hat = true;
-    }
     return 0;
 }
 
 constexpr float kGizmoPx = 70.0F;
 
 }  // namespace
+
+bool zugKippen(int ei, float& dNicken, float& dRollen) {
+    const App::EntZug& z = g_app->entZug;
+    dNicken = 0.0F;
+    dRollen = 0.0F;
+    if (!z.aktiv || ei < 0 || z.index != ei || static_cast<std::size_t>(ei) >= g_app->map.entities.size()) { return false; }
+    float w[3];
+    winkel3Von(g_app->map.entities[static_cast<std::size_t>(ei)], w);
+    dNicken = w[0] - z.startWinkel3[0];
+    dRollen = w[2] - z.startWinkel3[2];
+    return true;
+}
+
+void entityGizmoLeiste() {
+    const int ziel = inspektorZiel();
+    if (ziel < 0 || g_app->cameraSelected || g_app->camViewActive || !g_app->showEntities) { return; }
+    const float fs = ImGui::GetFontSize();
+    const ImVec2 merk = ImGui::GetCursorScreenPos();
+    // Unter dem Schild mit dem Reiternamen.
+    ImGui::SetCursorScreenPos(ImVec2{g_app->kartenAnsicht[0] + fs * 0.6F, g_app->kartenAnsicht[1] + fs * 2.6F});
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4{0.10F, 0.11F, 0.14F, 0.88F});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{fs * 0.3F, fs * 0.25F});
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{fs * 0.2F, fs * 0.2F});
+    if (ImGui::BeginChild("##entgizmoleiste", ImVec2{0.0F, 0.0F},
+                          ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders |
+                              ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar)) {
+        if (iconKnopf(tr(Str::GizmoMove), UiIcon::Verschieben, tr(Str::EntGizmoAxis),
+                      g_app->gizmoMode != App::GizmoMode::Rotate, true, true)) {
+            g_app->gizmoMode = App::GizmoMode::Move;
+            g_app->mapDirty = true;
+        }
+        ImGui::SameLine();
+        if (iconKnopf(tr(Str::GizmoRotate), UiIcon::Drehen, tr(Str::EntGizmoRing),
+                      g_app->gizmoMode == App::GizmoMode::Rotate, true, true)) {
+            g_app->gizmoMode = App::GizmoMode::Rotate;
+            g_app->mapDirty = true;
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    ImGui::SetCursorScreenPos(merk);
+    ImGui::Dummy(ImVec2{0.0F, 0.0F});
+}
 
 bool zugVersatz(int ei, float d[3], float& dGier) {
     const App::EntZug& z = g_app->entZug;
@@ -1046,7 +1190,11 @@ void entityZiehen(float rasterSkal) {
     const bool gizmoDa = zielHatOrt && g_app->showEntities && !g_app->camViewActive;
     const float L = gizmoDa ? laengeFuerPx(p, zielOrt, kGizmoPx) : 0.0F;
     if (g_app->entFokusBild && !z.kandidat && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        if (gizmoDa) { g_app->entGizmoHover = gizmoGriff(p, zielOrt, L, io.MousePos); }
+        if (gizmoDa) {
+            const MapEntity& ze = g_app->map.entities[static_cast<std::size_t>(ziel)];
+            g_app->entGizmoHover = gizmoGriff(p, zielOrt, L, io.MousePos, g_app->gizmoMode == App::GizmoMode::Rotate,
+                                              kannKippen(ze), entityGierAnzeige(ze));
+        }
         if (g_app->entGizmoHover == 0) {
             const float mx = (io.MousePos.x - g_app->kartenAnsicht[0]) * rasterSkal;
             const float my = (io.MousePos.y - g_app->kartenAnsicht[1]) * rasterSkal;
@@ -1141,6 +1289,7 @@ void entityZiehen(float rasterSkal) {
             }
             z.gierVersatz = entityGierVersatz(ziel);
             z.startWinkel = winkelVon(g_app->map.entities[static_cast<std::size_t>(ziel)]);
+            winkel3Von(g_app->map.entities[static_cast<std::size_t>(ziel)], z.startWinkel3);
             z.startMaus[0] = io.MousePos.x;
             z.startMaus[1] = io.MousePos.y;
             z.achsLaenge = L;
@@ -1203,10 +1352,45 @@ void entityZiehen(float rasterSkal) {
     }
     if (!z.aktiv && ImGui::IsMouseDragging(ImGuiMouseButton_Left, z.modus == 0 ? -1.0F : 1.0F)) {
         z.aktiv = true;
+        // rc599: ein Schluessel zur eingestellten Zeit - zuerst der des
+        // Animationsfensters, dann (Drehen) Schiff im move oder Figur.
+        if (z.gruppe.empty()) {
+            int art = 0;
+            if (animKeyMoeglich(z.index, g_app->playMs)) {
+                art = 1;
+            } else if (z.modus >= 4) {
+                int fig = -1;
+                Path pf;
+                bool lauf = false;
+                if (bahnPunktMoeglich(z.index, g_app->playMs, fig, pf, lauf) && !lauf) {
+                    art = 2;
+                    z.zwPfad = pf;
+                } else if (fig = figurFuerEntity(z.index); fig >= 0 && istNpcKlasse(g_app->map.entities[static_cast<std::size_t>(z.index)].classname)) {
+                    for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(fig)].steps) {
+                        if (st.startMs > g_app->playMs) { break; }
+                        if (!st.path.empty() && st.fremd.empty()) { art = 3; }
+                    }
+                }
+            }
+            const int figur = art != 0 ? figurFuerEntity(z.index) : -1;
+            if (figur >= 0) {
+                z.dkArt = art;
+                z.zwFigur = figur;
+                z.zwT = g_app->playMs;
+                z.zwSteps = g_app->scene.actors[static_cast<std::size_t>(figur)].steps;
+                const ActorState st = g_app->scene.actors[static_cast<std::size_t>(figur)].at(z.zwT);
+                for (int k = 0; k < 3; ++k) {
+                    z.dkOrt[k] = st.pos[k];
+                    z.dkBasisOrt[k] = st.pos[k];
+                    z.dkBasis[k] = st.angles[k];
+                    z.dkWinkel[k] = st.angles[k];
+                }
+            }
+        }
         // Mitten in einer Bewegung: ein neuer Bahnpunkt statt den Ursprung zu
         // verschieben (rc597, "wenn ich das Schiff mittendrin bewege, macht
         // er keinen neuen Punkt, sondern aendert immer den Anfangspunkt").
-        if (z.modus <= 3 && z.gruppe.empty() &&
+        if (z.modus <= 3 && z.gruppe.empty() && z.dkArt == 0 &&
             bahnPunktMoeglich(z.index, g_app->playMs, z.zwFigur, z.zwPfad, z.zwLauf)) {
             z.zwischen = true;
             z.zwT = g_app->playMs;
@@ -1236,8 +1420,57 @@ void entityZiehen(float rasterSkal) {
         }
         g_app->mapDirty = true;
     };
+    // Der Schluessel zur Zeit (rc599): Ort und Winkel als zwei Schritte in
+    // die Bahn dieser Figur im Speicher - geschrieben wird beim Loslassen.
+    const auto dkVorschau = [&]() {
+        z.dkBewegt = true;
+        Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)];
+        a.steps = z.zwSteps;
+        std::size_t at = 0;
+        while (at < a.steps.size() && a.steps[at].startMs <= z.zwT) { ++at; }
+        ActorStep tp;
+        tp.kind = ActorStep::Kind::Teleport;
+        tp.startMs = z.zwT;
+        tp.endMs = z.zwT;
+        ActorStep fc = tp;
+        fc.kind = ActorStep::Kind::Face;
+        for (int k = 0; k < 3; ++k) {
+            tp.to[k] = z.dkOrt[k];
+            fc.to[k] = z.dkWinkel[k];
+        }
+        a.steps.insert(a.steps.begin() + static_cast<std::ptrdiff_t>(at), {tp, fc});
+        g_app->mapDirty = true;
+    };
+    const auto winkelSetzen = [&](MapEntity& ent, const float w3[3]) {
+        if (z.dkArt == 0) {
+            setzeWinkel3(ent, w3);
+            return;
+        }
+        for (int k = 0; k < 3; ++k) { z.dkWinkel[k] = z.dkBasis[k] + std::remainder(w3[k] - z.startWinkel3[k], 360.0F); }
+        dkVorschau();
+    };
     if (z.aktiv && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        if (z.modus == 0) {
+        if (z.modus == 0 && z.dkArt == 1) {
+            // Schluessel des Animationsfensters: in der waagrechten Ebene, in
+            // der die Entity zu dieser Zeit steht.
+            float a0[3];
+            float b0[3];
+            float a1[3];
+            float b1[3];
+            strahlDurch(z.startMaus[0], z.startMaus[1], a0, b0);
+            strahlDurch(io.MousePos.x, io.MousePos.y, a1, b1);
+            const float h = z.dkBasisOrt[2];
+            if (std::fabs(b0[2] - a0[2]) > 1e-3F && std::fabs(b1[2] - a1[2]) > 1e-3F) {
+                const float t0 = (h - a0[2]) / (b0[2] - a0[2]);
+                const float t1 = (h - a1[2]) / (b1[2] - a1[2]);
+                if (t0 > 0.0F && t1 > 0.0F) {
+                    for (int k = 0; k < 2; ++k) {
+                        z.dkOrt[k] = z.dkBasisOrt[k] + (a1[k] + (b1[k] - a1[k]) * t1) - (a0[k] + (b0[k] - a0[k]) * t0);
+                    }
+                    dkVorschau();
+                }
+            }
+        } else if (z.modus == 0) {
             // Ueber die Flaeche unter der Maus.
             float a[3];
             float b[3];
@@ -1291,7 +1524,10 @@ void entityZiehen(float rasterSkal) {
                     const float r = g_app->rasterSchritt > 0 ? (io.KeyCtrl ? 0.0F : static_cast<float>(g_app->rasterSchritt))
                                                              : (io.KeyCtrl ? 8.0F : 0.0F);
                     if (r > 0.0F) { o[k] = std::round(o[k] / r) * r; }
-                    if (z.zwischen) {
+                    if (z.dkArt == 1) {
+                        for (int q = 0; q < 3; ++q) { z.dkOrt[q] = z.dkBasisOrt[q] + (o[q] - z.startOrt[q]); }
+                        dkVorschau();
+                    } else if (z.zwischen) {
                         const float k2[3] = {o[0] + z.versatz[0], o[1] + z.versatz[1], o[2] + z.versatz[2]};
                         zwischenVorschau(k2);
                     } else {
@@ -1310,10 +1546,31 @@ void entityZiehen(float rasterSkal) {
                 // Von oben gesehen dreht die Maus im Uhrzeigersinn = Winkel kleiner;
                 // schaut die Kamera von unten, kehrt sich das um.
                 const float sinn = p.upv[2] >= 0.0F ? 1.0F : -1.0F;
-                float w = z.startWinkel + (a1 - a0) * 180.0F / 3.14159265F * sinn;
-                w = std::fmod(std::fmod(w, 360.0F) + 360.0F, 360.0F);
-                if (io.KeyCtrl) { w = std::fmod(std::round(w / 15.0F) * 15.0F, 360.0F); }
-                setKey(e, "angle", std::to_string(static_cast<int>(std::lround(w)) % 360));
+                if (z.modus == 4) {
+                    float w = z.startWinkel + (a1 - a0) * 180.0F / 3.14159265F * sinn;
+                    w = std::fmod(std::fmod(w, 360.0F) + 360.0F, 360.0F);
+                    if (io.KeyCtrl) { w = std::fmod(std::round(w / 15.0F) * 15.0F, 360.0F); }
+                    float w3[3] = {z.startWinkel3[0], w, z.startWinkel3[2]};
+                    winkelSetzen(e, w3);
+                } else {
+                    // Nicken (5) oder Rollen (6): der Drehsinn haengt davon ab,
+                    // ob die Achse zur Kamera zeigt.
+                    float achse[3];
+                    ringAchse(z.modus - 4, z.startWinkel3[1], achse);
+                    const float zurKamera = achse[0] * (p.pos[0] - gezeigt[0]) + achse[1] * (p.pos[1] - gezeigt[1]) +
+                                            achse[2] * (p.pos[2] - gezeigt[2]);
+                    float d = (a1 - a0) * 180.0F / 3.14159265F * (zurKamera >= 0.0F ? 1.0F : -1.0F);
+                    // Positives Nicken senkt die Nase (Engine); die Drehung um
+                    // "rechts" hebt sie - also umgekehrt.
+                    if (z.modus == 5) { d = -d; }
+                    float w3[3] = {z.startWinkel3[0], z.startWinkel3[1], z.startWinkel3[2]};
+                    w3[z.modus == 5 ? 0 : 2] += d;
+                    if (io.KeyCtrl) {
+                        const int i = z.modus == 5 ? 0 : 2;
+                        w3[i] = std::round(w3[i] / 15.0F) * 15.0F;
+                    }
+                    winkelSetzen(e, w3);
+                }
                 g_app->mapDirty = true;
             }
         }
@@ -1347,6 +1604,24 @@ void entityZiehen(float rasterSkal) {
                 setKey(ge, "origin", ortText(o));
             }
         }
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && z.dkArt != 0) {
+        if (z.zwFigur >= 0 && static_cast<std::size_t>(z.zwFigur) < g_app->scene.actors.size()) {
+            g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)].steps = z.zwSteps;
+        }
+        if (z.dkBewegt) {
+            if (z.dkArt == 1) {
+                (void)animKeySetzen(z.zwT, z.dkOrt, z.dkWinkel);
+            } else if (z.dkArt == 2) {
+                (void)bahnPunktSchreiben(z.zwFigur, z.zwPfad, false, z.dkOrt, z.zwT, z.dkWinkel);
+            } else {
+                (void)figurBlickSetzen(z.zwFigur, z.zwT, z.dkWinkel[1]);
+            }
+        }
+        g_app->camTrackValid = false;
+        g_app->mapDirty = true;
+        z = App::EntZug{};
+        return;
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && z.zwischen) {
         if (z.zwBewegt) { (void)bahnPunktSchreiben(z.zwFigur, z.zwPfad, z.zwLauf, z.zwOrt, z.zwT); }
@@ -1719,6 +1994,51 @@ bool befehlZurZeit(std::vector<Node>& g, std::size_t ab, double t0, double ziel,
 }
 }  // namespace
 
+bool figurBlickSetzen(int figur, double ms, float gier) {
+    if (figur < 0 || static_cast<std::size_t>(figur) >= g_app->scene.actors.size()) { return false; }
+    const Actor& a = g_app->scene.actors[static_cast<std::size_t>(figur)];
+    // Der letzte Befehl dieser Figur vor der Zeit - in seiner Folge kommt
+    // der neue dazu; mitten im Laufen erst beim Ankommen (beim Laufen dreht
+    // die Engine sie in Laufrichtung).
+    const ActorStep* ref = nullptr;
+    double ziel = ms;
+    for (const ActorStep& st : a.steps) {
+        if (st.startMs > ms) { break; }
+        if (!st.path.empty() && st.fremd.empty()) { ref = &st; }
+        if (st.kind == ActorStep::Kind::WalkTo && ms < st.endMs) { ziel = st.endMs; }
+    }
+    if (ref == nullptr) { return false; }
+    Script s = g_app->doc.script();
+    std::vector<Node>* geschw = &s.nodes;
+    for (std::size_t k = 0; k + 1 < ref->path.size(); ++k) {
+        if (ref->path[k] >= geschw->size()) { return false; }
+        geschw = &(*geschw)[ref->path[k]].children;
+    }
+    if (ref->path.back() >= geschw->size()) { return false; }
+    Node n;
+    n.kind = Node::Kind::Command;
+    n.name = "set";
+    Arg a0;
+    a0.kind = Arg::Kind::String;
+    a0.text = "SET_ANGLES";
+    a0.typeset = "SET_TYPES";
+    Arg a1;
+    a1.kind = Arg::Kind::String;
+    const int g = static_cast<int>(std::lround(std::fmod(std::fmod(gier, 360.0F) + 360.0F, 360.0F))) % 360;
+    a1.text = "0 " + std::to_string(g) + " 0";
+    n.args = {a0, a1};
+    if (!befehlZurZeit(*geschw, ref->path.back() + 1, ref->startMs, ziel, n)) {
+        addStatus(tr(Str::BahnBlickZeitUnbekannt));
+        return false;
+    }
+    g_app->doc.ersetzeSkript(std::move(s), tr(Str::BahnBlickUndo));
+    nachSkriptGeaendert();
+    char t[160];
+    std::snprintf(t, sizeof(t), tr(ziel > ms + 1.0 ? Str::BahnBlickAnkunft : Str::BahnBlickGesetzt), g, ziel / 1000.0);
+    addStatus(t);
+    return true;
+}
+
 bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf) {
     figur = figurFuerEntity(ei);
     if (figur < 0) { return false; }
@@ -1740,7 +2060,7 @@ bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf) {
     return false;
 }
 
-bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float kOrt[3], double ms) {
+bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float kOrt[3], double ms, const float* kWinkel) {
     if (figur < 0 || static_cast<std::size_t>(figur) >= g_app->scene.actors.size() || pfad.empty()) { return false; }
     // Der Schritt aus der UNVERAENDERTEN Szene (die Vorschau hat die Bahn im
     // Speicher geteilt - die Szene ist beim Loslassen noch die gezogene).
@@ -1841,7 +2161,14 @@ bool bahnPunktSchreiben(int figur, const Path& pfad, bool lauf, const float kOrt
         erster.args[0].text = vektor(kOrt);
         if (erster.args.size() >= 3 && erster.args[1].kind == Arg::Kind::Vector) {
             const ActorState jetzt = g_app->scene.actors[static_cast<std::size_t>(figur)].at(ms);
-            erster.args[1].text = vektor(jetzt.angles);
+            erster.args[1].text = vektor(kWinkel != nullptr ? kWinkel : jetzt.angles);
+        } else if (kWinkel != nullptr) {
+            // move ( <ort>, dauer ) ohne Winkel: fuer den gedrehten Punkt
+            // die Form mit Winkeln (rc599).
+            Arg w;
+            w.kind = Arg::Kind::Vector;
+            w.text = vektor(kWinkel);
+            erster.args.insert(erster.args.begin() + 1, w);
         }
         erster.args.back().text = zahl(teil);
         zweiter.args.back().text = zahl(ende - ms);
@@ -2189,11 +2516,16 @@ bool entityGizmoPunkt(int griff, ImVec2& out) {
     float w[3] = {o[0], o[1], o[2]};
     if (griff >= 1 && griff <= 3) {
         w[griff - 1] += L * 0.75F;
-    } else {
+    } else if (griff == 4) {
         // Der Punkt des Rings, der der Kamera am naechsten liegt.
         const float a = std::atan2(p.pos[1] - o[1], p.pos[0] - o[0]);
         w[0] += std::cos(a) * L * 0.8F;
         w[1] += std::sin(a) * L * 0.8F;
+    } else {
+        // Nicken (5) / Rollen (6): bei 45 Grad - oben schneiden sich die
+        // beiden Ringe, waagrecht schneidet sie der Gier-Ring.
+        ringPunkt(o, griff - 4, entityGierAnzeige(g_app->map.entities[static_cast<std::size_t>(ziel)]), L * 0.8F,
+                  0.7853982F, w);
     }
     return aufSchirm(p, w, out);
 }
@@ -2394,22 +2726,30 @@ void entityUeberlagerung(float rasterSkal) {
                 const ImU32 achsFarbe[3] = {IM_COL32(235, 70, 70, 255), IM_COL32(80, 210, 90, 255),
                                             IM_COL32(70, 130, 255, 255)};
                 const int aktiv = z.kandidat ? z.modus : g_app->entGizmoHover;
-                // Ring zuerst (liegt hinter den Achsen).
-                {
-                    const ImU32 ring = aktiv == 4 ? IM_COL32(255, 240, 120, 255) : IM_COL32(240, 200, 60, 200);
-                    ImVec2 vorher;
-                    bool hat = false;
-                    for (int k = 0; k <= 48; ++k) {
-                        const float a = static_cast<float>(k) / 48.0F * 6.2831853F;
-                        const float w[3] = {o[0] + std::cos(a) * L * 0.8F, o[1] + std::sin(a) * L * 0.8F, o[2]};
-                        ImVec2 s;
-                        if (!aufSchirm(p, w, s)) { hat = false; continue; }
-                        if (hat) { dl->AddLine(vorher, s, ring, (aktiv == 4 ? 3.0F : 1.8F) * px); }
-                        vorher = s;
-                        hat = true;
+                const bool drehen = g_app->gizmoMode == App::GizmoMode::Rotate;
+                // Drehen: die Ringe (Gier blau, Nicken gruen, Rollen rot) -
+                // Verschieben: die Pfeile.
+                if (drehen) {
+                    const ImU32 ringFarbe[3] = {IM_COL32(70, 130, 255, 255), IM_COL32(80, 210, 90, 255),
+                                                IM_COL32(235, 70, 70, 255)};
+                    const float gier = entityGierAnzeige(e);
+                    for (int achse = 0; achse < (kannKippen(e) ? 3 : 1); ++achse) {
+                        const bool an = aktiv == 4 + achse;
+                        const ImU32 f = an ? IM_COL32(255, 240, 120, 255) : ringFarbe[achse];
+                        ImVec2 vorher;
+                        bool hat = false;
+                        for (int k = 0; k <= 48; ++k) {
+                            float w[3];
+                            ringPunkt(o, achse, gier, L * 0.8F, static_cast<float>(k) / 48.0F * 6.2831853F, w);
+                            ImVec2 s;
+                            if (!aufSchirm(p, w, s)) { hat = false; continue; }
+                            if (hat) { dl->AddLine(vorher, s, f, (an ? 3.5F : 2.5F) * px); }
+                            vorher = s;
+                            hat = true;
+                        }
                     }
                 }
-                for (int k = 0; k < 3; ++k) {
+                for (int k = 0; k < 3 && !drehen; ++k) {
                     float w[3] = {o[0], o[1], o[2]};
                     w[k] += L;
                     ImVec2 se;
@@ -2433,7 +2773,7 @@ void entityUeberlagerung(float rasterSkal) {
                 dl->AddCircleFilled(so, 3.5F * px, IM_COL32(255, 255, 255, 230));
                 // Hinweis beim Ueberfahren eines Griffs.
                 if (!z.kandidat && g_app->entGizmoHover != 0) {
-                    ImGui::SetTooltip("%s", tr(g_app->entGizmoHover == 4 ? Str::EntGizmoRing : Str::EntGizmoAxis));
+                    ImGui::SetTooltip("%s", tr(g_app->entGizmoHover >= 4 ? Str::EntGizmoRing : Str::EntGizmoAxis));
                 }
             }
         }
@@ -3051,6 +3391,18 @@ Zusammenstellung zusammenstellen() {
         }
         if (!text.empty()) { z.inhalt.skripte.push_back({ref, text}); }
     }
+    // Eigene ROFF-Bahnen der Skripte (rc599) als scripts/<name>.rof.
+    std::set<std::string> roffSchon;
+    for (const auto& sk : z.inhalt.skripte) {
+        Script sc;
+        std::vector<Diag> d;
+        if (!readScript(sk.text, sc, d)) { continue; }
+        for (const RoffMarkeFund& m : alleRoffMarken(sc)) {
+            const std::string pfad = roffPfad(m.anim.datei);
+            if (!roffSchon.insert(klein(pfad)).second) { continue; }
+            z.inhalt.weitere.push_back({pfad, schreibeRoff(roffAusAnim(m.anim))});
+        }
+    }
     // Weitere Dateien: was im Missionsordner liegt (Klaenge, .str, Bilder) ...
     std::set<std::string> schon;
     if (gibtEs(mp.projektOrdner)) {
@@ -3207,6 +3559,7 @@ void missionsDateiSchreiben() {
     const std::string text = "# BehavEd-Remake mission\nname=" + m.name + "\nordner=" + m.ordner + "\nkarte=" + quelle +
                              "\narchiv=" + m.archiv + "\n";
     (void)schreibe(missionsDatei(m.projektOrdner), text);
+    g_app->settings.noteRecentMission("ordner|" + m.projektOrdner);
 }
 
 std::vector<std::pair<std::string, std::string>> letzteMissionen() {
@@ -3318,10 +3671,63 @@ bool missionAusOrdnerLaden(const std::string& ordner, std::string* fehler) {
     g_app->camTrackValid = false;
     g_app->mapDirty = true;
     g_app->leftMode = 1;
+    g_app->settings.noteRecentMission("ordner|" + ordner);
     char t[300];
     std::snprintf(t, sizeof(t), tr(Str::MissionOpened), name.c_str());
     meldung(t, ordner);
     return true;
+}
+
+std::vector<LetzteMission> letzteMissionenAlle() {
+    std::vector<LetzteMission> aus;
+    std::set<std::string> schon;
+    const auto dazu = [&](const std::string& eintrag, const std::string& name, const std::string& ort) {
+        if (!schon.insert(klein(eintrag)).second || aus.size() >= Settings::kMaxRecentMissions) { return; }
+        aus.push_back(LetzteMission{eintrag, name, ort});
+    };
+    for (const std::string& e : g_app->settings.recentMissions) {
+        if (e.rfind("ordner|", 0) == 0) {
+            const std::string p = e.substr(7);
+            dazu(e, fileName(p), p);
+        } else if (e.rfind("pk3|", 0) == 0) {
+            const std::string rest = e.substr(4);
+            const auto strich = rest.rfind('|');
+            if (strich == std::string::npos) { continue; }
+            dazu(e, rest.substr(strich + 1), fileName(rest.substr(0, strich)));
+        }
+    }
+    for (const auto& [name, pfad] : letzteMissionen()) { dazu("ordner|" + pfad, name, pfad); }
+    return aus;
+}
+
+void letzteMissionOeffnen(const std::string& eintrag) {
+    const auto weg = [&eintrag](const std::string& was) {
+        auto& v = g_app->settings.recentMissions;
+        v.erase(std::remove(v.begin(), v.end(), eintrag), v.end());
+        char t[700];
+        std::snprintf(t, sizeof(t), tr(Str::RecentMissionGone), was.c_str());
+        meldung(t, std::string(), true);
+    };
+    if (eintrag.rfind("ordner|", 0) == 0) {
+        const std::string ordner = eintrag.substr(7);
+        if (!gibtEs(missionsDatei(ordner))) {
+            weg(ordner);
+            return;
+        }
+        (void)missionAusOrdnerLaden(ordner, nullptr);
+        return;
+    }
+    if (eintrag.rfind("pk3|", 0) == 0) {
+        const std::string rest = eintrag.substr(4);
+        const auto strich = rest.rfind('|');
+        if (strich == std::string::npos) { return; }
+        const std::string archiv = rest.substr(0, strich);
+        if (!gibtEs(archiv)) {
+            weg(archiv);
+            return;
+        }
+        missionenAusArchiv(archiv, rest.substr(strich + 1));
+    }
 }
 
 void missionsOrdnerWaehlen() {
@@ -3397,22 +3803,25 @@ void drawStartflaeche(float breite, float hoehe) {
     if (iconKnopf(tr(Str::MissionOpenFolder), UiIcon::Oeffnen, tr(Str::MissionOpenFolderHint))) {
         missionsOrdnerWaehlen();
     }
-    static std::vector<std::pair<std::string, std::string>> liste;
+    static std::vector<LetzteMission> liste;
     static double gelesen = -100.0;
     if (ImGui::GetTime() - gelesen > 2.0) {   // nicht in jedem Bild die Platte fragen
-        liste = letzteMissionen();
+        liste = letzteMissionenAlle();
         gelesen = ImGui::GetTime();
     }
     if (liste.empty()) {
         ImGui::SetCursorPosX(links);
         ImGui::TextDisabled("%s", tr(Str::StartNoRecent));
     }
-    for (const auto& [name, pfad] : liste) {
+    for (const LetzteMission& lm : liste) {
+        const std::string& name = lm.name;
+        const std::string& pfad = lm.ort;
         ImGui::SetCursorPosX(links);
-        ImGui::PushID(pfad.c_str());
+        ImGui::PushID(lm.eintrag.c_str());
         const ImVec2 q = ImGui::GetCursorScreenPos();
         if (ImGui::Selectable("##letzte", false, ImGuiSelectableFlags_None, ImVec2{spalte, ImGui::GetFrameHeight()})) {
-            (void)missionAusOrdnerLaden(pfad, nullptr);
+            const std::string e = lm.eintrag;
+            letzteMissionOeffnen(e);
         }
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float y = q.y + (ImGui::GetFrameHeight() - fs) * 0.5F;

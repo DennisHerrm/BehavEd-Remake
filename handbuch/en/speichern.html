@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saving, compiling, checks - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class="aktiv"><a href="speichern.html">Saving, compiling, checks</a><ul class="unter"><li><a href="#speichern">Saving</a></li><li><a href="#uebersetzen">Compiling</a></li><li><a href="#pruefen">Notes and errors</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/speichern.html" class="aktiv" lang="en">English</a><a href="../de/speichern.html" class="" lang="de">Deutsch</a><a href="../zh/speichern.html" class="" lang="zh">中文</a><a href="../ja/speichern.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Scripts</div>
+    <h1>Saving, compiling, checks</h1>
+    <p class="einleitung">The game runs <code>.ibi</code> files. You write <code>.txt</code>; <strong>Compile!</strong> makes the <code>.ibi</code> - byte for byte like Raven&#x27;s IBIZE.</p>
+    <h2 id="speichern">Saving<a class="anker" href="#speichern">#</a></h2>
+<ul><li><strong><span class="ui">Save</span></strong> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) always writes the <code>.txt</code> source - also when you opened an <code>.ibi</code> (it lands next to it).</li><li><strong><span class="ui">Save all</span></strong> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>) saves every tab with changes; tabs from an archive have no file to write back to and are skipped.</li><li>Every save and compile keeps a copy - <code>backup1.txt</code> (newest) to <code>backup10.txt</code> - in the <code>backup</code> folder next to <code>behaved.exe</code>, one subfolder per script; <strong><span class="ui">File</span> → <span class="ui">Open backup folder</span></strong> shows them. <strong><span class="ui">Backup</span></strong> / <strong><span class="ui">Restore</span></strong> keep and restore one extra copy (<code>&lt;script&gt;.bak</code> next to the script) by hand.</li><li>Own ROFF paths are written as <code>.rof</code> files together with the script - see <a href="animation.html#roff">How ROFF files work</a>.</li></ul>
+<h2 id="uebersetzen">Compiling<a class="anker" href="#uebersetzen">#</a></h2>
+<p><strong><span class="ui">Compile!</span></strong> in the action column writes <code>&lt;script&gt;.ibi</code> next to the <code>.txt</code> (and saves the <code>.txt</code>). The button flashes green with <strong><span class="ui">Compiled</span></strong>, or red with <strong><span class="ui">Failed</span></strong> - then the first bad line is selected and the status line says why. The compiler is built in and was checked against 1011 <code>.ibi</code> files from Raven&#x27;s IBIZE, byte for byte.</p>
+<h2 id="pruefen">Notes and errors<a class="anker" href="#pruefen">#</a></h2>
+<p>While you write, the program checks every line: unknown commands, values that are not in their list, a text field without quotes, a misspelled field (&quot;did you mean ...?&quot;). The counters in the status line show how many there are - click them for the list, click a message to jump to its line. <strong><span class="ui">View</span> → <span class="ui">Target game</span></strong> adds notes on what does not work on a multiplayer server.</p>
+    <nav class="blaettern"><a class="vor" href="skriptfluss.html"><span>Previous</span>Script Flow: Classic, Graph, Tracks</a><a class="nach" href="karte.html"><span>Next</span>The map</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

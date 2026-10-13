@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地图 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class="aktiv"><a href="karte.html">地图</a><ul class="unter"><li><a href="#laden">打开地图</a></li><li><a href="#bewegen">视角操作</a></li><li><a href="#anzeige">显示内容</a></li></ul></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/karte.html" class="" lang="en">English</a><a href="../de/karte.html" class="" lang="de">Deutsch</a><a href="../zh/karte.html" class="aktiv" lang="zh">中文</a><a href="../ja/karte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>地图</h1>
+    <p class="einleitung">以游戏的方式绘制的三维地图——包含光照、辉光、雾、特效以及脚本中的角色。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_karte.webp" class="zoom"><img src="../bilder/zh/h_karte.webp" alt="地图视图:顶部为工具栏,左侧为放置图块。" loading="lazy"></a><figcaption>地图视图:顶部为工具栏,左侧为放置图块。</figcaption></figure>
+<h2 id="laden">打开地图<a class="anker" href="#laden">#</a></h2>
+<p>在模式栏切换到 <strong><span class="ui">地图</span></strong>。任务会自带地图(<a href="missionen.html">任务</a>)。没有任务时,<strong><span class="ui">地图和文件</span></strong> 可从磁盘或 <code>.pk3</code> 打开地图,或加载单独的 <code>.ent</code> 文件。<strong>Scripts (N)</strong> 列出地图实体所引用的脚本——选择一个即可加载其过场动画。</p>
+<h2 id="bewegen">视角操作<a class="anker" href="#bewegen">#</a></h2>
+<table class="tasten"><tbody><tr><td><kbd>W A S D(鼠标位于视图上)</kbd></td><td>飞行;<kbd>Q</kbd> / <kbd>E</kbd> 下降和上升,<kbd>Shift</kbd> 加速</td></tr><tr><td><kbd>按住右键拖动</kbd></td><td>环顾四周</td></tr><tr><td><kbd>按住中键拖动</kbd></td><td>平移</td></tr><tr><td><kbd>Alt + 鼠标中键</kbd></td><td>环绕</td></tr><tr><td><kbd>滚轮</kbd></td><td>缩放</td></tr><tr><td><kbd>在列表中双击实体</kbd></td><td>飞到该处</td></tr><tr><td><kbd>Ctrl + 1 ... 9</kbd></td><td>保存视角;<kbd>1</kbd> ... <kbd>9</kbd> 跳回(按地图保存)</td></tr></tbody></table>
+<h2 id="anzeige">显示内容<a class="anker" href="#anzeige">#</a></h2>
+<p>工具栏右侧的按钮用于开关画面中的各部分:实体、名称、脚本角色、特效、辉光、动态光、雾和天空。<strong><span class="ui">俯视图</span></strong> 像地图一样垂直向下看,并剖去剖切高度以上的一切——拖动高度框可查看其他楼层。<strong><span class="ui">视图设置</span></strong>(齿轮)包含亮度、环境光、细节、角色阴影以及 <strong><span class="ui">突出显示此脚本的实体</span></strong>,后者会淡化当前脚本未使用的所有实体。</p>
+<figure class="bild"><a href="../bilder/zh/h_ansicht_einst.webp" class="zoom"><img src="../bilder/zh/h_ansicht_einst.webp" alt="视图设置。" loading="lazy"></a><figcaption><span class="ui">视图设置</span>。</figcaption></figure>
+<div class="hinweis">画面力求与游戏一致:着色器、光照贴图、辉光(如 <code>r_DynamicGlow</code>)、雾(<code>r_drawfog</code>)、动态光、镜头光晕、天气和光剑轨迹。画面异常时,<strong><span class="ui">统计</span></strong> 会显示帧率、纹理和显卡参数。</div>
+    <nav class="blaettern"><a class="vor" href="speichern.html"><span>上一页</span>保存、编译与检查</a><a class="nach" href="entities.html"><span>下一页</span>实体</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

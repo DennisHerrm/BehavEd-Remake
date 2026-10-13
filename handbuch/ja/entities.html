@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>エンティティ - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class="aktiv"><a href="entities.html">エンティティ</a><ul class="unter"><li><a href="#liste">エンティティ一覧</a></li><li><a href="#waehlen">ビューで選択</a></li><li><a href="#gizmo">移動と回転</a></li><li><a href="#inspektor">インスペクター</a></li><li><a href="#setzen">新しいエンティティの配置</a></li></ul></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/entities.html" class="" lang="en">English</a><a href="../de/entities.html" class="" lang="de">Deutsch</a><a href="../zh/entities.html" class="" lang="zh">中文</a><a href="../ja/entities.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>エンティティ</h1>
+    <p class="einleitung">スクリプトが扱えるマップ内のもの(キャラクター、歩行目標、カメラマーク、トリガー、船)はすべてエンティティです。選択・変更・移動し、新しく配置できます。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_entity.webp" class="zoom"><img src="../bilder/ja/h_entity.webp" alt="選択した船。左に一覧、その下にインスペクター、ビューにギズモ。" loading="lazy"></a><figcaption>選択した船。左に一覧、その下にインスペクター、ビューにギズモ。</figcaption></figure>
+<h2 id="liste">エンティティ一覧<a class="anker" href="#liste">#</a></h2>
+<p>左の列はエンティティをグループに分けます。カメラマーク、歩行目標、視線目標、キャラクター、スクリプトランナー、エフェクト、サウンド、可動物、破壊可能物、NPC ウェイポイント。目のアイコンでビューから隠し(<kbd>Alt</kbd>+クリックでそのグループだけ表示)、検索欄で名前やクラスを絞り込みます。クリックで選択、ダブルクリックでそこへ移動、右クリックでそれ向けのコマンド(歩行目標、視線目標、affect ブロック、カメラをこのマークへ)を挿入します。</p>
+<h2 id="waehlen">ビューで選択<a class="anker" href="#waehlen">#</a></h2>
+<p>マーカー、キャラクター、モデルをクリックして選択。<kbd>Ctrl</kbd>/<kbd>Shift</kbd>+クリックで追加、何もない所をドラッグした枠で中のものをすべて選択します。マウスを乗せると枠と名前が表示されます。マップ下のバーには、選択中のエンティティがスクリプトで何回使われているかと、その行へ移動するボタンが表示されます。</p>
+<h2 id="gizmo">移動と回転<a class="anker" href="#gizmo">#</a></h2>
+<p>ビューの隅の小さなバーでギズモを <strong><span class="ui">移動</span></strong> と <strong><span class="ui">回転</span></strong> に切り替えます。移動では床の上をドラッグするか、色付きの矢印に沿ってドラッグします。ツールバーで設定したグリッドにスナップし、ドラッグ中に <kbd>Ctrl</kbd> を押すと解除されます。グリッドがないときは <kbd>Ctrl</kbd> で矢印のドラッグが 8 ユニットにスナップします。回転ではリングが表示されます(<kbd>Ctrl</kbd>:15 度刻み)。青は左右の回転、船とモデルには緑(ピッチ)と赤(ロール)もあります。キャラクターは青だけです。ゲームはキャラクターに <code>angle</code> しか使わないからです。<kbd>Alt</kbd>+ドラッグで先にコピーします。複数選択したエンティティはまとめて動き、回転します。</p>
+<div class="bildreihe"><figure class="bild"><a href="../bilder/ja/h_gizmo_verschieben.webp" class="zoom"><img src="../bilder/ja/h_gizmo_verschieben.webp" alt="移動:矢印のみ。" loading="lazy"></a><figcaption><span class="ui">移動</span>:矢印のみ。</figcaption></figure><figure class="bild"><a href="../bilder/ja/h_gizmo_drehen.webp" class="zoom"><img src="../bilder/ja/h_gizmo_drehen.webp" alt="回転:船の 3 つのリング。" loading="lazy"></a><figcaption><span class="ui">回転</span>:船の 3 つのリング。</figcaption></figure></div>
+<div class="hinweis">タイムラインが動きの途中にあるとき、ギズモは始点を変えず、その瞬間に新しい点を設定します。<a href="figuren.html#griffe">始点・終点・新しい点</a> と <a href="animation.html#schluessel">キー</a> を参照。</div>
+<h2 id="inspektor">インスペクター<a class="anker" href="#inspektor">#</a></h2>
+<p>一覧の下のインスペクターは選択中のエンティティを表示します。ゲームコード由来の説明付きのクラス、<strong><span class="ui">名前</span></strong>、<strong><span class="ui">位置</span></strong>、<strong><span class="ui">床</span></strong>(足が床からどれだけ上にあるか。めり込むと赤)、<strong><span class="ui">向き (度)</span></strong>、チェックボックスのスポーンフラグ、その他すべてのキーの欄。スクリプト欄には <strong><span class="ui">開く</span></strong>、<code>NPC_type</code> にはゲームの全 NPC の検索があります。アイコンバーでそこへ移動、<strong><span class="ui">床に置く</span></strong>、複製、削除、アニメーション(<a href="animation.html">可動物のアニメーションと ROFF ファイル</a>)、<strong><span class="ui">すべてのキー (生)</span></strong> を使えます。マウスがマップか一覧の上にある間、エンティティの変更は専用の元に戻す履歴を使います。</p>
+<h2 id="setzen">新しいエンティティの配置<a class="anker" href="#setzen">#</a></h2>
+<p>ビュー左端のタイルでよく使う種類を配置します。キャラクター、歩行目標、カメラ/視線マーク、視線目標、スクリプトランナー、エフェクト、サウンド、NPC ウェイポイント、プレイヤースタート。タイルをクリックしてからビューをクリックするか、タイルをビューへドラッグします。<kbd>Shift</kbd> で連続配置。一覧の上の <strong><span class="ui">+ エンティティ</span></strong> とビューの右クリック(<strong><span class="ui">ここに新規エンティティ</span></strong>)ではすべてのクラスを選べます。<strong>グリッド</strong>ボタンで 8・16・32・64 ユニットにスナップします。</p>
+    <nav class="blaettern"><a class="vor" href="karte.html"><span>前へ</span>マップ</a><a class="nach" href="kamera.html"><span>次へ</span>カメラ</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

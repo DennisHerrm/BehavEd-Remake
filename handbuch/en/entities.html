@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entities - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class="aktiv"><a href="entities.html">Entities</a><ul class="unter"><li><a href="#liste">The entity list</a></li><li><a href="#waehlen">Selecting in the view</a></li><li><a href="#gizmo">Move and Rotate</a></li><li><a href="#inspektor">The inspector</a></li><li><a href="#setzen">Placing new entities</a></li></ul></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/entities.html" class="aktiv" lang="en">English</a><a href="../de/entities.html" class="" lang="de">Deutsch</a><a href="../zh/entities.html" class="" lang="zh">中文</a><a href="../ja/entities.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Map and scene</div>
+    <h1>Entities</h1>
+    <p class="einleitung">Everything in a map that a script can talk to - figures, walk targets, camera marks, triggers, ships - is an entity. Select it, change it, move it, place new ones.</p>
+    <figure class="bild breit"><a href="../bilder/en/h_entity.webp" class="zoom"><img src="../bilder/en/h_entity.webp" alt="A selected ship: the list on the left, the inspector below it, the gizmo in the view." loading="lazy"></a><figcaption>A selected ship: the list on the left, the inspector below it, the gizmo in the view.</figcaption></figure>
+<h2 id="liste">The entity list<a class="anker" href="#liste">#</a></h2>
+<p>The left column sorts the entities into groups - camera marks, walk targets, look targets, characters, script runners, effects, sound, movables, breakables, NPC waypoints. The eye hides a group in the view (<kbd>Alt</kbd>+click: show only this one), the search box filters by name or class. Click selects, double-click flies there, right-click inserts a command for it: walk target, look target, affect block, camera to this mark.</p>
+<h2 id="waehlen">Selecting in the view<a class="anker" href="#waehlen">#</a></h2>
+<p>Click a marker, a figure or a model to select it; <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click adds more; a box dragged over empty space selects everything inside. Hovering shows a box and the name. The transport bar under the map says how often the selected entity is used in the script, with buttons that jump to those lines.</p>
+<h2 id="gizmo">Move and Rotate<a class="anker" href="#gizmo">#</a></h2>
+<p>A small bar in the corner of the view switches the gizmo between <strong><span class="ui">Move</span></strong> and <strong><span class="ui">Rotate</span></strong>. In Move you drag the entity over the floor or along one of the coloured arrows; the grid set in the toolbar snaps, <kbd>Ctrl</kbd> turns it off while you drag - without a grid, <kbd>Ctrl</kbd> snaps an arrow drag to 8 units. In Rotate you get rings (<kbd>Ctrl</kbd>: 15-degree steps): blue turns left and right; ships and models also get green (pitch) and red (roll); figures only have the blue ring, because the game only knows <code>angle</code> for them. <kbd>Alt</kbd>+drag copies first. Several selected entities move and turn as a group.</p>
+<div class="bildreihe"><figure class="bild"><a href="../bilder/en/h_gizmo_verschieben.webp" class="zoom"><img src="../bilder/en/h_gizmo_verschieben.webp" alt="Move: arrows only." loading="lazy"></a><figcaption><span class="ui">Move</span>: arrows only.</figcaption></figure><figure class="bild"><a href="../bilder/en/h_gizmo_drehen.webp" class="zoom"><img src="../bilder/en/h_gizmo_drehen.webp" alt="Rotate: three rings on a ship." loading="lazy"></a><figcaption><span class="ui">Rotate</span>: three rings on a ship.</figcaption></figure></div>
+<div class="hinweis">When the timeline stands in the middle of a movement, the gizmo does not change the start - it sets a new point at that moment. See <a href="figuren.html#griffe">Start, end and new points</a> and <a href="animation.html#schluessel">Keys</a>.</div>
+<h2 id="inspektor">The inspector<a class="anker" href="#inspektor">#</a></h2>
+<p>Under the list the inspector shows the selected entity: its class with a description from the game code, <strong><span class="ui">Name</span></strong>, <strong><span class="ui">Position</span></strong>, <strong><span class="ui">Floor</span></strong> (how high the feet stand above the floor - red when inside it) and <strong><span class="ui">Facing (degrees)</span></strong>, the spawnflags as checkboxes and all other keys as fields. Script fields have <strong><span class="ui">Open</span></strong>, <code>NPC_type</code> has a search over every NPC of the game. The icon bar flies there, puts it <strong><span class="ui">Onto floor</span></strong>, duplicates, deletes, animates (<a href="animation.html">Animating movers and ROFF files</a>) and shows <strong><span class="ui">All keys (raw)</span></strong>. Entity changes have their own undo while the mouse is over the map or the list.</p>
+<h2 id="setzen">Placing new entities<a class="anker" href="#setzen">#</a></h2>
+<p>The tiles on the left edge of the view place the common kinds: character, walk target, camera/look mark, look target, script runner, effect, sound, NPC waypoint, player start. Click a tile, then click in the view - or drag the tile into the view; <kbd>Shift</kbd> places several. <strong><span class="ui">+ Entity</span></strong> above the list and a right-click in the view (<strong><span class="ui">New entity here</span></strong>) offer every class. The <strong>Grid</strong> button snaps to 8, 16, 32 or 64 units.</p>
+    <nav class="blaettern"><a class="vor" href="karte.html"><span>Previous</span>The map</a><a class="nach" href="kamera.html"><span>Next</span>Camera</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

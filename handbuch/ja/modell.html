@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>モデルビューとキャラクター - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class="aktiv"><a href="modell.html">モデルビューとキャラクター</a><ul class="unter"></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/modell.html" class="" lang="en">English</a><a href="../de/modell.html" class="" lang="de">Deutsch</a><a href="../zh/modell.html" class="" lang="zh">中文</a><a href="../ja/modell.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">ミッション</div>
+    <h1>モデルビューとキャラクター</h1>
+    <p class="einleitung">ゲームのどのキャラクターでも、スキンとアニメーション付きで表示し、ダブルクリックでアニメーションをスクリプトに入れられます。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_modell.webp" class="zoom"><img src="../bilder/ja/h_modell.webp" alt="モデルモード。左にアニメーション一覧、中央にモデル、下に再生バー。" loading="lazy"></a><figcaption>モデルモード。左にアニメーション一覧、中央にモデル、下に再生バー。</figcaption></figure>
+<p>モードバーで <strong><span class="ui">モデル</span></strong> に切り替えます。<strong><span class="ui">NPC</span></strong> はゲームの全キャラクター(<code>.npc</code> ファイル)を一覧表示し、クリックするとゲームと同じモデルとスキンを読み込みます。<strong><span class="ui">.glm を開く…</span></strong> と <strong><span class="ui">.pk3 から…</span></strong> で任意のモデルを開けます。左ボタンで周回、中ボタンでパン、ホイールでズーム。<strong><span class="ui">ターンテーブル</span></strong>・<strong><span class="ui">ボーン</span></strong>・<strong><span class="ui">ビューに合わせる</span></strong> はツールバーにあります。</p>
+<p>左の <strong><span class="ui">アニメーション</span></strong> 一覧は骨格のすべてのアニメーションと長さを表示し、名前や BOTH / TORSO / LEGS / FACE で絞り込めます。クリックで再生、ダブルクリック(または <strong><span class="ui">スクリプトへ</span></strong>)で開いているスクリプトの選択行の後ろに <code>set ( SET_ANIM_BOTH, &quot;…&quot; )</code> を入れます。TORSO のアニメーションは <code>SET_ANIM_UPPER</code>、LEGS は <code>SET_ANIM_LOWER</code> になります。</p>
+    <nav class="blaettern"><a class="vor" href="missionen.html"><span>前へ</span>ミッション</a><a class="nach" href="tutorials.html"><span>次へ</span>チュートリアル</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

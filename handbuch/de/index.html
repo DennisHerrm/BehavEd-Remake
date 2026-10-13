@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Willkommen - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Einstieg</summary><ul><li class="aktiv"><a href="index.html">Willkommen</a><ul class="unter"><li><a href="#wege">Wo anfangen</a></li><li><a href="#tutorials">Tutorials</a></li><li><a href="#kann">Was das Programm kann</a></li></ul></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/index.html" class="" lang="en">English</a><a href="../de/index.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/index.html" class="" lang="zh">中文</a><a href="../ja/index.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Einstieg</div>
+    <h1>Willkommen</h1>
+    <p class="einleitung">BehavEd-Remake schreibt die Skripte, die in Jedi Academy und Movie Duels Zwischensequenzen und Missionen steuern - und zeigt sie auf der Karte, während du schreibst.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_fenster.webp" class="zoom"><img src="../bilder/de/h_fenster.webp" alt="Eine Movie-Duels-Mission in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste." loading="lazy"></a><figcaption>Eine Movie-Duels-Mission in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste.</figcaption></figure>
+<p>Das Spiel steuert seine Szenen mit <strong>ICARUS</strong>-Skripten: Listen von Befehlen wie &quot;geh zu dieser Stelle&quot;, &quot;spiel diesen Ton&quot;, &quot;stell die Kamera dorthin&quot;. Ravens Original-BehavEd baute diese Listen aus Knöpfen. BehavEd-Remake tut dasselbe, Datei für Datei verträglich, und bringt mit, was das Original nie hatte: die Karte in 3D, die Figuren auf ihren Wegen, die Kamera in ihren Einstellungen und eine Zeitleiste, die alles abspielt - bevor du das Spiel überhaupt startest.</p>
+<h2 id="wege">Wo anfangen<a class="anker" href="#wege">#</a></h2>
+<ul><li>Neu hier? Lies <a href="erste-schritte.html">Erste Schritte</a> und <a href="fenster.html">Das Fenster</a> - zehn Minuten, und jede weitere Seite ergibt Sinn.</li><li>Gleich etwas bauen? Nimm eines der Tutorials unten.</li><li>Du suchst etwas Bestimmtes? Tipp es oben links ins Suchfeld - es durchsucht alle Seiten und springt an die Stelle.</li></ul>
+<h2 id="tutorials">Tutorials<a class="anker" href="#tutorials">#</a></h2>
+<div class="karten"><a class="karte" href="tut-erste-szene.html"><img src="../bilder/de/t1_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Eine erste Zwischensequenz</h3><p>Zwei Kameraeinstellungen, eine weiche Fahrt dazwischen, durch die Kamera angesehen und fürs Spiel übersetzt.</p><div class="meta">Kamera · sechs Schritte · braucht Movie Duels</div></div></a><a class="karte" href="tut-figur.html"><img src="../bilder/de/t2_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Eine Figur läuft</h3><p>Eine Figur und ein Laufziel setzen, das Skript sie hinschicken lassen, dann den Weg auf der Karte ändern - gehen oder rennen, ein Punkt dazwischen.</p><div class="meta">Entities und Wege · sechs Schritte · jede Karte</div></div></a><a class="karte" href="tut-roff.html"><img src="../bilder/de/t3_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Ein Schiff fliegt eine ROFF-Bahn</h3><p>Ein freier Flug mit Kurven für das Schiff über der Arena - als ROFF-Datei gebaut, mit dem Gizmo gedreht, fürs Spiel gespeichert.</p><div class="meta">Animation · sechs Schritte · braucht Movie Duels</div></div></a><a class="karte" href="tut-mission.html"><img src="../bilder/de/t4_ergebnis.webp" alt="" loading="lazy"><div class="kartentext"><h3>Eine eigene Mission</h3><p>Von einer leeren Karte zu einer Mission, die das Spiel lädt: anlegen, ein Intro dazu, prüfen und in ein .pk3 packen.</p><div class="meta">Missionen · sechs Schritte · jede Karte</div></div></a></div>
+<h2 id="kann">Was das Programm kann<a class="anker" href="#kann">#</a></h2>
+<table class="liste"><thead><tr><th>Bereich</th><th>Kurz</th></tr></thead><tbody><tr><td><a href="skripte.html">Skripte schreiben</a></td><td>Skripte aus der Befehlsliste bauen, jeden Wert in einem Dialog ändern, kopieren, verschieben, rückgängig - wie im Original-BehavEd.</td></tr><tr><td><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></td><td>Ein Skript als Baum sehen, als Graph, wer wen startet, oder als Spuren über die Zeit.</td></tr><tr><td><a href="karte.html">Die Karte</a></td><td>Die Karte in 3D mit Licht, Effekten und Modellen; hindurchfliegen, Entities wählen und verschieben.</td></tr><tr><td><a href="kamera.html">Kamera</a></td><td>Kameraeinstellungen als Schlüssel auf der Karte: mit dem Gizmo verschieben und drehen, selbst fliegen, in der Vorschau ansehen.</td></tr><tr><td><a href="zeitleiste.html">Zeitleiste</a></td><td>Die Szene abspielen, jeden Befehl in der Zeit sehen, Befehle ziehen, um ihren Zeitpunkt zu ändern.</td></tr><tr><td><a href="figuren.html">Figuren und Wege</a></td><td>Wege laufender Figuren und fliegender Schiffe: Griffe für Anfang und Ende, neue Punkte, gehen oder rennen, Blickrichtung.</td></tr><tr><td><a href="animation.html">Mover animieren und ROFF-Dateien</a></td><td>Schiffe, Türen und Plattformen animieren - als move-Befehle oder als ROFF-Datei, hier gebaut und bearbeitet.</td></tr><tr><td><a href="missionen.html">Missionen</a></td><td>Eine ganze Mission mit allen Skripten öffnen, eine eigene bauen und sie in ein .pk3 packen, das das Spiel lädt.</td></tr></tbody></table>
+<div class="hinweis"><strong>Nichts geht verloren.</strong> Jede Änderung lässt sich mit <kbd>Strg</kbd>+<kbd>Z</kbd> zurücknehmen, und Dateien werden erst beim Speichern geschrieben. Die Dateien des Spiels selbst werden nie verändert: Neues landet neben deinen Skripten oder in deinem eigenen .pk3.</div>
+    <nav class="blaettern"><span></span><a class="nach" href="erste-schritte.html"><span>Weiter</span>Erste Schritte</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

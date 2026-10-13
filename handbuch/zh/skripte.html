@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>编写脚本 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>脚本</summary><ul><li class="aktiv"><a href="skripte.html">编写脚本</a><ul class="unter"><li><a href="#grundlagen">脚本的结构</a></li><li><a href="#einfuegen">添加命令</a></li><li><a href="#editor">事件编辑器</a></li><li><a href="#bearbeiten">选择、移动、复制</a></li><li><a href="#suchen">查找、替换、书签</a></li><li><a href="#rand">修改标记栏</a></li></ul></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/skripte.html" class="" lang="en">English</a><a href="../de/skripte.html" class="" lang="de">Deutsch</a><a href="../zh/skripte.html" class="aktiv" lang="zh">中文</a><a href="../ja/skripte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">脚本</div>
+    <h1>编写脚本</h1>
+    <p class="einleitung">ICARUS 脚本是一棵命令树。从列表中选取命令,放进正确的块中,再填写参数值。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_skriptbaum.webp" class="zoom"><img src="../bilder/zh/h_skriptbaum.webp" alt="事件模式:左侧是命令,中间是脚本树,右侧是操作按钮。" loading="lazy"></a><figcaption>事件模式:左侧是命令,中间是脚本树,右侧是操作按钮。</figcaption></figure>
+<h2 id="grundlagen">脚本的结构<a class="anker" href="#grundlagen">#</a></h2>
+<p>命令从上到下执行。<code>affect ( &quot;名称&quot;, FLUSH ) { ... }</code> 把其中的命令发送给某个角色或实体——过场动画就是这样驱动演员的。<code>task</code> 声明一组命令,<code>do</code> 并行启动它,<code>dowait</code> 等待其完成,<code>wait</code> 暂停。<code>if</code>、<code>else</code>、<code>loop</code> 与其他语言相同。只有 <code>affect</code>、<code>task</code>、<code>if</code>、<code>else</code> 和 <code>loop</code> 可以包含命令。</p>
+<h2 id="einfuegen">添加命令<a class="anker" href="#einfuegen">#</a></h2>
+<ul><li>在左侧的 <strong><span class="ui">事件</span></strong> 列表中<strong>双击</strong>命令,即可插入到所选行之后(或所选块中)。</li><li>或者把它<strong>拖</strong>进树中:松开的位置决定它落在某行之前、之内还是之后。</li><li>列表末尾的宏一次插入多条命令;<strong><span class="ui">折叠宏</span></strong> 将其显示为一行。</li><li>右键单击某行可在子菜单中使用相同的列表,另有编辑、复制和 <strong><span class="ui">查找相似</span></strong>。</li></ul>
+<h2 id="editor">事件编辑器<a class="anker" href="#editor">#</a></h2>
+<p>双击某行(或按 <kbd>Enter</kbd>)打开 <strong><span class="ui">事件编辑器</span></strong>。顶部是命令的帮助文本,下方每个值都有自己的字段:固定选项的列表、数字和文本字段,文件字段带有 <strong><span class="ui"></span></strong>(浏览)和 <strong><span class="ui">播放</span></strong>(播放声音或打开脚本)。加载地图后,名称字段旁的箭头可以从地图中选取名称。</p>
+<figure class="bild"><a href="../bilder/zh/h_editor.webp" class="zoom"><img src="../bilder/zh/h_editor.webp" alt="摄像机命令的事件编辑器。" loading="lazy"></a><figcaption>摄像机命令的事件编辑器。</figcaption></figure>
+<ul><li><strong><span class="ui">表达式！</span></strong> 把字段改为自由表达式;<strong><span class="ui">助手</span></strong> 用 <strong><span class="ui">Get</span></strong>、<strong><span class="ui">Tag</span></strong> 和 <strong><span class="ui">Rnd</span></strong> 构建 <code>get ( ... )</code>、<code>tag ( ... )</code> 或 <code>random ( ... )</code>;<strong><span class="ui">还原</span></strong> 恢复。</li><li>不在列表中的值也允许——模组会带来自己的值——但会被标记为<strong>未知</strong>,因为更常见的情况是拼写错误。</li><li><strong><span class="ui">确定</span></strong>(<kbd>Enter</kbd>)写入数值,<strong><span class="ui">取消</span></strong>(<kbd>Esc</kbd>)放弃,<strong><span class="ui">重新求值</span></strong> 把字段重置为默认值。</li></ul>
+<h2 id="bearbeiten">选择、移动、复制<a class="anker" href="#bearbeiten">#</a></h2>
+<ul><li>单击选择一行,<kbd>Ctrl</kbd>+单击追加,<kbd>Shift</kbd>+单击选择范围。所有操作都作用于全部选中项。</li><li>拖动行即可移动。块会连同其内容一起移动;块不能放进自身。</li><li><strong><span class="ui">复制</span></strong>、<strong><span class="ui">剪切</span></strong>、<strong><span class="ui">粘贴</span></strong>——粘贴到块中时命令只插入一次,即使块和其中的行是一起复制的。</li><li><strong><span class="ui">克隆</span></strong> 在正下方插入副本,<strong><span class="ui">注释掉</span></strong> 把行变为注释或恢复,<strong><span class="ui">删除</span></strong> 删除。</li><li><strong>撤销</strong>和<strong>重做</strong>记录每一步。右键单击任一按钮可查看完整历史——甚至可以只撤销其中一步而保留之后的所有操作。</li></ul>
+<h2 id="suchen">查找、替换、书签<a class="anker" href="#suchen">#</a></h2>
+<p><strong><span class="ui">查找</span></strong>(<kbd>Ctrl</kbd>+<kbd>F</kbd>)打开一个常驻窗口:按命令名(<strong><span class="ui">名称为</span></strong>)或按值(<strong><span class="ui">包含</span></strong>)搜索,用 <kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd> 跳转,可在当前脚本或所有已打开的脚本中替换。书签与 Notepad++ 相同:<kbd>Ctrl</kbd>+<kbd>F2</kbd> 设置,<kbd>F2</kbd> 跳到下一个。书签按文件保存。</p>
+<h2 id="rand">修改标记栏<a class="anker" href="#rand">#</a></h2>
+<p>启用 <strong><span class="ui">视图</span> → <span class="ui">更改历史（边栏）</span></strong> 后,彩色标记栏会标出你修改过的内容:橙色 = 已修改未保存;绿色 = 已修改已保存;蓝色 = 已恢复原样。悬停可查看原始行,右键单击某行 → <strong>恢复为原始</strong>,只恢复这一条命令。</p>
+    <nav class="blaettern"><a class="vor" href="fenster.html"><span>上一页</span>窗口</a><a class="nach" href="skriptfluss.html"><span>下一页</span>脚本流程:经典、图表、轨道</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

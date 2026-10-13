@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figuren und Wege - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class="aktiv"><a href="figuren.html">Figuren und Wege</a><ul class="unter"><li><a href="#folgen">Figuren und Schiffe wählen</a></li><li><a href="#griffe">Anfang, Ende und neue Punkte</a></li><li><a href="#gangart">Gehen oder rennen, geteilte Ziele</a></li></ul></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/figuren.html" class="" lang="en">English</a><a href="../de/figuren.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/figuren.html" class="" lang="zh">中文</a><a href="../ja/figuren.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Karte und Szene</div>
+    <h1>Figuren und Wege</h1>
+    <p class="einleitung">Figuren laufen zu ihren Navgoals und Schiffe fliegen ihre moves - du siehst den ganzen Weg und kannst ihn auf der Karte ändern.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_figur_bahn.webp" class="zoom"><img src="../bilder/de/h_figur_bahn.webp" alt="Eine laufende Figur: der Weg voraus in Grau, das schon gelaufene Stück in Gelb, die Griffe an Anfang und Ende." loading="lazy"></a><figcaption>Eine laufende Figur: der Weg voraus in Grau, das schon gelaufene Stück in Gelb, die Griffe an Anfang und Ende.</figcaption></figure>
+<h2 id="folgen">Figuren und Schiffe wählen<a class="anker" href="#folgen">#</a></h2>
+<p>Eine Figur oder ein Schiff in der Ansicht anklicken wählt ihre Entity - den Spawner der Figur, die Brush-Entity des Schiffs. Marke und Gizmo folgen dem Modell, während es sich bewegt, und ein Umriss zeigt, was gewählt ist. Der Pfeil an der Figur zeigt, wohin das Modell schaut.</p>
+<h2 id="griffe">Anfang, Ende und neue Punkte<a class="anker" href="#griffe">#</a></h2>
+<ul><li><strong>Den Endgriff ziehen</strong> verschiebt das Laufziel (den <code>waypoint_navgoal</code>) oder das Ende eines Flugs.</li><li><strong>Den Startgriff ziehen</strong> verschiebt nur den Anfang, nicht die ganze Linie.</li><li><strong>Die Figur mitten im Lauf greifen</strong> (Zeitleiste zwischen Start und Ankunft) und ziehen: an diesem Augenblick entsteht ein neuer Punkt - ein neuer Navgoal bei Figuren, ein geteiltes <code>move</code> bei Schiffen.</li><li><strong>Drehen</strong> geht genauso: mitten in einem Flug legen die Ringe einen neuen Punkt mit den neuen Winkeln an; bei einer Figur schreiben sie <code>set ( SET_ANGLES )</code> zu dieser Zeit - im Laufen gilt das beim Ankommen, weil das Spiel laufende Figuren in ihre Richtung dreht.</li></ul>
+<h2 id="gangart">Gehen oder rennen, geteilte Ziele<a class="anker" href="#gangart">#</a></h2>
+<p>Ein Rechtsklick auf den Endgriff eines Laufs (oder sein Band in der Zeitleiste) öffnet sein Menü:</p>
+<ul><li><strong><span class="ui">Gehen (ab diesem Lauf)</span></strong> / <strong><span class="ui">Rennen (ab diesem Lauf)</span></strong> - schreibt <code>SET_WALKING</code> bzw. <code>SET_RUNNING</code> vor den Navgoal.</li><li><strong><span class="ui">Dabei ansehen</span></strong> - die Figur dreht sich beim Laufen weiter zu einer anderen Figur (<code>SET_WATCHTARGET</code>).</li><li><strong><span class="ui">Rückwärts laufen (schaut zurück)</span></strong> - eine Blickmarke hinter dem Start lässt sie rückwärts laufen; <strong><span class="ui">In Laufrichtung schauen</span></strong> beendet das.</li></ul>
+<p>Teilen sich mehrere Figuren einen Navgoal, würde das Verschieben alle verschieben. BehavEd-Remake merkt das und gibt diesem Lauf zuerst eine eigene Kopie des Ziels - die Statuszeile sagt, welche es angelegt hat.</p>
+<div class="hinweis">Rückwärtslaufen wird auch in vorhandenen Skripten erkannt: bewegt sich eine Figur entgegen ihrer Blickrichtung, spielt die Szene wie das Spiel <code>BOTH_WALKBACK1</code> oder <code>BOTH_RUNBACK1</code>.</div>
+    <nav class="blaettern"><a class="vor" href="zeitleiste.html"><span>Zurück</span>Zeitleiste</a><a class="nach" href="animation.html"><span>Weiter</span>Mover animieren und ROFF-Dateien</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

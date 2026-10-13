@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>タイムライン - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class="aktiv"><a href="zeitleiste.html">タイムライン</a><ul class="unter"><li><a href="#abspielen">再生</a></li><li><a href="#zeilen">行と種類</a></li><li><a href="#ziehen">ドラッグで時間を変える</a></li></ul></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/zeitleiste.html" class="" lang="en">English</a><a href="../de/zeitleiste.html" class="" lang="de">Deutsch</a><a href="../zh/zeitleiste.html" class="" lang="zh">中文</a><a href="../ja/zeitleiste.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>タイムライン</h1>
+    <p class="einleitung">タイムラインはシーンを再生し、各コマンドがいつ起こるかを示します。ブロックをドラッグするとスクリプトも変わります。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_zeitleiste.webp" class="zoom"><img src="../bilder/ja/h_zeitleiste.webp" alt="タイムライン。上にカメラの行、キャラクターごとに 1 行、種類別のサブ行、オレンジ色が再生位置。" loading="lazy"></a><figcaption>タイムライン。上にカメラの行、キャラクターごとに 1 行、種類別のサブ行、オレンジ色が再生位置。</figcaption></figure>
+<h2 id="abspielen">再生<a class="anker" href="#abspielen">#</a></h2>
+<p>マップ下の再生ボタン(▶)で再生・停止します。ルーラーをクリックまたはドラッグして時刻を設定します。速度欄でシーンを遅くでき(音は 1x のときのみ)、<strong><span class="ui">ループ</span></strong> で繰り返します。ルーラー上のホイールでズーム、トラック上では <kbd>Ctrl</kbd>+ホイール。<strong><span class="ui">全体</span></strong> で全体表示、中ボタンでスクロール。単位ボタンでフレームと秒を切り替えます。</p>
+<h2 id="zeilen">行と種類<a class="anker" href="#zeilen">#</a></h2>
+<p><strong><span class="ui">カメラ</span></strong> 行にはカメラのコマンド(移動・パン・ズーム・フェード)が入ります。その下に、スクリプトが扱うキャラクターや可動物ごとの行があります。名前の矢印をクリックすると開き、コマンドが <strong><span class="ui">移動</span></strong>・<strong><span class="ui">アニメーション</span></strong>・<strong><span class="ui">視線</span></strong>・<strong><span class="ui">サウンド</span></strong>・<strong><span class="ui">状態</span></strong>・<strong><span class="ui">進行(wait、シグナル)</span></strong> に分類されます。開始後に何も起こらない行は隠れています。<strong><span class="ui">動きのないトラック</span></strong> で表示できます。</p>
+<p><code>wait</code> コマンドは最初は非表示です。それでもすべてを時間に配置しており、ブロックを動かすと自動で調整されます。<strong><span class="ui">wait</span></strong> で独立したブロックとして表示します。</p>
+<h2 id="ziehen">ドラッグで時間を変える<a class="anker" href="#ziehen">#</a></h2>
+<p>ブロックを左右にドラッグすると、その前の <code>wait</code> が変わり、コマンドが早まったり遅れたりして、その後ろのすべてが一緒に動きます。カメラのブロックは端をドラッグすると長さが変わります。歩行と飛行はキャラクターの行の下端に帯として表示され、同じように時間方向にドラッグでき、歩行を右クリックすると歩く/走るを切り替えられます。</p>
+<p>ブロックをクリックするとスクリプトの該当行が選択され、マップもその瞬間へ移動します。タイムライン・スクリプト・マップは常に同じものを示します。</p>
+<div class="hinweis">時間はゲームの ICARUS エンジンの再現から得られ、その癖も含みます。<code>wait</code> は書かれた値より 1 ゲームフレーム(50 ms)遅れて終わり、<code>dowait</code> は指定したタスクを待ちます。時間が分からない場合(<code>waitsignal</code>)は、推測せずにそう表示します。</div>
+    <nav class="blaettern"><a class="vor" href="kamera.html"><span>前へ</span>カメラ</a><a class="nach" href="figuren.html"><span>次へ</span>キャラクターと道</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Erste Schritte - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" open><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class="aktiv"><a href="erste-schritte.html">Erste Schritte</a><ul class="unter"><li><a href="#installieren">Installieren</a></li><li><a href="#spielordner">Den Spielordner angeben</a></li><li><a href="#oeffnen">Etwas öffnen</a></li><li><a href="#sprache">Sprache</a></li></ul></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class=""><a href="modell.html">Modellansicht und Figuren</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/erste-schritte.html" class="" lang="en">English</a><a href="../de/erste-schritte.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/erste-schritte.html" class="" lang="zh">中文</a><a href="../ja/erste-schritte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Einstieg</div>
+    <h1>Erste Schritte</h1>
+    <p class="einleitung">Auspacken, dem Programm sagen, wo das Spiel liegt, eine Mission öffnen. Mehr Einrichtung gibt es nicht.</p>
+    <h2 id="installieren">Installieren<a class="anker" href="#installieren">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>Lade die neueste <code>BehavEd-Remake-….zip</code> von der Release-Seite und pack sie in einen Ordner deiner Wahl aus - etwa neben dein Spiel. In Windows wird nichts installiert.</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>Starte <code>behaved.exe</code>. Beim Start sieht das Programm auf GitHub nach einer neueren Fassung und bietet sie an; ohne Nachfrage wird nichts geladen (der Schalter steht unter <strong><span class="ui">Hilfe</span></strong>).</p></div></div></li></ol>
+<h2 id="spielordner">Den Spielordner angeben<a class="anker" href="#spielordner">#</a></h2>
+<p>Karten, Modelle, Klänge und die Skripte des Spiels liegen in seinen <code>.pk3</code>-Archiven. Öffne <strong><span class="ui">Bearbeiten</span> → <span class="ui">Spielordner</span></strong> und trage die Spielordner mit <strong><span class="ui">Spielordner hinzufügen</span></strong> ein: zuerst <code>base</code>, dann einen Mod wie Movie Duels (<code>MD</code>). Der unterste Ordner gewinnt, genau wie <code>fs_game</code> im Spiel <code>base</code> überschreibt.</p>
+<figure class="bild"><a href="../bilder/de/h_spielordner.webp" class="zoom"><img src="../bilder/de/h_spielordner.webp" alt="Die Spielordner: zuerst base, darunter der Mod - der unterste gewinnt." loading="lazy"></a><figcaption>Die Spielordner: zuerst base, darunter der Mod - der unterste gewinnt.</figcaption></figure>
+<h2 id="oeffnen">Etwas öffnen<a class="anker" href="#oeffnen">#</a></h2>
+<p>Es gibt mehrere Wege hinein. Die Startfläche im Map-Tab (solange keine Karte offen ist) bietet eine neue Mission, eine Mission aus einem <code>.pk3</code>, nur eine Karte und deine letzten Missionen an. Aus dem Menü:</p>
+<ul><li><strong>Eine Mission</strong> - <strong><span class="ui">Datei</span> → <span class="ui">Mission laden</span></strong> wählt ein <code>.pk3</code> und öffnet eine Mission mit Karte, Entities und allen Skripten in Reitern. Siehe <a href="missionen.html">Missionen</a>.</li><li><strong>Ein Skript</strong> - <strong><span class="ui">Datei</span> → <span class="ui">Öffnen</span></strong> öffnet eine <code>.txt</code> oder eine übersetzte <code>.ibi</code> von der Platte.</li><li><strong>Deine letzten Missionen</strong> - <strong><span class="ui">Datei</span> → <span class="ui">Zuletzt geöffnete Missionen</span></strong> öffnet eine ganze Mission mit einem Klick wieder.</li></ul>
+<figure class="bild"><a href="../bilder/de/h_start.webp" class="zoom"><img src="../bilder/de/h_start.webp" alt="Die Startfläche erscheint im Map-Tab, solange keine Karte offen ist." loading="lazy"></a><figcaption>Die Startfläche erscheint im Map-Tab, solange keine Karte offen ist.</figcaption></figure>
+<h2 id="sprache">Sprache<a class="anker" href="#sprache">#</a></h2>
+<p>Das Programm spricht Englisch, Deutsch, Chinesisch und Japanisch. Es startet in der Sprache von Windows; umstellen lässt es sich unter <strong><span class="ui">Ansicht</span> → <span class="ui">Sprache</span></strong>. Befehlsnamen und Werte bleiben so, wie das Spiel sie schreibt (<code>affect</code>, <code>SET_NAVGOAL</code>), denn so stehen sie in der Datei.</p>
+<div class="hinweis">Dieses Handbuch öffnet sich über <strong><span class="ui">Hilfe</span> → <span class="ui">Handbuch und Tutorials</span></strong> und über den Knopf <strong><span class="ui">Handbuch</span></strong> in <span class="ui">Ueber BehavEd</span>. Es liegt im Ordner <code>handbuch</code> neben <code>behaved.exe</code> und braucht kein Internet.</div>
+    <nav class="blaettern"><a class="vor" href="index.html"><span>Zurück</span>Willkommen</a><a class="nach" href="fenster.html"><span>Weiter</span>Das Fenster</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

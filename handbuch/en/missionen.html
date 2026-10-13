@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Missions - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">3</span>Missions</summary><ul><li class="aktiv"><a href="missionen.html">Missions</a><ul class="unter"><li><a href="#laden">Opening a mission</a></li><li><a href="#zuletzt">Recent missions</a></li><li><a href="#neu">A new mission</a></li><li><a href="#speichern">Saving a mission</a></li></ul></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/missionen.html" class="aktiv" lang="en">English</a><a href="../de/missionen.html" class="" lang="de">Deutsch</a><a href="../zh/missionen.html" class="" lang="zh">中文</a><a href="../ja/missionen.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Missions</div>
+    <h1>Missions</h1>
+    <p class="einleitung">A mission is a map with its entities and all its scripts. Open one whole, build your own, and pack it into a .pk3 that the game loads.</p>
+    <h2 id="laden">Opening a mission<a class="anker" href="#laden">#</a></h2>
+<p><strong><span class="ui">Load mission</span></strong> (menu <span class="ui">File</span> or the map toolbar) picks a <code>.pk3</code> and lists the missions in it - the maps that have scripts. Pick one and everything is set up: the map, its <code>.ent</code> with the mission&#x27;s figures, and <strong>every script of the mission in its own tab</strong>; the first script - usually the intro - is in front. All tabs share the map and the camera.</p>
+<figure class="bild"><a href="../bilder/en/h_mission_wahl.webp" class="zoom"><img src="../bilder/en/h_mission_wahl.webp" alt="The missions of an archive - maps that share a map are grouped." loading="lazy"></a><figcaption>The missions of an archive - maps that share a map are grouped.</figcaption></figure>
+<h2 id="zuletzt">Recent missions<a class="anker" href="#zuletzt">#</a></h2>
+<p><strong><span class="ui">File</span> → <span class="ui">Recent missions</span></strong> and the start page list the missions you opened last - from an archive or from a mission folder. One click opens the whole project again: map, entities and all scripts. An entry whose file is gone is removed from the list.</p>
+<figure class="bild"><a href="../bilder/en/h_menue_missionen.webp" class="zoom"><img src="../bilder/en/h_menue_missionen.webp" alt="File → Recent missions." loading="lazy"></a><figcaption><span class="ui">File</span> → <span class="ui">Recent missions</span>.</figcaption></figure>
+<h2 id="neu">A new mission<a class="anker" href="#neu">#</a></h2>
+<p><strong><span class="ui">New mission</span></strong> starts a mission on any map. Choose the map, give the mission a name (letters, digits and <code>_</code>; the game loads it as <code>maps/&lt;name&gt;.bsp</code>, so <code>devmap &lt;name&gt;</code>), and a script folder. BehavEd-Remake creates a player start, a script runner, the intro script and a mission folder under <code>Documents\behaved\missions</code>. The intro runs when the player spawns.</p>
+<figure class="bild"><a href="../bilder/en/h_mission_neu.webp" class="zoom"><img src="../bilder/en/h_mission_neu.webp" alt="The New mission dialog." loading="lazy"></a><figcaption>The <span class="ui">New mission</span> dialog.</figcaption></figure>
+<p>A mission that was never packed lives in its folder; <strong><span class="ui">Open mission folder</span></strong> continues it after a restart.</p>
+<h2 id="speichern">Saving a mission<a class="anker" href="#speichern">#</a></h2>
+<p><strong><span class="ui">Save mission</span></strong> shows what will go into the archive - every file with its size - and checks the mission first: a script that an entity uses but that does not exist, a script that does not compile, no player start, a target that points nowhere, a <code>.str</code> without <code>ENDMARKER</code>. Errors (red) must be fixed, warnings (orange) may stay. <strong><span class="ui">Save</span></strong> saves all scripts, writes the <code>.ent</code>, compiles the scripts, adds your own ROFF files and packs the <code>.pk3</code> into the game folder.</p>
+<figure class="bild"><a href="../bilder/en/h_mission_speichern.webp" class="zoom"><img src="../bilder/en/h_mission_speichern.webp" alt="The Save mission dialog with its checks." loading="lazy"></a><figcaption>The <span class="ui">Save mission</span> dialog with its checks.</figcaption></figure>
+<div class="hinweis">The archive is written next to the other mod archives (<code>zz_&lt;name&gt;.pk3</code> in the Movie Duels folder, so it wins over older files). Start the game and type <code>devmap &lt;name&gt;</code> in the console to play it.</div>
+    <nav class="blaettern"><a class="vor" href="wegpunkte.html"><span>Previous</span>NPC waypoints</a><a class="nach" href="modell.html"><span>Next</span>Model view and characters</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

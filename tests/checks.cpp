@@ -906,6 +906,22 @@ int main(int argc, char** argv) {
         expect("Einstellungen: Liste bleibt begrenzt",
                a.recent.size() == bhed::Settings::kMaxRecent, true);
 
+        // Zuletzt geoeffnete MISSIONEN (rc599): ein ganzes Projekt - der
+        // Missionsordner oder ein Archiv mit dem Namen der Mission.
+        bhed::Settings m;
+        m.noteRecentMission("ordner|C:/Missionen/md_test_jedi");
+        m.noteRecentMission("pk3|C:/Spiel/MD/md_am.pk3|md_am_sith");
+        bhed::Settings m2;
+        (void)bhed::readSettings(bhed::writeSettings(m), m2);
+        expect("Einstellungen: Missionen ueberstehen den Rundlauf, neueste zuerst",
+               m2.recentMissions.size() == 2 && m2.recentMissions[0] == "pk3|C:/Spiel/MD/md_am.pk3|md_am_sith", true);
+        m.noteRecentMission("ordner|C:/Missionen/md_test_jedi");
+        expect("Einstellungen: Mission wandert nach vorn",
+               m.recentMissions.size() == 2 && m.recentMissions[0] == "ordner|C:/Missionen/md_test_jedi", true);
+        for (int i = 0; i < 30; ++i) { m.noteRecentMission("ordner|C:/M/" + std::to_string(i)); }
+        expect("Einstellungen: Missionsliste bleibt begrenzt",
+               m.recentMissions.size() == bhed::Settings::kMaxRecentMissions, true);
+
         // Die Schalter aus Dialog 131 muessen den Rundlauf ueberstehen.
         bhed::Settings d;
         d.alternativeIcons = true;

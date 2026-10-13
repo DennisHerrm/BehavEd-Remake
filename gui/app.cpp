@@ -3753,6 +3753,30 @@ void drawChangelog() {
     if (!offen) { g_app->changelogOpen = false; }
 }
 
+// Das Handbuch (rc599): handbuch/<sprache>/index.html neben behaved.exe -
+// beim Entwickeln auch eine Ebene hoeher. Geoeffnet im Standardbrowser.
+void handbuchOeffnen() {
+    const char* code = "en";
+    switch (i18n::currentLanguage()) {
+        case i18n::Language::German: code = "de"; break;
+        case i18n::Language::ChineseSimplified: code = "zh"; break;
+        case i18n::Language::Japanese: code = "ja"; break;
+        default: break;
+    }
+    const std::string exe = platform::executableDirectory();
+    for (const std::string& basis : {exe, exe + "\\.."}) {
+        const std::string seite = basis + "\\handbuch\\" + code + "\\index.html";
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::u8path(seite), ec)) {
+            platform::openWithDefaultApp(seite);
+            return;
+        }
+    }
+    char t[700];
+    std::snprintf(t, sizeof(t), tr(Str::GuideMissing), (exe + "\\handbuch").c_str());
+    addStatus(t);
+}
+
 void drawAbout() {
     if (!g_app->aboutOpen) {
         return;
@@ -3797,6 +3821,9 @@ void drawAbout() {
         g_app->changelogOpen = true;
         ImGui::CloseCurrentPopup();
     }
+    ImGui::SameLine();
+    if (ImGui::Button(tr(Str::AboutGuide))) { handbuchOeffnen(); }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GuideHint)); }
     ImGui::EndPopup();
 }
 
@@ -4020,6 +4047,8 @@ bool doSave() {
         return false;
     }
     sicherungAnlegen(quelle, inhalt);
+    // Eigene ROFF-Bahnen (rc599): die .rof-Dateien entstehen mit dem Skript.
+    (void)roffDateienSchreiben(quelle, g_app->doc.script());
     g_app->doc.offeneBloeckeGeschlossen();   // die Datei hat jetzt ihre '}'
     // Ab jetzt ist die Quelle die Datei, an der gearbeitet wird. Sonst
     // schriebe das naechste Speichern wieder neben die .ibi.
@@ -8823,11 +8852,18 @@ void drawTree(const Layout& l, int pane, float breite, float hoehe) {
                                                   : g_app->doc.cloneAt(r.path);
                     if (ok) { rebuilt = true; }
                 }
+                // Gehoert die angeklickte Zeile zur Auswahl, gilt es fuer die
+                // GANZE Auswahl (rc599: "if I right click and select copy, it
+                // only copies one command. It should copy everything
+                // highlighted.") - wie Strg+C und der Knopf rechts.
+                const std::vector<Path> markiert = selectionOrCurrent();
+                const bool ganzeAuswahl =
+                    markiert.size() > 1 && std::find(markiert.begin(), markiert.end(), r.path) != markiert.end();
                 if (ImGui::MenuItem(tr(Str::ActCopy), chordName(keys::Action::Copy))) {
-                    kopiereWeg(r.path, false);
+                    if (ganzeAuswahl) { kopieren(false); } else { kopiereWeg(r.path, false); }
                 }
                 if (ImGui::MenuItem(tr(Str::ActCut), chordName(keys::Action::Cut))) {
-                    kopiereWeg(r.path, true);
+                    if (ganzeAuswahl) { kopieren(true); } else { kopiereWeg(r.path, true); }
                     rebuilt = true;
                 }
                 // Immer anklickbar: der Inhalt kann auch aus der
@@ -9720,6 +9756,22 @@ void drawMenu() {
         if (ImGui::MenuItem(tr(Str::FileSave), "Ctrl+S")) { (void)doSave(); }
         // Strg+A ist im Original "Speichern unter", nicht "alles markieren".
         if (ImGui::MenuItem(tr(Str::FileSaveAs), "Ctrl+A")) { (void)doSaveAs(); }
+        // Zuletzt geoeffnete Missionen (rc599): ein ganzes Projekt - Karte,
+        // Entities und alle Skripte der Mission in ihren Reitern.
+        {
+            const std::vector<LetzteMission> missionen = letzteMissionenAlle();
+            if (ImGui::BeginMenu(tr(Str::RecentMissions), !missionen.empty())) {
+                for (const LetzteMission& lm : missionen) {
+                    ImGui::PushID(lm.eintrag.c_str());
+                    if (ImGui::MenuItem(lm.name.c_str(), lm.ort.c_str())) {
+                        const std::string e = lm.eintrag;
+                        letzteMissionOeffnen(e);
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndMenu();
+            }
+        }
         if (ImGui::BeginMenu(tr(Str::MsgRecent), !g_app->settings.recent.empty())) {
             for (const std::string& r : g_app->settings.recent) {
                 if (ImGui::MenuItem(r.c_str())) {
@@ -10212,6 +10264,10 @@ void drawMenu() {
     // Changelog rein". Vorher standen Update und Changelog im Datei-Menue
     // und About nur als Knopf bei den Programmknoepfen (der bleibt).
     if (ImGui::BeginMenu(tr(Str::MenuHelp))) {
+        // Das Handbuch mit Tutorials (rc599).
+        if (ImGui::MenuItem(tr(Str::HelpGuide))) { handbuchOeffnen(); }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GuideHint)); }
+        ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::HelpAbout))) {
             g_app->aboutOpen = true;
         }
@@ -14232,12 +14288,15 @@ void draw() {
                                 g_app->prefsOpen || g_app->pk3Open ||
                                 g_app->aboutOpen || g_app->missionPickOpen;
 
-    // Strg+Mausrad vergroessert und verkleinert, wie in jedem Editor.
+    // Strg+Mausrad vergroessert und verkleinert, wie in jedem Editor - nur
+    // nicht ueber der Zeitleiste: dort zoomt Strg+Rad die Spuren (rc599,
+    // vorher geschah beides zugleich).
     if (ImGui::GetIO().KeyCtrl && ImGui::GetIO().MouseWheel != 0.0F &&
-        !ImGui::GetIO().WantTextInput) {
+        !ImGui::GetIO().WantTextInput && !g_app->tlUnterMaus) {
         g_app->uiScale = std::clamp(
             g_app->uiScale + ImGui::GetIO().MouseWheel * 0.1F, 0.5F, 3.0F);
     }
+    g_app->tlUnterMaus = false;   // die Zeitleiste setzt es in diesem Bild neu
 
     const float total = g_app->dpiScale * g_app->uiScale;
     if (g_app->themePending || std::fabs(total - g_app->appliedScale) > 0.001F) {

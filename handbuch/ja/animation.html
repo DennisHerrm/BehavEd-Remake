@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>可動物のアニメーションと ROFF ファイル - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class="aktiv"><a href="animation.html">可動物のアニメーションと ROFF ファイル</a><ul class="unter"><li><a href="#start">ウィンドウを開く</a></li><li><a href="#schluessel">キー</a></li><li><a href="#arten">スクリプト(move)か ROFF ファイルか</a></li><li><a href="#roff">ROFF ファイルの仕組み</a></li><li><a href="#bearbeiten">ゲームの ROFF ファイルを編集する</a></li></ul></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/animation.html" class="" lang="en">English</a><a href="../de/animation.html" class="" lang="de">Deutsch</a><a href="../zh/animation.html" class="" lang="zh">中文</a><a href="../ja/animation.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">マップとシーン</div>
+    <h1>可動物のアニメーションと ROFF ファイル</h1>
+    <p class="einleitung">船・扉・プラットフォームは時間に沿ったキーで動きます。スクリプトの move コマンドとして、または ROFF ファイルとして保存でき、ゲームの ROFF ファイルも編集できます。</p>
+    <figure class="bild breit"><a href="../bilder/ja/h_animation.webp" class="zoom"><img src="../bilder/ja/h_animation.webp" alt="ROFF モードの アニメーション ウィンドウと、マップ上の船のパス。" loading="lazy"></a><figcaption>ROFF モードの <span class="ui">アニメーション</span> ウィンドウと、マップ上の船のパス。</figcaption></figure>
+<h2 id="start">ウィンドウを開く<a class="anker" href="#start">#</a></h2>
+<p>動かせるエンティティ(<code>func_static</code> の船や <code>func_door</code> などの <code>func_*</code> ブラシエンティティ、<code>misc_model_breakable</code>、<code>fx_runner</code>)を選び、インスペクターの <strong><span class="ui">アニメート</span></strong> を押します。<code>script_targetname</code> がなければ付けられます。スクリプトは名前のあるものしか動かせないからです。</p>
+<h2 id="schluessel">キー<a class="anker" href="#schluessel">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p>動きの始まりにタイムラインを合わせ、<strong><span class="ui">再生位置にキー</span></strong> を押します。最初のキーはエンティティの現在位置を記録します。</p></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p>時間を進めてもう一度押します。ビューで新しいひし形をドラッグするか(<kbd>Shift</kbd>:上下のみ)、表に時間・位置・向きを入力します。</p></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p>あるいはギズモを使います。ウィンドウがこのエンティティを表示していて、タイムラインが最初のキー以降にあれば、ギズモで移動・回転すると再生位置にキーが設定されます(既にあればそれを変更します)。</p></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong><span class="ui">キーを削除</span></strong> と <strong><span class="ui">キーへ移動</span></strong> は選択中の行に作用し、<strong><span class="ui">アニメーションを削除</span></strong> はアニメーション全体をスクリプトから削除します。</p></div></div></li></ol>
+<h2 id="arten">スクリプト(move)か ROFF ファイルか<a class="anker" href="#arten">#</a></h2>
+<table class="liste"><thead><tr><th></th><th><span class="ui">スクリプト (move)</span></th><th><span class="ui">ROFF ファイル</span></th></tr></thead><tbody><tr><td>保存形式</td><td>スクリプト先頭の <code>move</code> と <code>wait</code> を含む <code>affect</code> ブロック</td><td><code>scripts/&lt;名前&gt;.rof</code>(<code>play ( &quot;PLAY_ROFF&quot;, ... )</code> で再生)</td></tr><tr><td>キーの間</td><td>各移動はゲームの可動物と同じく速く始まり最後に減速します(<span class="ui">リニア</span> で等速)</td><td>すべてのキーを通るなめらかな曲線(<span class="ui">スムーズ</span>)または直線</td></tr><tr><td>向いている用途</td><td>扉、エレベーター、画面を横切る船</td><td>多くの曲がりを含む長い自由飛行、正確なフレームでのエフェクト</td></tr></tbody></table>
+<p>ウィンドウ上部の <strong><span class="ui">スクリプト (move)</span></strong> / <strong><span class="ui">ROFF ファイル</span></strong> で切り替えます。キーは変換され、失われません。ROFF モードでは <strong><span class="ui">ファイル</span></strong> 欄がファイル名(例 <code>md_am/roffs/sta2</code>)を指定し、その下にフレーム数と秒数が表示されます。</p>
+<h2 id="roff">ROFF ファイルの仕組み<a class="anker" href="#roff">#</a></h2>
+<p>ROFF ファイル(<code>.rof</code>、&quot;Rotation and Origin File Format&quot;)は、ゲームの 1 フレームごとに小さな 1 歩、つまり次の 50 ms でエンティティがどれだけ動き回転するかを保存します。ゲームは <code>PLAY_ROFF</code> が実行された時点のエンティティの位置にこれを足していくので、ROFF のパスは<strong>相対的</strong>です。エンティティを動かせばパス全体も一緒に動きます。ゲームと Movie Duels の 108 ファイルはすべてバージョン 2 で、1 つを除き 1 フレーム 50 ms です。BehavEd-Remake もその形式で書き出します。</p>
+<p>編集するキーは、スクリプト内の <code>play</code> の直前にコメント行として保持され、<code>.rof</code> はそこから作られます。そのため元に戻す・コピー・貼り付けは ROFF パスにも通常のコマンドと同じように効きます。<strong>スクリプトを保存</strong>すると、ファイルは同じ scripts フォルダーの <code>scripts/&lt;名前&gt;.rof</code> に書き出され、<strong><span class="ui">ミッションを保存</span></strong> でミッションの <code>.pk3</code> に入ります。</p>
+<h2 id="bearbeiten">ゲームの ROFF ファイルを編集する<a class="anker" href="#bearbeiten">#</a></h2>
+<p>スクリプトがこのエンティティで既製の ROFF を再生している場合、ウィンドウの <strong><span class="ui">スクリプト内のこのエンティティの ROFF パス:</span></strong> に表示されます。<strong><span class="ui">編集</span></strong> でそれをキーに分解します。直線か 1 本のなめらかな曲線のうち、キーが少なくて済む方を選び、元との差は 0.5 ユニット以内です。ゲームのファイルは上書きされず、コピー(<code>…_2</code>)を編集し、<code>play</code> コマンドはそのコピーを指すようになります。</p>
+<figure class="bild breit anim"><a href="../bilder/ja/a_roff.webp" class="zoom"><img src="../bilder/ja/a_roff.webp" alt="ROFF のパスを飛ぶ船。" loading="lazy"></a><span class="abzeichen">アニメーション</span><figcaption>ROFF のパスを飛ぶ船。</figcaption></figure>
+<div class="hinweis">タイムラインでは ROFF の飛行は <strong><span class="ui">移動</span></strong> の帯になり、ドラッグすると飛行の開始を早めたり遅らせたりできます。</div>
+    <nav class="blaettern"><a class="vor" href="figuren.html"><span>前へ</span>キャラクターと道</a><a class="nach" href="wegpunkte.html"><span>次へ</span>NPC ウェイポイント</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

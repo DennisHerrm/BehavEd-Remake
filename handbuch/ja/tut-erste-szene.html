@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>はじめてのカットシーン - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class=""><a href="speichern.html">保存・コンパイル・チェック</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class="aktiv"><a href="tut-erste-szene.html">はじめてのカットシーン</a><ul class="unter"><li><a href="#schritte">手順</a></li><li><a href="#weiter">次に</a></li></ul></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-erste-szene.html" class="" lang="en">English</a><a href="../de/tut-erste-szene.html" class="" lang="de">Deutsch</a><a href="../zh/tut-erste-szene.html" class="" lang="zh">中文</a><a href="../ja/tut-erste-szene.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">チュートリアル</div>
+    <h1>はじめてのカットシーン</h1>
+    <p class="einleitung">2 つのカメラショットとその間のなめらかな移動を作り、カメラ視点で確認して、ゲーム用にコンパイルします。</p>
+    <h2 id="schritte">手順<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>ミッションを開く。</strong> <span class="ui">ファイル</span> → <span class="ui">ミッションを読み込む…</span> で <code>MD_Missions_Ep3.pk3</code> を選び、<code>md_am_sith</code> をクリックします。マップがミッションの全スクリプトのタブ付きで開くので、<code>intro2_sith</code> タブのままにします。</p><figure class="bild"><a href="../bilder/ja/t1_1.webp" class="zoom"><img src="../bilder/ja/t1_1.webp" alt="ミッションが開いた状態。" loading="lazy"></a><figcaption>ミッションが開いた状態。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>カメラを選ぶ。</strong> マップのカメラ記号(またはタイムラインの <span class="ui">カメラ</span> 行)をクリックします。左にショット、マップにパスが表示されます。</p><figure class="bild"><a href="../bilder/ja/t1_2.webp" class="zoom"><img src="../bilder/ja/t1_2.webp" alt="カメラを選択した状態。" loading="lazy"></a><figcaption>カメラを選択した状態。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>良い場所へ飛んでショットを追加する。</strong> 右ボタンを押したまま <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> で飛び、気に入る視点を探します。<strong><span class="ui">ここに新しいショット</span></strong> を押すと、現在の視点の <code>camera ( MOVE )</code> と <code>camera ( PAN )</code> が選択中のショットの後ろに追加されます。</p><figure class="bild"><a href="../bilder/ja/t1_3.webp" class="zoom"><img src="../bilder/ja/t1_3.webp" alt="現在の視点に追加した新しいショット。" loading="lazy"></a><figcaption>現在の視点に追加した新しいショット。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>移動時間を付ける。</strong> <strong><span class="ui">選択中のショット</span></strong> で <strong><span class="ui">移動時間</span></strong> を <code>3</code>(秒)にします。カメラは前のショットから 3 秒かけて飛んできます。<code>0</code> ならカットです。</p><figure class="bild"><a href="../bilder/ja/t1_4.webp" class="zoom"><img src="../bilder/ja/t1_4.webp" alt="カメラパネルの移動時間。" loading="lazy"></a><figcaption>カメラパネルの移動時間。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>確認する。</strong> <strong><span class="ui">カメラプレビュー</span></strong> をオンにして小さな画像をクリックし、カメラ視点にしてから マップ下の再生ボタン(▶)を押します。タイムラインがゲームと同じようにシーンを再生します(<strong>サウンド</strong>がオンなら音付き)。</p><figure class="bild"><a href="../bilder/ja/t1_5.webp" class="zoom"><img src="../bilder/ja/t1_5.webp" alt="再生中にカメラ視点で見る。" loading="lazy"></a><figcaption>再生中にカメラ視点で見る。</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>保存してコンパイルする。</strong> <code>.pk3</code> から開いたスクリプトにはまだファイルがないため、最初の保存で保存先を聞かれます。MOD の <code>scripts</code> フォルダー(例 <code>MD\scripts\md_am\</code>)を選びます。続いて <strong><span class="ui">コンパイル！</span></strong> でゲームが実行する <code>.ibi</code> が隣に書き出されます。自分のミッションなら <strong><span class="ui">ミッションを保存</span></strong> ですべてを <code>.pk3</code> にまとめます。<a href="tut-mission.html">自分のミッション</a> を参照。</p><figure class="bild"><a href="../bilder/ja/t1_6.webp" class="zoom"><img src="../bilder/ja/t1_6.webp" alt="操作列。コンパイル！ はファイルのボタンの下にあり、成功すると緑に光ります。" loading="lazy"></a><figcaption>操作列。<strong><span class="ui">コンパイル！</span></strong> はファイルのボタンの下にあり、成功すると緑に光ります。</figcaption></figure></div></div></li></ol>
+<h2 id="weiter">次に<a class="anker" href="#weiter">#</a></h2>
+<p>2 つのショットの間でカメラのギズモをつかむとそこにキーを設定できます(<a href="kamera.html#gizmo">ショットの移動と回転</a>)。<strong><span class="ui">操縦</span></strong> でショット全体を自分で飛ばすこともできます(<a href="kamera.html#steuern">ショットを自分で飛ばす(操縦)</a>)。</p>
+    <nav class="blaettern"><a class="vor" href="tutorials.html"><span>前へ</span>チュートリアル</a><a class="nach" href="tut-figur.html"><span>次へ</span>キャラクターを歩かせる</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

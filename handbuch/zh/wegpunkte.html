@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPC 路径点 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class="aktiv"><a href="wegpunkte.html">NPC 路径点</a><ul class="unter"></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>参考</summary><ul><li class=""><a href="einstellungen.html">设置与更新</a></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/wegpunkte.html" class="" lang="en">English</a><a href="../de/wegpunkte.html" class="" lang="de">Deutsch</a><a href="../zh/wegpunkte.html" class="aktiv" lang="zh">中文</a><a href="../ja/wegpunkte.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">地图与场景</div>
+    <h1>NPC 路径点</h1>
+    <p class="einleitung">NPC 追击或逃跑时行走的路网。可以手动放置,也可以让程序自动生成,然后进行检查。</p>
+    <figure class="bild breit"><a href="../bilder/zh/h_wegpunkte.webp" class="zoom"><img src="../bilder/zh/h_wegpunkte.webp" alt="NPC 路径点 窗口及地图上的路网。" loading="lazy"></a><figcaption><span class="ui">NPC 路径点</span> 窗口及地图上的路网。</figcaption></figure>
+<p>通过地图工具栏中的 <strong><span class="ui">NPC 路径点</span></strong> 打开。<strong><span class="ui">显示路网</span></strong> 绘制路径:绿色为手动设置(<code>target</code>),蓝色为自动(导航点和战斗点),橙色为跳跃(<code>targetJump</code>)。</p>
+<ul><li><strong><span class="ui">放置路径点</span></strong>:单击地面——每个新点都会与上一个相连。<kbd>Shift</kbd>+单击开始新路径,<kbd>Esc</kbd> 结束。</li><li><strong><span class="ui">连接</span></strong>:单击两个点将其连接(<kbd>Ctrl</kbd>:跳跃连接);单击两个已连接的点会断开。每个点最多四个连接。</li><li><strong><span class="ui">生成路网</span></strong> 在可行走的地面上分布路径点(<strong><span class="ui">间距</span></strong>:原版关卡约 230)并连接——可一步撤销。<strong><span class="ui">移除已生成</span></strong> 只删除这些点,手动放置的保留。</li><li><strong><span class="ui">检查路网</span></strong> 找出游戏会拒绝或 NPC 无法使用的部分;单击某个问题即可飞过去。</li></ul>
+    <nav class="blaettern"><a class="vor" href="animation.html"><span>上一页</span>移动物体动画与 ROFF 文件</a><a class="nach" href="missionen.html"><span>下一页</span>任务</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

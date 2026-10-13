@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置与更新 - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>手册</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="搜索手册...  (/)" autocomplete="off" aria-label="搜索手册...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>入门</summary><ul><li class=""><a href="index.html">欢迎</a></li><li class=""><a href="erste-schritte.html">快速上手</a></li><li class=""><a href="fenster.html">窗口</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>脚本</summary><ul><li class=""><a href="skripte.html">编写脚本</a></li><li class=""><a href="skriptfluss.html">脚本流程:经典、图表、轨道</a></li><li class=""><a href="speichern.html">保存、编译与检查</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>地图与场景</summary><ul><li class=""><a href="karte.html">地图</a></li><li class=""><a href="entities.html">实体</a></li><li class=""><a href="kamera.html">摄像机</a></li><li class=""><a href="zeitleiste.html">时间轴</a></li><li class=""><a href="figuren.html">角色与路径</a></li><li class=""><a href="animation.html">移动物体动画与 ROFF 文件</a></li><li class=""><a href="wegpunkte.html">NPC 路径点</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>任务</summary><ul><li class=""><a href="missionen.html">任务</a></li><li class=""><a href="modell.html">模型视图与角色</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>教程</summary><ul><li class=""><a href="tutorials.html">教程</a></li><li class=""><a href="tut-erste-szene.html">第一个过场动画</a></li><li class=""><a href="tut-figur.html">让角色行走</a></li><li class=""><a href="tut-roff.html">飞船沿 ROFF 路径飞行</a></li><li class=""><a href="tut-mission.html">你自己的任务</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">5</span>参考</summary><ul><li class="aktiv"><a href="einstellungen.html">设置与更新</a><ul class="unter"><li><a href="#spielordner">游戏文件夹</a></li><li><a href="#prefs">首选项</a></li><li><a href="#tasten">修改快捷键</a></li><li><a href="#updates">更新与更新日志</a></li></ul></li><li class=""><a href="tasten.html">键盘快捷键</a></li><li class=""><a href="begriffe.html">术语表</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/einstellungen.html" class="" lang="en">English</a><a href="../de/einstellungen.html" class="" lang="de">Deutsch</a><a href="../zh/einstellungen.html" class="aktiv" lang="zh">中文</a><a href="../ja/einstellungen.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="浅色或深色" aria-label="浅色或深色">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">参考</div>
+    <h1>设置与更新</h1>
+    <p class="einleitung">程序在哪里保存路径和选项、如何修改快捷键,以及更新如何到来。</p>
+    <h2 id="spielordner">游戏文件夹<a class="anker" href="#spielordner">#</a></h2>
+<p><strong><span class="ui">编辑</span> → <span class="ui">游戏目录</span></strong> 列出程序读取其 <code>.pk3</code> 的文件夹,每个都有 <strong><span class="ui">上移</span></strong>、<strong><span class="ui">下移</span></strong>、<strong><span class="ui">移除</span></strong> 和 <strong><span class="ui">打开</span></strong>。最下面的优先于上面所有文件夹,正如引擎中 <code>fs_game</code> 覆盖 <code>base</code>。没有压缩包的文件夹会给出提示——说明路径不对。</p>
+<figure class="bild"><a href="../bilder/zh/h_spielordner.webp" class="zoom"><img src="../bilder/zh/h_spielordner.webp" alt="游戏文件夹。" loading="lazy"></a><figcaption>游戏文件夹。</figcaption></figure>
+<h2 id="prefs">首选项<a class="anker" href="#prefs">#</a></h2>
+<p><strong><span class="ui">编辑</span> → <span class="ui">首选项</span></strong>(或操作栏中的 <strong><span class="ui">首选项</span></strong>,<kbd>Alt</kbd>+<kbd>P</kbd>)包含原版 BehavEd 的选项:</p>
+<ul><li><strong><span class="ui">目录</span></strong>:<span class="ui">脚本路径</span>、<span class="ui">命令描述文件</span>(定义所有命令的 <code>.bhc</code>——<strong><span class="ui">重新加载命令模型</span></strong> 重新读取)、<span class="ui">源文件路径</span>。</li><li><strong><span class="ui">启动时重新打开上次的文件</span></strong>、<strong><span class="ui">下拉列表按字母排序</span></strong>、<strong><span class="ui">使用备用配色图标</span></strong>、<strong><span class="ui">打开/新建/退出时询问</span></strong>、<strong><span class="ui">文件对话框默认使用上次的目录</span></strong>。</li><li>语言、主题和界面大小位于 <strong><span class="ui">视图</span></strong> 菜单。</li></ul>
+<h2 id="tasten">修改快捷键<a class="anker" href="#tasten">#</a></h2>
+<p><strong><span class="ui">编辑</span> → <span class="ui">键盘快捷键</span></strong> 列出所有带快捷键的操作。单击某个快捷键,再按新键;<kbd>Esc</kbd> 取消,<kbd>Backspace</kbd> 清除。已被占用的键会提示。默认值见 <a href="tasten.html">键盘快捷键</a>。</p>
+<h2 id="updates">更新与更新日志<a class="anker" href="#updates">#</a></h2>
+<p><strong><span class="ui">帮助</span> → <span class="ui">检查更新</span></strong> 会向 GitHub 查询新版本并显示更新内容;<strong><span class="ui">下载并安装</span></strong> 会替换程序文件并提示重启。旁边的开关决定是否在启动时检查。<strong><span class="ui">帮助</span> → <span class="ui">更新日志</span></strong> 按版本以你的语言显示修复和新增的内容——更新后会自动打开一次。</p>
+    <nav class="blaettern"><a class="vor" href="tut-mission.html"><span>上一页</span>你自己的任务</a><a class="nach" href="tasten.html"><span>下一页</span>键盘快捷键</a></nav>
+  </article>
+  <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

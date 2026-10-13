@@ -32,6 +32,7 @@ add_library(bhed_core STATIC
   src/missionbau.cpp
   src/wegpunkte.cpp
   src/moveranim.cpp
+  src/roffanim.cpp
   src/missionsgraph.cpp
   src/sound.cpp
   src/timeline.cpp
@@ -399,6 +400,11 @@ if(BEHAVED_TESTS)
   add_executable(rofftest tests/rofftest.cpp)
   target_link_libraries(rofftest PRIVATE bhed_core)
   add_test(NAME roff COMMAND rofftest)
+  # ROFF-Bahnen BAUEN (rc599): schreiben, aus Schluesseln backen, zerlegen,
+  # die Markierung im Skript.
+  add_executable(roffbautest tests/roffbautest.cpp)
+  target_link_libraries(roffbautest PRIVATE bhed_core)
+  add_test(NAME roffbau COMMAND roffbautest)
   # Jede .rof der Spielordner lesen und abspielen. Ohne BEHAVED_GAMEDIRS
   # meldet sie "uebersprungen" (wie meshmasse).
   add_executable(roffmasse tests/roffmasse.cpp)

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A first cutscene - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class="aktiv"><a href="tut-erste-szene.html">A first cutscene</a><ul class="unter"><li><a href="#schritte">Steps</a></li><li><a href="#weiter">What next</a></li></ul></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class=""><a href="tut-roff.html">A ship flies a ROFF path</a></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-erste-szene.html" class="aktiv" lang="en">English</a><a href="../de/tut-erste-szene.html" class="" lang="de">Deutsch</a><a href="../zh/tut-erste-szene.html" class="" lang="zh">中文</a><a href="../ja/tut-erste-szene.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Tutorials</div>
+    <h1>A first cutscene</h1>
+    <p class="einleitung">Two camera shots, a smooth move between them, watched through the camera and compiled for the game.</p>
+    <h2 id="schritte">Steps<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>Open the mission.</strong> <span class="ui">File</span> → <span class="ui">Load mission</span>, choose <code>MD_Missions_Ep3.pk3</code>, pick <code>md_am_sith</code>. The map opens with all scripts of the mission in tabs; stay in the tab <code>intro2_sith</code>.</p><figure class="bild"><a href="../bilder/en/t1_1.webp" class="zoom"><img src="../bilder/en/t1_1.webp" alt="The mission is open." loading="lazy"></a><figcaption>The mission is open.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>Select the camera.</strong> Click the camera symbol on the map (or the <span class="ui">Camera</span> row of the timeline). Its shots appear in the list on the left, its path on the map.</p><figure class="bild"><a href="../bilder/en/t1_2.webp" class="zoom"><img src="../bilder/en/t1_2.webp" alt="The camera is selected." loading="lazy"></a><figcaption>The camera is selected.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>Fly to a good spot and add a shot.</strong> Hold the right mouse button and fly with <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> until you like the view. Press <strong><span class="ui">New camera shot here</span></strong>: a <code>camera ( MOVE )</code> and <code>camera ( PAN )</code> at your view are added after the selected shot.</p><figure class="bild"><a href="../bilder/en/t1_3.webp" class="zoom"><img src="../bilder/en/t1_3.webp" alt="A new shot at the current view." loading="lazy"></a><figcaption>A new shot at the current view.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>Give it a travel time.</strong> Under <strong><span class="ui">Selected shot</span></strong> set <strong><span class="ui">Travel time</span></strong> to <code>3</code> (seconds): the camera now flies three seconds from the previous shot to this one. <code>0</code> would be a cut.</p><figure class="bild"><a href="../bilder/en/t1_4.webp" class="zoom"><img src="../bilder/en/t1_4.webp" alt="The travel time in the camera panel." loading="lazy"></a><figcaption>The travel time in the camera panel.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>Watch it.</strong> Turn on <strong><span class="ui">Camera preview</span></strong> and click the small picture to look through the camera, then press the play button (▶) under the map. The timeline plays the scene as the game will - with sound when <strong>Sound</strong> is on.</p><figure class="bild"><a href="../bilder/en/t1_5.webp" class="zoom"><img src="../bilder/en/t1_5.webp" alt="Looking through the camera while playing." loading="lazy"></a><figcaption>Looking through the camera while playing.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>Save and compile.</strong> A script from a <code>.pk3</code> has no file yet, so the first save asks where to put it: choose the <code>scripts</code> folder of your mod (for example <code>MD\scripts\md_am\</code>). <strong><span class="ui">Compile!</span></strong> then writes the <code>.ibi</code> the game runs next to it. For a mission of your own, <strong><span class="ui">Save mission</span></strong> packs everything into a <code>.pk3</code> - see <a href="tut-mission.html">Your own mission</a>.</p><figure class="bild"><a href="../bilder/en/t1_6.webp" class="zoom"><img src="../bilder/en/t1_6.webp" alt="The action column - Compile! sits below the file buttons and flashes green when it worked." loading="lazy"></a><figcaption>The action column - <strong><span class="ui">Compile!</span></strong> sits below the file buttons and flashes green when it worked.</figcaption></figure></div></div></li></ol>
+<h2 id="weiter">What next<a class="anker" href="#weiter">#</a></h2>
+<p>Grab the camera gizmo between two shots to set a key there (<a href="kamera.html#gizmo">Moving and turning a shot</a>), or fly a whole shot yourself with <strong><span class="ui">Pilot</span></strong> (<a href="kamera.html#steuern">Fly a shot yourself (Pilot)</a>).</p>
+    <nav class="blaettern"><a class="vor" href="tutorials.html"><span>Previous</span>Tutorials</a><a class="nach" href="tut-figur.html"><span>Next</span>A figure walks</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

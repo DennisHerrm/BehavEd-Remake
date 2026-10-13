@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A ship flies a ROFF path - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Guide</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Search the guide...  (/)" autocomplete="off" aria-label="Search the guide...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Start here</summary><ul><li class=""><a href="index.html">Welcome</a></li><li class=""><a href="erste-schritte.html">Getting started</a></li><li class=""><a href="fenster.html">The window</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Scripts</summary><ul><li class=""><a href="skripte.html">Writing scripts</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Tracks</a></li><li class=""><a href="speichern.html">Saving, compiling, checks</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Map and scene</summary><ul><li class=""><a href="karte.html">The map</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Camera</a></li><li class=""><a href="zeitleiste.html">Timeline</a></li><li class=""><a href="figuren.html">Figures and paths</a></li><li class=""><a href="animation.html">Animating movers and ROFF files</a></li><li class=""><a href="wegpunkte.html">NPC waypoints</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>Missions</summary><ul><li class=""><a href="missionen.html">Missions</a></li><li class=""><a href="modell.html">Model view and characters</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">A first cutscene</a></li><li class=""><a href="tut-figur.html">A figure walks</a></li><li class="aktiv"><a href="tut-roff.html">A ship flies a ROFF path</a><ul class="unter"><li><a href="#schritte">Steps</a></li></ul></li><li class=""><a href="tut-mission.html">Your own mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Reference</summary><ul><li class=""><a href="einstellungen.html">Settings and updates</a></li><li class=""><a href="tasten.html">Keyboard shortcuts</a></li><li class=""><a href="begriffe.html">Glossary</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/tut-roff.html" class="aktiv" lang="en">English</a><a href="../de/tut-roff.html" class="" lang="de">Deutsch</a><a href="../zh/tut-roff.html" class="" lang="zh">中文</a><a href="../ja/tut-roff.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Light or dark" aria-label="Light or dark">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Tutorials</div>
+    <h1>A ship flies a ROFF path</h1>
+    <p class="einleitung">A free flight with curves for the ship over the arena - built as a ROFF file, turned with the gizmo, saved for the game.</p>
+    <h2 id="schritte">Steps<a class="anker" href="#schritte">#</a></h2>
+<ol class="schritte"><li><div class="schritt"><span class="nr">1</span><div><p><strong>Select the ship.</strong> In <code>md_am_sith</code> click the ship <code>sta2</code> on the map. The inspector shows a <code>func_static</code>.</p><figure class="bild"><a href="../bilder/en/t3_1.webp" class="zoom"><img src="../bilder/en/t3_1.webp" alt="The ship is selected." loading="lazy"></a><figcaption>The ship is selected.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">2</span><div><p><strong>Open the animation as a ROFF.</strong> Press <strong><span class="ui">Animate</span></strong> in the inspector, set the timeline to 1 s and press <strong><span class="ui">ROFF file</span></strong>. The script gets a block with <code>play ( &quot;PLAY_ROFF&quot;, &quot;md_am/roffs/sta2&quot; )</code>; the first key is where the ship stands.</p><figure class="bild"><a href="../bilder/en/t3_2.webp" class="zoom"><img src="../bilder/en/t3_2.webp" alt="The Animation window in ROFF mode." loading="lazy"></a><figcaption>The <span class="ui">Animation</span> window in ROFF mode.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">3</span><div><p><strong>Set the next keys.</strong> Move the timeline to 4 s, press <strong><span class="ui">Key at playhead</span></strong> and drag the new diamond across the arena. Repeat at 7 s and 10 s. With <strong><span class="ui">Smooth</span></strong> on, the path becomes one curve through all diamonds.</p><figure class="bild"><a href="../bilder/en/t3_3.webp" class="zoom"><img src="../bilder/en/t3_3.webp" alt="Four keys, one smooth curve." loading="lazy"></a><figcaption>Four keys, one smooth curve.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">4</span><div><p><strong>Turn the ship.</strong> Put the timeline at 7 s, switch the gizmo to <strong><span class="ui">Rotate</span></strong> and drag the red ring: the ship banks into the curve. Because the window shows this ship, the gizmo sets the key at 7 s instead of changing the start.</p><figure class="bild"><a href="../bilder/en/t3_4.webp" class="zoom"><img src="../bilder/en/t3_4.webp" alt="The red ring banks the ship at 7 s." loading="lazy"></a><figcaption>The red ring banks the ship at 7 s.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">5</span><div><p><strong>Watch it.</strong> Press the play button (▶). The timeline shows the flight as a band under <strong><span class="ui">Movement</span></strong>; drag it to start earlier or later.</p><figure class="bild"><a href="../bilder/en/t3_5.webp" class="zoom"><img src="../bilder/en/t3_5.webp" alt="The ship in flight." loading="lazy"></a><figcaption>The ship in flight.</figcaption></figure></div></div></li><li><div class="schritt"><span class="nr">6</span><div><p><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd> writes the script - the first time it asks where; choose the <code>scripts</code> folder of your mod. Next to it, in the same scripts folder, <code>md_am/roffs/sta2.rof</code> is written; the status line names the file. <strong><span class="ui">Save mission</span></strong> puts it into the mission&#x27;s <code>.pk3</code>.</p><figure class="bild"><a href="../bilder/en/t3_6.webp" class="zoom"><img src="../bilder/en/t3_6.webp" alt="The file name and its length in the window - saving writes the file." loading="lazy"></a><figcaption>The file name and its length in the window - saving writes the file.</figcaption></figure></div></div></li></ol>
+<p>How ROFF files work, and how to edit the ones of the game: <a href="animation.html">Animating movers and ROFF files</a>.</p>
+    <nav class="blaettern"><a class="vor" href="tut-figur.html"><span>Previous</span>A figure walks</a><a class="nach" href="tut-mission.html"><span>Next</span>Your own mission</a></nav>
+  </article>
+  <footer>BehavEd-Remake guide. The pictures show the program itself; they are made by its self-test.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

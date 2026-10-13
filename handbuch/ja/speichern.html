@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>保存・コンパイル・チェック - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>ガイド</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="ガイドを検索...  (/)" autocomplete="off" aria-label="ガイドを検索...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>はじめに</summary><ul><li class=""><a href="index.html">ようこそ</a></li><li class=""><a href="erste-schritte.html">最初の一歩</a></li><li class=""><a href="fenster.html">ウィンドウ</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">1</span>スクリプト</summary><ul><li class=""><a href="skripte.html">スクリプトを書く</a></li><li class=""><a href="skriptfluss.html">スクリプトの流れ:クラシック・グラフ・トラック</a></li><li class="aktiv"><a href="speichern.html">保存・コンパイル・チェック</a><ul class="unter"><li><a href="#speichern">保存</a></li><li><a href="#uebersetzen">コンパイル</a></li><li><a href="#pruefen">注意とエラー</a></li></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>マップとシーン</summary><ul><li class=""><a href="karte.html">マップ</a></li><li class=""><a href="entities.html">エンティティ</a></li><li class=""><a href="kamera.html">カメラ</a></li><li class=""><a href="zeitleiste.html">タイムライン</a></li><li class=""><a href="figuren.html">キャラクターと道</a></li><li class=""><a href="animation.html">可動物のアニメーションと ROFF ファイル</a></li><li class=""><a href="wegpunkte.html">NPC ウェイポイント</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">3</span>ミッション</summary><ul><li class=""><a href="missionen.html">ミッション</a></li><li class=""><a href="modell.html">モデルビューとキャラクター</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>チュートリアル</summary><ul><li class=""><a href="tutorials.html">チュートリアル</a></li><li class=""><a href="tut-erste-szene.html">はじめてのカットシーン</a></li><li class=""><a href="tut-figur.html">キャラクターを歩かせる</a></li><li class=""><a href="tut-roff.html">船を ROFF のパスで飛ばす</a></li><li class=""><a href="tut-mission.html">自分のミッション</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>リファレンス</summary><ul><li class=""><a href="einstellungen.html">設定とアップデート</a></li><li class=""><a href="tasten.html">キーボードショートカット</a></li><li class=""><a href="begriffe.html">用語集</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/speichern.html" class="" lang="en">English</a><a href="../de/speichern.html" class="" lang="de">Deutsch</a><a href="../zh/speichern.html" class="" lang="zh">中文</a><a href="../ja/speichern.html" class="aktiv" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="ライト / ダーク" aria-label="ライト / ダーク">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">スクリプト</div>
+    <h1>保存・コンパイル・チェック</h1>
+    <p class="einleitung">ゲームが実行するのは <code>.ibi</code> ファイルです。<code>.txt</code> を書き、<strong>Compile!</strong> で <code>.ibi</code> を作ります。Raven の IBIZE とバイト単位で同じです。</p>
+    <h2 id="speichern">保存<a class="anker" href="#speichern">#</a></h2>
+<ul><li><strong><span class="ui">保存</span></strong>(<kbd>Ctrl</kbd>+<kbd>S</kbd>)は常に <code>.txt</code> のソースを書きます。<code>.ibi</code> を開いた場合も、その隣に保存されます。</li><li><strong><span class="ui">すべて保存</span></strong>(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)は変更のあるタブをすべて保存します。アーカイブから開いたタブは書き戻し先がないため飛ばされます。</li><li>保存とコンパイルのたびにコピー(最新の <code>backup1.txt</code> から <code>backup10.txt</code> まで)が <code>behaved.exe</code> の隣の <code>backup</code> フォルダーに、スクリプトごとのサブフォルダーで残ります。<strong><span class="ui">ファイル</span> → <span class="ui">バックアップフォルダーを開く</span></strong> で確認できます。<strong><span class="ui">バックアップ</span></strong> / <strong><span class="ui">復元</span></strong> は手動で追加のコピー(スクリプトの隣の <code>&lt;スクリプト&gt;.bak</code>)を保存・復元します。</li><li>自作の ROFF パスはスクリプトと一緒に <code>.rof</code> ファイルとして書き出されます。<a href="animation.html#roff">ROFF ファイルの仕組み</a> を参照。</li></ul>
+<h2 id="uebersetzen">コンパイル<a class="anker" href="#uebersetzen">#</a></h2>
+<p>操作列の <strong><span class="ui">コンパイル！</span></strong> は <code>.txt</code> の隣に <code>&lt;スクリプト&gt;.ibi</code> を書き出します(<code>.txt</code> も保存します)。ボタンが緑で <strong><span class="ui">コンパイル済み</span></strong>、または赤で <strong><span class="ui">失敗</span></strong> と光ります。失敗時は最初の問題行が選択され、ステータス行に理由が表示されます。コンパイラーは内蔵で、Raven の IBIZE が作った 1011 個の <code>.ibi</code> とバイト単位で照合済みです。</p>
+<h2 id="pruefen">注意とエラー<a class="anker" href="#pruefen">#</a></h2>
+<p>書いている間、プログラムは各行をチェックします。未知のコマンド、リストにない値、引用符のないテキスト欄、綴りを間違えた欄(「もしかして…?」)。ステータス行の件数をクリックすると一覧が開き、メッセージをクリックするとその行へ移動します。<strong><span class="ui">表示</span> → <span class="ui">対象ゲーム</span></strong> を使うと、マルチプレイサーバーで動かない内容の注意も表示されます。</p>
+    <nav class="blaettern"><a class="vor" href="skriptfluss.html"><span>前へ</span>スクリプトの流れ:クラシック・グラフ・トラック</a><a class="nach" href="karte.html"><span>次へ</span>マップ</a></nav>
+  </article>
+  <footer>BehavEd-Remake ガイド。画像はプログラム自身の画面で、セルフテストが撮影しています。</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>

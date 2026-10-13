@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modellansicht und Figuren - BehavEd-Remake</title>
+<link rel="stylesheet" href="../assets/stil.css">
+<script>try{var t=localStorage.getItem('bhed-thema');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<aside class="leiste">
+  <a class="marke" href="index.html"><img src="../assets/logo.svg" alt=""><span><b>BehavEd-Remake</b><small>Handbuch</small></span></a>
+  <div class="suche">
+    <input id="suchfeld" type="search" placeholder="Im Handbuch suchen ...  (/)" autocomplete="off" aria-label="Im Handbuch suchen ...  (/)">
+    <div id="treffer" class="treffer" hidden></div>
+  </div>
+  <nav class="kapitel"><details class="gruppe" ><summary><span class="gnr">0</span>Einstieg</summary><ul><li class=""><a href="index.html">Willkommen</a></li><li class=""><a href="erste-schritte.html">Erste Schritte</a></li><li class=""><a href="fenster.html">Das Fenster</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">1</span>Skripte</summary><ul><li class=""><a href="skripte.html">Skripte schreiben</a></li><li class=""><a href="skriptfluss.html">Script Flow: Classic, Graph, Spuren</a></li><li class=""><a href="speichern.html">Speichern, Übersetzen, Prüfen</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">2</span>Karte und Szene</summary><ul><li class=""><a href="karte.html">Die Karte</a></li><li class=""><a href="entities.html">Entities</a></li><li class=""><a href="kamera.html">Kamera</a></li><li class=""><a href="zeitleiste.html">Zeitleiste</a></li><li class=""><a href="figuren.html">Figuren und Wege</a></li><li class=""><a href="animation.html">Mover animieren und ROFF-Dateien</a></li><li class=""><a href="wegpunkte.html">NPC-Wegpunkte</a></li></ul></details>
+<details class="gruppe" open><summary><span class="gnr">3</span>Missionen</summary><ul><li class=""><a href="missionen.html">Missionen</a></li><li class="aktiv"><a href="modell.html">Modellansicht und Figuren</a><ul class="unter"></ul></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">4</span>Tutorials</summary><ul><li class=""><a href="tutorials.html">Tutorials</a></li><li class=""><a href="tut-erste-szene.html">Eine erste Zwischensequenz</a></li><li class=""><a href="tut-figur.html">Eine Figur läuft</a></li><li class=""><a href="tut-roff.html">Ein Schiff fliegt eine ROFF-Bahn</a></li><li class=""><a href="tut-mission.html">Eine eigene Mission</a></li></ul></details>
+<details class="gruppe" ><summary><span class="gnr">5</span>Nachschlagen</summary><ul><li class=""><a href="einstellungen.html">Einstellungen und Updates</a></li><li class=""><a href="tasten.html">Tastenkürzel</a></li><li class=""><a href="begriffe.html">Begriffe</a></li></ul></details></nav>
+</aside>
+<main>
+  <header class="kopf">
+    <div class="sprachen"><a href="../en/modell.html" class="" lang="en">English</a><a href="../de/modell.html" class="aktiv" lang="de">Deutsch</a><a href="../zh/modell.html" class="" lang="zh">中文</a><a href="../ja/modell.html" class="" lang="ja">日本語</a></div>
+    <button id="thema" class="thema" title="Hell oder dunkel" aria-label="Hell oder dunkel">&#9681;</button>
+  </header>
+  <article>
+    <div class="ueber">Missionen</div>
+    <h1>Modellansicht und Figuren</h1>
+    <p class="einleitung">Jede Figur des Spiels mit ihren Skins und Animationen ansehen und eine Animation per Doppelklick ins Skript setzen.</p>
+    <figure class="bild breit"><a href="../bilder/de/h_modell.webp" class="zoom"><img src="../bilder/de/h_modell.webp" alt="Modell-Modus: links die Animationsliste, in der Mitte das Modell, unten die Abspielleiste." loading="lazy"></a><figcaption>Modell-Modus: links die Animationsliste, in der Mitte das Modell, unten die Abspielleiste.</figcaption></figure>
+<p>Schalte in der Modusleiste auf <strong><span class="ui">Modell</span></strong>. <strong><span class="ui">NPCs</span></strong> nennt jede Figur des Spiels (aus den <code>.npc</code>-Dateien) - eine anklicken lädt ihr Modell und ihren Skin, wie das Spiel sie zeigt. <strong><span class="ui">.glm öffnen</span></strong> und <strong><span class="ui">Aus .pk3</span></strong> öffnen ein beliebiges Modell. Linke Maus umkreist, mittlere verschiebt, das Rad zoomt; <strong><span class="ui">Drehteller</span></strong>, <strong><span class="ui">Knochen</span></strong> und <strong><span class="ui">Ansicht einpassen</span></strong> stehen in der Leiste.</p>
+<p>Die Liste <strong><span class="ui">Animationen</span></strong> links zeigt jede Animation des Skeletts mit ihrer Länge; filtern nach Name oder nach BOTH / TORSO / LEGS / FACE. Klick spielt sie; Doppelklick (oder <strong><span class="ui">Ins Skript</span></strong>) setzt <code>set ( SET_ANIM_BOTH, &quot;…&quot; )</code> hinter die gewählte Zeile des offenen Skripts - <code>SET_ANIM_UPPER</code> bei TORSO- und <code>SET_ANIM_LOWER</code> bei LEGS-Animationen.</p>
+    <nav class="blaettern"><a class="vor" href="missionen.html"><span>Zurück</span>Missionen</a><a class="nach" href="tutorials.html"><span>Weiter</span>Tutorials</a></nav>
+  </article>
+  <footer>Handbuch zu BehavEd-Remake. Die Bilder zeigen das Programm selbst; sein Selbsttest nimmt sie auf.</footer>
+</main>
+<div id="gross" class="gross" hidden><img alt=""></div>
+<script src="suche.js"></script>
+<script src="../assets/handbuch.js"></script>
+</body>
+</html>
