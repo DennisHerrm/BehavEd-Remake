@@ -3794,7 +3794,22 @@ void drawStartflaeche(float breite, float hoehe) {
             if (c.wer == 2) { doLoadMap(); }
         }
     }
-    ImGui::Dummy(ImVec2{0.0F, fs * 1.0F});
+    ImGui::Dummy(ImVec2{0.0F, fs * 0.6F});
+
+    // Neu hier? Verweis aufs Handbuch (shank: "hier auch noch auf das Handbuch
+    // verweisen wegen Tutorials, get started").
+    ImGui::SetCursorPosX(links);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", tr(Str::StartGuide));
+    ImGui::SameLine();
+    if (iconTextKnopf(tr(Str::StartGuideFirst), UiIcon::Abspielen, tr(Str::StartGuideFirstHint))) {
+        handbuchOeffnen("erste-schritte.html");
+    }
+    ImGui::SameLine();
+    if (iconTextKnopf(tr(Str::StartGuideTut), UiIcon::Liste, tr(Str::StartGuideTutHint))) {
+        handbuchOeffnen("tutorials.html");
+    }
+    ImGui::Dummy(ImVec2{0.0F, fs * 0.6F});
 
     // Zuletzt bearbeitet
     ImGui::SetCursorPosX(links);

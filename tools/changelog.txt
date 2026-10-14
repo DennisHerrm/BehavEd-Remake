@@ -6,6 +6,28 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc600 2026-10-14
+[en]
+- The guide grew to 94 pages: a big tutorial that builds a whole mission for the base game from nothing (Kyle and Rosh on the landing pad of taspir1, the Raven's Claw takes off), 63 short tutorials, a tour of what the program can do, and two new reference pages - every button (with its icon) and every command (all camera commands, macros and every SET_ field). F1 opens the guide; the start page links to "Get started" and the tutorials. New pages are in English first; the other languages follow.
+- The Map tab is now called Mission - everything for a mission lives there: entities, cameras, timeline, Save mission.
+- Maps with a global fog (Taspir, for example) now show the fog colour where nothing is drawn, as the game does - before, the sky stayed black.
+- The start page's "Open a mission" card no longer speaks only of Movie Duels; the target game says "JKA, also mods like Movie Duels".
+[de]
+- Das Handbuch hat jetzt 94 Seiten: ein großes Tutorial, das eine ganze Mission für das Grundspiel von Grund auf baut (Kyle und Rosh auf der Landeplattform von taspir1, die Raven's Claw hebt ab), 63 kurze Tutorials, ein Rundgang durch alles, was das Programm kann, und zwei neue Nachschlageseiten - jeder Knopf (mit seinem Icon) und jeder Befehl (alle Kamerabefehle, Makros und jedes SET_-Feld). F1 öffnet das Handbuch; die Startfläche führt zu „Erste Schritte“ und den Tutorials. Neue Seiten gibt es zuerst auf Englisch, die anderen Sprachen folgen.
+- Der Tab Karte heißt jetzt Mission - dort steht alles für eine Mission: Entities, Kameras, Zeitleiste, Mission speichern.
+- Karten mit globalem Nebel (etwa Taspir) zeigen jetzt dort, wo nichts gezeichnet wird, die Nebelfarbe wie im Spiel - vorher blieb der Himmel schwarz.
+- Die Karte „Mission öffnen“ auf der Startfläche spricht nicht mehr nur von Movie Duels; das Zielspiel heißt „JKA, auch Mods wie Movie Duels“.
+[zh]
+- 手册扩展到 94 页:一个从零为原版游戏制作完整任务的大型教程(Kyle 和 Rosh 在 taspir1 的着陆平台上,Raven's Claw 起飞)、63 个简短教程、程序功能概览,以及两个新的参考页面——每个按钮(带图标)和每条命令(所有摄像机命令、宏和每个 SET_ 字段)。F1 打开手册;起始页面链接到“入门”和教程。新页面先提供英文版,其他语言随后提供。
+- “地图”标签页现在名为“任务”——任务所需的一切都在这里:实体、摄像机、时间轴、保存任务。
+- 带有全局雾的地图(例如 Taspir)现在在没有绘制内容的地方显示雾的颜色,与游戏一致——以前天空是黑色的。
+- 起始页面的“打开任务”卡片不再只提 Movie Duels;目标游戏显示为“JKA,也包括 Movie Duels 等模组”。
+[ja]
+- ガイドが 94 ページになりました。原作ゲーム用のミッションをゼロから作る大きなチュートリアル(taspir1 の着陸パッドで Kyle と Rosh、Raven's Claw が離陸)、63 の短いチュートリアル、プログラムでできることの紹介、そして新しいリファレンス 2 ページ(すべてのボタンをアイコン付きで、すべてのコマンド:カメラコマンド、マクロ、すべての SET_ フィールド)。F1 でガイドが開き、スタート画面から「はじめに」とチュートリアルへ進めます。新しいページはまず英語で、他の言語は後から追加します。
+- 「マップ」タブの名前が「ミッション」になりました。エンティティ、カメラ、タイムライン、ミッションの保存など、ミッションに必要なものはすべてここにあります。
+- グローバルフォグのあるマップ(Taspir など)では、何も描かれない場所にゲームと同じくフォグの色が表示されます。以前は空が黒いままでした。
+- スタート画面の「ミッションを開く」カードは Movie Duels だけを指さなくなり、対象ゲームは「JKA(Movie Duels などの MOD も)」と表示されます。
+
 ## rc599 2026-10-13
 [en]
 - New: a guide with pictures, tutorials and a search, in all four languages - Help → Guide and tutorials, or the Guide button in About. It explains every function and walks through four tutorials (a first cutscene, a walking figure, a ship on a ROFF path, a mission of your own). It works offline.

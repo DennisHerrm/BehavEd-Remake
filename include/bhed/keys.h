@@ -72,6 +72,9 @@ enum class Action : std::uint8_t {
     // fehlte deshalb im Einstellungsfenster - gemeldet: "There is no Save
     // All keyboard shortcut".
     SaveAll,
+    // Das Handbuch im Browser (rc599, shank: "Handbuch kann mit F1 geoeffnet
+    // werden"). Vorgabe F1, umbelegbar wie jede andere.
+    Guide,
 };
 
 // Alle Aktionen, die sich belegen lassen, in der Reihenfolge der Anzeige.

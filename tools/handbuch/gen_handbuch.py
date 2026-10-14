@@ -70,6 +70,9 @@ def ui_text(kennung, sp):
 def text(t, sp):
     if isinstance(t, T):
         t = t.get(sp)
+    # {{icon:Name}}: das Icon des Programms (UiIcon::Name), vom Selbsttest
+    # ausgeschnitten (bilder.py -> bilder/en/i_Name.png).
+    t = re.sub(r"\{\{icon:(\w+)\}\}", lambda m: "⟬" + m.group(1) + "⟭", t)
     return re.sub(r"\{\{(\w+)\}\}", lambda m: "⟦" + ui_text(m.group(1), sp) + "⟧", t)
 
 
@@ -99,7 +102,7 @@ def inline(t, sp):
     """Text -> HTML mit **fett**, `code`, [[links]]."""
     teile = []
     pos = 0
-    muster = re.compile(r"\*\*(.+?)\*\*|`([^`]+)`|\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]|(<kbd>.*?</kbd>)|⟦([^⟧]*)⟧")
+    muster = re.compile(r"\*\*(.+?)\*\*|`([^`]+)`|\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]|(<kbd>.*?</kbd>)|⟦([^⟧]*)⟧|⟬(\w+)⟭")
     for m in muster.finditer(t):
         teile.append(esc(t[pos:m.start()]))
         if m.group(1) is not None:
@@ -110,6 +113,12 @@ def inline(t, sp):
             teile.append(m.group(6))
         elif m.group(7) is not None:
             teile.append('<span class="ui">%s</span>' % esc(m.group(7)))
+        elif m.group(8) is not None:
+            p = os.path.join(ZIEL, "bilder", "en", "i_" + m.group(8) + ".png")
+            if os.path.exists(p):
+                teile.append('<img class="ikon" src="../bilder/en/i_%s.png" alt="">' % m.group(8))
+            else:
+                fehlende_bilder.add("i_" + m.group(8))
         else:
             sid, anker, beschr = m.group(3), m.group(4), m.group(5)
             if sid not in NACH_ID:
@@ -128,6 +137,7 @@ def klartext(t):
     t = re.sub(r"\[\[([^\]|#]+)(?:#[^\]|]+)?\|([^\]]+)\]\]", r"\2", t)
     t = re.sub(r"\[\[([^\]]+)\]\]", "", t)
     t = re.sub(r"<[^>]+>", "", t)
+    t = re.sub(r"⟬\w+⟭", "", t)
     return t.replace("**", "").replace("`", "").replace("⟦", "").replace("⟧", "")
 
 
@@ -167,9 +177,9 @@ def bild_pfad(name, sp):
 fehlende_bilder = set()
 
 
-def bild_html(name, unter, sp, breit=False, anim=False):
+def bild_html(name, unter, sp, breit=False, anim=False, schmal=False):
     p = bild_pfad(name, sp)
-    klasse = "bild" + (" breit" if breit else "") + (" anim" if anim else "")
+    klasse = "bild" + (" breit" if breit else "") + (" anim" if anim else "") + (" schmal" if schmal else "")
     if p is None:
         fehlende_bilder.add(name)
         inner = '<div class="platzhalter">%s</div>' % esc(name)
@@ -229,7 +239,7 @@ def bloecke_html(seite, sp, index_eintraege):
                     abschnitt["x"].append(klartext(text(x, sp)))
             aus.append('<ol class="schritte">' + "".join(punkte) + "</ol>")
         elif art == "img":
-            aus.append(bild_html(b[1], b[2], sp, breit=len(b) > 3 and b[3] == "breit"))
+            aus.append(bild_html(b[1], b[2], sp, breit=len(b) > 3 and b[3] == "breit", schmal=len(b) > 3 and b[3] == "schmal"))
             abschnitt["x"].append(klartext(text(b[2], sp)))
         elif art == "anim":
             aus.append(bild_html(b[1], b[2], sp, breit=True, anim=True))
@@ -380,6 +390,8 @@ def main():
 </head><body><a href="en/index.html">English</a> <a href="de/index.html">Deutsch</a> <a href="zh/index.html">中文</a> <a href="ja/index.html">日本語</a></body></html>
 """)
     print("Handbuch: %d Seiten x %d Sprachen -> %s" % (len(SEITEN), len(SPRACHEN), ZIEL))
+    if T.fehlend:
+        print("noch nicht uebersetzt (gilt englisch): " + ", ".join("%s %d" % kv for kv in sorted(T.fehlend.items())))
     if fehlende_bilder:
         print("fehlende Bilder (%d): %s" % (len(fehlende_bilder), " ".join(sorted(fehlende_bilder))))
 

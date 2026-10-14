@@ -2404,6 +2404,13 @@ void* zielTextur() { return g_zielSrv; }
 
 void neuesBild() { ++g_bildNummer; }
 
+float g_hintergrund[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+void setzeHintergrund(float r, float g, float b) {
+    g_hintergrund[0] = r;
+    g_hintergrund[1] = g;
+    g_hintergrund[2] = b;
+}
+
 void waehleZiel(int satz) {
     if (satz == g_zielSatz || satz < 0 || satz >= kZielSaetze) {
         return;
@@ -5564,7 +5571,9 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     // sonst Bild und Tiefe wieder auf Null - und alles Deckende, das gerade
     // gezeichnet wurde, waere weg.
     if (netzId == 0 && lage != Lage::Gemischt) {
-        c->ClearRenderTargetView(g_zielRtv, leer);
+        // Mit der Farbe des globalen Nebels (setzeHintergrund), wie das Spiel;
+        // die Maske des Umrisses bleibt leer.
+        c->ClearRenderTargetView(g_zielRtv, g_umriss ? leer : g_hintergrund);
         c->ClearDepthStencilView(g_tiefeDsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0F, 0);
     }
     D3D11_VIEWPORT vp{};
@@ -5910,6 +5919,7 @@ bool bereiteZiel(int, int) { return false; }
 void* zielTextur() { return nullptr; }
 void waehleZiel(int) {}
 void neuesBild() {}
+void setzeHintergrund(float, float, float) {}
 void setzeHimmelPortal(int) {}
 void setzeSpiegelBild(int) {}
 void setzeSpiegelung(bool, const float*, bool) {}

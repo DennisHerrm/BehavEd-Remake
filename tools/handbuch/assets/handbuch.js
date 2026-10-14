@@ -144,6 +144,26 @@
     if (feld) { feld.value = q; }
   }
 
+  // Beim Scrollen: den Abschnitt, in dem man liest, in der Seitenleiste
+  // hervorheben (shank: "das Unterthema gehighlighted, damit man sieht, bei
+  // welchem Abschnitt man ist").
+  var abschnitte = Array.prototype.slice.call(document.querySelectorAll("article h2[id]"));
+  var unterLinks = {};
+  document.querySelectorAll(".gruppe ul.unter a").forEach(function (a) {
+    unterLinks[a.getAttribute("href").slice(1)] = a;
+  });
+  function hier() {
+    var aktiv = null;
+    abschnitte.forEach(function (h) { if (h.getBoundingClientRect().top <= 140) { aktiv = h.id; } });
+    if (!aktiv && abschnitte.length && window.scrollY > 40) { aktiv = abschnitte[0].id; }
+    if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4 && abschnitte.length) {
+      aktiv = abschnitte[abschnitte.length - 1].id;   // ganz unten: der letzte
+    }
+    Object.keys(unterLinks).forEach(function (id) { unterLinks[id].classList.toggle("hier", id === aktiv); });
+  }
+  window.addEventListener("scroll", hier, { passive: true });
+  hier();
+
   // Hell / dunkel, gemerkt.
   var knopf = document.getElementById("thema");
   if (knopf) {

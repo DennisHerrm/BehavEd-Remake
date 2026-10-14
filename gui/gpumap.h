@@ -289,6 +289,11 @@ void waehleZiel(int satz);
 // einmal hochgeladen werden muss (das Effektnetz), gilt bis zum naechsten
 // Aufruf.
 void neuesBild();
+// Die Farbe, mit der jedes Bild der Ansicht geloescht wird (rc600). Das Spiel
+// nimmt die Farbe des globalen Nebels der Karte (RB_DrawBuffer: "don't clear
+// during menus, wait for real scene"), sonst bleibt es schwarz - auf Taspir
+// steht so ueberall, wo nichts gezeichnet wird, der orange Dunst.
+void setzeHintergrund(float r, float g, float b);
 // Die Textur eines Satzes, unabhaengig davon, welcher gerade gewaehlt ist.
 [[nodiscard]] void* zielTexturSatz(int satz);
 // Himmelsportal (rc593, misc_skyportal): ab jetzt zeigen Himmelsflaechen das

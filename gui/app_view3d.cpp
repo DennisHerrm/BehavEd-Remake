@@ -12060,6 +12060,22 @@ void drawMapView() {
                 }
             }
             gpu::neuesBild();
+            {
+                // Hintergrund: die Farbe des globalen Nebels, wie RB_DrawBuffer -
+                // unabhaengig vom Nebelschalter (r_drawfog), wie im Spiel.
+                float hg[3] = {0.0F, 0.0F, 0.0F};
+                for (const BspGeometry::Nebel& n : g_app->geo.nebel) {
+                    if (!n.global || !n.gueltig) { continue; }
+                    std::string k = n.shader;
+                    for (char& ch : k) { ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); }
+                    const auto it = g_app->nebelMap.find(k);
+                    if (it != g_app->nebelMap.end()) {
+                        for (int c = 0; c < 3; ++c) { hg[c] = it->second.farbe[c]; }
+                    }
+                    break;
+                }
+                gpu::setzeHintergrund(hg[0], hg[1], hg[2]);
+            }
             const auto tGpu0 = std::chrono::steady_clock::now();
             // --- Ein GPU-Bild aus einer Kamera (rc592) -----------------------
             //

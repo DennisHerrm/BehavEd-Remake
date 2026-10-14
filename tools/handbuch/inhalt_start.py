@@ -1,5 +1,26 @@
 """Einstieg: Willkommen, Erste Schritte, Das Fenster."""
 from inhalt_basis import T
+import inhalt_kurz
+import inhalt_kurz2
+import inhalt_kurz3
+
+# Alle Kurz-Tutorials auf der Startseite (shank: "warum stehen in der
+# Tutorial-Section nur 5 Tutorials, wenn du mehr gemacht hast"): nach
+# Bereichen, jedes als Link - dieselbe Ordnung wie auf der Tutorial-Seite.
+_BEREICHE = [
+    (T("Scripts"), inhalt_kurz.SKRIPT + inhalt_kurz2.SKRIPT2 + inhalt_kurz3.VORHANDEN),
+    (T("Camera and timeline"), inhalt_kurz.KAMERA + inhalt_kurz2.KAMERA2 + inhalt_kurz3.ZEIT + [inhalt_kurz3.SZENE[1]]),
+    (T("Figures"), inhalt_kurz.FIGUREN + inhalt_kurz2.FIGUREN2),
+    (T("Map and entities"), inhalt_kurz.KARTE + inhalt_kurz2.KARTE2 + [inhalt_kurz3.SZENE[0], inhalt_kurz3.SZENE[2], inhalt_kurz3.SZENE[3]]),
+    (T("Animation"), inhalt_kurz.ANIMATION),
+    (T("Missions, models and settings"), inhalt_kurz.MISSION + inhalt_kurz.MODELL + inhalt_kurz2.MISSION2 + inhalt_kurz3.LOGIK +
+     inhalt_kurz3.MODELLE + inhalt_kurz2.OBERFLAECHE),
+]
+_ANZAHL_KURZ = sum(len(liste) for _, liste in _BEREICHE)
+_KURZ_LISTEN = []
+for _titel, _liste in _BEREICHE:
+    _KURZ_LISTEN.append(("h3", _titel))
+    _KURZ_LISTEN.append(("list", [T("[[%s]]" % _s["id"]) for _s in _liste]))
 
 SEITEN = [
     {
@@ -13,10 +34,10 @@ SEITEN = [
             "BehavEd-Remake は『ジェダイ・アカデミー』と Movie Duels のカットシーンやミッションを動かすスクリプトを書くためのツールです。書いている間、その内容をマップ上で見ることができます。"),
         "bloecke": [
             ("img", "h_fenster", T(
-                "A Movie Duels mission open in BehavEd-Remake: the script on the right, the map in the middle, the timeline below.",
-                "Eine Movie-Duels-Mission in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste.",
-                "在 BehavEd-Remake 中打开的 Movie Duels 任务:右侧是脚本,中间是地图,下方是时间轴。",
-                "BehavEd-Remake で開いた Movie Duels のミッション。右にスクリプト、中央にマップ、下にタイムライン。"), "breit"),
+                "A mission of your own on yavin1 in BehavEd-Remake: the script on the right, the map in the middle, the timeline below.",
+                "Eine eigene Mission auf yavin1 in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste.",
+                "在 BehavEd-Remake 中打开的 yavin1 自制任务:右侧是脚本,中间是地图,下方是时间轴。",
+                "BehavEd-Remake で開いた yavin1 の自作ミッション。右にスクリプト、中央にマップ、下にタイムライン。"), "breit"),
             ("p", T(
                 "The game runs its scenes with **ICARUS** scripts: lists of commands such as \"walk to this spot\", \"play this sound\", \"move the camera there\". Raven's original BehavEd let you build those lists from buttons. BehavEd-Remake does the same, file for file compatible, and adds what the original never had: the map in 3D, the figures walking their paths, the camera flying its shots, and a timeline that plays it all - before you ever start the game.",
                 "Das Spiel steuert seine Szenen mit **ICARUS**-Skripten: Listen von Befehlen wie \"geh zu dieser Stelle\", \"spiel diesen Ton\", \"stell die Kamera dorthin\". Ravens Original-BehavEd baute diese Listen aus Knöpfen. BehavEd-Remake tut dasselbe, Datei für Datei verträglich, und bringt mit, was das Original nie hatte: die Karte in 3D, die Figuren auf ihren Wegen, die Kamera in ihren Einstellungen und eine Zeitleiste, die alles abspielt - bevor du das Spiel überhaupt startest.",
@@ -38,7 +59,9 @@ SEITEN = [
                   "特定の機能を探しているなら、左上の検索欄に入力してください。すべてのページを検索し、その場所へ移動します。"),
             ]),
             ("h2", "tutorials", T("Tutorials", "Tutorials", "教程", "チュートリアル")),
-            ("cards", ["tut-erste-szene", "tut-figur", "tut-roff", "tut-mission"]),
+            ("cards", ["tut-projekt"]),
+            ("p", T("Besides the big mission there are %d short tutorials - each shows one thing in three to six steps. All of them, with pictures: [[tutorials]]." % _ANZAHL_KURZ)),
+        ] + _KURZ_LISTEN + [
             ("h2", "kann", T("What the program can do", "Was das Programm kann", "程序能做什么", "できること")),
             ("table", [T("Area", "Bereich", "领域", "分野"), T("In short", "Kurz", "简介", "概要")], [
                 [T("[[skripte]]", "[[skripte]]", "[[skripte]]", "[[skripte]]"),
@@ -122,7 +145,7 @@ SEITEN = [
                 "游戏文件夹:先 base,模组在其下方——最下面的优先。",
                 "ゲームフォルダー:最初に base、その下に MOD。一番下が優先されます。")),
             ("h2", "oeffnen", T("Open something", "Etwas öffnen", "打开内容", "何かを開く")),
-            ("p", T("There are several ways in. The start page in the map tab (shown while no map is open) offers a new mission, a mission from a `.pk3`, just a map, and your recent missions. From the menu:", "Es gibt mehrere Wege hinein. Die Startfläche im Map-Tab (solange keine Karte offen ist) bietet eine neue Mission, eine Mission aus einem `.pk3`, nur eine Karte und deine letzten Missionen an. Aus dem Menü:", "有多种打开方式。地图页的起始页面(未打开地图时显示)提供:新建任务、从 `.pk3` 打开任务、只打开地图,以及最近的任务。在菜单中:", "入り口はいくつかあります。マップタブのスタート画面(マップが開かれていないとき)には、新しいミッション、`.pk3` のミッション、マップだけ、最近のミッションがあります。メニューからは:")),
+            ("p", T("There are several ways in. The start page in the **{{ViewMap}}** tab (shown while no map is open) offers a new mission, a mission from a `.pk3`, just a map, and your recent missions. From the menu:", "Es gibt mehrere Wege hinein. Die Startfläche im Tab **{{ViewMap}}** (solange keine Karte offen ist) bietet eine neue Mission, eine Mission aus einem `.pk3`, nur eine Karte und deine letzten Missionen an. Aus dem Menü:", "有多种打开方式。地图页的起始页面(未打开地图时显示)提供:新建任务、从 `.pk3` 打开任务、只打开地图,以及最近的任务。在菜单中:", "入り口はいくつかあります。マップタブのスタート画面(マップが開かれていないとき)には、新しいミッション、`.pk3` のミッション、マップだけ、最近のミッションがあります。メニューからは:")),
             ("list", [
                 T("**A mission** - **{{MenuFile}} → {{LoadMission}}** picks a `.pk3` and opens a mission with its map, its entities and all its scripts in tabs. See [[missionen]].",
                   "**Eine Mission** - **{{MenuFile}} → {{LoadMission}}** wählt ein `.pk3` und öffnet eine Mission mit Karte, Entities und allen Skripten in Reitern. Siehe [[missionen]].",
@@ -138,17 +161,17 @@ SEITEN = [
                   "**最近のミッション** - **{{MenuFile}} → {{RecentMissions}}** でミッション全体をワンクリックで開き直します。"),
             ]),
             ("img", "h_start", T(
-                "The start page appears in the map tab while no map is open.",
-                "Die Startfläche erscheint im Map-Tab, solange keine Karte offen ist.",
-                "未打开地图时,地图页显示起始页面。",
-                "マップが開かれていない間、マップタブにスタート画面が表示されます。")),
+                "The start page appears in the Mission tab while no map is open.",
+                "Die Startfläche erscheint im Mission-Tab, solange keine Karte offen ist.",
+                "未打开地图时,“任务”标签页显示起始页面。",
+                "マップが開かれていない間、「ミッション」タブにスタート画面が表示されます。")),
             ("h2", "sprache", T("Language", "Sprache", "语言", "言語")),
             ("p", T(
                 "The program speaks English, German, Chinese and Japanese. It starts in the language of Windows; change it under **{{MenuView}} → {{ViewLanguage}}**. Command names and values stay as the game writes them (`affect`, `SET_NAVGOAL`), because that is what goes into the file.",
                 "Das Programm spricht Englisch, Deutsch, Chinesisch und Japanisch. Es startet in der Sprache von Windows; umstellen lässt es sich unter **{{MenuView}} → {{ViewLanguage}}**. Befehlsnamen und Werte bleiben so, wie das Spiel sie schreibt (`affect`, `SET_NAVGOAL`), denn so stehen sie in der Datei.",
                 "程序支持英语、德语、中文和日语。启动时使用 Windows 的语言,可在 **{{MenuView}} → {{ViewLanguage}}** 中更改。命令名和值保持游戏中的写法(`affect`、`SET_NAVGOAL`),因为文件中就是这样写的。",
                 "プログラムは英語・ドイツ語・中国語・日本語に対応しています。起動時は Windows の言語になり、**{{MenuView}} → {{ViewLanguage}}** で変更できます。コマンド名と値はゲームの表記のまま(`affect`、`SET_NAVGOAL`)です。ファイルにはそのまま書かれるからです。")),
-            ("note", T("This guide opens from **{{MenuHelp}} → {{HelpGuide}}**, and from the **{{AboutGuide}}** button in {{HelpAbout}}. It lives in the `handbuch` folder next to `behaved.exe` and works without internet.", "Dieses Handbuch öffnet sich über **{{MenuHelp}} → {{HelpGuide}}** und über den Knopf **{{AboutGuide}}** in {{HelpAbout}}. Es liegt im Ordner `handbuch` neben `behaved.exe` und braucht kein Internet.", "本手册可通过 **{{MenuHelp}} → {{HelpGuide}}** 打开,也可在 {{HelpAbout}} 中点击 **{{AboutGuide}}** 按钮。它位于 `behaved.exe` 旁边的 `handbuch` 文件夹中,无需联网。", "このガイドは **{{MenuHelp}} → {{HelpGuide}}** から、または {{HelpAbout}} の **{{AboutGuide}}** ボタンから開きます。`behaved.exe` の隣の `handbuch` フォルダーにあり、インターネットなしで使えます。")),
+            ("note", T("This guide opens with <kbd>F1</kbd>, from **{{MenuHelp}} → {{HelpGuide}}**, from **{{StartGuideFirst}}** and **{{StartGuideTut}}** on the start page, and from the **{{AboutGuide}}** button in {{HelpAbout}}. It lives in the `handbuch` folder next to `behaved.exe` and works without internet.", "Dieses Handbuch öffnet sich mit <kbd>F1</kbd>, über **{{MenuHelp}} → {{HelpGuide}}**, über **{{StartGuideFirst}}** und **{{StartGuideTut}}** auf der Startfläche und über den Knopf **{{AboutGuide}}** in {{HelpAbout}}. Es liegt im Ordner `handbuch` neben `behaved.exe` und braucht kein Internet.", "本手册可通过 <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、起始页面上的 **{{StartGuideFirst}}** 和 **{{StartGuideTut}}** 打开,也可在 {{HelpAbout}} 中点击 **{{AboutGuide}}** 按钮。它位于 `behaved.exe` 旁边的 `handbuch` 文件夹中,无需联网。", "このガイドは <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、スタート画面の **{{StartGuideFirst}}** と **{{StartGuideTut}}** から、または {{HelpAbout}} の **{{AboutGuide}}** ボタンから開きます。`behaved.exe` の隣の `handbuch` フォルダーにあり、インターネットなしで使えます。")),
         ],
     },
 ]

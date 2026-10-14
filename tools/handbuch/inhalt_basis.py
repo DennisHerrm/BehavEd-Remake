@@ -4,13 +4,25 @@ SPRACHEN = ("en", "de", "zh", "ja")
 
 
 class T:
-    """Ein Text in allen vier Sprachen. Fehlt keiner - sonst bricht der Bau ab."""
+    """Ein Text in allen vier Sprachen (fehlende gelten vorerst englisch)."""
 
-    def __init__(self, en, de, zh, ja):
-        for name, wert in (("en", en), ("de", de), ("zh", zh), ("ja", ja)):
-            if not isinstance(wert, str) or not wert.strip():
+    fehlend = {}
+
+    def __init__(self, en, de=None, zh=None, ja=None):
+        # Englisch zuerst (shank: "lass uns erstmal die englische Version
+        # vervollstaendigen"): fehlt eine Uebersetzung noch, gilt der
+        # englische Text - der Bau meldet, wie viele das sind.
+        if not isinstance(en, str) or not en.strip():
+            raise ValueError("Text ohne Englisch: %r" % (en,))
+        self.t = {"en": en}
+        for name, wert in (("de", de), ("zh", zh), ("ja", ja)):
+            if wert is None:
+                T.fehlend[name] = T.fehlend.get(name, 0) + 1
+                self.t[name] = en
+            elif not isinstance(wert, str) or not wert.strip():
                 raise ValueError("Text ohne %s: %r" % (name, en))
-        self.t = {"en": en, "de": de, "zh": zh, "ja": ja}
+            else:
+                self.t[name] = wert
 
     def get(self, sp):
         return self.t[sp]

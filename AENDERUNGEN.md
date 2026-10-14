@@ -1,5 +1,52 @@
 # Änderungen seit rc94
 
+## rc600 — Handbuch für die ganze JKA-Community: eigene Mission, viele Tutorials, jeder Knopf und Befehl
+
+Gewünscht: „mehr Tutorials, wirklich viele, auch Kleinigkeiten“, „Erklärungen, was
+das Programm alles kann“, „bessere Bilder, mehr GIFs, mehr Bilder pro GIF, nur von
+einer Map“, „eine Erklärung, was jeder Button kann und jeder Befehl – auch bei
+Maps und Models“, „F1 öffnet das Handbuch“, „beim Runterscrollen das Unterthema
+hervorheben“, „den Map-Tab in Mission umbenennen“, „auf der Startseite aufs
+Handbuch verweisen“ – und: „das ist ein Tool für die gesamte JKA-Community … eine
+eigene frische Mission als Tutorial, wo du alle Dinge zeigst“.
+
+* **Handbuch** (tools/handbuch): 94 Seiten, Englisch zuerst (`T` fällt für noch
+  nicht übersetzte Sprachen auf Englisch zurück, der Bau zählt sie).
+  * Das große Tutorial `tut-projekt` (8 Teile): eine Mission `taspir_tut` auf
+    taspir1 – Kyle und Rosh gehen über die Landeplattform, die Kamera fährt mit,
+    die Raven's Claw hebt ab (ROFF), Wackeln, Mitschwenken, Abblenden, Packen.
+    Zuerst auf yavin1 versucht – die Felsen der Schlucht verdeckten fast jeden
+    Blick; taspir1 ist offen. Die vier alten Movie-Duels-Tutorials sind ersetzt.
+  * 63 Kurz-Tutorials in drei Runden (inhalt_kurz/kurz2/kurz3.py), jedes mit
+    eigenen Bildern aus derselben Mission; Fakten am Code, an Q3_Interface.h,
+    entdefs.txt und OpenJK geprüft. Dabei korrigiert: `dowait` (affect-Blöcke
+    laufen ohnehin parallel), Save mission (nur S002/S006 sind Fehler), V004
+    statt „did you mean“, `.pk3`-Öffnen ersetzt den Reiter. Bewusst weggelassen:
+    camera PATH/TRACK und SET_LEADER – die Vorschau spielt beides nicht ab.
+  * Nachschlagen: „Every button“ mit den echten Icons (Icon-Bogen aus dem
+    Selbsttest, `{{icon:Name}}`), „Every command“ – Befehle von Hand erklärt,
+    Kamerabefehle, Makros und alle 258 SET_-Felder aus behaved.bhc und
+    Q3_Interface.h gelesen; „What BehavEd can do“ als bebilderter Rundgang.
+  * Seitenleiste hebt beim Scrollen den Abschnitt hervor (handbuch.js).
+  * Bilder: der Fotomodus baut die Mission mit den Programmfunktionen auf;
+    GIFs mit 30 bis 60 Bildern und 110 ms, am Ende 1,5 s Halt; reine
+    Kartenbilder nur einmal auf Englisch. Oberfläche 1,3 statt 1,6 – sonst
+    war die Kartenleiste abgeschnitten. Erkundungsmodus `BHED_HB_ERKUNDEN=<datei>`
+    (Blickpunkte und Messmarken aus einer Textdatei).
+* **F1 öffnet das Handbuch** (keys.h `Action::Guide`, umbelegbar; im Selbsttest
+  nur eine Statuszeile). `handbuchOeffnen(seite)` öffnet eine bestimmte Seite.
+* **Tab „Mission“** statt „Map“ (ViewMap); die Startfläche hat „Neu hier?“ mit
+  „Erste Schritte“ und „Tutorials“. Selbsttest `missionsbau`: 63/0.
+* **Hintergrund in der Nebelfarbe** (gpumap: `setzeHintergrund`): das Spiel
+  löscht jedes Bild mit der Farbe des globalen Nebels (RB_DrawBuffer, „don't
+  clear during menus, wait for real scene“). Auf Taspir war der Himmel schwarz
+  statt orange. Nachgestellt im Modus `wegpunkte` (Mitte 0 0 0), behoben,
+  bestätigt (204 178 102); Kartenmodi danach alle grün.
+* **Texte**: „Open a mission“ und das Zielspiel nennen nicht mehr nur Movie Duels.
+* **Zwischenfall**: drei Quelldateien (app_view3d.cpp, gpumap.h,
+  gpumap_win32.cpp) waren nach einem Absturz des Rechners mit Nullbytes
+  gefüllt; aus rc599 wiederhergestellt, Tests danach grün.
+
 ## rc599 — Drehen am Zeiger, ROFF bauen, zuletzt geöffnete Missionen, Handbuch
 
 Gewünscht: „wenn ich right click und copy mache, kopiert er nur einen Befehl“,

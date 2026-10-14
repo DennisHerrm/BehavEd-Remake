@@ -1,218 +1,41 @@
-"""Tutorials: je eine Arbeit vom ersten Klick bis zum Ergebnis."""
+"""Tutorials: die Uebersicht - das Yavin-Projekt und die kurzen Tutorials.
+
+Bis rc599 standen hier vier Tutorials auf einer Movie-Duels-Mission. shank:
+"es geht nicht nur drum, Movie-Duels-Missionen zu machen, das ist ein Tool
+fuer die gesamte JKA-Community". Jetzt: eine eigene Mission auf yavin1
+(inhalt_projekt.py) und viele kurze Tutorials (inhalt_kurz.py), alle Bilder
+von derselben Karte.
+"""
 from inhalt_basis import T
+import inhalt_kurz
+import inhalt_projekt
+import inhalt_kurz2
+import inhalt_kurz3
 
 UEBERSICHT = {
     "id": "tutorials",
     "gruppe": "tut",
     "titel": T("Tutorials", "Tutorials", "教程", "チュートリアル"),
-    "kurz": T(
-        "Each tutorial follows one piece of work from the first click to a finished result, with a picture of every step. Choose one by what it makes.",
-        "Jedes Tutorial begleitet eine Arbeit vom ersten Klick bis zum fertigen Ergebnis, mit einem Bild zu jedem Schritt. Wähle eines nach dem, was es macht.",
-        "每个教程都从第一次点击开始,一直带你完成一项工作,每一步都有配图。按想做的内容选择一个。",
-        "各チュートリアルは 1 つの作業を最初のクリックから完成まで追い、各ステップに画像があります。作りたいもので選んでください。"),
+    "kurz": T("Start with the Taspir mission - it builds a whole cutscene for Jedi Academy from nothing and touches almost every part of the program. The short tutorials below each show one thing in a few steps."),
     "bloecke": [
-        ("cards", ["tut-erste-szene", "tut-figur", "tut-roff", "tut-mission"]),
-        ("p", T(
-            "The tutorials use **Movie Duels** (`md_am_sith` from `MD_Missions_Ep3.pk3`) so that the pictures match what you see; any other mission works the same way. If the parts of the window are new to you, read [[fenster]] and [[karte#bewegen]] first.",
-            "Die Tutorials benutzen **Movie Duels** (`md_am_sith` aus `MD_Missions_Ep3.pk3`), damit die Bilder zu dem passen, was du siehst; jede andere Mission geht genauso. Sind dir die Teile des Fensters neu, lies zuerst [[fenster]] und [[karte#bewegen]].",
-            "教程使用 **Movie Duels**(`MD_Missions_Ep3.pk3` 中的 `md_am_sith`),以便图片与你看到的一致;其他任务的操作方法相同。如果你还不熟悉窗口各部分,请先阅读 [[fenster]] 和 [[karte#bewegen]]。",
-            "画面と一致するよう、チュートリアルでは **Movie Duels**(`MD_Missions_Ep3.pk3` の `md_am_sith`)を使います。他のミッションでも手順は同じです。ウィンドウの各部分に慣れていなければ、先に [[fenster]] と [[karte#bewegen]] をお読みください。")),
+        ("h2", "projekt", T("The big one: your own mission")),
+        ("cards", ["tut-projekt"]),
+        ("p", T("All tutorials use the base game - the map `taspir1` and its characters - so the pictures match what you see. Any other map, and any mod such as Movie Duels, works the same way. If the parts of the window are new to you, read [[fenster]] and [[karte#bewegen]] first.")),
+        ("h2", "kurz", T("Short tutorials")),
+        ("p", T("Each one shows one small thing in three to six steps - start with any of them.")),
+        ("h3", T("Scripts")),
+        ("cards", [s["id"] for s in inhalt_kurz.SKRIPT + inhalt_kurz2.SKRIPT2 + inhalt_kurz3.VORHANDEN]),
+        ("h3", T("Camera and timeline")),
+        ("cards", [s["id"] for s in inhalt_kurz.KAMERA + inhalt_kurz2.KAMERA2 + inhalt_kurz3.ZEIT + [inhalt_kurz3.SZENE[1]]]),
+        ("h3", T("Figures")),
+        ("cards", [s["id"] for s in inhalt_kurz.FIGUREN + inhalt_kurz2.FIGUREN2]),
+        ("h3", T("Map and entities")),
+        ("cards", [s["id"] for s in inhalt_kurz.KARTE + inhalt_kurz2.KARTE2 + [inhalt_kurz3.SZENE[0], inhalt_kurz3.SZENE[2], inhalt_kurz3.SZENE[3]]]),
+        ("h3", T("Animation")),
+        ("cards", [s["id"] for s in inhalt_kurz.ANIMATION]),
+        ("h3", T("Missions and models")),
+        ("cards", [s["id"] for s in inhalt_kurz.MISSION + inhalt_kurz.MODELL + inhalt_kurz2.MISSION2 + inhalt_kurz3.LOGIK + inhalt_kurz3.MODELLE + inhalt_kurz2.OBERFLAECHE]),
     ],
 }
 
-SZENE = {
-    "id": "tut-erste-szene",
-    "gruppe": "tut",
-    "titel": T("A first cutscene", "Eine erste Zwischensequenz", "第一个过场动画", "はじめてのカットシーン"),
-    "kurz": T(
-        "Two camera shots, a smooth move between them, watched through the camera and compiled for the game.",
-        "Zwei Kameraeinstellungen, eine weiche Fahrt dazwischen, durch die Kamera angesehen und fürs Spiel übersetzt.",
-        "两个摄像机镜头,中间一段平滑移动,透过摄像机观看,并为游戏编译。",
-        "2 つのカメラショットとその間のなめらかな移動を作り、カメラ視点で確認して、ゲーム用にコンパイルします。"),
-    "titelbild": "t1_ergebnis",
-    "meta": T("Camera · six steps · needs Movie Duels", "Kamera · sechs Schritte · braucht Movie Duels", "摄像机 · 六个步骤 · 需要 Movie Duels", "カメラ · 6 ステップ · Movie Duels が必要"),
-    "bloecke": [
-        ("h2", "schritte", T("Steps", "Schritte", "步骤", "手順")),
-        ("steps", [
-            (T("**Open the mission.** {{MenuFile}} → {{LoadMission}}, choose `MD_Missions_Ep3.pk3`, pick `md_am_sith`. The map opens with all scripts of the mission in tabs; stay in the tab `intro2_sith`.",
-               "**Die Mission öffnen.** {{MenuFile}} → {{LoadMission}}, `MD_Missions_Ep3.pk3` wählen, `md_am_sith` anklicken. Die Karte öffnet sich mit allen Skripten der Mission in Reitern; bleib im Reiter `intro2_sith`.",
-               "**打开任务。** {{MenuFile}} → {{LoadMission}},选择 `MD_Missions_Ep3.pk3`,点选 `md_am_sith`。地图打开,任务的所有脚本各在一个标签页中;停留在 `intro2_sith` 标签页。",
-               "**ミッションを開く。** {{MenuFile}} → {{LoadMission}} で `MD_Missions_Ep3.pk3` を選び、`md_am_sith` をクリックします。マップがミッションの全スクリプトのタブ付きで開くので、`intro2_sith` タブのままにします。"),
-             "t1_1", T("The mission is open.", "Die Mission ist offen.", "任务已打开。", "ミッションが開いた状態。")),
-            (T("**Select the camera.** Click the camera symbol on the map (or the {{TlKamera}} row of the timeline). Its shots appear in the list on the left, its path on the map.",
-               "**Die Kamera wählen.** Das Kamerasymbol auf der Karte anklicken (oder die Zeile {{TlKamera}} der Zeitleiste). Links erscheinen ihre Einstellungen, auf der Karte ihre Bahn.",
-               "**选择摄像机。** 单击地图上的摄像机图标(或时间轴的 {{TlKamera}} 行)。左侧显示其镜头,地图上显示其路径。",
-               "**カメラを選ぶ。** マップのカメラ記号(またはタイムラインの {{TlKamera}} 行)をクリックします。左にショット、マップにパスが表示されます。"),
-             "t1_2", T("The camera is selected.", "Die Kamera ist gewählt.", "已选中摄像机。", "カメラを選択した状態。")),
-            (T("**Fly to a good spot and add a shot.** Hold the right mouse button and fly with <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> until you like the view. Press **{{CamNewShot}}**: a `camera ( MOVE )` and `camera ( PAN )` at your view are added after the selected shot.",
-               "**An eine gute Stelle fliegen und eine Einstellung anlegen.** Rechte Maustaste halten und mit <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> fliegen, bis dir die Ansicht gefällt. **{{CamNewShot}}** drücken: ein `camera ( MOVE )` und `camera ( PAN )` an deiner Ansicht werden hinter der gewählten Einstellung eingefügt.",
-               "**飞到合适的位置并添加镜头。** 按住鼠标右键,用 <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 飞行,直到视角满意。按 **{{CamNewShot}}**:在所选镜头之后添加位于当前视角的 `camera ( MOVE )` 和 `camera ( PAN )`。",
-               "**良い場所へ飛んでショットを追加する。** 右ボタンを押したまま <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> で飛び、気に入る視点を探します。**{{CamNewShot}}** を押すと、現在の視点の `camera ( MOVE )` と `camera ( PAN )` が選択中のショットの後ろに追加されます。"),
-             "t1_3", T("A new shot at the current view.", "Eine neue Einstellung an der jetzigen Ansicht.", "在当前视角新建的镜头。", "現在の視点に追加した新しいショット。")),
-            (T("**Give it a travel time.** Under **{{CamSelectedShot}}** set **{{CamDuration}}** to `3` (seconds): the camera now flies three seconds from the previous shot to this one. `0` would be a cut.", "**Eine Fahrzeit geben.** Unter **{{CamSelectedShot}}** **{{CamDuration}}** auf `3` (Sekunden) setzen: die Kamera fliegt jetzt drei Sekunden von der vorigen Einstellung zu dieser. `0` wäre ein Schnitt.", "**设置移动时间。** 在 **{{CamSelectedShot}}** 下把 **{{CamDuration}}** 设为 `3`(秒):摄像机现在用三秒从上一个镜头飞到这个镜头。`0` 表示硬切。", "**移動時間を付ける。** **{{CamSelectedShot}}** で **{{CamDuration}}** を `3`(秒)にします。カメラは前のショットから 3 秒かけて飛んできます。`0` ならカットです。"),
-             "t1_4", T("The travel time in the camera panel.", "Die Fahrzeit im Kamerafeld.", "摄像机面板中的移动时间。", "カメラパネルの移動時間。")),
-            (T("**Watch it.** Turn on **{{CamPreview}}** and click the small picture to look through the camera, then press the play button (▶) under the map. The timeline plays the scene as the game will - with sound when **Sound** is on.",
-               "**Ansehen.** **{{CamPreview}}** einschalten und das kleine Bild anklicken, um durch die Kamera zu schauen, dann den Abspielknopf (▶) unter der Karte drücken. Die Zeitleiste spielt die Szene, wie das Spiel sie zeigen wird - mit Ton, wenn **Ton** an ist.",
-               "**观看。** 打开 **{{CamPreview}}**,单击小画面透过摄像机观看,然后按地图下方的播放按钮(▶)。时间轴会像游戏中一样播放场景——开启 **声音** 时还会播放声音。",
-               "**確認する。** **{{CamPreview}}** をオンにして小さな画像をクリックし、カメラ視点にしてから マップ下の再生ボタン(▶)を押します。タイムラインがゲームと同じようにシーンを再生します(**サウンド**がオンなら音付き)。"),
-             "t1_5", T("Looking through the camera while playing.", "Beim Abspielen durch die Kamera schauen.", "播放时透过摄像机观看。", "再生中にカメラ視点で見る。")),
-            (T("**Save and compile.** A script from a `.pk3` has no file yet, so the first save asks where to put it: choose the `scripts` folder of your mod (for example `MD\\scripts\\md_am\\`). **{{Compile}}** then writes the `.ibi` the game runs next to it. For a mission of your own, **{{MissionSave}}** packs everything into a `.pk3` - see [[tut-mission]].", "**Speichern und übersetzen.** Ein Skript aus einem `.pk3` hat noch keine Datei, darum fragt das erste Speichern, wohin: wähle den `scripts`-Ordner deines Mods (zum Beispiel `MD\\scripts\\md_am\\`). **{{Compile}}** schreibt dann daneben die `.ibi`, die das Spiel ausführt. Bei einer eigenen Mission packt **{{MissionSave}}** alles in ein `.pk3` - siehe [[tut-mission]].", "**保存并编译。** 来自 `.pk3` 的脚本还没有对应的文件,因此第一次保存时会询问保存位置:选择模组的 `scripts` 文件夹(例如 `MD\\scripts\\md_am\\`)。随后 **{{Compile}}** 会在旁边写出游戏运行的 `.ibi`。如果是你自己的任务,**{{MissionSave}}** 会把一切打包进 `.pk3`——参见 [[tut-mission]]。", "**保存してコンパイルする。** `.pk3` から開いたスクリプトにはまだファイルがないため、最初の保存で保存先を聞かれます。MOD の `scripts` フォルダー(例 `MD\\scripts\\md_am\\`)を選びます。続いて **{{Compile}}** でゲームが実行する `.ibi` が隣に書き出されます。自分のミッションなら **{{MissionSave}}** ですべてを `.pk3` にまとめます。[[tut-mission]] を参照。"),
-             "t1_6", T("The action column - **{{Compile}}** sits below the file buttons and flashes green when it worked.", "Die Aktionsspalte - **{{Compile}}** steht unter den Datei-Knöpfen und leuchtet grün, wenn es geklappt hat.", "操作栏——**{{Compile}}** 位于文件按钮下方,成功时会闪绿色。", "操作列。**{{Compile}}** はファイルのボタンの下にあり、成功すると緑に光ります。")),
-        ]),
-        ("h2", "weiter", T("What next", "Wie weiter", "接下来", "次に")),
-        ("p", T(
-            "Grab the camera gizmo between two shots to set a key there ([[kamera#gizmo]]), or fly a whole shot yourself with **{{CamPilot}}** ([[kamera#steuern]]).",
-            "Greif das Kamera-Gizmo zwischen zwei Einstellungen, um dort einen Schlüssel zu setzen ([[kamera#gizmo]]), oder flieg eine ganze Einstellung selbst mit **{{CamPilot}}** ([[kamera#steuern]]).",
-            "在两个镜头之间抓取摄像机操纵器即可在该处设置关键帧([[kamera#gizmo]]),或者用 **{{CamPilot}}** 亲自驾驶整个镜头([[kamera#steuern]])。",
-            "2 つのショットの間でカメラのギズモをつかむとそこにキーを設定できます([[kamera#gizmo]])。**{{CamPilot}}** でショット全体を自分で飛ばすこともできます([[kamera#steuern]])。")),
-    ],
-}
-
-FIGUR = {
-    "id": "tut-figur",
-    "gruppe": "tut",
-    "titel": T("A figure walks", "Eine Figur läuft", "让角色行走", "キャラクターを歩かせる"),
-    "kurz": T(
-        "Place a character and a walk target, let the script send it there, then change the path on the map - walk or run, a point in between.",
-        "Eine Figur und ein Laufziel setzen, das Skript sie hinschicken lassen, dann den Weg auf der Karte ändern - gehen oder rennen, ein Punkt dazwischen.",
-        "放置一个角色和一个行走目标,让脚本把角色送过去,然后在地图上修改路径——步行或奔跑、中途增加路径点。",
-        "キャラクターと歩行目標を置き、スクリプトでそこへ向かわせ、マップ上で道を変えます。歩く/走る、途中の点。"),
-    "titelbild": "t2_ergebnis",
-    "meta": T("Entities and paths · six steps · any map", "Entities und Wege · sechs Schritte · jede Karte", "实体与路径 · 六个步骤 · 任意地图", "エンティティと道 · 6 ステップ · どのマップでも"),
-    "bloecke": [
-        ("h2", "schritte", T("Steps", "Schritte", "步骤", "手順")),
-        ("steps", [
-            (T("**Place a character.** In Map mode click the tile **{{EntKindNpc}}** on the left edge of the view, then click on the floor. In the inspector set `NPC_type` (the **...** button searches every NPC of the game) and a **{{EntName}}** such as `walker`.",
-               "**Eine Figur setzen.** Im Map-Modus die Kachel **{{EntKindNpc}}** am linken Rand der Ansicht anklicken, dann auf den Boden klicken. Im Inspektor `NPC_type` setzen (der Knopf **...** durchsucht alle NPCs des Spiels) und einen **{{EntName}}** wie `walker`.",
-               "**放置角色。** 在地图模式下单击视图左边缘的 **{{EntKindNpc}}** 图块,再单击地面。在检查器中设置 `NPC_type`(**...** 按钮可搜索游戏中的所有 NPC)和 **{{EntName}}**,例如 `walker`。",
-               "**キャラクターを置く。** マップモードでビュー左端の **{{EntKindNpc}}** タイルをクリックし、床をクリックします。インスペクターで `NPC_type`(**...** ボタンでゲームの全 NPC を検索)と **{{EntName}}**(例 `walker`)を設定します。"),
-             "t2_1", T("A character placed on the floor.", "Eine auf den Boden gesetzte Figur.", "放在地面上的角色。", "床に置いたキャラクター。")),
-            (T("**Place a walk target.** Click the tile **{{EntKindNav}}** and click where the figure should go.",
-               "**Ein Laufziel setzen.** Die Kachel **{{EntKindNav}}** anklicken und dorthin klicken, wo die Figur hin soll.",
-               "**放置行走目标。** 单击 **{{EntKindNav}}** 图块,再单击角色要去的位置。",
-               "**歩行目標を置く。** **{{EntKindNav}}** タイルをクリックし、キャラクターを行かせたい場所をクリックします。"),
-             "t2_2", T("The walk target.", "Das Laufziel.", "行走目标。", "歩行目標。")),
-            (T("**Let the script send it.** Right-click the character in the entity list → **{{EntityAffect}}**: an `affect ( \"walker\", FLUSH )` block appears. Right-click the walk target in the list → **{{EntityAsNavgoal}}**: the line appears below the selected one - drag it into the affect block. The script now reads `affect ( \"walker\", FLUSH ) { set ( SET_NAVGOAL, \"...\" ); }`.", "**Das Skript sie hinschicken lassen.** Rechtsklick auf die Figur in der Entity-Liste → **{{EntityAffect}}**: ein Block `affect ( \"walker\", FLUSH )` erscheint. Rechtsklick auf das Laufziel in der Liste → **{{EntityAsNavgoal}}**: die Zeile erscheint unter der gewählten - zieh sie in den affect-Block. Im Skript steht jetzt `affect ( \"walker\", FLUSH ) { set ( SET_NAVGOAL, \"...\" ); }`.", "**让脚本发送命令。** 在实体列表中右键单击角色 → **{{EntityAffect}}**:会出现一个 `affect ( \"walker\", FLUSH )` 块。在列表中右键单击行走目标 → **{{EntityAsNavgoal}}**:该行出现在所选行下方——把它拖进 affect 块。脚本现在是 `affect ( \"walker\", FLUSH ) { set ( SET_NAVGOAL, \"...\" ); }`。", "**スクリプトで向かわせる。** エンティティ一覧でキャラクターを右クリック → **{{EntityAffect}}** で `affect ( \"walker\", FLUSH )` ブロックが入ります。一覧で歩行目標を右クリック → **{{EntityAsNavgoal}}** で選択行の下に行が入るので、それを affect ブロックの中へドラッグします。スクリプトは `affect ( \"walker\", FLUSH ) { set ( SET_NAVGOAL, \"...\" ); }` になります。"),
-             "t2_3", T("The affect block with the navgoal.", "Der affect-Block mit dem Navgoal.", "带导航点的 affect 块。", "ナビゴール付きの affect ブロック。")),
-            (T("**Play.** Press the play button (▶): the figure walks, the path behind it turns yellow. Its row in the timeline shows the walk as a band.",
-               "**Abspielen.** Den Abspielknopf (▶) drücken: die Figur läuft, der Weg hinter ihr wird gelb. Ihre Zeile in der Zeitleiste zeigt den Lauf als Band.",
-               "**播放。** 按地图下方的播放按钮(▶):角色开始行走,身后的路径变成黄色。时间轴中它所在的行以条带显示这段行走。",
-               "**再生する。** 再生ボタン(▶)を押すとキャラクターが歩き、通った道が黄色になります。タイムラインの行に歩行が帯で表示されます。"),
-             "t2_4", T("The figure on its way.", "Die Figur unterwegs.", "行进中的角色。", "移動中のキャラクター。")),
-            (T("**Run instead of walk.** Right-click the end handle of the path → **{{BahnRennen}}**. `SET_RUNNING` is written before the navgoal and the figure arrives sooner.",
-               "**Rennen statt gehen.** Rechtsklick auf den Endgriff des Wegs → **{{BahnRennen}}**. `SET_RUNNING` wird vor den Navgoal geschrieben, und die Figur kommt früher an.",
-               "**改为奔跑。** 右键单击路径的终点控制柄 → **{{BahnRennen}}**。`SET_RUNNING` 会写在导航点之前,角色会更早到达。",
-               "**歩く代わりに走る。** 道の終点ハンドルを右クリック → **{{BahnRennen}}**。ナビゴールの前に `SET_RUNNING` が書かれ、早く到着します。"),
-             "t2_5", T("The menu of the walk target.", "Das Menü des Laufziels.", "行走目标的菜单。", "歩行目標のメニュー。")),
-            (T("**A point in between.** Put the timeline in the middle of the walk, grab the figure and drag it aside: a new navgoal is created at that moment, and the figure walks there first.",
-               "**Ein Punkt dazwischen.** Die Zeitleiste mitten in den Lauf stellen, die Figur greifen und zur Seite ziehen: an diesem Augenblick entsteht ein neuer Navgoal, und die Figur läuft zuerst dorthin.",
-               "**中途增加路径点。** 把时间轴移到行走途中,抓住角色拖向一侧:会在该时刻创建新的导航点,角色会先走到那里。",
-               "**途中の点を作る。** タイムラインを歩行の途中に合わせ、キャラクターをつかんで横へドラッグします。その瞬間に新しいナビゴールが作られ、キャラクターはまずそこへ歩きます。"),
-             "t2_6", T("A new point in the middle of the walk.", "Ein neuer Punkt mitten im Lauf.", "行走途中新增的路径点。", "歩行の途中に追加した点。")),
-        ]),
-        ("p", T(
-            "More about paths, facing and walking backwards: [[figuren]].",
-            "Mehr zu Wegen, Blickrichtung und Rückwärtslaufen: [[figuren]].",
-            "关于路径、朝向和倒退行走的更多内容:[[figuren]]。",
-            "道・向き・後ろ歩きの詳細は [[figuren]] を参照してください。")),
-    ],
-}
-
-ROFF = {
-    "id": "tut-roff",
-    "gruppe": "tut",
-    "titel": T("A ship flies a ROFF path", "Ein Schiff fliegt eine ROFF-Bahn", "飞船沿 ROFF 路径飞行", "船を ROFF のパスで飛ばす"),
-    "kurz": T(
-        "A free flight with curves for the ship over the arena - built as a ROFF file, turned with the gizmo, saved for the game.",
-        "Ein freier Flug mit Kurven für das Schiff über der Arena - als ROFF-Datei gebaut, mit dem Gizmo gedreht, fürs Spiel gespeichert.",
-        "为竞技场上空的飞船制作一段带转弯的自由飞行——生成 ROFF 文件,用操纵器旋转,并为游戏保存。",
-        "アリーナ上空を曲がりながら飛ぶ船の自由飛行を ROFF ファイルとして作り、ギズモで回転させ、ゲーム用に保存します。"),
-    "titelbild": "t3_ergebnis",
-    "meta": T("Animation · six steps · needs Movie Duels", "Animation · sechs Schritte · braucht Movie Duels", "动画 · 六个步骤 · 需要 Movie Duels", "アニメーション · 6 ステップ · Movie Duels が必要"),
-    "bloecke": [
-        ("h2", "schritte", T("Steps", "Schritte", "步骤", "手順")),
-        ("steps", [
-            (T("**Select the ship.** In `md_am_sith` click the ship `sta2` on the map. The inspector shows a `func_static`.",
-               "**Das Schiff wählen.** In `md_am_sith` das Schiff `sta2` auf der Karte anklicken. Der Inspektor zeigt ein `func_static`.",
-               "**选择飞船。** 在 `md_am_sith` 中单击地图上的飞船 `sta2`。检查器显示一个 `func_static`。",
-               "**船を選ぶ。** `md_am_sith` でマップ上の船 `sta2` をクリックします。インスペクターに `func_static` が表示されます。"),
-             "t3_1", T("The ship is selected.", "Das Schiff ist gewählt.", "已选中飞船。", "船を選択した状態。")),
-            (T("**Open the animation as a ROFF.** Press **{{EntAnimate}}** in the inspector, set the timeline to 1 s and press **{{AnimModeRoff}}**. The script gets a block with `play ( \"PLAY_ROFF\", \"md_am/roffs/sta2\" )`; the first key is where the ship stands.",
-               "**Die Animation als ROFF öffnen.** **{{EntAnimate}}** im Inspektor drücken, die Zeitleiste auf 1 s stellen und **{{AnimModeRoff}}** drücken. Das Skript bekommt einen Block mit `play ( \"PLAY_ROFF\", \"md_am/roffs/sta2\" )`; der erste Schlüssel ist dort, wo das Schiff steht.",
-               "**以 ROFF 方式打开动画。** 在检查器中按 **{{EntAnimate}}**,把时间轴设为 1 秒,按 **{{AnimModeRoff}}**。脚本中会加入带有 `play ( \"PLAY_ROFF\", \"md_am/roffs/sta2\" )` 的块;第一个关键帧就是飞船当前的位置。",
-               "**ROFF としてアニメーションを開く。** インスペクターで **{{EntAnimate}}** を押し、タイムラインを 1 秒にして **{{AnimModeRoff}}** を押します。スクリプトに `play ( \"PLAY_ROFF\", \"md_am/roffs/sta2\" )` を含むブロックが入り、最初のキーは船の現在位置になります。"),
-             "t3_2", T("The {{AnimTitle}} window in ROFF mode.", "Das Fenster {{AnimTitle}} im ROFF-Modus.", "ROFF 模式下的 {{AnimTitle}} 窗口。", "ROFF モードの {{AnimTitle}} ウィンドウ。")),
-            (T("**Set the next keys.** Move the timeline to 4 s, press **{{AnimAddKey}}** and drag the new diamond across the arena. Repeat at 7 s and 10 s. With **{{AnimRoffSmooth}}** on, the path becomes one curve through all diamonds.",
-               "**Die nächsten Schlüssel setzen.** Die Zeitleiste auf 4 s stellen, **{{AnimAddKey}}** drücken und die neue Raute über die Arena ziehen. Bei 7 s und 10 s wiederholen. Mit **{{AnimRoffSmooth}}** wird die Bahn ein Bogen durch alle Rauten.",
-               "**设置后续关键帧。** 把时间轴移到 4 秒,按 **{{AnimAddKey}}**,把新菱形拖过竞技场。在 7 秒和 10 秒重复。开启 **{{AnimRoffSmooth}}** 后,路径会成为穿过所有菱形的一条曲线。",
-               "**次のキーを設定する。** タイムラインを 4 秒にして **{{AnimAddKey}}** を押し、新しいひし形をアリーナの向こうへドラッグします。7 秒と 10 秒でも繰り返します。**{{AnimRoffSmooth}}** がオンなら、パスはすべてのひし形を通る曲線になります。"),
-             "t3_3", T("Four keys, one smooth curve.", "Vier Schlüssel, ein weicher Bogen.", "四个关键帧,一条平滑曲线。", "4 つのキーと 1 本のなめらかな曲線。")),
-            (T("**Turn the ship.** Put the timeline at 7 s, switch the gizmo to **{{GizmoRotate}}** and drag the red ring: the ship banks into the curve. Because the window shows this ship, the gizmo sets the key at 7 s instead of changing the start.",
-               "**Das Schiff drehen.** Die Zeitleiste auf 7 s stellen, das Gizmo auf **{{GizmoRotate}}** schalten und am roten Ring ziehen: das Schiff legt sich in die Kurve. Weil das Fenster dieses Schiff zeigt, setzt das Gizmo den Schlüssel bei 7 s, statt den Anfang zu ändern.",
-               "**旋转飞船。** 把时间轴设为 7 秒,将操纵器切换到 **{{GizmoRotate}}**,拖动红色圆环:飞船在转弯中倾斜。由于窗口正显示这艘飞船,操纵器会在 7 秒处设置关键帧,而不是修改起点。",
-               "**船を回転させる。** タイムラインを 7 秒にし、ギズモを **{{GizmoRotate}}** に切り替えて赤いリングをドラッグすると、船がカーブに合わせて傾きます。ウィンドウがこの船を表示しているので、ギズモは始点を変えずに 7 秒のキーを設定します。"),
-             "t3_4", T("The red ring banks the ship at 7 s.", "Der rote Ring legt das Schiff bei 7 s in die Kurve.", "红色圆环让飞船在 7 秒处倾斜。", "赤いリングで 7 秒の船を傾ける。")),
-            (T("**Watch it.** Press the play button (▶). The timeline shows the flight as a band under **{{TlKatBewegung}}**; drag it to start earlier or later.",
-               "**Ansehen.** Den Abspielknopf (▶) drücken. Die Zeitleiste zeigt den Flug als Band unter **{{TlKatBewegung}}**; ziehen startet ihn früher oder später.",
-               "**观看。** 按地图下方的播放按钮(▶)。时间轴在 **{{TlKatBewegung}}** 下以条带显示这段飞行;拖动可让它提前或推迟开始。",
-               "**確認する。** マップ下の再生ボタン(▶)を押します。タイムラインの **{{TlKatBewegung}}** に飛行が帯で表示され、ドラッグで開始を前後できます。"),
-             "t3_5", T("The ship in flight.", "Das Schiff im Flug.", "飞行中的飞船。", "飛行中の船。")),
-            (T("**Save.** <kbd>Ctrl</kbd>+<kbd>S</kbd> writes the script - the first time it asks where; choose the `scripts` folder of your mod. Next to it, in the same scripts folder, `md_am/roffs/sta2.rof` is written; the status line names the file. **{{MissionSave}}** puts it into the mission's `.pk3`.", "**Speichern.** <kbd>Strg</kbd>+<kbd>S</kbd> schreibt das Skript - beim ersten Mal fragt es, wohin; wähle den `scripts`-Ordner deines Mods. Im selben scripts-Ordner entsteht `md_am/roffs/sta2.rof`; die Statuszeile nennt die Datei. **{{MissionSave}}** packt sie ins `.pk3` der Mission.", "**保存。** <kbd>Ctrl</kbd>+<kbd>S</kbd> 写入脚本——第一次会询问保存位置,请选择模组的 `scripts` 文件夹。在同一 scripts 文件夹中会写出 `md_am/roffs/sta2.rof`;状态栏会显示文件名。**{{MissionSave}}** 会把它放进任务的 `.pk3`。", "**保存する。** <kbd>Ctrl</kbd>+<kbd>S</kbd> でスクリプトを書き出します。初回は保存先を聞かれるので、MOD の `scripts` フォルダーを選びます。同じ scripts フォルダーに `md_am/roffs/sta2.rof` が書き出され、ステータス行にファイル名が表示されます。**{{MissionSave}}** でミッションの `.pk3` に入ります。"),
-             "t3_6", T("The file name and its length in the window - saving writes the file.", "Dateiname und Länge im Fenster - Speichern schreibt die Datei.", "窗口中的文件名和时长——保存时写出文件。", "ウィンドウに表示されるファイル名と長さ。保存するとファイルが書き出されます。")),
-        ]),
-        ("p", T(
-            "How ROFF files work, and how to edit the ones of the game: [[animation]].",
-            "Wie ROFF-Dateien funktionieren und wie man die des Spiels bearbeitet: [[animation]].",
-            "ROFF 文件的原理以及如何编辑游戏中的 ROFF:[[animation]]。",
-            "ROFF ファイルの仕組みとゲームの ROFF の編集方法は [[animation]] を参照してください。")),
-    ],
-}
-
-MISSION = {
-    "id": "tut-mission",
-    "gruppe": "tut",
-    "titel": T("Your own mission", "Eine eigene Mission", "你自己的任务", "自分のミッション"),
-    "kurz": T(
-        "From an empty map to a mission the game loads: create it, add an intro, check it and pack it into a .pk3.",
-        "Von einer leeren Karte zu einer Mission, die das Spiel lädt: anlegen, ein Intro dazu, prüfen und in ein .pk3 packen.",
-        "从一张空地图到游戏可加载的任务:创建任务、添加开场、检查并打包成 .pk3。",
-        "空のマップからゲームが読み込めるミッションまで。作成し、イントロを加え、チェックして .pk3 にまとめます。"),
-    "titelbild": "t4_ergebnis",
-    "meta": T("Missions · six steps · any map", "Missionen · sechs Schritte · jede Karte", "任务 · 六个步骤 · 任意地图", "ミッション · 6 ステップ · どのマップでも"),
-    "bloecke": [
-        ("h2", "schritte", T("Steps", "Schritte", "步骤", "手順")),
-        ("steps", [
-            (T("**Create the mission.** In the map tab press **{{MissionNew}}** (or the card on the start page). Pick a map, type a name such as `md_test_jedi` and press **{{MissionCreate}}**.",
-               "**Die Mission anlegen.** Im Map-Tab **{{MissionNew}}** drücken (oder die Karte auf der Startfläche). Eine Karte wählen, einen Namen wie `md_test_jedi` eintippen und **{{MissionCreate}}** drücken.",
-               "**创建任务。** 在地图页按 **{{MissionNew}}**(或起始页面上的卡片)。选择地图,输入名称(例如 `md_test_jedi`),按 **{{MissionCreate}}**。",
-               "**ミッションを作る。** マップタブで **{{MissionNew}}**(またはスタート画面のカード)を押します。マップを選び、`md_test_jedi` などの名前を入力して **{{MissionCreate}}** を押します。"),
-             "t4_1", T("The new mission dialog.", "Der Dialog für die neue Mission.", "新建任务对话框。", "新規ミッションのダイアログ。")),
-            (T("**Look at what was made.** A player start, a script runner and the intro script are placed; the intro is open in a tab. The mission name stands in the map toolbar.",
-               "**Ansehen, was entstanden ist.** Ein Spielerstart, ein Skriptstarter und das Intro-Skript sind gesetzt; das Intro ist in einem Reiter offen. Der Missionsname steht in der Kartenleiste.",
-               "**查看生成的内容。** 已放置玩家出生点、脚本启动器和开场脚本;开场脚本在一个标签页中打开。任务名称显示在地图工具栏中。",
-               "**作られたものを確認する。** プレイヤースタート、スクリプトランナー、イントロスクリプトが配置され、イントロはタブで開いています。ミッション名はマップのツールバーに表示されます。"),
-             "t4_2", T("The fresh mission.", "Die frische Mission.", "新建的任务。", "作成直後のミッション。")),
-            T("**Write the intro.** Add a camera shot ([[tut-erste-szene]]) and a figure that walks ([[tut-figur]]). Everything goes into the intro script.",
-               "**Das Intro schreiben.** Eine Kameraeinstellung ([[tut-erste-szene]]) und eine laufende Figur ([[tut-figur]]) hinzufügen. Alles landet im Intro-Skript.",
-               "**编写开场。** 添加摄像机镜头([[tut-erste-szene]])和一个行走的角色([[tut-figur]])。所有内容都写入开场脚本。",
-               "**イントロを書く。** カメラショット([[tut-erste-szene]])と歩くキャラクター([[tut-figur]])を加えます。すべてイントロスクリプトに入ります。"),
-            (T("**Open Save mission.** Press **{{MissionSave}}**. The dialog lists every file that goes into the archive and checks the mission.",
-               "**Mission speichern öffnen.** **{{MissionSave}}** drücken. Der Dialog nennt jede Datei, die ins Archiv kommt, und prüft die Mission.",
-               "**打开保存任务。** 按 **{{MissionSave}}**。对话框列出将放入压缩包的每个文件,并检查任务。",
-               "**ミッションの保存を開く。** **{{MissionSave}}** を押します。ダイアログにアーカイブへ入る全ファイルが表示され、ミッションがチェックされます。"),
-             "t4_4", T("The checks before saving.", "Die Prüfungen vor dem Speichern.", "保存前的检查。", "保存前のチェック。")),
-            (T("**Fix what is red, then save.** Errors must go (for example a script an entity uses but that does not exist); warnings may stay. **{{MissionSaveNow}}** writes `zz_md_test_jedi.pk3` into the game folder.",
-               "**Rotes beheben, dann speichern.** Fehler müssen weg (etwa ein Skript, das eine Entity benutzt, das es aber nicht gibt); Warnungen dürfen bleiben. **{{MissionSaveNow}}** schreibt `zz_md_test_jedi.pk3` in den Spielordner.",
-               "**修正红色项目后保存。** 错误必须修正(例如实体使用了但不存在的脚本);警告可以保留。**{{MissionSaveNow}}** 会把 `zz_md_test_jedi.pk3` 写入游戏文件夹。",
-               "**赤い項目を直して保存する。** エラー(エンティティが使うのに存在しないスクリプトなど)は直す必要があり、警告は残してもかまいません。**{{MissionSaveNow}}** で `zz_md_test_jedi.pk3` がゲームフォルダーに書き出されます。"),
-             "t4_5", T("Saved - the message shows where.", "Gespeichert - die Meldung zeigt, wohin.", "已保存——消息显示保存位置。", "保存完了。メッセージに保存先が表示されます。")),
-            (T("**Play it.** Start the game, open the console and type `devmap md_test_jedi`. Next time, **{{MenuFile}} → {{RecentMissions}}** opens the whole project again.",
-               "**Spielen.** Starte das Spiel, öffne die Konsole und tippe `devmap md_test_jedi`. Beim nächsten Mal öffnet **{{MenuFile}} → {{RecentMissions}}** das ganze Projekt wieder.",
-               "**开始游玩。** 启动游戏,打开控制台并输入 `devmap md_test_jedi`。下次可用 **{{MenuFile}} → {{RecentMissions}}** 重新打开整个项目。",
-               "**遊ぶ。** ゲームを起動し、コンソールで `devmap md_test_jedi` と入力します。次回は **{{MenuFile}} → {{RecentMissions}}** でプロジェクト全体を開き直せます。"),
-             "t4_6", T("The mission in the recent list.", "Die Mission in der Liste der letzten.", "最近列表中的任务。", "最近の一覧にあるミッション。")),
-        ]),
-    ],
-}
-
-SEITEN = [UEBERSICHT, SZENE, FIGUR, ROFF, MISSION]
+SEITEN = [UEBERSICHT] + inhalt_projekt.SEITEN

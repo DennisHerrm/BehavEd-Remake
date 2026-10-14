@@ -7,7 +7,7 @@ Aufruf:  python tools/handbuch/bilder.py <fotoordner> <sprache> [<ziel-handbuch>
   <name>_00 ... _NN         eine Bildfolge -> ein bewegtes Bild <name>.webp
 
 Ziel: handbuch/bilder/<sprache>/<name>.webp (Breite hoechstens 1600 Pixel,
-bewegte Bilder 1100). Braucht Pillow.
+bewegte Bilder 1200). Braucht Pillow.
 """
 import glob
 import os
@@ -17,6 +17,8 @@ import sys
 from PIL import Image
 
 HIER = os.path.dirname(os.path.abspath(__file__))
+# Bildfolgen, die nur die Kartenansicht zeigen - ohne Text der Oberflaeche.
+NUR_KARTE = {"a_kamera", "a_roff"}
 WURZEL = os.path.dirname(os.path.dirname(HIER))
 
 
@@ -47,8 +49,20 @@ def main():
     os.makedirs(ziel, exist_ok=True)
     folgen = {}
     einzeln = 0
+    # Der Icon-Bogen (ikonen.bmp + ikonen.txt "Name x0 y0 x1 y1"): jedes
+    # Icon einzeln als i_<Name>.png - ohne Text, darum nur auf Englisch.
+    bogen = os.path.join(ordner, "ikonen.txt")
+    if sprache == "en" and os.path.exists(bogen):
+        gross = Image.open(os.path.join(ordner, "ikonen.bmp")).convert("RGB")
+        for zeile in open(bogen):
+            t = zeile.split()
+            if len(t) == 5:
+                x0, y0, x1, y1 = (int(v) for v in t[1:])
+                gross.crop((x0, y0, x1, y1)).save(os.path.join(ziel, "i_" + t[0] + ".png"))
     for bmp in sorted(glob.glob(os.path.join(ordner, "*.bmp"))):
         name = os.path.splitext(os.path.basename(bmp))[0]
+        if name == "ikonen":
+            continue
         m = re.match(r"^(a_\w+?)_(\d\d)$", name)
         if m:
             folgen.setdefault(m.group(1), []).append(bmp)
@@ -58,9 +72,18 @@ def main():
         klein(bild, 2200 if bild.width > 2000 else 1600).save(os.path.join(ziel, name + ".webp"), "WEBP", quality=82, method=6)
         einzeln += 1
     for name, liste in folgen.items():
-        bilder = [klein(lade(b), 1100) for b in liste]
+        # Nur die Karte im Bild (keine Beschriftung): einmal auf Englisch -
+        # die anderen Sprachen fallen darauf zurueck (gen_handbuch.bild_pfad).
+        if sprache != "en" and name in NUR_KARTE:
+            continue
+        bilder = [klein(lade(b), 1200) for b in liste]
+        # Viele Bilder: fluessig (shank: "die GIFs sollten mehr Bilder haben,
+        # damit sie hochwertiger sind"), wenige: Zeit zum Hinsehen.
+        dauer = 110 if len(bilder) >= 30 else 450
+        # Am Ende kurz stehen bleiben, bevor es von vorn beginnt.
+        dauern = [dauer] * (len(bilder) - 1) + [1500]
         bilder[0].save(os.path.join(ziel, name + ".webp"), "WEBP", save_all=True, append_images=bilder[1:],
-                       duration=450, loop=0, quality=75, method=4)
+                       duration=dauern, loop=0, quality=78, method=4)
     groesse = sum(os.path.getsize(f) for f in glob.glob(os.path.join(ziel, "*.webp")))
     print("%s: %d Bilder, %d bewegte, zusammen %.1f MB -> %s" % (sprache, einzeln, len(folgen), groesse / 1e6, ziel))
 

@@ -2481,6 +2481,8 @@ ImGuiKeyChord defaultChord(keys::Action a) {
         case keys::Action::BookmarkPrev:   return ImGuiMod_Shift | ImGuiKey_F2;
         // Wie in jedem Editor mit Reitern.
         case keys::Action::SaveAll: return ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S;
+        // Hilfe wie in Windows-Programmen ueblich.
+        case keys::Action::Guide: return ImGuiKey_F1;
         default: return ImGuiKey_None;
     }
 }
@@ -2642,6 +2644,7 @@ Str labelFor(keys::Action a) {
         case keys::Action::SaveAll:      return Str::ActSaveAll;
         case keys::Action::Backup:       return Str::ActBackup;
         case keys::Action::Restore:      return Str::ActRestore;
+        case keys::Action::Guide:        return Str::HelpGuide;
         default:                         return Str::ActDelete;
     }
 }
@@ -2947,6 +2950,7 @@ void handleShortcuts() {
             // Selbsttest, der jede Belegung aendert und ausprobiert.
             case keys::Action::Backup: doBackup(); break;
             case keys::Action::Restore: doRestore(); break;
+            case keys::Action::Guide: handbuchOeffnen(); break;
             default: break;
         }
     }
@@ -3753,9 +3757,17 @@ void drawChangelog() {
     if (!offen) { g_app->changelogOpen = false; }
 }
 
+}  // namespace
+
 // Das Handbuch (rc599): handbuch/<sprache>/index.html neben behaved.exe -
 // beim Entwickeln auch eine Ebene hoeher. Geoeffnet im Standardbrowser.
-void handbuchOeffnen() {
+void handbuchOeffnen(const char* seite) {
+    // Im Selbsttest nie einen Browser oeffnen - der Tastentest drueckt jede
+    // Belegung, auch F1 (rc599).
+    if (std::getenv("BHED_EDITORTEST") != nullptr) {
+        addStatus(std::string("(Selbsttest) Handbuch angefragt: ") + seite);
+        return;
+    }
     const char* code = "en";
     switch (i18n::currentLanguage()) {
         case i18n::Language::German: code = "de"; break;
@@ -3765,10 +3777,10 @@ void handbuchOeffnen() {
     }
     const std::string exe = platform::executableDirectory();
     for (const std::string& basis : {exe, exe + "\\.."}) {
-        const std::string seite = basis + "\\handbuch\\" + code + "\\index.html";
+        const std::string datei = basis + "\\handbuch\\" + code + "\\" + seite;
         std::error_code ec;
-        if (std::filesystem::exists(std::filesystem::u8path(seite), ec)) {
-            platform::openWithDefaultApp(seite);
+        if (std::filesystem::exists(std::filesystem::u8path(datei), ec)) {
+            platform::openWithDefaultApp(datei);
             return;
         }
     }
@@ -3776,6 +3788,8 @@ void handbuchOeffnen() {
     std::snprintf(t, sizeof(t), tr(Str::GuideMissing), (exe + "\\handbuch").c_str());
     addStatus(t);
 }
+
+namespace {
 
 void drawAbout() {
     if (!g_app->aboutOpen) {
@@ -10265,7 +10279,7 @@ void drawMenu() {
     // und About nur als Knopf bei den Programmknoepfen (der bleibt).
     if (ImGui::BeginMenu(tr(Str::MenuHelp))) {
         // Das Handbuch mit Tutorials (rc599).
-        if (ImGui::MenuItem(tr(Str::HelpGuide))) { handbuchOeffnen(); }
+        if (ImGui::MenuItem(tr(Str::HelpGuide), chordName(keys::Action::Guide))) { handbuchOeffnen(); }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GuideHint)); }
         ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::HelpAbout))) {

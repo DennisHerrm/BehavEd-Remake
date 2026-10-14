@@ -6783,6 +6783,24 @@ std::vector<Schritt> missionsbauSchritte() {
         return g_app->geo.empty() && finde(tr(Str::StartCardNew), "", 0, false) != nullptr &&
                finde(tr(Str::StartCardLoad), "", 0, false) != nullptr && finde(tr(Str::StartCardMap), "", 0, false) != nullptr;
     }));
+    // rc600: "Neu hier?" - Erste Schritte und Tutorials oeffnen das Handbuch
+    // an der richtigen Seite (im Selbsttest nur eine Statuszeile).
+    const auto handbuchVerlangt = [](const char* seite) {
+        for (const std::string& z : g_app->statusLines) {
+            if (z.find(std::string("Handbuch angefragt: ") + seite) != std::string::npos) { return true; }
+        }
+        return false;
+    };
+    add(tu("Startflaeche: Status leeren", [] { g_app->statusLines.clear(); }));
+    add(klick(tr(Str::StartGuideFirst), "##startflaeche"));
+    add(pause(0.2));
+    add(pruefe("Startflaeche: Erste Schritte oeffnet das Handbuch", [=] { return handbuchVerlangt("erste-schritte.html"); }));
+    add(klick(tr(Str::StartGuideTut), "##startflaeche"));
+    add(pause(0.2));
+    add(pruefe("Startflaeche: Tutorials oeffnet die Tutorial-Seite", [=] { return handbuchVerlangt("tutorials.html"); }));
+    add(pruefe("Modusleiste: der Karten-Tab heisst Mission", [] {
+        return std::string(tr(Str::ViewMap)) != "Map" && finde(tr(Str::ViewMap), "", 0, false) != nullptr;
+    }));
 
     // ---------------- New mission ueber das Fenster ----------------
     add(klick(tr(Str::MissionNew)));
@@ -14016,6 +14034,47 @@ std::vector<Schritt> lichtSchritte() {
     }));
     add(pause(0.5));
     add(pruefe("Spiegel: von hinten kein Spiegelbild", [] { return !g_app->spiegelGezeichnet; }));
+    // --- Hintergrund in der Farbe des globalen Nebels (rc600) -----------------
+    // Fuer das Handbuch auf taspir1 gefunden: wo nichts gezeichnet wird, war
+    // das Bild schwarz. Das Spiel loescht jedes Bild mit der Farbe des
+    // globalen Nebels (RB_DrawBuffer: "don't clear during menus, wait for real
+    // scene") - auf Taspir also orange, fogparms ( 0.8 0.7 0.4 ).
+    add(tu("Nebelfarbe: taspir1 laden", [] { (void)loadMapFromArchive("maps/taspir1.bsp"); }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 1500));
+    add(tu("Nebelfarbe: auf der Landeplattform steil nach oben", [] {
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->showFog = true;
+        g_app->cam.pos[0] = -1600.0F;
+        g_app->cam.pos[1] = -1500.0F;
+        g_app->cam.pos[2] = 800.0F;
+        g_app->cam.angles[0] = -80.0F;
+        g_app->cam.angles[1] = 90.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(foto("nebelfarbe_taspir"));
+    add(pruefe("Nebelfarbe: ueber Taspir steht die Farbe des globalen Nebels, nicht Schwarz", [] {
+        std::vector<std::uint8_t> px;
+        int w = 0;
+        int h = 0;
+        if (!gpu::leseFarbe(px, w, h) || px.empty()) { return false; }
+        long sum[3] = {0, 0, 0};
+        int n = 0;
+        for (int y = h / 2 - 4; y <= h / 2 + 4; ++y) {
+            for (int x = w / 2 - 4; x <= w / 2 + 4; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                for (int c = 0; c < 3; ++c) { sum[c] += px[i + static_cast<std::size_t>(c)]; }
+                ++n;
+            }
+        }
+        const long r = sum[0] / n, g = sum[1] / n, b = sum[2] / n;
+        diag::detail("Knopftest: Nebelfarbe - Mitte " + std::to_string(r) + " " + std::to_string(g) + " " + std::to_string(b) +
+                     " (erwartet etwa 204 178 102)");
+        return std::labs(r - 204) <= 14 && std::labs(g - 178) <= 14 && std::labs(b - 102) <= 14;
+    }));
     return s;
 }
 
@@ -14114,6 +14173,33 @@ Path kameraMove() {
     return sucheMove(g_app->doc.script().nodes, weg) ? weg : Path{};
 }
 
+// Zum Reiter wechseln, dessen Name `teil` enthaelt - und warten, bis er vorn ist.
+Schritt zuReiter(const std::string& teil) {
+    return {"Reiter " + teil, [teil](int b) {
+                const auto vorn = [&] { return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)).find(teil) != std::string::npos; };
+                if (b == 0) {
+                    for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+                        if (mb::reiterName(i).find(teil) != std::string::npos) { g_app->tabRequest = static_cast<int>(i); }
+                    }
+                    return false;
+                }
+                if (vorn() && b > 3) { return true; }
+                if (b > 300) {
+                    meldeFehler("Reiter " + teil + " kommt nicht nach vorn (vorn: " +
+                                mb::reiterName(static_cast<std::size_t>(g_app->activeTab)) + ")");
+                    return true;
+                }
+                return false;
+            }};
+}
+
+// Nach einer Aenderung am Skript: Baum, Szene und Bild neu.
+void skriptNeu() {
+    rebuildTree();
+    g_app->camTrackValid = false;
+    g_app->mapDirty = true;
+}
+
 }  // namespace hb
 
 std::vector<Schritt> handbuchSchritte() {
@@ -14132,10 +14218,7 @@ std::vector<Schritt> handbuchSchritte() {
         r.Min.y -= ImGui::GetFontSize() * 2.6F;
         return r;
     };
-    const auto zeitleiste = [] {
-        const ImVec2 d = ImGui::GetIO().DisplaySize;
-        return ImRect{0.0F, g_app->kartenAnsicht[3] + 2.0F, d.x, d.y - ImGui::GetFontSize() * 1.9F};
-    };
+    const auto zeitleiste = [] { return hb::fensterRect("toolband"); };
     const auto linksUndKarte = [] {
         ImRect r = hb::karte();
         r.Min.x = 0.0F;
@@ -14144,6 +14227,76 @@ std::vector<Schritt> handbuchSchritte() {
     };
     auto schiff = std::make_shared<int>(-1);
 
+    // Erkundung einer Karte fuer die Handbuch-Mission (BHED_HB_ERKUNDEN=<datei>):
+    // je Zeile "karte maps/x.bsp", "marke name x y z" (ein ref_tag auf dem
+    // Boden, seine Hoehe ins Protokoll) oder "name x y z nick gier [oben schnitt]"
+    // (ein Foto der Ansicht). Nur Fotos, kein Test.
+    if (const char* erk = std::getenv("BHED_HB_ERKUNDEN")) {
+        std::ifstream f(std::filesystem::u8path(erk));
+        std::string zeile;
+        add(tu("Erkunden: Ansicht", [] {
+            g_app->leftMode = 1;
+            g_app->uiScale = 1.0F;
+            g_app->zeigeNamen = true;
+        }));
+        while (std::getline(f, zeile)) {
+            std::istringstream is(zeile);
+            std::string n;
+            if (!(is >> n) || n[0] == '#') { continue; }
+            if (n == "karte") {
+                std::string k;
+                is >> k;
+                add(tu("Erkunden: " + k, [k] { (void)loadMapFromArchive(k); }));
+                add(warteBis("Erkunden: Karte bereit", [] { return g_app->mapBereit; }, 1500));
+                continue;
+            }
+            if (n == "marke") {
+                std::string mn;
+                float o[3] = {0, 0, 0};
+                is >> mn >> o[0] >> o[1] >> o[2];
+                add(tu("Erkunden: Marke " + mn, [mn, o] {
+                    const int i = neueEntityAn("ref_tag", o);
+                    if (i < 0) { return; }
+                    (void)entityKeySetzen(i, "targetname", mn);
+                    const bool boden = entityAufBoden(i);
+                    float z[3] = {0, 0, 0};
+                    (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(i)], z);
+                    diag::detail("Knopftest: Marke " + mn + " z " + std::to_string(static_cast<int>(z[2])) + (boden ? "" : " KEIN BODEN"));
+                }));
+                continue;
+            }
+            float x = 0, y = 0, z = 0, nick = 0, gier = 0, schnitt = 0;
+            int oben = 0;
+            is >> x >> y >> z >> nick >> gier >> oben >> schnitt;
+            add(tu("Erkunden: " + n, [=] {
+                g_app->draufsicht = oben != 0;
+                if (oben != 0) { g_app->draufSchnitt = schnitt; }
+                g_app->cam.pos[0] = x;
+                g_app->cam.pos[1] = y;
+                g_app->cam.pos[2] = z;
+                g_app->cam.angles[0] = oben != 0 ? 89.0F : nick;
+                g_app->cam.angles[1] = gier;
+                g_app->cam.angles[2] = 0.0F;
+                g_app->mapDirty = true;
+            }));
+            add(pause(1.0));
+            add(hb::fotoTeil(n, [] { return hb::karte(); }));
+        }
+        return s;
+    }
+
+    // ======================================================================
+    // Die Handbuch-Mission (rc600): eine frische Mission auf taspir1, der
+    // Landeplattform mit der Raven's Claw - shank: "das ist ein Tool fuer die
+    // gesamte JKA-Community ... eine eigene frische Mission als Tutorial,
+    // wo du alle Dinge zeigst". Alles entsteht mit den Funktionen des
+    // Programms; jedes Bild ist ein Schritt auf dem Weg.
+    //
+    // Szene: Kyle und Rosh gehen ueber die Plattform vor das Schiff, die
+    // Kamera faehrt mit, dann hebt die Raven's Claw ab (ROFF), die Kamera
+    // wackelt, schwenkt ihr nach und blendet ab. (yavin1 war zu eng: die
+    // Felsen der Schlucht verdeckten fast jeden Blick.)
+    // ======================================================================
     add(tu("Handbuch: Sprache, Missionsordner im Laufordner", [] {
         if (const char* sp = std::getenv("BHED_SPRACHE")) {
             if (const i18n::LanguageInfo* l = i18n::findLanguage(sp)) { i18n::setLanguage(l->language); }
@@ -14157,97 +14310,321 @@ std::vector<Schritt> handbuchSchritte() {
         g_app->settings.recentMissions.clear();
         g_app->leftMode = 1;
         g_app->settings.flussAnsicht = 0;
-        // Lesbar auf den Bildern: die Oberflaeche groesser.
-        g_app->uiScale = 1.6F;
+        // Lesbar auf den Bildern: die Oberflaeche groesser - aber nicht so
+        // gross, dass die Kartenleiste abgeschnitten wird und die Skriptspalte
+        // nur noch Icons zeigt (rc600: 1.6 war zu eng).
+        g_app->uiScale = 1.3F;
+        // Die Zeitleiste hoeher - sonst sieht man auf den Bildern nur die Kamera.
+        g_app->timelineFrac = 0.40F;
     }));
     add(pause(0.8));
+    // Alle Icons des Programms auf einem Bogen; bilder.py schneidet sie aus
+    // (ikonen.txt: Name und Kasten) - fuer die Knopfseite des Handbuchs.
+    add({"Handbuch: Icon-Bogen", [](int b) {
+             static const char* const namen[] = {
+                 "Neu", "Oeffnen", "Speichern", "Mehr", "Karte", "Paket", "Liste", "Skript", "Entity", "Namen", "Figur",
+                 "Effekt", "Leuchten", "Licht", "Nebel", "Himmel", "Kamera", "Einstellungen", "Statistik", "Plus", "Boden",
+                 "Hinfliegen", "Duplizieren", "Loeschen", "Rueckgaengig", "Wiederholen", "Explorer", "Suche", "Verschieben",
+                 "Drehen", "Mission", "Schliessen", "Haken", "Warnung", "Abspielen", "Pause", "Zurueck", "Vor", "Zielen",
+                 "Steuern", "Pfad", "Oben", "Erzeugen", "Raster", "Animieren", "ZumAnfang", "Schleife", "Ton", "Folgen",
+                 "Zeilen", "Ruhig", "ZoomPlus", "ZoomMinus", "Einpassen", "Marke", "Blitz", "Tuer", "Wegpunkt", "Bruch",
+                 "Sichtbar", "Versteckt", "Bildschirm"};
+             static_assert(sizeof(namen) / sizeof(namen[0]) == static_cast<std::size_t>(UiIcon::Bildschirm) + 1,
+                           "Icon-Bogen: Namen und UiIcon passen nicht zusammen");
+             const int anzahl = static_cast<int>(sizeof(namen) / sizeof(namen[0]));
+             const float zelle = 64.0F;
+             const int spalten = 16;
+             ImGui::SetNextWindowPos(ImVec2{40.0F, 120.0F});
+             ImGui::SetNextWindowSize(ImVec2{zelle * spalten + 20.0F, zelle * 4.0F + 20.0F});
+             ImGui::Begin("##ikonenbogen", nullptr,
+                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                              ImGuiWindowFlags_NoFocusOnAppearing);
+             ImDrawList* dl = ImGui::GetWindowDrawList();
+             const ImVec2 o = ImGui::GetWindowPos();
+             const char* ordner = std::getenv("BHED_FOTOS");
+             std::ofstream f;
+             if (b == 1 && ordner != nullptr) { f.open(std::filesystem::u8path(std::string(ordner) + "\\ikonen.txt")); }
+             for (int i = 0; i < anzahl; ++i) {
+                 const float x = o.x + 10.0F + static_cast<float>(i % spalten) * zelle;
+                 const float y = o.y + 10.0F + static_cast<float>(i / spalten) * zelle;
+                 const UiIcon ic = static_cast<UiIcon>(i);
+                 uiIcon(dl, ic, ImVec2{x + 12.0F, y + 12.0F}, 40.0F, ImGui::GetColorU32(uiIconFarbe(ic)));
+                 if (f) {
+                     f << namen[i] << " " << static_cast<int>(x + 4.0F) << " " << static_cast<int>(y + 4.0F) << " "
+                       << static_cast<int>(x + 60.0F) << " " << static_cast<int>(y + 60.0F) << "\n";
+                 }
+             }
+             ImGui::End();
+             if (b == 2 && ordner != nullptr) { render::fotoAnfordern(std::string(ordner) + "\\ikonen.bmp"); }
+             return b >= 6;
+         }});
     add(hb::fotoTeil("h_start", [] { return hb::fensterRect("##startflaeche"); }));
     add(tu("Handbuch: Spielordner", [] { g_app->pathsOpen = true; }));
     add(pause(0.5));
     add(hb::fotoTeil("h_spielordner", [] { return hb::fensterRect(tr(Str::PathsTitle)); }));
+    // Die Missionen des Grundspiels in assets0.pk3 - nur das Bild der Auswahl.
     add(tu("Handbuch: Spielordner zu, Missionen der pk3", [=] {
         g_app->pathsOpen = false;
         missionenAusArchiv(archiv);
     }));
     add(pause(0.6));
     add(hb::fotoTeil("h_mission_wahl", [] { return hb::fensterRect("##missionpick"); }));
-    add(tu("Handbuch: Mission waehlen", [=] {
-        if (g_app->missionPickOpen) { schritteEinfuegen({waehleInListe(name, false, 0, "##missionpick")}); }
+    add(tu("Handbuch: Auswahl zu", [] { g_app->missionPickOpen = false; }));
+    add(pause(0.3));
+
+    // --- 1. Die Mission anlegen ------------------------------------------------
+    add(tu("Handbuch: Neue Mission (Fenster)", [] { g_app->neueMissionOffen = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_mission_neu", [] { return hb::fensterRect("##neuemission"); }));
+    add(hb::fotoTeil("t4_1", [] { return hb::fensterRect("##neuemission"); }));
+    add(tu("Handbuch: Fenster zu, Mission taspir_tut anlegen", [=] {
+        g_app->neueMissionOffen = false;
+        std::string fehler;
+        (void)neueMissionAnlegen("maps/" + name + ".bsp", "taspir_tut", "taspir_tut", &fehler);
+        diag::detail("Knopftest: Handbuch - neue Mission " + fehler);
     }));
-    add(warteBis("Handbuch: Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 1500));
-    add(tu("Handbuch: intro2_sith vorn, Kamera bei 8 s", [] {
-        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
-            const std::string& n = static_cast<int>(i) == g_app->activeTab ? g_app->shownName : g_app->tabs[i].shownName;
-            if (n.find("intro2") != std::string::npos) { g_app->tabRequest = static_cast<int>(i); }
+    add(warteBis("Handbuch: neue Mission geladen", [] { return !g_app->map.empty() && g_app->mapBereit; }, 1500));
+    // taspir1 startet am Spielerstart sein eigenes Intro (taspir1/preIntro) -
+    // dieser Runner kommt weg, sonst liefen beide Szenen zugleich.
+    add(tu("Handbuch: nur die Entities des Skripts hervorheben", [] { g_app->skriptFokus = true; }));
+    add(tu("Handbuch: den Runner des Originals loeschen", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* u = g_app->map.entities[i].find("usescript");
+            if (g_app->map.entities[i].classname == "target_scriptrunner" && u != nullptr && u->find("preIntro") != std::string::npos) {
+                diag::detail("Knopftest: Handbuch - Runner des Originals geloescht: " + *u);
+                (void)entityLoeschen(static_cast<int>(i));
+                break;
+            }
         }
     }));
     add(pause(1.0));
-    add(warteBis("Handbuch: Szene", [] { return g_app->camTrackValid; }, 600));
-    add(tu("Handbuch: Gesamtbild", [=] {
-        *schiff = hb::entityMitName("func_static", "sta2");
-        g_app->playMs = 8000.0;
+    add(tu("Handbuch: Blick auf den Spielerstart", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == "info_player_start") {
+                entityAuswahlSetzen(static_cast<int>(i));
+                zurEntityFliegen(i);
+                hb::kameraZurueck(220.0F, 140.0F);
+                break;
+            }
+        }
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("t4_2", voll));
+
+    // --- 2. Figuren und Laufziele setzen - als Bildfolge -------------------------
+    // Blick von Westen ueber das Nordufer; geklickt wird auf Weltpunkte.
+    const auto blick = [](float x, float y, float z, float nick, float gier) {
+        g_app->throughCamera = false;
+        g_app->draufsicht = false;
+        g_app->cam.pos[0] = x;
+        g_app->cam.pos[1] = y;
+        g_app->cam.pos[2] = z;
+        g_app->cam.angles[0] = nick;
+        g_app->cam.angles[1] = gier;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    };
+    const auto schirm = [](float x, float y, float z) {
+        const float w[3] = {x, y, z};
+        ImVec2 q{0, 0};
+        (void)kartenPunktAufSchirm(w, q);
+        return q;
+    };
+    add(tu("Handbuch: Blick ueber das Nordufer", [=] {
+        entityAuswahlSetzen(-1);
+        blick(-1600.0F, -2700.0F, 1250.0F, 32.0F, 90.0F);
+    }));
+    add(pause(1.0));
+    struct Setzen { const char* klasse; float x, y, z; const char* key; const char* name; const char* typ; };
+    const Setzen setzen[] = {
+        {"NPC_spawner", -1500.0F, -1900.0F, 650.0F, "NPC_targetname", "kyle", "Kyle"},
+        {"NPC_spawner", -1720.0F, -1930.0F, 650.0F, "NPC_targetname", "rosh", "rosh_penin"},
+        {"waypoint_navgoal", -1560.0F, -1640.0F, 640.0F, "targetname", "nav_kyle", ""},
+        {"waypoint_navgoal", -1740.0F, -1660.0F, 640.0F, "targetname", "nav_rosh", ""},
+    };
+    int bild = 0;
+    for (const Setzen& st : setzen) {
+        add(tu(std::string("Handbuch: Kachel ") + st.klasse, [st] { g_app->platzierKlasse = st.klasse; }));
+        // Die Maus faehrt zum Punkt - Bild fuer Bild, die Vorschau folgt ihr.
+        for (int k = 0; k < 6; ++k) {
+            add(tu("Handbuch: Maus zum Punkt", [=] {
+                const ImVec2 z = schirm(st.x, st.y, st.z);
+                const float f = static_cast<float>(k + 1) / 6.0F;
+                const ImVec2 von = ansichtMitte();
+                setzeMaus(ImVec2{von.x + (z.x - von.x) * f, von.y + (z.y - von.y) * f});
+            }));
+            add(pause(0.08));
+            char n[32];
+            std::snprintf(n, sizeof(n), "a_k_setzen_%02d", bild++);
+            add(hb::fotoTeil(n, linksUndKarte));
+        }
+        add(klickAn(std::string("setzen ") + st.name, [=] { return schirm(st.x, st.y, st.z); }));
+        add(pause(0.3));
+        add(tu(std::string("Handbuch: Name ") + st.name, [st] {
+            const int i = g_app->pickedEntity;
+            diag::detail("Knopftest: Handbuch - gesetzt " + std::string(st.klasse) + " als " + std::to_string(i));
+            if (i < 0) { return; }
+            (void)entityKeySetzen(i, st.key, st.name);
+            if (st.typ[0] != '\0') { (void)entityKeySetzen(i, "NPC_type", st.typ); }
+            (void)entityAufBoden(i);
+        }));
+        add(pause(0.3));
+        for (int k = 0; k < 2; ++k) {
+            char n[32];
+            std::snprintf(n, sizeof(n), "a_k_setzen_%02d", bild++);
+            add(hb::fotoTeil(n, linksUndKarte));
+        }
+    }
+    add(tu("Handbuch: Kyle waehlen (Inspektor)", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* n = g_app->map.entities[i].find("NPC_targetname");
+            if (n != nullptr && *n == "kyle") { entityAuswahlSetzen(static_cast<int>(i)); }
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("k_inspektor", [] {
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        return ImRect{0.0F, g_app->kartenAnsicht[1] - ImGui::GetFontSize() * 2.6F, g_app->kartenAnsicht[0], d.y * 0.92F};
+    }));
+    add(hb::fotoTeil("h_entity", voll));
+    add(hb::fotoTeil("t4_3", voll));
+
+    // --- 3. Das Skript der Szene ------------------------------------------------------
+    const auto skriptSetzen = [](const std::string& text) {
+        Script sc;
+        std::vector<Diag> d;
+        (void)readScript(text, sc, d);
+        (void)g_app->doc.ersetzeSkript(std::move(sc), "Handbuch");
+        hb::skriptNeu();
+    };
+    const std::string kopf =
+        "//Generated by BehavEd\n\n"
+        "rem ( \"taspir_tut - intro. Kyle and Rosh walk to the ship, then it takes off.\" );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ ENABLE );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ MOVE, < -400.000 -3300.000 1300.000 >, 0 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ PAN, < 10.000 120.000 0.000 >, < 0.000 0.000 0.000 >, 0 );\n";
+    const auto lauf = [](const char* wer, const char* ziel, const char* blickZu) {
+        return std::string("affect ( \"") + wer + "\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+               "\ttask ( \"walk\" )\n\t{\n"
+               "\t\tset ( /*@SET_TYPES*/ \"SET_WALKING\", \"true\" );\n"
+               "\t\tset ( /*@SET_TYPES*/ \"SET_NAVGOAL\", \"" + ziel + "\" );\n"
+               "\t}\n\n"
+               "\tdowait ( \"walk\" );\n"
+               "\tset ( /*@SET_TYPES*/ \"SET_LOOK_TARGET\", \"" + blickZu + "\" );\n"
+               "}\n\n";
+    };
+    const std::string laeufe = lauf("kyle", "nav_kyle", "rosh") + lauf("rosh", "nav_rosh", "kyle");
+    const std::string kamera =
+        "camera ( /*@CAMERA_COMMANDS*/ MOVE, < -1640.000 -2180.000 720.000 >, 4000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ PAN, < -4.000 88.000 0.000 >, < 0.000 0.000 0.000 >, 4000 );\n"
+        "wait ( 5000.000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ MOVE, < -750.000 -2700.000 1000.000 >, 0 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ PAN, < 4.000 120.000 0.000 >, < 0.000 0.000 0.000 >, 0 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ SHAKE, 4.000, 2000 );\n"
+        "wait ( 1000.000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ PAN, < -15.000 97.000 0.000 >, < 0.000 0.000 0.000 >, 2500 );\n"
+        "wait ( 2500.000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ PAN, < -31.000 40.000 0.000 >, < 0.000 0.000 0.000 >, 2000 );\n"
+        "wait ( 2000.000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ FADE, < 0.000 0.000 0.000 >, 0.000, < 0.000 0.000 0.000 >, 1.000, 1500 );\n"
+        "wait ( 1500.000 );\n"
+        "camera ( /*@CAMERA_COMMANDS*/ DISABLE );\n";
+    add(tu("Handbuch: Skript - die beiden Laeufe", [=] { skriptSetzen(kopf + laeufe + "wait ( 6000.000 );\ncamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n"); }));
+    add(warteBis("Handbuch: Szene", [] { return g_app->camTrackValid; }, 900));
+    add(pause(0.8));
+    // Die Figur mitten im Lauf, ihr Weg.
+    add(tu("Handbuch: Kyle mitten im Lauf", [=] {
+        g_app->playMs = 2500.0;
         g_app->playing = false;
         g_app->cameraSelected = false;
-        if (*schiff >= 0) {
-            zurEntityFliegen(static_cast<std::size_t>(*schiff));
-            hb::kameraZurueck(500.0F, 250.0F);
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+            if (entityFuerFigur(static_cast<int>(ai)) == g_app->pickedEntity) { g_app->selectedActor = static_cast<int>(ai); }
         }
-        g_app->mapDirty = true;
-    }));
-    add(pause(1.2));
-    add(hb::fotoTeil("h_fenster", voll));
-    add(hb::fotoTeil("h_zeitleiste", zeitleiste));
-    add(hb::fotoTeil("t1_1", voll));
-    add(hb::fotoTeil("h_karte", kartePlusLeiste));
-    add(tu("Handbuch: Draufsicht", [] { g_app->draufsicht = true; g_app->mapDirty = true; }));
-    add(pause(0.8));
-    add(hb::fotoTeil("h_draufsicht", kartePlusLeiste));
-    add(tu("Handbuch: Draufsicht aus, Ansicht einstellen", [] {
-        g_app->draufsicht = false;
-        g_app->ansichtEinstellungenOeffnen = true;
-        g_app->mapDirty = true;
-    }));
-    add(pause(0.6));
-    add(hb::fotoTeil("h_ansicht_einst", [] {
-        ImRect r = hb::fensterRect("##Popup");
-        r.Expand(ImGui::GetFontSize() * 0.6F);
-        return r;
-    }));
-    add(klickAn("Klappfenster zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
-    add(pause(0.3));
-    // --- Entities und Gizmo ---------------------------------------------------
-    add(tu("Handbuch: das Schiff waehlen", [=] {
-        if (*schiff >= 0) {
-            entityAuswahlSetzen(*schiff);
-            zurEntityFliegen(static_cast<std::size_t>(*schiff));
-            hb::kameraZurueck(150.0F, 60.0F);
-        }
-        g_app->gizmoMode = App::GizmoMode::Move;
-        g_app->mapDirty = true;
+        blick(-1600.0F, -2550.0F, 1050.0F, 28.0F, 90.0F);
     }));
     add(pause(1.0));
-    add(hb::fotoTeil("h_entity", voll));
-    add(hb::fotoTeil("t3_1", linksUndKarte));
-    add(hb::fotoTeil("h_gizmo_verschieben", [=] { return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F); }));
-    add(tu("Handbuch: Drehmodus", [] { g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
-    add(pause(0.6));
-    add(hb::fotoTeil("h_gizmo_drehen", [=] { return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F); }));
-    add(tu("Handbuch: Verschieben, nichts gewaehlt", [] {
-        g_app->gizmoMode = App::GizmoMode::Move;
-        entityAuswahlSetzen(-1);
+    add(hb::fotoTeil("h_figur_bahn", kartePlusLeiste));
+    add(hb::fotoTeil("t2_4", kartePlusLeiste));
+    add(hb::fotoTeil("t2_1", linksUndKarte));
+    add(hb::fotoTeil("t2_ergebnis", kartePlusLeiste));
+    // Rechtsklick auf Kyles Laufziel: gehen, rennen, rueckwaerts, ansehen.
+    add(tu("Handbuch: Laufziel waehlen", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].targetname == "nav_kyle") { entityAuswahlSetzen(static_cast<int>(i)); }
+        }
         g_app->mapDirty = true;
     }));
-    // --- Kamera -----------------------------------------------------------------
-    add(tu("Handbuch: Kamera waehlen, zweite Einstellung", [] {
+    add(pause(0.6));
+    add(hb::fotoTeil("t2_2", linksUndKarte));
+    add(klickAn("Rechtsklick auf das Laufziel", [=] {
+        float o[3] = {0, 0, 0};
+        if (g_app->pickedEntity >= 0) { (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(g_app->pickedEntity)], o); }
+        return schirm(o[0], o[1], o[2]);
+    }, 1));
+    add(pause(0.5));
+    const auto gangartRect = [=] {
+        ImRect r = hb::fensterRect("##gangart");
+        float o[3] = {0, 0, 0};
+        if (g_app->pickedEntity >= 0) { (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(g_app->pickedEntity)], o); }
+        r = hb::vereint(r, hb::um(schirm(o[0], o[1], o[2]), ImGui::GetFontSize() * 6.0F, ImGui::GetFontSize() * 4.0F));
+        r.Expand(ImGui::GetFontSize() * 2.0F);
+        return r;
+    };
+    add(hb::fotoTeil("t2_5", gangartRect));
+    add(hb::fotoTeil("k_gangart", gangartRect));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // Kyle mitten im Lauf zur Seite ziehen: ein Bahnpunkt (danach zurueck).
+    auto tiefe = std::make_shared<std::pair<std::size_t, std::size_t>>();
+    add(tu("Handbuch: Kyle waehlen (mitten im Lauf)", [=] {
+        tiefe->first = g_app->doc.undoDepth();
+        tiefe->second = g_app->entUndo.size();
+        const int ei = entityFuerFigur(g_app->selectedActor);
+        if (ei >= 0) { entityAuswahlSetzen(ei); }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(ziehenAn("Handbuch: Kyle zur Seite ziehen", [] { return hb::entityAufSchirm(entityFuerFigur(g_app->selectedActor)); },
+                 120.0F, 40.0F, 0));
+    add(pause(0.8));
+    add(hb::fotoTeil("t2_6", kartePlusLeiste));
+    add(tu("Handbuch: Bahnpunkt zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > tiefe->first && g_app->doc.undo()) {}
+        while (g_app->entUndo.size() > tiefe->second && entityRueckgaengig()) {}
+        hb::skriptNeu();
+        entityAuswahlSetzen(-1);
+    }));
+    add(pause(0.5));
+
+    // --- 4. Kamera: Einstellungen, Fahrt, Pilot ------------------------------------------
+    add(tu("Handbuch: Skript - mit Kamerafahrt", [=] { skriptSetzen(kopf + laeufe + kamera); }));
+    add(warteBis("Handbuch: Szene", [] { return g_app->camTrackValid; }, 900));
+    add(tu("Handbuch: Kamera waehlen, zweite Einstellung", [=] {
         g_app->cameraSelected = true;
         kameraSchluesselWaehlen(1, true);
-        kameraVorDenSchluessel();
-        hb::kameraZurueck(200.0F, 80.0F);
-        g_app->mapDirty = true;
+        blick(-1200.0F, -2600.0F, 1000.0F, 22.0F, 115.0F);
     }));
     add(pause(1.0));
     add(hb::fotoTeil("h_kamera", voll));
     add(hb::fotoTeil("t1_2", linksUndKarte));
+    // Die Leisten einzeln - fuer die Knopfseite des Handbuchs.
+    add(hb::fotoTeil("r_leiste_karte", [] {
+        const float fs = ImGui::GetFontSize();
+        return ImRect{g_app->kartenAnsicht[0] - fs * 0.4F, g_app->kartenAnsicht[1] - fs * 2.6F, g_app->kartenAnsicht[2] + fs * 0.4F,
+                      g_app->kartenAnsicht[1] + 2.0F};
+    }));
+    add(hb::fotoTeil("r_kacheln", [] {
+        ImRect r = hb::fensterRect("##platzieren");
+        r.Expand(ImGui::GetFontSize() * 0.3F);
+        return r;
+    }));
+    add(hb::fotoTeil("r_transport", [] {
+        // Die Transportleiste: der obere Rand des Bandes unter der Tabelle.
+        ImRect r = hb::fensterRect("toolband");
+        r.Max.y = r.Min.y + ImGui::GetFontSize() * 2.3F;
+        return r;
+    }));
     add(hb::fotoTeil("h_kamera_verschieben", [] {
         return hb::um(bildZuSchirm(g_app->cameraSx, g_app->cameraSy), ImGui::GetFontSize() * 13.0F, ImGui::GetFontSize() * 8.0F);
     }));
@@ -14262,166 +14639,271 @@ std::vector<Schritt> handbuchSchritte() {
         ImRect r = hb::karte();
         return ImRect{0.0F, r.Min.y - ImGui::GetFontSize() * 2.6F, r.Min.x, r.Max.y};
     }));
-    add(tu("Handbuch: neue Einstellung an der Ansicht", [] { kameraNeueEinstellung(); }));
+    add(tu("Handbuch: neue Einstellung an der Ansicht", [=] {
+        tiefe->first = g_app->doc.undoDepth();
+        blick(-1250.0F, -2350.0F, 760.0F, 6.0F, 110.0F);
+        kameraNeueEinstellung();
+    }));
     add(pause(0.8));
     add(hb::fotoTeil("t1_3", linksUndKarte));
-    add(tu("Handbuch: die neue Einstellung zuruecknehmen", [] {
-        (void)g_app->doc.undo();
-        rebuildTree();
-        g_app->camTrackValid = false;
+    add(tu("Handbuch: die neue Einstellung zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > tiefe->first && g_app->doc.undo()) {}
+        hb::skriptNeu();
     }));
     add(pause(0.6));
-    // Zeitleiste mit offener Kamera und Figuren.
-    add(tu("Handbuch: Zeitleiste", [] {
-        g_app->tlKameraOffen = true;
-        g_app->tlOffen.clear();
-        g_app->playMs = 12000.0;
+    // Pilot: in der zweiten Einstellung sitzen und fliegen - Bildfolge.
+    add(tu("Handbuch: Pilot starten", [] {
+        g_app->cameraSelected = true;
+        kameraSchluesselWaehlen(1, true);
+        g_app->playMs = 4000.0;
+        kameraPilotStarten();
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+    }));
+    add(pause(0.8));
+    auto pilotStart = std::make_shared<Camera>();
+    add(tu("Handbuch: Pilot - Start merken", [=] { *pilotStart = g_app->cam; }));
+    for (int k = 0; k < 36; ++k) {
+        add(tu("Handbuch: Pilot fliegt", [=] {
+            const float f = static_cast<float>(k) / 35.0F;
+            g_app->cam = *pilotStart;
+            // Ein Stueck zurueck und hoch, dabei langsam nach links drehen.
+            float v[3];
+            g_app->cam.forward(v);
+            for (int c = 0; c < 3; ++c) { g_app->cam.pos[c] -= v[c] * 260.0F * f; }
+            g_app->cam.pos[2] += 120.0F * f;
+            g_app->cam.angles[1] += 25.0F * f;
+            g_app->cam.angles[0] += 8.0F * f;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.06));
+        char n[32];
+        std::snprintf(n, sizeof(n), "a_k_pilot_%02d", k);
+        add(hb::fotoTeil(n, kartePlusLeiste));
+    }
+    add(tu("Handbuch: Pilot abbrechen", [] { kameraPilotBeenden(false); }));
+    add(pause(0.5));
+
+    // --- 5. Der Baum stuerzt: ROFF im Animationsfenster -----------------------------------
+    add(tu("Handbuch: das Schiff animieren", [=] {
+        *schiff = hb::entityMitName("misc_model_breakable", "ravensClaw");
+        g_app->cameraSelected = false;
+        if (*schiff < 0) { return; }
+        entityAuswahlSetzen(*schiff);
+        animStarten(*schiff);
+        g_app->playMs = 5500.0;
+    }));
+    add(pause(0.5));
+    add(klick(tr(Str::AnimModeRoff), "###animation"));
+    add(tu("Handbuch: Maus weg, Fenster rechts neben die Karte", [] {
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+        const ImGuiWindow* w = ImGui::FindWindowByName("###animation");
+        const float breit = w != nullptr ? w->Size.x : ImGui::GetFontSize() * 30.0F;
+        ImGui::SetWindowPos("###animation", ImVec2{ImGui::GetIO().DisplaySize.x - breit - 8.0F, g_app->kartenAnsicht[1] + 8.0F});
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t3_1", linksUndKarte));
+    add(hb::fotoTeil("t3_2", [] { return hb::fensterRect("###animation"); }));
+    add(tu("Handbuch: Schiff - vier Schluessel", [=] {
+        if (*schiff < 0) { return; }
+        float o[3] = {0, 0, 0};
+        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(*schiff)], o);
+        std::vector<AnimSchluessel> k(4);
+        const double ms[4] = {5000.0, 6500.0, 8500.0, 10500.0};
+        const float weg[4][3] = {{0, 0, 0}, {0, 0, 220}, {900, 0, 720}, {2600, 0, 1600}};
+        const float nick[4] = {0.0F, 0.0F, -12.0F, -18.0F};
+        for (std::size_t i = 0; i < 4; ++i) {
+            k[i].ms = ms[i];
+            k[i].ort = {o[0] + weg[i][0], o[1] + weg[i][1], o[2] + weg[i][2]};
+            k[i].winkel = {nick[i], 0.0F, 0.0F};
+        }
+        (void)animSchreiben(k);
+        g_app->playMs = 7500.0;
+        blick(-700.0F, -2800.0F, 1050.0F, 8.0F, 118.0F);
+    }));
+    add(pause(1.2));
+    add(hb::fotoTeil("h_animation", voll));
+    add(hb::fotoTeil("t3_3", kartePlusLeiste));
+    add(hb::fotoTeil("t3_6", [] { return hb::fensterRect("###animation"); }));
+    add(tu("Handbuch: Drehring bei 6,5 s", [] { g_app->playMs = 6500.0; g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("t3_4", kartePlusLeiste));
+    add(hb::fotoTeil("h_gizmo_drehen", [=] {
+        return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 14.0F, ImGui::GetFontSize() * 9.0F);
+    }));
+    add(tu("Handbuch: Verschiebepfeile", [] { g_app->gizmoMode = App::GizmoMode::Move; g_app->playMs = 5000.0; g_app->mapDirty = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_gizmo_verschieben", [=] {
+        return hb::um(hb::entityAufSchirm(*schiff), ImGui::GetFontSize() * 14.0F, ImGui::GetFontSize() * 9.0F);
+    }));
+    add(tu("Handbuch: Fenster zu, Auswahl weg", [] {
+        g_app->animFensterOffen = false;
+        entityAuswahlSetzen(-1);
         g_app->mapDirty = true;
     }));
-    add(pause(0.3));
-    // Durch die Kamera, Bildfolge.
+    // Der Sturz als Bildfolge, frei von der Seite gesehen.
+    add(tu("Handbuch: Blick auf den Baum", [=] { blick(-650.0F, -2900.0F, 1100.0F, 4.0F, 112.0F); }));
+    add(pause(0.6));
+    for (int k = 0; k < 40; ++k) {
+        add(tu("Handbuch: Start " + std::to_string(k), [k] {
+            g_app->playMs = 4800.0 + 150.0 * k;
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.12));
+        char n[32];
+        std::snprintf(n, sizeof(n), "a_roff_%02d", k);
+        add(hb::fotoTeil(n, [] { return hb::karte(); }));
+        if (k == 22) { add(hb::fotoTeil("t3_5", [] { return hb::karte(); })); }
+        if (k == 30) { add(hb::fotoTeil("t3_ergebnis", [] { return hb::karte(); })); }
+    }
+
+    // --- 6. Die ganze Szene durch die Kamera ---------------------------------------------
+    add(tu("Handbuch: Zeitleiste offen", [] {
+        g_app->tlKameraOffen = true;
+        g_app->tlOffen.clear();
+        g_app->playMs = 3000.0;
+        g_app->cameraSelected = true;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("h_fenster", voll));
+    add(hb::fotoTeil("t1_1", voll));
+    add(hb::fotoTeil("h_zeitleiste", zeitleiste));
+    add(hb::fotoTeil("h_karte", kartePlusLeiste));
     add(tu("Handbuch: Vorschau an", [] { g_app->kameraBildImBild = true; g_app->mapDirty = true; }));
     add(pause(0.6));
     add(hb::fotoTeil("t1_5", kartePlusLeiste));
-    add(tu("Handbuch: durch die Kamera", [] {
+    add(tu("Handbuch: durch die Kamera (ohne Auswahl: was sie am Zeiger sieht)", [] {
         g_app->kameraBildImBild = false;
         g_app->throughCamera = true;
+        g_app->cameraSelected = false;
+        g_app->selectedPath.clear();
+        g_app->selection.clear();
+        entityAuswahlSetzen(-1);
         g_app->mapDirty = true;
     }));
-    for (int k = 0; k < 14; ++k) {
+    for (int k = 0; k < 60; ++k) {
         add(tu("Handbuch: Kamerafahrt " + std::to_string(k), [k] {
-            g_app->playMs = 1000.0 + 1500.0 * k;
+            g_app->playMs = 200.0 * k;
             g_app->mapDirty = true;
         }));
-        add(pause(0.35));
+        add(pause(0.12));
         char n[32];
         std::snprintf(n, sizeof(n), "a_kamera_%02d", k);
         add(hb::fotoTeil(n, [] { return hb::karte(); }));
-        if (k == 6) { add(hb::fotoTeil("t1_ergebnis", [] { return hb::karte(); })); }
+        if (k == 14) { add(hb::fotoTeil("t1_ergebnis", [] { return hb::karte(); })); }
     }
     add(tu("Handbuch: Kamera aus", [] {
         g_app->throughCamera = false;
-        g_app->kameraBildImBild = true;
+        g_app->kameraBildImBild = false;
         g_app->cameraSelected = false;
         g_app->mapDirty = true;
     }));
-    // --- Figur mit Weg ------------------------------------------------------------
-    add(tu("Handbuch: eine laufende Figur waehlen", [] {
-        int beste = -1;
-        double t = 0.0;
-        for (std::size_t ai = 0; ai < g_app->scene.actors.size() && beste < 0; ++ai) {
-            for (const ActorStep& st : g_app->scene.actors[ai].steps) {
-                if (st.kind == ActorStep::Kind::WalkTo && st.endMs - st.startMs > 1500.0 && !st.path.empty()) {
-                    beste = static_cast<int>(ai);
-                    t = (st.startMs + st.endMs) * 0.5;
-                    break;
-                }
-            }
-        }
-        if (beste >= 0) {
-            g_app->selectedActor = beste;
-            g_app->playMs = t;
-            const int ei = entityFuerFigur(beste);
-            if (ei >= 0) {
-                entityAuswahlSetzen(ei);
-                zurEntityFliegen(static_cast<std::size_t>(ei));
-                hb::kameraZurueck(260.0F, 260.0F);
-            }
-        }
-        g_app->mapDirty = true;
-    }));
-    add(pause(1.0));
-    add(hb::fotoTeil("h_figur_bahn", kartePlusLeiste));
-    add(hb::fotoTeil("t2_4", kartePlusLeiste));
-    add(hb::fotoTeil("t2_ergebnis", kartePlusLeiste));
-    add(hb::fotoTeil("t2_1", linksUndKarte));
-    // Das Laufziel dieser Figur: der waypoint_navgoal am Ende des Wegs.
-    auto lauf = std::make_shared<std::array<float, 6>>();
-    add(tu("Handbuch: das Laufziel waehlen", [=] {
-        const int a = g_app->selectedActor;
-        if (a < 0) { return; }
-        for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(a)].steps) {
-            if (st.kind != ActorStep::Kind::WalkTo || !(g_app->playMs >= st.startMs && g_app->playMs <= st.endMs)) { continue; }
-            *lauf = {st.from[0], st.from[1], st.from[2], st.to[0], st.to[1], st.to[2]};
-        }
-        int best = -1;
-        float bestD = 80.0F * 80.0F;
-        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
-            float o[3];
-            if (g_app->map.entities[i].classname != "waypoint_navgoal" || !entityOrt(g_app->map.entities[i], o)) { continue; }
-            const float d = (o[0] - (*lauf)[3]) * (o[0] - (*lauf)[3]) + (o[1] - (*lauf)[4]) * (o[1] - (*lauf)[4]);
-            if (d < bestD) {
-                bestD = d;
-                best = static_cast<int>(i);
-            }
-        }
-        if (best >= 0) { entityAuswahlSetzen(best); }
-        g_app->mapDirty = true;
+    // Zeitleiste: Kyles Laufbalken ziehen - Bildfolge, danach zurueck.
+    add(tu("Handbuch: Figurenzeilen, Zeit 2 s", [=] {
+        // Die Kameragruppe zu, damit die Laufbalken der Figuren im Bild sind.
+        g_app->tlKameraOffen = false;
+        g_app->showTracks = true;
+        g_app->playMs = 2000.0;
+        tiefe->first = g_app->doc.undoDepth();
+        blick(-1600.0F, -2550.0F, 1050.0F, 28.0F, 90.0F);
     }));
     add(pause(0.6));
-    add(hb::fotoTeil("t2_2", linksUndKarte));
-    add(klickAn("Rechtsklick auf den Endgriff", [=] {
-        const float w[3] = {(*lauf)[3], (*lauf)[4], (*lauf)[5]};
-        ImVec2 q{0, 0};
-        (void)kartenPunktAufSchirm(w, q);
-        return q;
-    }, 1));
-    add(pause(0.5));
-    add(hb::fotoTeil("t2_5", [=] {
-        ImRect r = hb::fensterRect("##gangart");
-        const float w[3] = {(*lauf)[3], (*lauf)[4], (*lauf)[5]};
-        ImVec2 q{0, 0};
-        (void)kartenPunktAufSchirm(w, q);
-        r = hb::vereint(r, hb::um(q, ImGui::GetFontSize() * 6.0F, ImGui::GetFontSize() * 4.0F));
-        r.Expand(ImGui::GetFontSize() * 2.0F);
-        return r;
+    auto balken = std::make_shared<ImVec2>(-1.0F, -1.0F);
+    add(tu("Handbuch: einen Laufbalken suchen", [=] {
+        *balken = ImVec2{-1.0F, -1.0F};
+        const ImRect band = hb::fensterRect("toolband");
+        for (const App::TlBalken& b : g_app->tlBalken) {
+            const float y = (b.a.y + b.b.y) * 0.5F;
+            if (b.b.x - b.a.x > 30.0F && y > band.Min.y && y < band.Max.y) {
+                *balken = ImVec2{b.a.x + (b.b.x - b.a.x) * 0.4F, y};
+                break;
+            }
+        }
+        diag::detail("Knopftest: Handbuch - Laufbalken bei " + std::to_string(balken->x));
+        setzeMaus(*balken);
     }));
-    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.2));
+    add({"Handbuch: Balken anfassen", [](int b) {
+             if (b == 1) { ImGui::GetIO().AddMouseButtonEvent(0, true); }
+             return b >= 3;
+         }});
+    for (int k = 0; k < 30; ++k) {
+        add(tu("Handbuch: Balken ziehen", [=] {
+            const float f = static_cast<float>(k + 1) / 30.0F;
+            setzeMaus(ImVec2{balken->x + 140.0F * std::sin(f * 3.14159265F * 0.5F), balken->y});
+        }));
+        add(pause(0.05));
+        char n[32];
+        std::snprintf(n, sizeof(n), "a_k_timen_%02d", k);
+        add(hb::fotoTeil(n, zeitleiste));
+    }
+    add({"Handbuch: Balken loslassen", [](int b) {
+             if (b == 1) { ImGui::GetIO().AddMouseButtonEvent(0, false); }
+             return b >= 3;
+         }});
     add(pause(0.3));
-    // Mitten im Lauf: die Figur greifen und zur Seite ziehen - ein neuer Punkt.
-    auto tiefe = std::make_shared<std::pair<std::size_t, std::size_t>>();
-    add(tu("Handbuch: die Figur waehlen (mitten im Lauf)", [=] {
-        tiefe->first = g_app->doc.undoDepth();
-        tiefe->second = g_app->entUndo.size();
-        const int ei = entityFuerFigur(g_app->selectedActor);
-        if (ei >= 0) { entityAuswahlSetzen(ei); }
-        g_app->mapDirty = true;
+    add(tu("Handbuch: Ziehen zuruecknehmen", [=] {
+        while (g_app->doc.undoDepth() > tiefe->first && g_app->doc.undo()) {}
+        hb::skriptNeu();
+        g_app->showTracks = false;
+    }));
+    add(pause(0.4));
+
+    // --- 7. Ein zweites Skript ueber den Inspektor: Kyles spawnscript -----------------------
+    add(tu("Handbuch: Kyle bekommt ein spawnscript", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* n = g_app->map.entities[i].find("NPC_targetname");
+            if (n != nullptr && *n == "kyle") {
+                entityAuswahlSetzen(static_cast<int>(i));
+                (void)entityKeySetzen(static_cast<int>(i), "spawnscript", "taspir_tut/kyle_spawn");
+            }
+        }
     }));
     add(pause(0.5));
-    add(ziehenAn("Handbuch: die Figur zur Seite ziehen", [] {
-        const int ei = entityFuerFigur(g_app->selectedActor);
-        return hb::entityAufSchirm(ei);
-    }, 140.0F, 30.0F, 0));
+    // Was der Knopf "Open" neben dem Schluessel tut: anlegen und oeffnen.
+    add(tu("Handbuch: spawnscript oeffnen (anlegen)", [] { skriptOeffnen("taspir_tut/kyle_spawn", true); }));
     add(pause(0.8));
-    add(hb::fotoTeil("t2_6", kartePlusLeiste));
-    add(tu("Handbuch: neuen Punkt zuruecknehmen, Figur ab", [=] {
-        while (g_app->doc.undoDepth() > tiefe->first && g_app->doc.undo()) {}
-        while (g_app->entUndo.size() > tiefe->second && entityRueckgaengig()) {}
-        rebuildTree();
-        g_app->camTrackValid = false;
-        g_app->selectedActor = -1;
-        entityAuswahlSetzen(-1);
+    add(pruefe("Handbuch: kyle_spawn ist vorn", [] {
+        return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)).find("kyle_spawn") != std::string::npos;
     }));
-    // --- Wegpunkte -------------------------------------------------------------------
-    add(tu("Handbuch: Wegpunkte", [] { g_app->wegFensterOffen = true; g_app->mapDirty = true; }));
+    add(tu("Handbuch: spawnscript mit standOnly-Makro", [=] {
+        if (mb::reiterName(static_cast<std::size_t>(g_app->activeTab)).find("kyle_spawn") == std::string::npos) { return; }
+        skriptSetzen("//Generated by BehavEd\n\n"
+                     "//$\"standOnly\"@3\n"
+                     "set ( /*!*/ \"SET_BEHAVIOR_STATE\", /*!*/ \"BS_DEFAULT\" );\n"
+                     "set ( /*!*/ \"SET_IGNOREALERTS\", /*!*/ \"true\" );\n"
+                     "set ( /*!*/ \"SET_LOOK_FOR_ENEMIES\", /*!*/ \"false\" );\n"
+                     "set ( /*@SET_TYPES*/ \"SET_WEAPON\", \"WP_SABER\" );\n");
+        g_app->leftMode = 0;
+    }));
     add(pause(0.8));
-    add(hb::fotoTeil("h_wegpunkte", voll));
-    add(tu("Handbuch: Wegpunkte zu", [] { g_app->wegFensterOffen = false; }));
-    // --- Skript, Editor, Graph, Spuren ----------------------------------------------
+    add(hb::fotoTeil("k_makro", [] { return hb::fensterRect("##flowarea"); }));
+    // Ansicht teilen: spawnscript neben dem Intro.
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::SplitToggle), "##Menu"));
+    add(klick("2", "##Menu"));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_geteilt", voll));
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::SplitToggle), "##Menu"));
+    add(klick("1", "##Menu"));
+    add(pause(0.4));
+    add(hb::zuReiter("intro"));
+    add(pause(0.8));
+
+    // --- 8. Skriptansichten, Editor, Suchen, Rueckgaengig --------------------------------
     add(tu("Handbuch: Events-Modus", [] { g_app->leftMode = 0; g_app->settings.flussAnsicht = 0; g_app->mapDirty = true; }));
     add(pause(0.8));
     add(hb::fotoTeil("h_skriptbaum", voll));
     add(hb::fotoTeil("t2_3", voll));
+    add(hb::fotoTeil("k_neu_3", [] { return hb::fensterRect("##flowarea"); }));
     add(hb::fotoTeil("t1_6", [] {
         ImRect r = hb::fensterRect(tr(Str::GroupActions));
         return r.GetWidth() > 0.0F ? r : ImRect{ImGui::GetIO().DisplaySize.x * 0.82F, 0.0F, ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y};
     }));
-    // Der Weg erst jetzt - beim Aufbau der Liste war die Mission noch nicht da.
     add({"Handbuch: Editor fuer camera MOVE", [](int b) {
              if (b == 0) {
-                 const Path weg = hb::kameraMove();
-                 diag::detail("Knopftest: Handbuch - camera MOVE bei " + std::to_string(weg.size()) + " Ebenen");
-                 openEditorForNode(weg);
+                 openEditorForNode(hb::kameraMove());
                  return false;
              }
              return g_app->editorOpen || b > 20;
@@ -14430,99 +14912,627 @@ std::vector<Schritt> handbuchSchritte() {
     add(hb::fotoTeil("h_editor", [] { return hb::fensterRect("###editor"); }));
     add(klick(tr(Str::EditorCancel), "###editor"));
     add(pause(0.3));
+    add({"Handbuch: Editor fuer affect", [](int b) {
+             if (b == 0) {
+                 for (std::size_t i = 0; i < g_app->doc.script().nodes.size(); ++i) {
+                     if (g_app->doc.script().nodes[i].name == "affect") { openEditorForNode(Path{i}); break; }
+                 }
+                 return false;
+             }
+             return g_app->editorOpen || b > 20;
+         }});
+    add(pause(0.6));
+    add(hb::fotoTeil("k_neu_2", [] { return hb::fensterRect("###editor"); }));
+    add(klick(tr(Str::EditorCancel), "###editor"));
+    add(pause(0.3));
+    // Suchen: jedes SET_NAVGOAL.
+    add(tu("Handbuch: Suchen nach SET_NAVGOAL", [] {
+        g_app->findVorName = "";
+        g_app->findVorText = "SET_NAVGOAL";
+        g_app->findVorbelegen = true;
+        g_app->findOpen = true;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_suchen", [] { return hb::fensterRect("###find"); }));
+    add(tu("Handbuch: Suchen zu", [] { g_app->findOpen = false; }));
+    add(pause(0.3));
+    // Rueckgaengig-Liste: die Schritte bis hierher.
+    add(tu("Handbuch: Rueckgaengig-Liste", [] { g_app->undoListeAnfrage = 1; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_undo", [] { return hb::fensterRect(tr(Str::UndoListTitle)); }));
+    add(klickAn("Liste zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
     add(tu("Handbuch: Graph", [] { g_app->settings.flussAnsicht = 1; }));
     add(pause(1.2));
     add(hb::fotoTeil("h_graph", [] { return hb::fensterRect("##flowarea"); }));
     add(tu("Handbuch: Spuren", [] { g_app->settings.flussAnsicht = 2; }));
     add(pause(0.8));
     add(hb::fotoTeil("h_spuren", [] { return hb::fensterRect("##flowarea"); }));
-    add(tu("Handbuch: zurueck zu Classic und Karte", [] { g_app->settings.flussAnsicht = 0; g_app->leftMode = 1; }));
-    add(pause(0.6));
-    // --- ROFF am Schiff -------------------------------------------------------------
-    add(tu("Handbuch: Schiff animieren (ROFF)", [=] {
-        if (*schiff < 0) { return; }
-        entityAuswahlSetzen(*schiff);
-        animStarten(*schiff);
-        g_app->playMs = 1000.0;
-    }));
-    add(pause(0.5));
-    add(klick(tr(Str::AnimModeRoff), "###animation"));
-    add(tu("Handbuch: Maus weg, Fenster rechts neben die Karte", [] {
-        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
-        // Rechts an den Bildschirmrand, ganz sichtbar (es ist breiter als die
-        // Skriptspalte) - so liegt es nicht ueber der Bahn auf der Karte.
-        const ImGuiWindow* w = ImGui::FindWindowByName("###animation");
-        const float breit = w != nullptr ? w->Size.x : ImGui::GetFontSize() * 30.0F;
-        ImGui::SetWindowPos("###animation", ImVec2{ImGui::GetIO().DisplaySize.x - breit - 8.0F, g_app->kartenAnsicht[1] + 8.0F});
-    }));
+    add(hb::fotoTeil("k_dialog", [] { return hb::fensterRect("##flowarea"); }));
+    // Ein neuer, leerer Reiter fuer "Skript von vorn".
+    add(tu("Handbuch: neuer Reiter", [] { g_app->settings.flussAnsicht = 0; neuerReiter(); g_app->leftMode = 0; }));
     add(pause(0.8));
-    add(hb::fotoTeil("t3_2", [] { return hb::fensterRect("###animation"); }));
-    add(tu("Handbuch: vier Schluessel", [=] {
-        std::vector<AnimSchluessel> k(4);
-        float o[3] = {0, 0, 0};
-        (void)entityOrt(g_app->map.entities[static_cast<std::size_t>(*schiff)], o);
-        const float wege[4][3] = {{0, 0, 0}, {700, 250, 180}, {1100, -350, 320}, {450, -800, 240}};
-        const float rollen[4] = {0.0F, 15.0F, 35.0F, 0.0F};
-        for (int i = 0; i < 4; ++i) {
-            k[static_cast<std::size_t>(i)].ms = 1000.0 + 3000.0 * i;
-            for (int c = 0; c < 3; ++c) { k[static_cast<std::size_t>(i)].ort[static_cast<std::size_t>(c)] = o[c] + wege[i][c]; }
-            k[static_cast<std::size_t>(i)].winkel = {0.0F, 20.0F * i, rollen[i]};
-        }
-        (void)animSchreiben(k);
-        g_app->playMs = 5500.0;
-        zurEntityFliegen(static_cast<std::size_t>(*schiff));
-        hb::kameraZurueck(800.0F, 500.0F);
+    add(hb::fotoTeil("k_neu_1", voll));
+    add(hb::zuReiter("intro"));
+    add(tu("Handbuch: Karte", [] { g_app->leftMode = 1; }));
+    add(pause(1.0));
+
+    // --- 9. Ansicht: Draufsicht, Einstellungen, Kameramarke ------------------------------
+    add(tu("Handbuch: Draufsicht", [=] {
+        blick(-1600.0F, -1450.0F, 3200.0F, 89.0F, 90.0F);
+        g_app->draufSchnitt = 1000.0F;
+        g_app->draufsicht = true;
+        g_app->mapDirty = true;
     }));
-    add(pause(1.2));
-    add(hb::fotoTeil("h_animation", voll));
-    add(hb::fotoTeil("t3_3", kartePlusLeiste));
-    add(hb::fotoTeil("t3_6", [] { return hb::fensterRect("###animation"); }));
-    add(tu("Handbuch: Drehring bei 7 s", [] { g_app->playMs = 7000.0; g_app->gizmoMode = App::GizmoMode::Rotate; g_app->mapDirty = true; }));
-    add(pause(0.8));
-    add(hb::fotoTeil("t3_4", kartePlusLeiste));
-    add(tu("Handbuch: Gizmo verschieben", [] { g_app->gizmoMode = App::GizmoMode::Move; entityAuswahlSetzen(-1); }));
-    for (int k = 0; k < 16; ++k) {
-        add(tu("Handbuch: Flug " + std::to_string(k), [k] {
-            g_app->playMs = 800.0 + 700.0 * k;
-            g_app->mapDirty = true;
-        }));
-        add(pause(0.3));
-        char n[32];
-        std::snprintf(n, sizeof(n), "a_roff_%02d", k);
-        add(hb::fotoTeil(n, [] { return hb::karte(); }));
-        if (k == 8) { add(hb::fotoTeil("t3_5", [] { return hb::karte(); })); }
-        if (k == 9) { add(hb::fotoTeil("t3_ergebnis", [] { return hb::karte(); })); }
-    }
-    add(tu("Handbuch: Animation entfernen, Fenster zu", [] {
-        while (g_app->doc.undo()) {}
-        rebuildTree();
-        g_app->animFensterOffen = false;
-        g_app->camTrackValid = false;
+    add(pause(1.0));
+    add(hb::fotoTeil("k_oben", kartePlusLeiste));
+    add(tu("Handbuch: Draufsicht aus, Ansicht einstellen", [=] {
+        g_app->draufsicht = false;
+        blick(-1600.0F, -2550.0F, 1050.0F, 28.0F, 90.0F);
+        g_app->ansichtEinstellungenOeffnen = true;
     }));
     add(pause(0.6));
-    // --- Modell ---------------------------------------------------------------------
-    add(tu("Handbuch: Modell", [] {
-        g_app->leftMode = 2;
-        (void)npcLaden("luke");
-    }));
-    add(pause(1.5));
-    add(hb::fotoTeil("h_modell", voll));
-    add(tu("Handbuch: zurueck zur Karte", [] { g_app->leftMode = 1; }));
-    add(pause(0.5));
-    // --- Menue: zuletzt geoeffnete Missionen ------------------------------------------
-    add(klick(tr(Str::MenuFile), "###main"));
-    add(klick(tr(Str::RecentMissions), "##Menu"));
-    add(pause(0.5));
-    add(hb::fotoTeil("h_menue_missionen", [] {
-        ImRect r{0.0F, 0.0F, 0.0F, 0.0F};
-        for (ImGuiWindow* w : GImGui->Windows) {
-            if (w->WasActive && !w->Hidden && std::strstr(w->Name, "##Menu") != nullptr) { r = hb::vereint(r, w->Rect()); }
-        }
-        r.Expand(ImGui::GetFontSize() * 0.5F);
-        r.Min.y = 0.0F;
+    add(hb::fotoTeil("h_ansicht_einst", [] {
+        ImRect r = hb::fensterRect("##Popup");
+        r.Expand(ImGui::GetFontSize() * 0.6F);
         return r;
     }));
-    add(hb::fotoTeil("t4_6", [] {
+    add(klickAn("Klappfenster zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // Eine Kameramarke und ihr Menue in der Liste.
+    add(tu("Handbuch: Kameramarke setzen", [] {
+        const float o[3] = {-1150.0F, -2250.0F, 820.0F};
+        const int i = neueEntityAn("ref_tag", o);
+        if (i >= 0) { (void)entityKeySetzen(i, "targetname", "cam_stream"); }
+        g_app->expandedClass = "kat0";
+        g_app->hiddenClasses.clear();
+    }));
+    add(pause(0.6));
+    add(klick("##entsuche"));
+    add(tippe("cam_stream"));
+    add(pause(0.4));
+    add(klick("cam_stream", "", 0, false, "", 1));
+    add(pause(0.5));
+    add(hb::fotoTeil("k_marke", [] {
+        ImRect r = hb::fensterRect("##Popup");
+        r = hb::vereint(r, ImRect{0.0F, g_app->kartenAnsicht[1], g_app->kartenAnsicht[0], g_app->kartenAnsicht[1] + 10.0F});
+        r.Expand(ImGui::GetFontSize() * 0.6F);
+        return r;
+    }));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    add(klick("##entsuche"));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_A, "Strg+A"));
+    add(taste(ImGuiKey_Backspace, "Rueck"));
+    // Nicht Esc - das stellt im Eingabefeld den alten Text wieder her.
+    add(klickAn("daneben", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+
+    // --- 10. Wegpunkte ---------------------------------------------------------------------
+    add(tu("Handbuch: Wegpunkte", [] { g_app->wegFensterOffen = true; g_app->mapDirty = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("h_wegpunkte", voll));
+    add(tu("Handbuch: Wegpunkte zu", [] { g_app->wegFensterOffen = false; }));
+
+    // --- 10b. Bilder fuer die zweite Runde der Kurz-Tutorials (rc600) --------------
+    // shank: "mach eigene Bilder fuer die". Alles in der Taspir-Mission, nur fuer
+    // die Fotos - Skript und Entities kommen danach per Rueckgaengig zurueck.
+    auto vorher = std::make_shared<std::pair<std::size_t, std::size_t>>();
+    add(tu("Kurz2: Stand merken", [=] {
+        vorher->first = g_app->doc.undoDepth();
+        vorher->second = g_app->entUndo.size();
+        g_app->leftMode = 0;
+        g_app->settings.flussAnsicht = 0;
+    }));
+    // Der belegte Teil des Skriptbaums: so hoch wie seine Zeilen, die linke
+    // Haelfte der Spalte - der Rest waere leere Flaeche.
+    const auto baumRect = [] {
+        ImRect r = hb::fensterRect("##flowarea");
+        const float zeile = ImGui::GetFrameHeight();
+        r.Max.y = std::min(r.Max.y, r.Min.y + zeile * (static_cast<float>(g_app->rows.size()) + 3.5F));
+        r.Max.x = r.Min.x + r.GetWidth() * 0.62F;
+        return r;
+    };
+    const auto baumFoto = [&](const std::string& name, const std::string& text) {
+        add(tu("Kurz2: Skript fuer " + name, [=] {
+            setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+            skriptSetzen(text);
+            g_app->leftMode = 0;
+            g_app->expanded.openAll();
+            rebuildTree();
+        }));
+        add(pause(0.6));
+        add(hb::fotoTeil(name, baumRect));
+    };
+    const auto editorFoto = [&](const std::string& name, const std::string& befehl, const std::string& wert = "") {
+        add({"Kurz2: Editor " + befehl, [befehl, wert](int b) {
+                 if (b == 0) {
+                     const std::vector<Node>& ns = g_app->doc.script().nodes;
+                     for (std::size_t i = 0; i < ns.size(); ++i) {
+                         const bool passt = wert.empty() || (!ns[i].args.empty() && ns[i].args[0].text == wert);
+                         if (ns[i].name == befehl && passt) { openEditorForNode(Path{i}); break; }
+                     }
+                     return false;
+                 }
+                 return g_app->editorOpen || b > 20;
+             }});
+        add(pause(0.6));
+        add(hb::fotoTeil(name, [] { return hb::fensterRect("###editor"); }));
+        add(klick(tr(Str::EditorCancel), "###editor"));
+        add(pause(0.3));
+    };
+    const std::string kopfKurz = "//Generated by BehavEd\n\n";
+    // Variablen und if
+    baumFoto("k_var", kopfKurz +
+                          "declare ( /*@DECLARE_TYPE*/ FLOAT, \"seen\" );\n"
+                          "if ( $get( FLOAT, \"seen\")$, $=$, $0$ )\n{\n"
+                          "\trem ( \"the scene - only the first time\" );\n"
+                          "\tcamera ( /*@CAMERA_COMMANDS*/ ENABLE );\n"
+                          "\twait ( 3000.000 );\n"
+                          "\tcamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n"
+                          "\tset ( \"seen\", \"1\" );\n}\n\n"
+                          "else (  )\n{\n"
+                          "\tprint ( \"You were here already.\" );\n}\n\n");
+    editorFoto("k_var_if", "if");
+    // Video und Text
+    baumFoto("k_video", kopfKurz +
+                            "camera ( /*@CAMERA_COMMANDS*/ ENABLE );\n"
+                            "set ( /*@SET_TYPES*/ \"SET_VIDEO_FADE_IN\", \"true\" );\n"
+                            "set ( /*@SET_TYPES*/ \"SET_VIDEO_PLAY\", \"jk0101_sw\" );\n"
+                            "print ( \"Three days later...\" );\n"
+                            "wait ( 3000.000 );\n"
+                            "camera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+    editorFoto("k_video_edit", "set", "SET_VIDEO_PLAY");
+    // Kampf nach der Szene
+    baumFoto("k_kampf", kopfKurz +
+                            "camera ( /*@CAMERA_COMMANDS*/ DISABLE );\n"
+                            "affect ( \"rosh\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                            "\tset ( /*@SET_TYPES*/ \"SET_IGNOREENEMIES\", \"false\" );\n"
+                            "\tset ( /*@SET_TYPES*/ \"SET_LOOK_FOR_ENEMIES\", \"true\" );\n"
+                            "\tset ( /*@SET_TYPES*/ \"SET_ENEMY\", \"player\" );\n}\n\n");
+    // Spieler festhalten
+    baumFoto("k_sperren", kopfKurz +
+                              "affect ( \"player\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                              "\tset ( /*@SET_TYPES*/ \"SET_PLAYER_LOCKED\", \"true\" );\n"
+                              "\tset ( /*@SET_TYPES*/ \"SET_LOCK_PLAYER_WEAPONS\", \"true\" );\n}\n\n"
+                              "wait ( 5000.000 );\n"
+                              "affect ( \"player\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                              "\tset ( /*@SET_TYPES*/ \"SET_PLAYER_LOCKED\", \"false\" );\n"
+                              "\tset ( /*@SET_TYPES*/ \"SET_LOCK_PLAYER_WEAPONS\", \"false\" );\n}\n\n");
+    // Lichtschwert: Kyle zuendet sein Schwert - in der Szene, nah gesehen.
+    add(tu("Kurz2: Lichtschwert", [=] {
+        skriptSetzen(kopf +
+                     "affect ( \"kyle\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_WEAPON\", \"WP_SABER\" );\n"
+                     "\twait ( 1000.000 );\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_SABERACTIVE\", \"true\" );\n}\n\n"
+                     "wait ( 6000.000 );\ncamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+        g_app->leftMode = 1;
+        g_app->cameraSelected = false;
+        g_app->throughCamera = false;
+        g_app->playMs = 3000.0;
+        // Ohne Marker und Auswahl - sonst liegt Kyles Kreis ueber dem Schwert.
+        g_app->showEntities = false;
+        entityAuswahlSetzen(-1);
+        g_app->selectedActor = -1;
+        blick(-1370.0F, -1960.0F, 700.0F, 8.0F, 168.0F);
+    }));
+    add(warteBis("Kurz2: Szene", [] { return g_app->camTrackValid; }, 900));
+    add(pause(1.0));
+    add(tu("Kurz2: Kyles Schwert ins Protokoll", [] {
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+            const Actor& a = g_app->scene.actors[ai];
+            if (a.name != "kyle") { continue; }
+            const ActorState st = a.at(3000.0);
+            diag::detail("Knopftest: Kurz2 - kyle Waffe \"" + st.waffe + "\", an " + std::to_string(st.saberActive) +
+                         ", Klingen " + std::to_string(st.saber[0].numBlades) + ", Art " + std::to_string(st.saber[0].art) +
+                         ", Laenge " + std::to_string(klingenLaenge(st, 0, 0, 3000.0)));
+        }
+    }));
+    add(hb::fotoTeil("k_saber", kartePlusLeiste));
+    add(tu("Kurz2: Marker wieder an", [] { g_app->showEntities = true; }));
+    add(tu("Kurz2: Lichtschwert - Baum", [] { g_app->leftMode = 0; }));
+    add(pause(0.6));
+    add(tu("Kurz2: Baum aufklappen", [] { g_app->expanded.openAll(); rebuildTree(); }));
+    add(pause(0.4));
+    add(hb::fotoTeil("k_saber_baum", baumRect));
+    // Kamera folgt Kyle
+    add(tu("Kurz2: Kamera folgt", [=] {
+        skriptSetzen(kopf +
+                     "affect ( \"kyle\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_CAMERA_GROUP\", \"hero\" );\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_WALKING\", \"true\" );\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_NAVGOAL\", \"nav_kyle\" );\n}\n\n"
+                     "camera ( /*@CAMERA_COMMANDS*/ MOVE, < -1580.000 -2040.000 700.000 >, 0 );\n"
+                     "camera ( /*@CAMERA_COMMANDS*/ FOLLOW, \"hero\", 100.000, 1 );\n"
+                     "wait ( 6000.000 );\ncamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+        g_app->leftMode = 1;
+        g_app->tlKameraOffen = true;
+        g_app->playMs = 3000.0;
+        g_app->cameraSelected = false;
+        g_app->selectedPath.clear();
+        g_app->selection.clear();
+        entityAuswahlSetzen(-1);
+        g_app->throughCamera = true;
+    }));
+    add(warteBis("Kurz2: Szene", [] { return g_app->camTrackValid; }, 900));
+    add(pause(1.0));
+    add(hb::fotoTeil("k_folgen_blick", [] { return hb::karte(); }));
+    add(tu("Kurz2: Kamera aus", [] { g_app->throughCamera = false; }));
+    // Patrouille: eine Wache, drei Punkte auf der Plattform, eine Schleife.
+    add(tu("Kurz2: Wache und Runde", [=] {
+        const float pkt[4][3] = {{-2000.0F, -1700.0F, 650.0F}, {-2050.0F, -1150.0F, 650.0F},
+                                 {-1450.0F, -1050.0F, 650.0F}, {-1350.0F, -1650.0F, 650.0F}};
+        const char* namen[4] = {"guard", "round1", "round2", "round3"};
+        for (int i = 0; i < 4; ++i) {
+            const int e = neueEntityAn(i == 0 ? "NPC_spawner" : "waypoint_navgoal", pkt[i]);
+            if (e < 0) { continue; }
+            (void)entityKeySetzen(e, i == 0 ? "NPC_targetname" : "targetname", namen[i]);
+            if (i == 0) { (void)entityKeySetzen(e, "NPC_type", "stormtrooper"); }
+            (void)entityAufBoden(e);
+        }
+        std::string runde;
+        for (int i = 1; i <= 3; ++i) {
+            const std::string n = "round" + std::to_string(i);
+            runde += "\t\ttask ( \"" + n + "\" )\n\t\t{\n"
+                     "\t\t\tset ( /*@SET_TYPES*/ \"SET_NAVGOAL\", \"" + n + "\" );\n\t\t}\n\n"
+                     "\t\tdowait ( \"" + n + "\" );\n"
+                     "\t\twait ( 1000.000 );\n";
+        }
+        skriptSetzen(kopf +
+                     "affect ( \"guard\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                     "//$\"walkOnly\"@5\n"
+                     "\tset ( /*!*/ \"SET_BEHAVIOR_STATE\", /*!*/ \"BS_DEFAULT\" );\n"
+                     "\tset ( /*!*/ \"SET_WALKING\", /*!*/ \"true\" );\n"
+                     "\tset ( /*!*/ \"SET_RUNNING\", /*!*/ \"false\" );\n"
+                     "\tset ( /*!*/ \"SET_IGNOREALERTS\", /*!*/ \"true\" );\n"
+                     "\tset ( /*!*/ \"SET_LOOK_FOR_ENEMIES\", /*!*/ \"false\" );\n"
+                     "\tloop ( -1 )\n\t{\n" + runde + "\t}\n\n}\n\n"
+                     "wait ( 12000.000 );\ncamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+        g_app->leftMode = 1;
+        g_app->playMs = 4000.0;
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) { g_app->selectedActor = static_cast<int>(ai); }
+        blick(-1700.0F, -2750.0F, 1300.0F, 34.0F, 90.0F);
+    }));
+    add(warteBis("Kurz2: Szene", [] { return g_app->camTrackValid; }, 900));
+    add(tu("Kurz2: die Wache waehlen", [] {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* n = g_app->map.entities[i].find("NPC_targetname");
+            if (n != nullptr && *n == "guard") { entityAuswahlSetzen(static_cast<int>(i)); }
+        }
+        const int ei = g_app->pickedEntity;
+        for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+            if (entityFuerFigur(static_cast<int>(ai)) == ei) { g_app->selectedActor = static_cast<int>(ai); }
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("k_runde", kartePlusLeiste));
+    add(tu("Kurz2: Runde - Baum", [] { g_app->leftMode = 0; }));
+    add(pause(0.6));
+    add(tu("Kurz2: Baum aufklappen", [] { g_app->expanded.openAll(); rebuildTree(); }));
+    add(pause(0.4));
+    add(hb::fotoTeil("k_runde_baum", baumRect));
+    // Trigger: ein trigger_once der Karte zeigt auf einen eigenen Runner.
+    auto runner = std::make_shared<int>(-1);
+    add(tu("Kurz2: Runner setzen, Trigger umlenken", [=] {
+        g_app->leftMode = 1;
+        const float o[3] = {-1250.0F, -1900.0F, 660.0F};
+        *runner = neueEntityAn("target_scriptrunner", o);
+        if (*runner >= 0) {
+            (void)entityKeySetzen(*runner, "targetname", "start_talk");
+            (void)entityKeySetzen(*runner, "usescript", "taspir_tut/talk");
+        }
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            const std::string* t = e.find("target");
+            if (e.classname == "trigger_once" && t != nullptr && *t == "run_convo") {
+                (void)entityKeySetzen(static_cast<int>(i), "target", "start_talk");
+                entityAuswahlSetzen(static_cast<int>(i));
+                // Die Zeitleiste klein: der Inspektor bekommt die Hoehe, damit
+                // "target" im Bild steht.
+                g_app->timelineFrac = 0.10F;
+                break;
+            }
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.6));
+    add(klick("##feldsuche"));
+    add(tippe("target"));
+    add(pause(0.5));
+    add(hb::fotoTeil("k_trigger", [] {
+        const ImRect band = hb::fensterRect("toolband");
+        return ImRect{0.0F, g_app->kartenAnsicht[1] - ImGui::GetFontSize() * 2.6F, g_app->kartenAnsicht[0], band.Min.y - 2.0F};
+    }));
+    add(klick("##feldsuche"));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_A, "Strg+A"));
+    add(taste(ImGuiKey_Backspace, "Rueck"));
+    // Nicht Esc - das stellt im Eingabefeld den alten Text wieder her.
+    add(klickAn("daneben", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(tu("Kurz2: Zeitleiste wieder gross", [] { g_app->timelineFrac = 0.40F; }));
+    // Tuer: Rechtsklick auf die Tuer in der Liste -> "Insert use". Der Name
+    // ist eindeutig (bei "building1_1" trafen auch sechs NPCs building1_1b).
+    add(klick("##entsuche"));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_A, "Strg+A"));
+    add(tippe("bldg2_ext_door"));
+    add(pause(0.4));
+    add(tu("Kurz2: Tuer-Gruppe aufklappen", [] {
+        for (int k = 0; k < entityKategorien(); ++k) {
+            if (entityKategorieInfo(k).titel == Str::EntityKatMover) { g_app->expandedClass = "kat" + std::to_string(k); }
+        }
+    }));
+    add(pause(0.4));
+    add(klickAn("Rechtsklick auf die Tuer in der Liste", [] {
+        const float fs = ImGui::GetFontSize();
+        for (const Element& e : g_elemente) {
+            if (sichtbarerText(e.label.c_str()) == "bldg2_ext_door" && e.innen.find("entlayers") != std::string::npos &&
+                e.rect.GetHeight() < fs * 2.5F) {
+                return e.rect.GetCenter();
+            }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }, 1));
+    add(pause(0.5));
+    add(hb::fotoTeil("k_tuer_menue", [] {
+        ImRect r = hb::fensterRect("##Popup");
+        r = hb::vereint(r, ImRect{0.0F, g_app->kartenAnsicht[1], g_app->kartenAnsicht[0], g_app->kartenAnsicht[1] + 10.0F});
+        r.Expand(ImGui::GetFontSize() * 0.6F);
+        return r;
+    }));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    add(klick("##entsuche"));
+    add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_A, "Strg+A"));
+    add(taste(ImGuiKey_Backspace, "Rueck"));
+    // Nicht Esc - das stellt im Eingabefeld den alten Text wieder her.
+    add(klickAn("daneben", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // Levelwechsel: placed, mapname gesetzt, im Inspektor.
+    add(tu("Kurz2: Levelwechsel", [] {
+        const float o[3] = {-1300.0F, -1100.0F, 660.0F};
+        const int i = neueEntityAn("target_level_change", o);
+        if (i >= 0) {
+            (void)entityKeySetzen(i, "targetname", "next_map");
+            (void)entityKeySetzen(i, "mapname", "taspir2");
+            entityAuswahlSetzen(i);
+        }
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_level", [] {
+        const ImRect band = hb::fensterRect("toolband");
+        return ImRect{0.0F, g_app->kartenAnsicht[1] - ImGui::GetFontSize() * 2.6F, g_app->kartenAnsicht[0], band.Min.y - 2.0F};
+    }));
+    // Effekt: ein Feuer auf der Plattform.
+    add(tu("Kurz2: Effekt", [=] {
+        const float o[3] = {-1450.0F, -1850.0F, 650.0F};
+        const int i = neueEntityAn("fx_runner", o);
+        if (i >= 0) {
+            (void)entityKeySetzen(i, "targetname", "fire1");
+            (void)entityKeySetzen(i, "fxFile", "env/fire");
+            (void)entityAufBoden(i);
+        }
+        entityAuswahlSetzen(-1);
+        g_app->showEffects = true;
+        g_app->showEntities = false;
+        blick(-1450.0F, -2080.0F, 730.0F, 14.0F, 90.0F);
+    }));
+    add(warteBis("Kurz2: Szene mit dem Effekt", [] { return g_app->camTrackValid; }, 900));
+    add(pause(1.5));
+    add(tu("Kurz2: Effekte ins Protokoll", [] {
+        diag::detail("Knopftest: Kurz2 - Effekte der Karte: " + std::to_string(g_app->effectRunners.size()));
+    }));
+    add(hb::fotoTeil("k_effekt", kartePlusLeiste));
+    add(tu("Kurz2: Marker wieder an", [] { g_app->showEntities = true; }));
+    // Multiplayer-Regeln: das Meldungsfenster.
+    add(tu("Kurz2: Multiplayer-Regeln, Intro mit Kamera", [=] {
+        skriptSetzen(kopf + laeufe + kamera);
+        g_app->settings.mpZiel = true;
+        rebuildTree();
+        g_app->leftMode = 0;
+        g_app->messagesOpen = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("k_mp", [] {
+        ImRect r = hb::fensterRect("###messages");
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        r = hb::vereint(r, ImRect{0.0F, d.y - ImGui::GetFontSize() * 1.8F, d.x * 0.5F, d.y});
+        r.Expand(ImGui::GetFontSize() * 0.4F);
+        return r;
+    }));
+    add(tu("Kurz2: Einzelspieler", [] {
+        g_app->settings.mpZiel = false;
+        g_app->messagesOpen = false;
+        rebuildTree();
+    }));
+    // Tastenkuerzel
+    add(tu("Kurz2: Tastenfenster", [] { g_app->keysOpen = true; }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_tasten", [] { return hb::fensterRect(tr(Str::KeysTitle)); }));
+    add(tu("Kurz2: Tastenfenster zu", [] { g_app->keysOpen = false; }));
+    // Alles zurueck.
+    add(tu("Kurz2: zurueck", [=] {
+        while (g_app->doc.undoDepth() > vorher->first && g_app->doc.undo()) {}
+        while (g_app->entUndo.size() > vorher->second && entityRueckgaengig()) {}
+        hb::skriptNeu();
+        entityAuswahlSetzen(-1);
+        g_app->leftMode = 1;
+        g_app->tlKameraOffen = true;
+    }));
+    add(pause(0.8));
+
+    // --- 10c. Bilder fuer die dritte Runde der Kurz-Tutorials (rc600) --------------
+    // Im Intro geaendert und am Ende per Rueckgaengig zurueck; ein zweiter Reiter
+    // taspir_tut/talk bleibt offen (er gehoert dann zur Mission).
+    auto vorher3 = std::make_shared<std::pair<std::size_t, std::size_t>>();
+    add(tu("Kurz3: Stand merken", [=] {
+        vorher3->first = g_app->doc.undoDepth();
+        vorher3->second = g_app->entUndo.size();
+        g_app->leftMode = 1;
+        g_app->settings.flussAnsicht = 0;
+    }));
+    const auto inspektorRect = [] {
+        const ImRect band = hb::fensterRect("toolband");
+        return ImRect{0.0F, g_app->kartenAnsicht[1] - ImGui::GetFontSize() * 2.6F, g_app->kartenAnsicht[0], band.Min.y - 2.0F};
+    };
+    const auto waehleNpc = [](const char* npcName) {
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const std::string* n = g_app->map.entities[i].find("NPC_targetname");
+            if (n != nullptr && *n == npcName) {
+                entityAuswahlSetzen(static_cast<int>(i));
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+    const auto feldFilter = [&](const std::string& was) {
+        add(klick("##feldsuche"));
+        add(tasteMit(ImGuiMod_Ctrl, ImGuiKey_A, "Strg+A"));
+        if (!was.empty()) {
+            add(tippe(was));
+        } else {
+            add(taste(ImGuiKey_Backspace, "Rueck"));
+            add(klickAn("daneben", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+        }
+        add(pause(0.4));
+    };
+    // 1. Deathscript an Rosh, im Inspektor.
+    add(tu("Kurz3: Rosh bekommt ein deathscript", [=] {
+        const int i = waehleNpc("rosh");
+        if (i >= 0) { (void)entityKeySetzen(i, "deathscript", "taspir_tut/rosh_dies"); }
+        g_app->timelineFrac = 0.10F;
+    }));
+    add(pause(0.5));
+    feldFilter("script");
+    add(hb::fotoTeil("k_tod_insp", inspektorRect));
+    feldFilter("");
+    // 12. Spawnflags und targetname: Rosh wartet auf seinen Einsatz.
+    add(tu("Kurz3: Roshs Spawner bekommt einen targetname", [=] {
+        const int i = waehleNpc("rosh");
+        if (i >= 0) { (void)entityKeySetzen(i, "targetname", "rosh_spawner"); }
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("k_spawnflags", inspektorRect));
+    add(tu("Kurz3: Zeitleiste wieder gross", [] { g_app->timelineFrac = 0.40F; }));
+    // 5. Save mission mit einem Fehler (S001) und der Warnung der Karte (S005).
+    add(tu("Kurz3: Kyle zeigt auf ein fehlendes Skript", [=] {
+        const int i = waehleNpc("kyle");
+        if (i >= 0) { (void)entityKeySetzen(i, "painscript", "taspir_tut/ouch"); }
+        const char* ziel = std::getenv("BHED_HB_ZIEL");
+        g_app->mission.zielPk3 = ziel != nullptr ? std::string(ziel) : mb::verbinde(mb::laufOrdner(), "zz_taspir_tut.pk3");
+        g_app->missionSpeichernOffen = true;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_pruefen", [] { return hb::fensterRect("##missionspeichern"); }));
+    add(tu("Kurz3: Fenster zu", [] { g_app->missionSpeichernOffen = false; }));
+    // 11. Rahmenauswahl: Kyle, Rosh und die beiden Laufziele.
+    add(tu("Kurz3: Blick ueber die Plattform", [=] {
+        entityAuswahlSetzen(-1);
+        g_app->cameraSelected = false;
+        g_app->selectedActor = -1;
+        g_app->gizmoMode = App::GizmoMode::Move;
+        blick(-1600.0F, -2700.0F, 1250.0F, 32.0F, 90.0F);
+    }));
+    add(pause(0.8));
+    auto ecke = std::make_shared<ImVec2>();
+    add(tu("Kurz3: Rahmen berechnen", [=] {
+        const float fs = ImGui::GetFontSize();
+        *ecke = ImVec2{g_app->kartenAnsicht[0] + fs * 6.0F, g_app->kartenAnsicht[3] - fs * 1.5F};
+    }));
+    add({"Kurz3: Rahmen bis hinter die Laufziele", [=](int b) {
+             ImGuiIO& io = ImGui::GetIO();
+             const ImVec2 z = schirm(-1400.0F, -1560.0F, 640.0F);
+             if (b == 0) { setzeMaus(*ecke); return false; }
+             if (b == 2) { io.AddMouseButtonEvent(0, true); return false; }
+             if (b >= 3 && b <= 14) {
+                 const float f = static_cast<float>(b - 2) / 12.0F;
+                 setzeMaus(ImVec2{ecke->x + (z.x - ecke->x) * f, ecke->y + (z.y - ecke->y) * f});
+                 return false;
+             }
+             if (b == 15) { io.AddMouseButtonEvent(0, false); return false; }
+             return b >= 20;
+         }});
+    add(pause(0.8));
+    add(tu("Kurz3: Auswahl ins Protokoll", [] {
+        int n = 0;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) { n += entityIstGewaehlt(static_cast<int>(i)) ? 1 : 0; }
+        diag::detail("Knopftest: Kurz3 - Rahmen waehlte " + std::to_string(n) + " Entities");
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+    }));
+    add(pause(0.4));
+    add(hb::fotoTeil("k_rahmen", kartePlusLeiste));
+    add(tu("Kurz3: Auswahl weg", [] { entityAuswahlSetzen(-1); }));
+    // 13. Das Menue "Karten und Dateien".
+    add(tu("Kurz3: Karten-und-Dateien-Menue", [] { g_app->kartenMehrOeffnen = true; }));
+    add(pause(0.6));
+    add(hb::fotoTeil("k_kartenmenue", [] {
+        ImRect r = hb::fensterRect("##Popup");
+        const float fs = ImGui::GetFontSize();
+        r = hb::vereint(r, ImRect{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1] - fs * 2.6F, g_app->kartenAnsicht[0] + fs * 20.0F,
+                                  g_app->kartenAnsicht[1]});
+        r.Expand(fs * 0.5F);
+        return r;
+    }));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    // 11b. Alle Kamerabahnen.
+    add(tu("Kurz3: alle Kamerabahnen", [=] {
+        g_app->cameraSelected = true;
+        g_app->kamBahnNurAktiv = false;
+        kameraSchluesselWaehlen(1, true);
+        blick(-1100.0F, -3300.0F, 1500.0F, 24.0F, 112.0F);
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("k_bahnen", linksUndKarte));
+    add(tu("Kurz3: Kamera ab", [] { g_app->cameraSelected = false; }));
+    // 15. Zeitleiste: Waits als Bloecke, ruhige Spuren.
+    add(tu("Kurz3: Waits und ruhige Spuren", [] {
+        g_app->tlWaitsZeigen = true;
+        g_app->zeigeRuhigeSpuren = true;
+        g_app->tlKameraOffen = false;
+        g_app->showTracks = true;
+        g_app->playMs = 5000.0;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_waits", zeitleiste));
+    add(tu("Kurz3: Waits aus", [] {
+        g_app->tlWaitsZeigen = false;
+        g_app->zeigeRuhigeSpuren = false;
+        g_app->tlKameraOffen = true;
+    }));
+    // 7. Der Aenderungsrand im Intro (es ist seit dem Laden geaendert).
+    add(tu("Kurz3: Events-Modus, Rand an", [] {
+        g_app->leftMode = 0;
+        g_app->settings.changeHistory = true;
+        g_app->expanded.openAll();
+        rebuildTree();
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+    }));
+    add(pause(0.6));
+    add(hb::fotoTeil("k_rand", baumRect));
+    // 9. Ein Tippfehler im Feld und das Meldungsfenster.
+    add(tu("Kurz3: Tippfehler SET_WALKNG", [=] {
+        skriptSetzen(kopf +
+                     "affect ( \"kyle\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_WALKNG\", \"true\" );\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_NAVGOAL\", \"nav_kyle\" );\n}\n\n"
+                     "wait ( 4000.000 );\ncamera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+        g_app->messagesOpen = true;
+    }));
+    add(pause(1.0));
+    add(hb::fotoTeil("k_meldung", [] {
+        ImRect r = hb::fensterRect("###messages");
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        r = hb::vereint(r, ImRect{0.0F, d.y - ImGui::GetFontSize() * 1.8F, d.x * 0.5F, d.y});
+        r.Expand(ImGui::GetFontSize() * 0.4F);
+        return r;
+    }));
+    add(tu("Kurz3: Meldungen zu", [] { g_app->messagesOpen = false; }));
+    // 8. Das Dateimenue (Backup-Ordner, Backup, Restore stehen in der Spalte).
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(pause(0.5));
+    add(hb::fotoTeil("k_dateimenue", [] {
         ImRect r{0.0F, 0.0F, 0.0F, 0.0F};
         for (ImGuiWindow* w : GImGui->Windows) {
             if (w->WasActive && !w->Hidden && std::strstr(w->Name, "##Menu") != nullptr) { r = hb::vereint(r, w->Rect()); }
@@ -14533,36 +15543,160 @@ std::vector<Schritt> handbuchSchritte() {
     }));
     add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
     add(pause(0.3));
-    // --- Eigene Mission (im Laufordner) ---------------------------------------------------
-    add(tu("Handbuch: Neue Mission (Fenster)", [] { g_app->neueMissionOffen = true; }));
-    add(pause(0.6));
-    add(hb::fotoTeil("h_mission_neu", [] { return hb::fensterRect("##neuemission"); }));
-    add(hb::fotoTeil("t4_1", [] { return hb::fensterRect("##neuemission"); }));
-    add(tu("Handbuch: Fenster zu, Mission anlegen", [] {
-        g_app->neueMissionOffen = false;
-        std::string fehler;
-        (void)neueMissionAnlegen("maps/md_am_sith.bsp", "md_test_jedi", "md_test", &fehler);
-        diag::detail("Knopftest: Handbuch - neue Mission " + fehler);
+    // Intro und Entities zurueck - BEVOR ein anderer Reiter vorn ist (die
+    // Rueckgaengig-Liste gehoert zum Reiter).
+    add(tu("Kurz3: Intro und Entities zurueck", [=] {
+        while (g_app->doc.undoDepth() > vorher3->first && g_app->doc.undo()) {}
+        while (g_app->entUndo.size() > vorher3->second && entityRueckgaengig()) {}
+        hb::skriptNeu();
+        entityAuswahlSetzen(-1);
     }));
-    add(pause(1.5));
-    add(warteBis("Handbuch: neue Mission geladen", [] { return !g_app->map.empty() && g_app->camTrackValid; }, 900));
-    add(tu("Handbuch: Blick auf den Spielerstart", [] {
-        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
-            if (g_app->map.entities[i].classname == "info_player_start") {
-                entityAuswahlSetzen(static_cast<int>(i));
-                zurEntityFliegen(i);
-                hb::kameraZurueck(200.0F, 120.0F);
-                break;
+    add(pause(0.5));
+    // 1b/2/3. Ein zweites Skript taspir_tut/talk: deathscript-Inhalt,
+    // Spawn mit SET_PLAYER_USABLE, dann die Uebergabe per signal.
+    add(tu("Kurz3: Skript talk anlegen", [] { skriptOeffnen("taspir_tut/talk", true); }));
+    add(pause(0.8));
+    add(pruefe("Kurz3: talk ist vorn", [] {
+        return mb::reiterName(static_cast<std::size_t>(g_app->activeTab)).find("talk") != std::string::npos;
+    }));
+    baumFoto("k_tod_baum", kopfKurz +
+                               "rem ( \"rosh_dies - runs when Rosh falls\" );\n"
+                               "wait ( 1000.000 );\n"
+                               "use ( \"bldg2_ext_door\" );\n");
+    baumFoto("k_use_baum", kopfKurz +
+                               "//$\"standOnly\"@3\n"
+                               "set ( /*!*/ \"SET_BEHAVIOR_STATE\", /*!*/ \"BS_DEFAULT\" );\n"
+                               "set ( /*!*/ \"SET_IGNOREALERTS\", /*!*/ \"true\" );\n"
+                               "set ( /*!*/ \"SET_LOOK_FOR_ENEMIES\", /*!*/ \"false\" );\n"
+                               "set ( /*@SET_TYPES*/ \"SET_PLAYER_USABLE\", \"true\" );\n");
+    add(tu("Kurz3: talk - die Uebergabe", [=] {
+        skriptSetzen(kopfKurz +
+                     "rem ( \"talk - started by the intro with run\" );\n"
+                     "affect ( \"rosh\", /*@AFFECT_TYPE*/ FLUSH )\n{\n"
+                     "\tset ( /*@SET_TYPES*/ \"SET_LOOK_TARGET\", \"kyle\" );\n}\n\n"
+                     "wait ( 2000.000 );\n"
+                     "signal ( \"talk_done\" );\n");
+        g_app->expanded.openAll();
+        rebuildTree();
+    }));
+    add(hb::zuReiter("intro"));
+    add(tu("Kurz3: Intro mit run und waitsignal (nur fuer das Bild)", [=] {
+        vorher3->first = g_app->doc.undoDepth();
+        skriptSetzen(kopf +
+                     "run ( \"taspir_tut/talk\" );\n"
+                     "waitsignal ( \"talk_done\" );\n"
+                     "camera ( /*@CAMERA_COMMANDS*/ DISABLE );\n");
+        g_app->leftMode = 0;
+        g_app->expanded.openAll();
+        rebuildTree();
+    }));
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::SplitToggle), "##Menu"));
+    add(klick("2", "##Menu"));
+    add(pause(0.8));
+    add(tu("Kurz3: Nebenfeld zeigt talk", [] {
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            if (mb::reiterName(i).find("talk") != std::string::npos) {
+                g_app->splitPanes[1].tab = static_cast<int>(i);
+                g_app->splitPanes[1].dirty = true;
             }
         }
     }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_zusammen", [] {
+        ImRect r = hb::fensterRect("##flowarea");
+        r.Max.y = r.Min.y + (r.GetHeight() * 0.45F);
+        return r;
+    }));
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::SplitToggle), "##Menu"));
+    add(klick("1", "##Menu"));
+    add(pause(0.4));
+    add(tu("Kurz3: Intro zurueck", [=] {
+        while (g_app->doc.undoDepth() > vorher3->first && g_app->doc.undo()) {}
+        hb::skriptNeu();
+    }));
+    // 6/5. Der .pk3-Browser und ein Skript des Spiels als Text.
+    add(tu("Kurz3: leerer Reiter fuer das Skript aus dem Archiv", [] { neuerReiter(); g_app->leftMode = 0; }));
+    add(pause(0.6));
+    add(tu("Kurz3: pk3-Browser", [] {
+        g_app->pk3Kind = 0;
+        std::snprintf(g_app->pk3Filter, sizeof(g_app->pk3Filter), "%s", "taspir1/intro");
+        refreshPk3List();
+        g_app->pk3Open = true;
+    }));
+    add(pause(0.8));
+    add(hb::fotoTeil("k_pk3", [] { return hb::fensterRect(tr(Str::Pk3Title)); }));
+    add(klickAn("Doppelklick auf taspir1/intro.ibi", [] {
+        for (const Element& e : g_elemente) {
+            if (e.label == "scripts/taspir1/intro.ibi") { return e.rect.GetCenter(); }
+        }
+        return ImVec2{-1.0F, -1.0F};
+    }, 0, true));
     add(pause(1.0));
-    add(hb::fotoTeil("t4_2", voll));
-    add(hb::fotoTeil("t4_3", voll));
+    add(tu("Kurz3: aufklappen", [] {
+        g_app->leftMode = 0;
+        g_app->expanded.openAll();
+        rebuildTree();
+        setzeMaus(ImVec2{ImGui::GetIO().DisplaySize.x * 0.5F, ImGui::GetIO().DisplaySize.y - 4.0F});
+    }));
+    add(pause(0.8));
+    add(tu("Kurz3: welcher Reiter", [] {
+        diag::detail("Knopftest: Kurz3 - vorn nach dem Doppelklick: " + mb::reiterName(static_cast<std::size_t>(g_app->activeTab)));
+    }));
+    add(hb::fotoTeil("k_ibi", [] {
+        ImRect r = hb::fensterRect("##flowarea");
+        r.Max.y = r.Min.y + r.GetHeight() * 0.6F;
+        return r;
+    }));
+    add(hb::zuReiter("intro"));
+    add(tu("Kurz3: Karte", [] { g_app->leftMode = 1; g_app->settings.flussAnsicht = 0; }));
+    add(pause(0.8));
+
+    // --- 11. Modell ----------------------------------------------------------------------------
+    add(tu("Handbuch: Modell", [] {
+        g_app->leftMode = 2;
+        (void)npcLaden("Kyle");
+    }));
+    add(pause(1.5));
+    add(hb::fotoTeil("h_modell", voll));
+    add(hb::fotoTeil("k_modell_leiste", [] {
+        ImRect r = hb::fensterRect("toolband");
+        r.Min.y -= ImGui::GetFontSize() * 2.4F;
+        r.Max.x = r.Min.x + r.GetWidth() * 0.55F;
+        return r;
+    }));
+    add(hb::fotoTeil("r_leiste_modell", [] {
+        const float fs = ImGui::GetFontSize();
+        return ImRect{g_app->kartenAnsicht[0] - fs * 0.4F, g_app->kartenAnsicht[1] - fs * 2.6F, g_app->kartenAnsicht[2] + fs * 0.4F,
+                      g_app->kartenAnsicht[1] + 2.0F};
+    }));
+    add(tu("Handbuch: zurueck zur Karte", [] { g_app->leftMode = 1; }));
+    add(pause(0.5));
+
+    // --- 12. Zuletzt geoeffnet, speichern -------------------------------------------------------
+    add(klick(tr(Str::MenuFile), "###main"));
+    add(klick(tr(Str::RecentMissions), "##Menu"));
+    add(pause(0.5));
+    const auto menueRect = [] {
+        ImRect r{0.0F, 0.0F, 0.0F, 0.0F};
+        for (ImGuiWindow* w : GImGui->Windows) {
+            if (w->WasActive && !w->Hidden && std::strstr(w->Name, "##Menu") != nullptr) { r = hb::vereint(r, w->Rect()); }
+        }
+        r.Expand(ImGui::GetFontSize() * 0.5F);
+        r.Min.y = 0.0F;
+        return r;
+    };
+    add(hb::fotoTeil("h_menue_missionen", menueRect));
+    add(hb::fotoTeil("t4_6", menueRect));
+    add(klickAn("Menue zu", [] { return ImVec2{12.0F, ImGui::GetIO().DisplaySize.y - 6.0F}; }));
+    add(pause(0.3));
+    add(tu("Handbuch: Blick auf die Szene", [=] { blick(-1600.0F, -2550.0F, 1050.0F, 28.0F, 90.0F); g_app->playMs = 4000.0; }));
+    add(pause(0.8));
     add(hb::fotoTeil("t4_ergebnis", kartePlusLeiste));
     add(tu("Handbuch: Mission speichern (Fenster), Ziel im Laufordner", [] {
         const char* ziel = std::getenv("BHED_HB_ZIEL");
-        g_app->mission.zielPk3 = ziel != nullptr ? std::string(ziel) : mb::verbinde(mb::laufOrdner(), "zz_md_test_jedi.pk3");
+        g_app->mission.zielPk3 = ziel != nullptr ? std::string(ziel) : mb::verbinde(mb::laufOrdner(), "zz_taspir_tut.pk3");
         g_app->missionSpeichernOffen = true;
     }));
     add(pause(0.8));
@@ -14571,7 +15705,8 @@ std::vector<Schritt> handbuchSchritte() {
     add(tu("Handbuch: speichern", [] {
         g_app->missionSpeichernOffen = false;
         std::string fehler;
-        (void)missionSpeichernNach(g_app->mission.zielPk3, &fehler);
+        const bool ok = missionSpeichernNach(g_app->mission.zielPk3, &fehler);
+        diag::detail("Knopftest: Handbuch - Mission gespeichert " + std::to_string(ok) + " " + fehler);
     }));
     add(pause(0.8));
     add(hb::fotoTeil("t4_5", [] {

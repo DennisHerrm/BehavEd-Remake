@@ -6,3 +6,4 @@
 *.log
 *.log.vorher
 imgui.ini
+__pycache__/

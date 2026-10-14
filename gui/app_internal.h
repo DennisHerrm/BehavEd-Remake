@@ -2335,6 +2335,9 @@ bool iconKnopf(const char* text, UiIcon icon, const char* hinweis, bool an = fal
 ImVec4 uiIconFarbe(UiIcon icon);
 // Icon und Text nebeneinander.
 bool iconTextKnopf(const char* text, UiIcon icon, const char* hinweis, bool aktiv = true);
+// Das Handbuch im Standardbrowser, auf der Seite der Sprache (rc599; rc600:
+// auch eine bestimmte Seite, etwa "tutorials.html" von der Startflaeche).
+void handbuchOeffnen(const char* seite = "index.html");
 
 // --- Kamera (gui/app_kamera.cpp) -------------------------------------------
 // Die Vorschau am Gizmo (gizmoOffset/gizmoAngles) ins Skript schreiben - beim

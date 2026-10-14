@@ -107,3 +107,6 @@ footer { color: var(--leise); font-size: .82em; padding: 0 56px 30px; }
 }
 .ui { font-weight: 600; color: var(--text); background: rgba(79,140,255,.14); border: 1px solid rgba(79,140,255,.35); border-radius: 5px; padding: 0 6px; white-space: nowrap; }
 [hidden] { display: none !important; }
+.gruppe ul.unter a.hier { color: var(--akzent); font-weight: 600; background: rgba(79,140,255,.12); box-shadow: inset 3px 0 0 var(--akzent); }
+img.ikon { height: 1.5em; width: auto; vertical-align: -0.35em; margin-right: .3em; border-radius: 4px; }
+figure.bild.schmal { max-width: 300px; }

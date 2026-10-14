@@ -86,6 +86,7 @@ TASTEN = {
         ]),
         ("h2", "datei", T("Files", "Dateien", "文件", "ファイル")),
         ("keys", [
+            ("F1", T("Open this guide", "Dieses Handbuch öffnen", "打开本手册", "このガイドを開く")),
             ("Ctrl+O", T("Open", "Öffnen", "打开", "開く")),
             ("Ctrl+S", T("Save", "Speichern", "保存", "保存")),
             ("Ctrl+A", T("Save as (as in the original BehavEd)", "Speichern unter (wie im Original-BehavEd)", "另存为(与原版 BehavEd 相同)", "名前を付けて保存(オリジナル BehavEd と同じ)")),

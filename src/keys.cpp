@@ -86,6 +86,7 @@ const std::vector<Bindable>& bindable() {
         {Action::SaveAll,      "SaveAll"},
         {Action::Backup,       "Backup"},
         {Action::Restore,      "Restore"},
+        {Action::Guide,        "Guide"},
     };
     return v;
 }
