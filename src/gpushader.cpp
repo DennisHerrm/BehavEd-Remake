@@ -885,7 +885,11 @@ VSOut main(VSIn ein) {
         float3 nw = mul((float3x3)gFigurWelt, nrm);
         float nl = length(nw);
         float3 n = (nl > 1e-6) ? nw / nl : float3(0, 0, 0);
-        if (gLichtRichtung.w > 0.5) {
+        if (gLichtRichtung.w > 1.5) {
+            // rc602: eine Leuchtstufe ohne rgbGen - identityLighting, am
+            // Schirm die Bildfarbe selbst (siehe lichtFuer, gpustate.h).
+            aus.farbe = float4(1.0, 1.0, 1.0, 1.0);
+        } else if (gLichtRichtung.w > 0.5) {
             float ein = max(0.0, dot(n, gLichtRichtung.xyz));
             float3 lit = min(float3(1, 1, 1),
                              gLichtUmgebung.rgb + ein * gLichtGerichtet.rgb);

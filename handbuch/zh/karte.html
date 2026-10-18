@@ -39,7 +39,7 @@
 <h2 id="anzeige">显示内容<a class="anker" href="#anzeige">#</a></h2>
 <p>工具栏右侧的按钮用于开关画面中的各部分:实体、名称、脚本角色、特效、辉光、动态光、雾和天空。<strong><span class="ui">俯视图</span></strong> 像地图一样垂直向下看,并剖去剖切高度以上的一切——拖动高度框可查看其他楼层。<strong><span class="ui">视图设置</span></strong>(齿轮)包含亮度、环境光、细节、角色阴影、<strong><span class="ui">突出显示此脚本的实体</span></strong>(淡化当前脚本未使用的所有实体)以及 <strong><span class="ui">游戏画面</span></strong>:游戏的宽高比和 cg_fovAspectAdjust,它们决定每台摄像机能看多宽(<a href="kamera.html#vorschau">预览与透过镜头观看</a>)。</p>
 <figure class="bild"><a href="../bilder/zh/h_ansicht_einst.webp" class="zoom"><img src="../bilder/zh/h_ansicht_einst.webp" alt="视图设置。" loading="lazy"></a><figcaption><span class="ui">视图设置</span>。</figcaption></figure>
-<div class="hinweis">画面力求与游戏一致:着色器、光照贴图、辉光(如 <code>r_DynamicGlow</code>)、雾(<code>r_drawfog</code>)、动态光、镜头光晕、天气以及光剑轨迹、火花和灼痕(<a href="figuren.html#schwerter">光剑:墙壁与碰撞</a>)。画面异常时,<strong><span class="ui">统计</span></strong> 会显示帧率、纹理和显卡参数。</div>
+<div class="hinweis">画面力求与游戏一致:着色器、光照贴图、辉光(如 <code>r_DynamicGlow</code>——地图、笔刷实体和模型上,角色的发光部位如机器人的眼睛,火焰和火花等特效,以及光剑剑刃周围)、雾(<code>r_drawfog</code>)、动态光、镜头光晕、天气以及光剑轨迹、火花和灼痕(<a href="figuren.html#schwerter">光剑:墙壁与碰撞</a>)。武器、医疗包、护盾和弹药位于游戏让它们落下的位置(带 <code>targetname</code> 的物品要在被使用后才出现),充能站、安全面板和墙上摄像机使用游戏赋予它们的模型。画面异常时,<strong><span class="ui">统计</span></strong> 会显示帧率、纹理和显卡参数。</div>
     <nav class="blaettern"><a class="vor" href="speichern.html"><span>上一页</span>保存、编译与检查</a><a class="nach" href="entities.html"><span>下一页</span>实体</a></nav>
   </article>
   <footer>BehavEd-Remake 手册。图片展示的是程序本身,由其自检功能截取。</footer>

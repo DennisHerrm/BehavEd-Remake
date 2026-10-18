@@ -2057,6 +2057,22 @@ S = [
      "游戏规则: %s (在首选项中选择)", "ゲームルール: %s (設定で選択)"),
     ("GameScreenAuto43", "Like the game: 4:3 (OpenJK, 800x600)", "Wie das Spiel: 4:3 (OpenJK, 800x600)",
      "与游戏相同: 4:3(OpenJK,800x600)", "ゲームと同じ: 4:3(OpenJK、800x600)"),
+    # --- rc602 NPC-Klassen ---
+    ("EntNpcTypeFromClass", "%s (from classname)", "%s (aus dem Klassennamen)", "%s(来自类名)", "%s(クラス名から)"),
+    ("EntNpcTypeRandom", "In the game chosen at random: %s. The preview shows %s.",
+     "Im Spiel zufällig gewählt: %s. Die Vorschau zeigt %s.", "游戏中随机选择: %s。预览显示 %s。",
+     "ゲームではランダムに選ばれます: %s。プレビューは %s を表示します。"),
+    ("EntNpcTypeOverridden", "The class sets %s - this NPC_type is ignored in the game.",
+     "Die Klasse setzt %s - dieser NPC_type gilt im Spiel nicht.", "该类设置为 %s - 游戏中会忽略此 NPC_type。",
+     "このクラスは %s を設定します - この NPC_type はゲームでは無視されます。"),
+    ("EntNpcClassUnknown", "The game has no spawn function for this class - nothing will spawn.",
+     "Das Spiel kennt keine Spawnfunktion für diese Klasse - es erscheint niemand.",
+     "游戏中没有此类的生成函数 - 不会生成任何角色。",
+     "ゲームにはこのクラスの出現関数がありません - 何も出現しません。"),
+    ("EntNpcClassNoSpawn", "Under the current game rules this class spawns nothing.",
+     "Unter den gewählten Spielregeln erscheint aus dieser Klasse niemand.",
+     "在当前游戏规则下,此类不会生成任何角色。",
+     "現在のゲームルールでは、このクラスからは何も出現しません。"),
 
 ]
 

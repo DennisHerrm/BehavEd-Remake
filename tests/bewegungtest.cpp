@@ -3393,6 +3393,32 @@ void regelwerkVerhaltenTakt() {
                " ms; mit 50 ms " + std::to_string(a50) + " ms)");
 }
 
+// rc602 kartenpruefung: "duel_jt_outside" (1100 Wegpunkte) brachte behaved
+// nach einer anderen Karte zum Absturz - baueNavNetz nahm 1024 echte Knoten,
+// der Platzhalter [0] dazu macht 1025, n.region hat aber nur NUM_NODES (1024)
+// Plaetze: Schreiben hinter das Ende. Im Spiel fasst der Pool mNodes
+// (ragl/graph_vs.h:211, pool_vs<TNODE, MAXNODES>) NUM_NODES EINSCHLIESSLICH
+// des Platzhalters (insert_node -> mNodes.alloc(), graph_vs.h:540 "dummy node
+// at location 0") - mehr als 1023 echte Punkte gehen nicht hinein.
+void knotenGrenze() {
+    MapData m;
+    std::string text = "{\n\"classname\" \"worldspawn\"\n}\n";
+    for (int i = 0; i < 1100; ++i) {
+        char z[160];
+        std::snprintf(z, sizeof(z), "{\n\"classname\" \"waypoint\"\n\"origin\" \"%d %d 24\"\n}\n", (i % 40) * 64,
+                      (i / 40) * 64);
+        text += z;
+    }
+    parseEntities(text, m.entities);
+    const auto netz = baueNavNetz(m.entities, NavBauHilfe{});
+    const std::size_t echte = netz->knoten.size() - 1U;
+    pruefe(echte <= 1023U, "KG1 hoechstens 1023 echte Wegpunkte (Pool NUM_NODES mit Platzhalter), sind " +
+                               std::to_string(echte));
+    pruefe(netz->region.size() >= netz->knoten.size(), "KG2 n.region fasst jeden Knoten (" +
+                                                          std::to_string(netz->region.size()) + " / " +
+                                                          std::to_string(netz->knoten.size()) + ")");
+}
+
 int main(int argc, char** argv) {
     if (argc > 2 && std::strcmp(argv[1], "--bsp") == 0) {
         echteKarte(argv[2]);
@@ -3420,6 +3446,7 @@ int main(int argc, char** argv) {
     teil3Patches();
     teil3Winkel();
     regelwerkVerhaltenTakt();   // rc601 integ
+    knotenGrenze();   // rc602 kartenpruefung
     std::printf("\n%s (%d Fehlschlaege)\n", fehler != 0 ? "FEHLGESCHLAGEN" : "alle Bewegungsproben bestanden", fehler);
     return fehler != 0 ? 1 : 0;
 }

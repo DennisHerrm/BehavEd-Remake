@@ -403,6 +403,11 @@ int main() {
         erwarte("die Figur wird nicht mehr pauschal weiss",
                 f.find("    aus.farbe = float4(1, 1, 1, 1);") ==
                     std::string::npos);
+        // rc602: weiss NUR fuer eine Leuchtstufe (gLichtRichtung.w = 2,
+        // identityLighting), sonst Licht wie bisher.
+        erwarte("Leuchtstufe der Figur: weiss nur mit gLichtRichtung.w > 1.5",
+                f.find("if (gLichtRichtung.w > 1.5) {") != std::string::npos &&
+                    f.find("} else if (gLichtRichtung.w > 0.5) {") != std::string::npos);
         erwarte("die gedrehte Normale wird benutzt - in die Welt gedreht",
                 f.find("float3 nw = mul((float3x3)gFigurWelt, nrm);") != std::string::npos);
         erwarte("eine Normale der Laenge null gibt kein NaN",

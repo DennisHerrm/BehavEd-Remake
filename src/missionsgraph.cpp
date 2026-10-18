@@ -1,6 +1,8 @@
 // missionsgraph.cpp - siehe missionsgraph.h
 #include "bhed/missionsgraph.h"
 
+#include "bhed/npcklasse.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -104,7 +106,8 @@ MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphS
         k.titel = anzeigeName(e);
         k.unter = e.classname;
         if (istNpc(e.classname)) {
-            if (const std::string* t = e.find("NPC_type"); t != nullptr && !t->empty()) { k.unter = *t; }
+            // rc602: der wirksame Typ - auch aus der Klasse (NPC_Droid_R2D2 -> r2d2).
+            if (const std::string t = effektiverNpcTyp(e); !t.empty()) { k.unter = t; }
         }
         if (k.art == GraphKnoten::Art::Kartenwechsel) {
             if (const std::string* m = e.find("mapname"); m != nullptr && !m->empty()) { k.unter = "-> " + *m; }

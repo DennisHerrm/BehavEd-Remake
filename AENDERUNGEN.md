@@ -1,5 +1,23 @@
 # Änderungen seit rc94
 
+## rc602 — Was im Spiel da ist, ist auch in der Vorschau: NPC-Klassen, Glühen, Gegenstände, Kartenprüfung
+
+Gewünscht: „der NPC droid fehlt … sind bei unserem standard MD mission MD sith alle effecte da? es fühlt sich so an als würde etwas fehlen“ und „er soll einfach alle karten öffnen und checken ob alles da ist“.
+
+- NPC-Klassen setzen ihren NPC_type selbst wie im Spiel (alle SP_NPC_*-Spawnfunktionen von OpenJK und Movie Duels, auch Zufalls- und spawnflags-Wahlen); NPCs, die beim Kartenstart erscheinen, stehen in der Vorschau, auch wenn kein Skript sie nennt - etwa der R2-Droide in md_am_sith. Der Inspektor zeigt den wirksamen Typ.
+- Figuren ausserhalb des PVS der Ansicht werden nicht gezeichnet (wie der Snapshot im Spiel) - schneller bei vielen Figuren.
+- Das Gluehen erfasst jetzt auch Brush-Entities und Kartenmodelle (Hologramme, Kraftfelder, Lichtleisten) und die leuchtenden Teile der Figuren (Droidenlampen, Augen der MagnaGuards), wie r_DynamicGlow im Spiel.
+- Figuren zeichnen die Leuchtstufen ihres Shaders (das Shaderskript geht vor dem gleichnamigen Bild, wie im Spiel).
+- fx_runner-Effekte beginnen 600 ms nach dem Laden der Karte, wie im Spiel (vorher 200 ms).
+- Neue Kartenpruefung (Selbsttest-Modus kartenpruefung, tools/kartenpruefung.py): oeffnet jede Karte der Spielordner und listet, was das Spiel zeigt und die Vorschau nicht - Entities, NPC-Modelle, Effekte, Klaenge, Shader-Merkmale - dazu Lade- und Bildfehler.
+- Waffen, Medipacks, Schilde und Munition in der Karte werden dort gezeichnet, wo das Spiel sie fallen laesst (items.dat, FinishSpawningItem); Gegenstaende mit targetname erscheinen erst, wenn sie benutzt werden.
+- Ladestationen, Sicherheitspaneele und Wandkameras stehen mit den Modellen, die das Spiel ihnen gibt.
+- Effekte mit glow-Stufe (Feuer, Funken) und der Schein der Lichtschwertklingen gluehen wie im Spiel.
+- Behoben: duel_jt_outside nach einer anderen Karte zu oeffnen stuerzte ab (Wegnetz mit mehr als 1023 Punkten).
+- Behoben: Waffenmodelle mit Rueckwaertsstrichen in den Shadernamen waren unsichtbar.
+
+Die Shader-Stufen der Figuren (Glanz, Chrom) sind fertig, aber noch 5–7 ms pro Bild zu langsam - sie kommen in rc603, zu einem Zeichenaufruf zusammengefasst.
+
 ## rc601 — wie im Spiel: Laufen, Drehen, Schwerkraft, Lichtschwerter, Ton und Kamerabild; Tutorials im Programm; Handbuch in allen vier Sprachen
 
 Gewünscht: „es soll genauso laufen wie im Spiel“ (NPCs laufen, drehen, fallen,

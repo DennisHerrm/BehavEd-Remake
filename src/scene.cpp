@@ -1,4 +1,5 @@
 #include "bhed/scene.h"
+#include "bhed/npcklasse.h"
 #include "bhed/camtrack.h"
 
 #include "bhed/num.h"
@@ -1947,51 +1948,18 @@ Scene buildOnce(const Script& s, const MapData& map,
     // Laufziel geholt (SzenenHilfe::nav, sonst aus den Entities).
     std::shared_ptr<const NavWelt> navWelt;
 
-    for (std::size_t i = 0; i < s.nodes.size(); ++i) {
-        const Node& n = s.nodes[i];
-        if (n.kind != Node::Kind::Command) {
-            continue;
-        }
-        if (n.name == "wait" && !n.args.empty() &&
-            n.args[0].kind != Arg::Kind::String) {
-            now += readMs(n.args[0].text);
-            continue;
-        }
-        // remove / kill auf der OBERSTEN Ebene.
-        //
-        // CQuake3GameInterface::Remove (Q3_Interface.cpp:9712) sucht das
-        // Ziel ueber targetname und entfernt ALLE, die so heissen - eine
-        // while-Schleife ueber G_Find. Danach ist die Entity fort und kommt
-        // nicht wieder.
-        //
-        // "self" und "enemy" sind Sonderfaelle. Auf oberster Ebene gibt es
-        // kein self - der Skripttraeger ist keine Figur -, also uebergehen
-        // wir sie hier.
-        if ((n.name == "remove" || n.name == "kill") && !n.args.empty()) {
-            const std::string& ziel = n.args[0].text;
-            if (ziel != "self" && ziel != "enemy" && !ziel.empty()) {
-                (n.name == "kill" ? getoetet : entfernt).emplace_back(ziel, now);
-            }
-            continue;
-        }
-        if (n.name != "affect" || n.args.empty()) {
-            continue;
-        }
-
-        const std::string name = n.args[0].text;
-        Actor* actor = nullptr;
-        for (Actor& a : out.actors) {
-            if (a.name == name) {
-                actor = &a;
-            }
-        }
-        if (actor == nullptr) {
+    // rc602: eine Figur anlegen - fuer den Namen eines affect (der Spawner
+    // wird gesucht) oder fuer eine beim Kartenstart gespawnte Figur, die ihren
+    // Spawner mitbringt (festerSpawner, siehe SzenenHilfe::kartenFiguren).
+    // Der Inhalt ist der bisherige Aufbau aus der affect-Schleife.
+    const auto figurAnlegen = [&](const std::string& name, const MapEntity* festerSpawner) {
             Actor fresh;
             fresh.name = name;
             // Startort aus dem Spawner.
             // Erst der Spawner (der traegt den NPC_type), sonst irgendeine
             // Entity dieses Namens - Tuer, Plattform, Raumschiff.
-            const MapEntity* sp = findSpawner(map, name);
+            // rc602: eine Kartenfigur bringt ihren Spawner mit (festerSpawner).
+            const MapEntity* sp = festerSpawner != nullptr ? festerSpawner : findSpawner(map, name);
             if (sp == nullptr) {
                 sp = findNamed(map, name);
             }
@@ -2078,20 +2046,17 @@ Scene buildOnce(const Script& s, const MapData& map,
                             parseInt(mdl->substr(1), nummer) ? nummer : -1;
                     }
                 }
-                if (const std::string* t = sp->find("NPC_type")) {
+                // rc602: bei einem NPC_* entscheidet die Spawnfunktion der Klasse
+                // (bhed/npcklasse.h) - SP_NPC_Droid_R2D2 setzt "r2d2", auch ohne
+                // und sogar GEGEN einen NPC_type-Schluessel; SP_NPC_Reborn nur,
+                // wenn keiner steht. Vorher galt immer der Schluessel und nur
+                // ohne ihn eine Naeherung aus dem Namen (typeFromClassname).
+                if (isNpcSpawner(*sp)) {
+                    fresh.npcType = effektiverNpcTyp(*sp);
+                    fresh.kartenEntity = static_cast<int>(sp - map.entities.data());
+                } else if (const std::string* t = sp->find("NPC_type")) {
+                    // Andere Klassen mit dem Schluessel (misc_model_breakable ...).
                     fresh.npcType = *t;
-                } else if (isNpcSpawner(*sp)) {
-                    // Kein NPC_type am Spawner: dann sagt der Klassenname
-                    // ihn. NPC_spawner selbst sagt nichts - dort MUSS einer
-                    // stehen.
-                    //
-                    // Die Abfrage auf NPC_* ist nicht ueberfluessig: seit
-                    // affect auch Tueren und Plattformen trifft, kommt hier
-                    // auch "func_static" an - und typeFromClassname haette
-                    // daraus stur "_static" gemacht, also einen Figurentyp,
-                    // den es nicht gibt. Eine Probe hat es gefangen.
-                    const std::string* sfs = sp->find("spawnflags");
-                    fresh.npcType = typeFromClassname(sp->classname, sfs == nullptr ? 0 : std::atoi(sfs->c_str()));
                 }
                 if (istSpieler) {
                     fresh.npcType = "player";
@@ -2227,6 +2192,48 @@ Scene buildOnce(const Script& s, const MapData& map,
                 fresh.haengtAnfangs = lauerer && (spawnflags & 16) != 0 && sp != nullptr && isNpcSpawner(*sp);
             }
             out.actors.push_back(std::move(fresh));
+    };
+
+    for (std::size_t i = 0; i < s.nodes.size(); ++i) {
+        const Node& n = s.nodes[i];
+        if (n.kind != Node::Kind::Command) {
+            continue;
+        }
+        if (n.name == "wait" && !n.args.empty() &&
+            n.args[0].kind != Arg::Kind::String) {
+            now += readMs(n.args[0].text);
+            continue;
+        }
+        // remove / kill auf der OBERSTEN Ebene.
+        //
+        // CQuake3GameInterface::Remove (Q3_Interface.cpp:9712) sucht das
+        // Ziel ueber targetname und entfernt ALLE, die so heissen - eine
+        // while-Schleife ueber G_Find. Danach ist die Entity fort und kommt
+        // nicht wieder.
+        //
+        // "self" und "enemy" sind Sonderfaelle. Auf oberster Ebene gibt es
+        // kein self - der Skripttraeger ist keine Figur -, also uebergehen
+        // wir sie hier.
+        if ((n.name == "remove" || n.name == "kill") && !n.args.empty()) {
+            const std::string& ziel = n.args[0].text;
+            if (ziel != "self" && ziel != "enemy" && !ziel.empty()) {
+                (n.name == "kill" ? getoetet : entfernt).emplace_back(ziel, now);
+            }
+            continue;
+        }
+        if (n.name != "affect" || n.args.empty()) {
+            continue;
+        }
+
+        const std::string name = n.args[0].text;
+        Actor* actor = nullptr;
+        for (Actor& a : out.actors) {
+            if (a.name == name) {
+                actor = &a;
+            }
+        }
+        if (actor == nullptr) {
+            figurAnlegen(name, nullptr);
             actor = &out.actors.back();
         }
 
@@ -3789,6 +3796,37 @@ Scene buildOnce(const Script& s, const MapData& map,
         }
         };
         run(n.children, Path{i}, 0);
+    }
+
+    // --- rc602: die Figuren, die beim Laden der Karte spawnen -------------
+    //
+    // SP_NPC_spawner: ohne targetname denkt der Spawner bei
+    // START_TIME_REMOVE_ENTS + 50 und spawnt (NPC_spawn.cpp:2037 ff. OpenJK,
+    // :3087 ff. MD) - die Figur steht da, ob ein Skript sie nennt oder nicht.
+    // Gemeldet: "der NPC droid fehlt" (md_am_sith, NPC_Droid_R2D2 ohne Namen
+    // neben ani1). Eine Figur ohne NPC_targetname hat im Spiel keinen Namen
+    // (NPC_Spawn_Do gibt nur NPC_targetname weiter); hier heisst sie
+    // "<classname>#<index>", damit die Vorschau sie fuehren kann. Vor den
+    // Entfernungen, damit remove/kill auch eine benannte Kartenfigur trifft.
+    if (hilfe != nullptr && hilfe->kartenFiguren) {
+        for (std::size_t ei = 0; ei < map.entities.size(); ++ei) {
+            const MapEntity& e = map.entities[ei];
+            if (!npcSpawntBeimKartenstart(e)) {
+                continue;
+            }
+            const std::string* nt = e.find("NPC_targetname");
+            const std::string name = nt != nullptr ? *nt : std::string();
+            bool schon = false;
+            for (const Actor& a : out.actors) {
+                schon = schon || a.kartenEntity == static_cast<int>(ei) || (!name.empty() && sameName(a.name, name));
+            }
+            if (schon) {
+                continue;
+            }
+            figurAnlegen(name.empty() ? e.classname + "#" + std::to_string(ei) : name, &e);
+            out.actors.back().kartenEntity = static_cast<int>(ei);
+            out.actors.back().kartenFigur = true;
+        }
     }
 
     // --- Die gesammelten Entfernungen zuordnen ---------------------------

@@ -693,7 +693,15 @@ std::shared_ptr<NavNetz> baueNavNetz(const std::vector<MapEntity>& ents, const N
 
     // NAV::SpawnedPoint (g_navigator.cpp:2218)
     const auto gesetzt = [&](const MapEntity& e, int idx, const NavVec& ort, float radius, int typ) {
-        if (static_cast<int>(n.knoten.size()) - 1 >= kNumNodes) { return; }   // "Max Nav points reached"
+        // "Max Nav points reached" (g_navigator.cpp:2220 MD: size_nodes() >=
+        // NUM_NODES). rc602 kartenpruefung: size_nodes() ist mNodes.size()-1
+        // (graph_vs.h:572), und der Pool fasst NUM_NODES Plaetze EINSCHLIESSLICH
+        // des Platzhalters [0] (pool_vs<TNODE, MAXNODES>, graph_vs.h:211/540) -
+        // er ist schon bei 1023 echten Punkten voll; der 1024. liefe im Spiel
+        // in ein volles mNodes.alloc() (assert). Vorher nahm behaved 1024 echte
+        // Knoten und schrieb hinter n.region (NUM_NODES Plaetze) - Absturz beim
+        // Wechsel auf duel_jt_outside (1100 Wegpunkte).
+        if (static_cast<int>(n.knoten.size()) >= kNumNodes) { return; }
         if (mitSpur) {
             NavVec stop = ort;
             stop[2] += 5.0F;

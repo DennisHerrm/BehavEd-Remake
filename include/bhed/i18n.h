@@ -1024,6 +1024,11 @@ enum class Str {
     RegelStatusAutoOjk,
     RegelStatusFest,
     GameScreenAuto43,
+    EntNpcTypeFromClass,
+    EntNpcTypeRandom,
+    EntNpcTypeOverridden,
+    EntNpcClassUnknown,
+    EntNpcClassNoSpawn,
     Count,
 };
 

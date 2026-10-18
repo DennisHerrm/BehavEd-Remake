@@ -667,6 +667,10 @@ struct SaberArt {
 inline constexpr const char* kStandardGriff = "models/weapons2/saber_1/saber_1.glm";
 
 struct Actor {    std::string name;        // der Name aus dem affect
+    // rc602: Index des Spawners in MapData::entities (-1: keiner). Eine
+    // Kartenfigur ohne NPC_targetname heisst "<classname>#<index>".
+    int kartenEntity = -1;
+    bool kartenFigur = false;   // nur beim Kartenstart gespawnt, kein affect
     std::string npcType;     // NPC_type aus dem Spawner, falls gefunden
     std::string modelPath;   // vom Benutzer zugeordnet
     float start[3]{};
@@ -909,6 +913,11 @@ struct SzenenHilfe {
     // rc601 (bewegung, teil 3): Plaene aus dem gemeinsamen Takt aller Figuren
     // (AblaufWelt::koerperPlaene, navKoerperSchluessel).
     std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>> koerperPlaene;
+    // rc602: die Figuren, die beim Laden der Karte spawnen (NPC_* ohne
+    // targetname, npcSpawntBeimKartenstart), auch wenn kein affect sie nennt
+    // - im Spiel stehen sie da (md_am_sith: NPC_Droid_R2D2 neben ani1).
+    // Aus: nur die Figuren der Skripte (wie bis rc601; die Proben rechnen so).
+    bool kartenFiguren = false;
 };
 
 [[nodiscard]] Scene buildScene(const Script& s, const MapData& map,

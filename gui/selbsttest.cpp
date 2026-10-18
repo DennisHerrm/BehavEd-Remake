@@ -44,6 +44,7 @@
 #include "bhed/regelwerk.h"
 #include "bhed/saberkontakt.h"
 #include "bhed/roffanim.h"
+#include "bhed/kartenpruefung.h"   // rc602
 
 #include <algorithm>
 #include <array>
@@ -3550,6 +3551,9 @@ std::vector<Schritt> kartenBreitSchritte() {
         add(tu("Schattenart " + n, [=] { g_app->schattenArt = art; g_app->mapDirty = true; }));
         add(gezeichnet("Schattenart " + n));
         add(pruefe("Seitenleiste: Schattenart " + n + " zeichnet ohne Fehler", [=] {
+            // rc602: WAS schiefging, steht sonst nirgends im Protokoll.
+            diag::detail("Knopftest: Schattenart " + n + " - gpuFehler \"" + g_app->gpuFehler + "\", D3D-Meldungen " +
+                         std::to_string(g_app->d3dMeldungen.size() - *d3dVorher));
             return g_app->gpuFehler.empty() && g_app->d3dMeldungen.size() == *d3dVorher;
         }));
     }
@@ -8195,6 +8199,25 @@ std::vector<Schritt> saberSchritte() {
              return false;
          }});
     add(pruefe("Schwerter A: eine Klinge frei gemessen", [=] { return t->gemessen; }));
+    // rc602 kartenpruefung: die Leuchtklinge (gfx/effects/sabers/<farbe>_glow,
+    // Stufe mit "glow" in sabers.shader) geht im Spiel in den Gluehpuffer
+    // (RB_DrawSurfs, g_bRenderGlowingObjects) - behaved zeichnete die Klingen
+    // nur ins Bild.
+    auto glowVorher = std::make_shared<bool>(true);
+    add(tu("Schwerter A: Gluehen an", [=] {
+        *glowVorher = g_app->showGlow;
+        g_app->showGlow = true;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.2));
+    add(pruefe("Schwerter A: die Leuchtklinge geht ins Gluehen", [=] {
+        const int n = gpu::gluehenKlingenAufrufe();
+        diag::detail("Knopftest: Schwerter A - Klingen im Gluehen " + std::to_string(n));
+        g_app->showGlow = *glowVorher;
+        g_app->mapDirty = true;
+        return !t->gemessen || n > 0;
+    }));
     add(tu("Schwerter A: Stand ins Protokoll", [=] {
         const int fi = saberFigurIndex("sabtest");
         std::string z = "Knopftest: Schwerter A - Figur " + std::to_string(fi) + " von " +
@@ -14089,6 +14112,396 @@ std::vector<Schritt> alleKartenSchritte() {
     return s;
 }
 
+// --- rc602 kartenpruefung: zeigt behaved alles, was das Spiel zeigt? -------
+//
+// Gewuenscht: "er soll einfach alle karten oeffnen und checken ob alles da
+// ist". BHED_EDITORTEST=kartenpruefung laedt jede .bsp der Spielordner wie
+// allekarten (loadMapFromArchive, Kartenansicht, zwei Bilder) und schreibt je
+// Karte eine JSON-Zeile nach BHED_PRUEFBERICHT (sonst kartenpruefung.jsonl
+// im Laufordner): Entities, die das Spiel zeigt und behaved nicht zeichnet
+// (Spawntabellen beider Regelwerke, bhed/kartenpruefung.h), NPCs ohne
+// Modell, fehlende .efx/Modelle/Texturen/Klaenge, unbekannte efx-Schluessel,
+// Shader-Anweisungen, die behaved je Zusammenhang (Welt, Figur, Effekt) nicht
+// nachbildet, Ladefehler und Bildfehler. Vor jeder Karte steht ihr Name in
+// <bericht>.lauf - stuerzt das Programm ab oder haengt es, startet
+// tools/kartenpruefung.py es mit BHED_KARTEN_AB=<naechste> neu und vermerkt
+// die Karte. Die Auswertung (Summen, CSV, Zusammenfassung) macht das Skript.
+namespace kp {
+
+std::string jsonText(const std::string& s) {
+    std::string r = "\"";
+    for (unsigned char c : s) {
+        if (c == '"' || c == '\\') {
+            r += '\\';
+            r += static_cast<char>(c);
+        } else if (c < 0x20) {
+            char b[8];
+            std::snprintf(b, sizeof(b), "\\u%04x", c);
+            r += b;
+        } else {
+            r += static_cast<char>(c);
+        }
+    }
+    return r + "\"";
+}
+
+std::string jsonZahlen(const std::map<std::string, int>& m) {
+    std::string r = "{";
+    for (const auto& [k, v] : m) {
+        if (r.size() > 1) { r += ","; }
+        r += jsonText(k) + ":" + std::to_string(v);
+    }
+    return r + "}";
+}
+
+std::string jsonListe(const std::set<std::string>& m) {
+    std::string r = "[";
+    for (const std::string& k : m) {
+        if (r.size() > 1) { r += ","; }
+        r += jsonText(k);
+    }
+    return r + "]";
+}
+
+std::string klein(std::string s) {
+    for (char& c : s) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    for (char& c : s) { if (c == '\\') { c = '/'; } }
+    return s;
+}
+
+std::string ohneEndung(std::string s) {
+    const std::size_t punkt = s.find_last_of('.');
+    const std::size_t strich = s.find_last_of('/');
+    if (punkt != std::string::npos && (strich == std::string::npos || punkt > strich)) { s.resize(punkt); }
+    return s;
+}
+
+// Alle Shaderskripte EINMAL, in der Reihenfolge von loadMapTextures (der
+// spaetere Spielordner gewinnt).
+const std::map<std::string, kartenpruefung::ShaderAnweisungen>& shaderTexte() {
+    static std::map<std::string, kartenpruefung::ShaderAnweisungen> m;
+    static bool gelesen = false;
+    if (!gelesen) {
+        gelesen = true;
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const FoundFile& f : findByExtension(gp, {".shader"})) {
+                std::string text;
+                if (readFromArchives(f.name, text)) { kartenpruefung::sammleShader(text, m); }
+            }
+        }
+        diag::detail("Kartenpruefung: " + std::to_string(m.size()) + " Shader gelesen");
+    }
+    return m;
+}
+
+// Klang vorhanden? S_RegisterSound: Name wie angegeben, sonst die andere
+// Endung (.wav <-> .mp3, snd_mem.cpp S_LoadSound).
+bool klangDa(const std::string& name) {
+    std::string d;
+    if (readFromArchives(name, d)) { return true; }
+    const std::string ohne = ohneEndung(name);
+    return readFromArchives(ohne + ".wav", d) || readFromArchives(ohne + ".mp3", d);
+}
+
+// Die itemlist des Spiels (ext_data/items.dat des Mods vor base) - einmal.
+const Gegenstandsliste& gegenstaende(bool md) {
+    static Gegenstandsliste l;
+    static int fuer = -1;
+    if (fuer != (md ? 1 : 0)) {
+        fuer = md ? 1 : 0;
+        std::string text;
+        (void)readFromArchives("ext_data/items.dat", text);
+        l = leseGegenstaende(text, md);
+    }
+    return l;
+}
+
+struct Zaehler {
+    std::map<std::string, int> anz;      // Merkmal -> Shader
+    std::map<std::string, int> flaeche;  // Merkmal -> Dreiecke (nur Welt)
+};
+
+void shaderPruefen(const std::string& name, kartenpruefung::Zusammenhang z, Zaehler& zl, int dreiecke,
+                   std::set<std::string>* beispiele) {
+    const auto& texte = shaderTexte();
+    const std::string k = klein(ohneEndung(name));
+    const auto it = texte.find(k);
+    if (it == texte.end()) { return; }
+    for (const std::string& m : kartenpruefung::fehlendeMerkmale(it->second, z, k)) {
+        ++zl.anz[m];
+        zl.flaeche[m] += dreiecke;
+        if (beispiele != nullptr && beispiele->size() < 40U) { beispiele->insert(m + " = " + k); }
+    }
+}
+
+}  // namespace kp
+
+std::vector<Schritt> kartenPruefungSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    add(tu("Kartenpruefung: Kartenansicht links", [] { g_app->leftMode = 1; }));
+    add(pause(0.3));
+    add({"Kartenpruefung: Liste sammeln", [=](int) {
+             std::set<std::string> gesehen;
+             std::vector<std::string> liste;
+             for (const GamePath& gp : g_app->gamePaths) {
+                 for (const FoundFile& f : findByExtension(gp, {".bsp"})) {
+                     if (gesehen.insert(kp::klein(f.name)).second) { liste.push_back(f.name); }
+                 }
+             }
+             std::sort(liste.begin(), liste.end());
+             if (const char* nur = std::getenv("BHED_KARTEN")) {
+                 std::vector<std::string> teile;
+                 std::istringstream is(nur);
+                 std::string teil;
+                 while (std::getline(is, teil, ',')) {
+                     if (!teil.empty()) { teile.push_back(teil); }
+                 }
+                 std::vector<std::string> gefiltert;
+                 for (const std::string& k : liste) {
+                     for (const std::string& tl : teile) {
+                         if (k.find(tl) != std::string::npos) { gefiltert.push_back(k); break; }
+                     }
+                 }
+                 liste = std::move(gefiltert);
+             }
+             std::size_t ab = 0;
+             if (const char* a = std::getenv("BHED_KARTEN_AB")) { ab = static_cast<std::size_t>(std::max(0, std::atoi(a))); }
+             std::string bericht = "kartenpruefung.jsonl";
+             if (const char* b = std::getenv("BHED_PRUEFBERICHT")) { bericht = b; }
+             const bool md = regelwerkMovieDuels();
+             diag::detail("Kartenpruefung: " + std::to_string(liste.size()) + " Karten, ab " + std::to_string(ab) +
+                          ", Regelwerk " + (md ? "Movie Duels" : "OpenJK") + ", Bericht " + bericht);
+             (void)kp::shaderTexte();
+             std::vector<Schritt> neu;
+             for (std::size_t nr = ab; nr < liste.size(); ++nr) {
+                 const std::string karte = liste[nr];
+                 auto meld = std::make_shared<std::size_t>(0);
+                 auto zeilen = std::make_shared<std::size_t>(0);
+                 auto t0 = std::make_shared<std::chrono::steady_clock::time_point>();
+                 auto geladen = std::make_shared<bool>(false);
+                 auto ladeMs = std::make_shared<double>(0.0);
+                 neu.push_back(tu("Kartenpruefung " + karte + " laden", [=] {
+                     {
+                         std::ofstream lauf(bericht + ".lauf", std::ios::trunc);
+                         lauf << nr << ' ' << liste.size() << ' ' << karte << '\n';
+                     }
+                     *meld = g_app->d3dMeldungen.size();
+                     *zeilen = diag::lines().size();
+                     *t0 = std::chrono::steady_clock::now();
+                     *geladen = loadMapFromArchive(karte);
+                     *ladeMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - *t0).count();
+                     for (const MapEntity& e : g_app->map.entities) {
+                         if ((e.classname == "info_player_start" || e.classname == "info_player_deathmatch") &&
+                             !e.origin.empty()) {
+                             float o[3] = {0, 0, 0};
+                             (void)std::sscanf(e.origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]);
+                             g_app->cam.pos[0] = o[0];
+                             g_app->cam.pos[1] = o[1];
+                             g_app->cam.pos[2] = o[2] + 48.0F;
+                             break;
+                         }
+                     }
+                     g_app->throughCamera = false;
+                     g_app->mapDirty = true;
+                 }));
+                 neu.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+                 neu.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+                 neu.push_back(gezeichnet(karte));
+                 neu.push_back(tu("Kartenpruefung " + karte + ": zweites Bild", [] { g_app->mapDirty = true; }));
+                 neu.push_back(gezeichnet(karte + " (zweites Bild)"));
+                 neu.push_back(tu("Kartenpruefung " + karte + ": Bericht", [=] {
+                     const std::vector<MapEntity>& ents = g_app->map.entities;
+                     // --- Was behaved zeichnet, gemessen ---------------------
+                     std::set<std::size_t> modellEnt;
+                     for (const App::MapModel& mm : g_app->mapModels) { modellEnt.insert(mm.entity); }
+                     std::map<int, int> figurEnt;   // Entity -> Figur
+                     for (std::size_t i = 0; i < g_app->scene.actors.size(); ++i) {
+                         const int ke = g_app->scene.actors[i].kartenEntity;
+                         if (ke >= 0) { figurEnt[ke] = static_cast<int>(i); }
+                     }
+                     std::map<std::string, int> klassen, nichtImSpiel, nichtGezeichnet, wartet;
+                     std::set<std::string> npcOhneModell, efxFehlt, klangFehlt, efxWarn, beispiele;
+                     std::set<std::string> efxDateien;
+                     for (std::size_t i = 0; i < ents.size(); ++i) {
+                         const MapEntity& e = ents[i];
+                         const std::string& c = e.classname;
+                         if (c.empty() || c == "worldspawn") { continue; }
+                         ++klassen[c];
+                         const Gegenstandsliste& gl = kp::gegenstaende(md);
+                         if (!kartenpruefung::imSpiel(c, md, &gl)) {
+                             ++nichtImSpiel[c];
+                             continue;
+                         }
+                         const std::string* mdl = e.find("model");
+                         if (mdl != nullptr && !mdl->empty() && (*mdl)[0] == '*') { continue; }   // Brush: gezeichnet
+                         if (c == "target_speaker") {
+                             const std::string* n = e.find("noise");
+                             if (n != nullptr && !n->empty() && (*n)[0] != '*' && !kp::klangDa(*n)) { klangFehlt.insert(*n); }
+                         }
+                         const std::string art = kartenpruefung::sichtbarImSpiel(c, &gl);
+                         if (art.empty()) { continue; }
+                         bool da = modellEnt.count(i) != 0U;
+                         if (art == "Gegenstand") {
+                             float go[3];
+                             std::string grund;
+                             if (gegenstandInstanz(i, go, nullptr, nullptr)) {
+                                 da = true;
+                             } else if (e.find("targetname") != nullptr) {
+                                 ++wartet[c];   // G_SpawnItem: erst per use (item_spawn_use)
+                                 da = true;
+                             } else if (gegenstandNichtImSpiel(i, &grund)) {
+                                 ++wartet[c + " (" + grund + ")"];   // im Spiel auch nicht zu sehen
+                                 da = true;
+                             }
+                         }
+                         if (c.rfind("NPC_", 0) == 0) {
+                             const auto f = figurEnt.find(static_cast<int>(i));
+                             if (f != figurEnt.end()) {
+                                 const std::size_t fi = static_cast<std::size_t>(f->second);
+                                 const bool modell = fi < g_app->actorAssets.size() && !g_app->actorAssets[fi].model.empty();
+                                 if (!modell) {
+                                     npcOhneModell.insert(c + " (" + g_app->scene.actors[fi].npcType + ")");
+                                 }
+                                 da = true;   // eigene Liste
+                             } else if (e.find("targetname") != nullptr || e.find("NPC_targetname") != nullptr) {
+                                 ++wartet[c];   // spawnt erst per use - im Spiel auch nicht beim Start
+                                 da = true;
+                             }
+                         } else if (c == "fx_runner") {
+                             const std::string* fx = e.find("fxFile");
+                             if (fx != nullptr && !fx->empty()) {
+                                 const std::string pfad = "effects/" + kp::ohneEndung(*fx) + ".efx";
+                                 std::string text;
+                                 if (readFromArchives(pfad, text)) {
+                                     if (efxDateien.insert(kp::klein(pfad)).second) {
+                                         const efx::ReadResult rr = efx::read(text);
+                                         for (const auto& dg : rr.diagnostics) {
+                                             if (efxWarn.size() < 30U) { efxWarn.insert(dg.message); }
+                                         }
+                                         for (const auto& pr : rr.effect.primitives) {
+                                             for (const std::string& sn : pr.sounds) {
+                                                 if (!sn.empty() && !kp::klangDa(sn)) { klangFehlt.insert(sn); }
+                                             }
+                                         }
+                                     }
+                                 } else {
+                                     efxFehlt.insert(pfad);
+                                 }
+                             }
+                             da = true;   // laeuft, sofern die Datei da ist (sonst auch im Spiel nichts)
+                         } else if (c == "fx_rain" || c == "fx_snow" || art == "Portal") {
+                             da = true;   // app_wetter.cpp, Portale/Himmelsportal (app_view3d.cpp)
+                         }
+                         if (!da) { ++nichtGezeichnet[c]; }
+                     }
+                     // --- Shader je Zusammenhang -----------------------------
+                     kp::Zaehler welt, figur, effekt;
+                     std::vector<int> dreiecke(g_app->geo.shaders.size(), 0);
+                     for (const BspSurface& sf : g_app->geo.surfaces) {
+                         if (sf.shader >= 0 && static_cast<std::size_t>(sf.shader) < dreiecke.size()) {
+                             dreiecke[static_cast<std::size_t>(sf.shader)] += sf.numIndexes / 3;
+                         }
+                     }
+                     for (std::size_t k = 0; k < g_app->geo.shaders.size(); ++k) {
+                         kp::shaderPruefen(g_app->geo.shaders[k].name, kartenpruefung::Zusammenhang::Welt, welt,
+                                           dreiecke[k], &beispiele);
+                     }
+                     std::set<std::string> md3Shader;
+                     for (const auto& [pfad, mm] : g_app->md3Files) {
+                         for (const Md3Surface& sf : mm.surfaces) { md3Shader.insert(kp::klein(sf.shader)); }
+                     }
+                     for (const std::string& sh : md3Shader) {
+                         kp::shaderPruefen(sh, kartenpruefung::Zusammenhang::Welt, welt, 0, &beispiele);
+                     }
+                     std::set<std::string> figurShader;
+                     int figurTexFehlt = 0;
+                     for (const App::ActorAssets& aa : g_app->actorAssets) {
+                         figurTexFehlt += aa.textures.missing;
+                         for (const GlmSurface& sf : aa.model.surfaces) {
+                             if (sf.skinnedOff || (sf.flags & (GlmSurface::kFlagBolt | GlmSurface::kFlagOff)) != 0U) { continue; }
+                             const std::string n = sf.texture.empty() ? sf.shader : sf.texture;
+                             if (!n.empty() && n[0] != '*') { figurShader.insert(kp::klein(n)); }
+                         }
+                     }
+                     for (const std::string& sh : figurShader) {
+                         kp::shaderPruefen(sh, kartenpruefung::Zusammenhang::Figur, figur, 0, &beispiele);
+                     }
+                     for (const auto& [sh, platz] : g_app->effectShaders) {
+                         kp::shaderPruefen(sh, kartenpruefung::Zusammenhang::Effekt, effekt, 0, &beispiele);
+                     }
+                     // --- Fehler im Protokoll waehrend dieser Karte ----------
+                     std::set<std::string> protokoll;
+                     int warn = 0;
+                     int err = 0;
+                     const std::vector<std::string>& lz = diag::lines();
+                     for (std::size_t i = *zeilen; i < lz.size(); ++i) {
+                         const bool istErr = lz[i].rfind("ERR", 0) == 0;
+                         const bool istWarn = lz[i].rfind("WARN", 0) == 0;
+                         if (istErr) { ++err; }
+                         if (istWarn) { ++warn; }
+                         if ((istErr || istWarn) && protokoll.size() < 15U) { protokoll.insert(lz[i].substr(0, 200)); }
+                     }
+                     std::set<std::string> texFehlt;
+                     for (const std::string& tx : g_app->fehlendeTexturen) {
+                         const std::string k = kp::klein(tx);
+                         if (k == "noshader" || k.rfind("textures/system/", 0) == 0) { continue; }
+                         texFehlt.insert(tx);
+                     }
+                     std::set<std::string> mdlFehlt(g_app->fehlendeModelle.begin(), g_app->fehlendeModelle.end());
+                     const std::size_t d3d = g_app->d3dMeldungen.size() - *meld;
+                     std::string z = "{\"karte\":" + kp::jsonText(karte) + ",\"nr\":" + std::to_string(nr) +
+                                     ",\"regelwerk\":" + kp::jsonText(md ? "movieduels" : "openjk") +
+                                     ",\"geladen\":" + (*geladen ? "true" : "false") +
+                                     ",\"bereit\":" + (g_app->mapBereit ? "true" : "false") +
+                                     ",\"lade_ms\":" + std::to_string(static_cast<int>(*ladeMs)) +
+                                     ",\"entities\":" + std::to_string(ents.size()) +
+                                     ",\"dreiecke\":" + std::to_string(g_app->mesh.indexes.size() / 3U) +
+                                     ",\"figuren\":" + std::to_string(g_app->scene.actors.size()) +
+                                     ",\"modelle\":" + std::to_string(g_app->mapModels.size()) +
+                                     ",\"effekte\":" + std::to_string(g_app->effectRunners.size()) +
+                                     ",\"klassen\":" + kp::jsonZahlen(klassen) +
+                                     ",\"nicht_im_spiel\":" + kp::jsonZahlen(nichtImSpiel) +
+                                     ",\"nicht_gezeichnet\":" + kp::jsonZahlen(nichtGezeichnet) +
+                                     ",\"npc_wartet\":" + kp::jsonZahlen(wartet) +
+                                     ",\"npc_ohne_modell\":" + kp::jsonListe(npcOhneModell) +
+                                     ",\"efx_fehlt\":" + kp::jsonListe(efxFehlt) +
+                                     ",\"efx_warnungen\":" + kp::jsonListe(efxWarn) +
+                                     ",\"klang_fehlt\":" + kp::jsonListe(klangFehlt) +
+                                     ",\"textur_fehlt\":" + kp::jsonListe(texFehlt) +
+                                     ",\"modell_fehlt\":" + kp::jsonListe(mdlFehlt) +
+                                     ",\"figur_texturen_fehlen\":" + std::to_string(figurTexFehlt) +
+                                     ",\"shader_welt\":" + kp::jsonZahlen(welt.anz) +
+                                     ",\"shader_welt_dreiecke\":" + kp::jsonZahlen(welt.flaeche) +
+                                     ",\"shader_figur\":" + kp::jsonZahlen(figur.anz) +
+                                     ",\"shader_effekt\":" + kp::jsonZahlen(effekt.anz) +
+                                     ",\"shader_beispiele\":" + kp::jsonListe(beispiele) +
+                                     ",\"gpu_fehler\":" + kp::jsonText(g_app->gpuFehler) +
+                                     ",\"gpu_aufrufe\":" + std::to_string(g_app->gpuAufrufe) +
+                                     ",\"gpu_uebersprungen\":" + std::to_string(g_app->gpuUebersprungen) +
+                                     ",\"d3d_meldungen\":" + std::to_string(d3d) +
+                                     ",\"protokoll_err\":" + std::to_string(err) +
+                                     ",\"protokoll_warn\":" + std::to_string(warn) +
+                                     ",\"protokoll\":" + kp::jsonListe(protokoll) + "}";
+                     std::ofstream out(bericht, std::ios::app | std::ios::binary);
+                     out << z << '\n';
+                     out.flush();
+                     diag::detail("Kartenpruefung: " + karte + " | " + std::to_string(nichtGezeichnet.size()) +
+                                  " Klassen nicht gezeichnet, " + std::to_string(npcOhneModell.size()) +
+                                  " NPC ohne Modell, Welt-Shader-Luecken " + std::to_string(welt.anz.size()));
+                 }));
+             }
+             neu.push_back(tu("Kartenpruefung fertig", [=] {
+                 std::ofstream lauf(bericht + ".lauf", std::ios::trunc);
+                 lauf << "fertig " << liste.size() << '\n';
+                 diag::detail("Kartenpruefung fertig: " + std::to_string(liste.size() - std::min(ab, liste.size())) + " Karten");
+             }));
+             schritteEinfuegen(std::move(neu));
+             return true;
+         }});
+    return s;
+}
+
 // --- Lavafall (md_am_sith): mehrere Zeitpunkte ------------------------------
 //
 // BHED_EDITORTEST=lava, Fotos mit BHED_FOTOS=<ordner>. Nah von shanks Stelle
@@ -15249,6 +15662,632 @@ std::vector<Schritt> regelwerkSchritte() {
         g_app->camTrackValid = false;
     }));
     add(pause(0.3));
+    return s;
+}
+
+// --- rc602: Gluehen auch auf Brush-Entities und Kartenmodellen (md_am_sith) ---
+//
+// Gemeldet: "sind bei unserem standard MD mission MD sith alle effecte da? es
+// fuehlt sich so an als wuerde etwas fehlen". Der Gluehdurchgang nahm nur die
+// Flaechen der Welt (Modell 0). Im Spiel rendert rd-vanilla JEDE Flaeche mit
+// einer glow-Stufe ein zweites Mal in den Gluehpuffer (tr_backend.cpp,
+// RB_DrawSurfs: g_bRenderGlowingObjects, RB_RenderDrawSurfList; in
+// RB_IterateStagesGeneric zeichnet dann nur, was `glow` traegt) - auch die
+// Untermodelle (func_wall, func_static, func_usable ...) und die md3-Modelle.
+// In md_am_sith sind das u. a. das Palpatine-Hologramm (func_wall *70,
+// textures/plasma_mustafar/palp), der Holotisch (*72, holo1/11/111), die
+// Kraftfelder (*35, blueshield) und Lichtleisten (*2/*3, light_7).
+// Prueft: das Hologramm in der Bildmitte wird mit Gluehen heller als ohne.
+// Braucht die geladene Mission md_am_sith (karteSchritte).
+std::vector<Schritt> gluehenMoverSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    // Mittlere Helligkeit (R+G+B) im Kasten um die Bildmitte, wo das
+    // Hologramm steht (Blick wie holoSchritte "Palpatine von vorn").
+    auto mitte = [] {
+        std::vector<std::uint8_t> px;
+        int w = 0;
+        int h = 0;
+        if (!gpu::leseFarbe(px, w, h) || px.empty() || w <= 0 || h <= 0) { return -1.0; }
+        long long sum = 0;
+        long long n = 0;
+        for (int y = h * 36 / 100; y < h * 57 / 100; ++y) {
+            for (int x = w * 47 / 100; x < w * 55 / 100; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                sum += px[i] + px[i + 1] + px[i + 2];
+                ++n;
+            }
+        }
+        return n > 0 ? static_cast<double>(sum) / static_cast<double>(n) : -1.0;
+    };
+    auto ohne = std::make_shared<double>(-1.0);
+    auto stelle = [](bool gluehen) {
+        g_app->leftMode = 1;   // Mission: die Karte ist sichtbar (im Modus Ereignisse nicht)
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 3690.0;
+        g_app->showGlow = gluehen;
+        g_app->cam.pos[0] = -192.0F; g_app->cam.pos[1] = 2600.0F; g_app->cam.pos[2] = 64.0F;
+        g_app->cam.angles[0] = 0.0F; g_app->cam.angles[1] = 270.0F; g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    };
+    add(tu("Gluehen Mover: vor das Palpatine-Hologramm, Gluehen aus", [=] { stelle(false); }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(tu("Gluehen Mover: Helligkeit ohne Gluehen", [=] { *ohne = mitte(); }));
+    add(tu("Gluehen Mover: Gluehen an", [=] { stelle(true); }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Gluehen Mover: das Hologramm (func_wall) leuchtet mit Gluehen heller", [=] {
+        const double mit = mitte();
+        diag::detail("Knopftest: Gluehen Mover - Mitte ohne " + std::to_string(*ohne) + ", mit " +
+                     std::to_string(mit) + ", Gluehaufrufe " + std::to_string(g_app->gpuGluehen) +
+                     " (Mover " + std::to_string(gpu::gluehenMoverAufrufe()) + ")");
+        return *ohne >= 0.0 && mit - *ohne > 6.0;
+    }));
+    return s;
+}
+
+// --- rc602: der erste Durchgang eines fx_runner (md_am_sith) -----------------
+//
+// SP_fx_runner setzt `nextthink = level.time + 400` (fx_runner_link, "Give us
+// a bit of time to spawn in the other entities"), fx_runner_link danach
+// `nextthink = level.time + 200` - der erste Effekt kommt also 600 ms nach dem
+// Laden (g_fx.cpp MD und OpenJK gleich). behaved liess ihn nach 200 ms kommen.
+// Prueft: die selbst laufenden Runner der Karte beginnen bei 600 ms.
+std::vector<Schritt> fxRunnerStartSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(pruefe("fx_runner: der erste Durchgang kommt 600 ms nach dem Laden (link 400 + 200)", [] {
+        int laufend = 0;
+        double frueh = 1.0e30;
+        for (const EffectInstance& e : g_app->effectRunners) {
+            if (!e.loops) { continue; }
+            ++laufend;
+            frueh = std::min(frueh, e.startMs);
+        }
+        diag::detail("Knopftest: fx_runner - " + std::to_string(laufend) + " laufend, fruehester Start " +
+                     std::to_string(frueh) + " ms");
+        return laufend > 0 && std::fabs(frueh - 600.0) < 0.5;
+    }));
+    return s;
+}
+
+// --- rc602: Leuchtstufen der Figuren (md_am_sith, Superkampfdroide sbd1) -----
+//
+// Teil desselben Berichts ("als wuerde etwas fehlen"): die Haut nennt etwa
+// "models/players/sbd/body_cortosis" bzw. ".../magnaguard/mangahead" - im
+// Spiel gewinnt das gleichnamige Shaderskript (R_FindShader sucht erst den
+// Shader, dann das Bild), und dessen letzte Stufe ist ein Leuchtbild mit
+// "blendFunc GL_ONE GL_ONE" und "glow" (Lichter des Droiden, Augen der
+// MagnaGuards). behaved nahm das Bild allein. sbd1 steht ab Kartenstart bei
+// 8 4832 24 (NPC_spawner ohne targetname). Prueft: mit Gluehen wird die Figur
+// heller als ohne.
+std::vector<Schritt> gluehenFigurSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    // Kraeftig rote Bildpunkte im unteren mittleren Teil des Bildes, wo der
+    // Kopf von sbd1 steht: dort liegt das rote Auge der Leuchtstufe.
+    auto rot = [] {
+        std::vector<std::uint8_t> px;
+        int w = 0;
+        int h = 0;
+        if (!gpu::leseFarbe(px, w, h) || px.empty() || w <= 0 || h <= 0) { return -1; }
+        int n = 0;
+        for (int y = h * 55 / 100; y < h; ++y) {
+            for (int x = w * 45 / 100; x < w * 75 / 100; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                if (px[i] >= 200 && px[i + 1] <= 90 && px[i + 2] <= 90) { ++n; }
+            }
+        }
+        return n;
+    };
+    auto fi = std::make_shared<int>(-1);
+    auto ohne = std::make_shared<int>(-1);
+    constexpr double kMs = 3690.0;
+    auto stelle = [=](bool gluehen) {
+        g_app->leftMode = 1;   // Mission: die Karte ist sichtbar (im Modus Ereignisse nicht)
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = kMs;
+        g_app->showGlow = gluehen;
+        if (*fi >= 0) {
+            // Wo die Figur gezeichnet wurde (nach der Schwerkraft), sonst
+            // der Skriptort. Von vorn: der Spawner sagt "angle 90", die
+            // Figur blickt nach +y.
+            const ActorState st = g_app->scene.actors[static_cast<std::size_t>(*fi)].at(kMs);
+            float p[3] = {st.pos[0], st.pos[1], st.pos[2]};
+            if (static_cast<std::size_t>(*fi) < g_app->figurGezeichnet.size() &&
+                g_app->figurGezeichnet[static_cast<std::size_t>(*fi)][2] > -90000.0F) {
+                for (int k = 0; k < 3; ++k) { p[k] = g_app->figurGezeichnet[static_cast<std::size_t>(*fi)][static_cast<std::size_t>(k)]; }
+            }
+            diag::detail("Knopftest: Gluehen Figur - Ort " + std::to_string(p[0]) + " " + std::to_string(p[1]) + " " +
+                         std::to_string(p[2]) + " (Skript " + std::to_string(st.pos[1]) + ")");
+            g_app->cam.pos[0] = p[0];
+            g_app->cam.pos[1] = p[1] + 28.0F;
+            g_app->cam.pos[2] = p[2] + 50.0F;
+            g_app->cam.angles[0] = 0.0F; g_app->cam.angles[1] = 270.0F; g_app->cam.angles[2] = 0.0F;
+        }
+        g_app->mapDirty = true;
+    };
+    add(tu("Gluehen Figur: vor sbd1, Gluehen aus", [=] {
+        *fi = -1;
+        for (std::size_t i = 0; i < g_app->scene.actors.size(); ++i) {
+            if (g_app->scene.actors[i].name == "sbd1") { *fi = static_cast<int>(i); }
+        }
+        stelle(false);
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("gluehen_figur_ohne"));
+    add(pruefe("Gluehen Figur: die Leuchtstufe (rotes Auge von sbd1) liegt im Bild", [=] {
+        *ohne = rot();
+        diag::detail("Knopftest: Gluehen Figur - sbd1 #" + std::to_string(*fi) + ", rote Bildpunkte am Kopf " +
+                     std::to_string(*ohne));
+        return *fi >= 0 && *ohne > 30;
+    }));
+    add(tu("Gluehen Figur: Gluehen an", [=] { stelle(true); }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("gluehen_figur_mit"));
+    add(pruefe("Gluehen Figur: die Leuchtstufe geht ins Gluehen", [=] {
+        const int r = rot();
+        const int n = gpu::gluehenFigurAufrufe();
+        diag::detail("Knopftest: Gluehen Figur - mit Gluehen rote Bildpunkte " + std::to_string(r) +
+                     ", Figurenaufrufe im Gluehen " + std::to_string(n));
+        return r >= *ohne && n > 0;
+    }));
+    add(tu("Gluehen: zurueck in den Modus Ereignisse", [] { g_app->leftMode = 0; }));
+    return s;
+}
+
+// --- rc602 kartenpruefung: Gegenstaende der Karte (item_*, weapon_*) --------
+//
+// Die Kartenpruefung fand auf 87 von 278 Karten Medipacks, Waffen und
+// Munition, die das Spiel zeigt (G_SpawnItem/FinishSpawningItem, CG_Item) und
+// behaved nicht zeichnete. Geprueft wird an einer echten Karte: der erste
+// Gegenstand der Klasse ohne targetname muss aufgestellt sein (gefallen bis
+// zum Boden), und von oben gesehen muss er das Bild veraendern - verglichen
+// mit demselben Bild, in dem er versteckt ist (kein Bildschirmfoto, nur der
+// eigene Farbpuffer).
+std::vector<Schritt> gegenstandSchritte(const std::string& klasse, const std::string& name, bool glmErwartet) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto ent = std::make_shared<long long>(-1);
+    auto ort = std::make_shared<std::array<float, 3>>();
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    add(tu("Gegenstand " + name + ": suchen und von oben ansehen", [=] {
+        *ent = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            if (e.classname == klasse && e.targetname.empty() && e.find("targetname") == nullptr) {
+                *ent = static_cast<long long>(i);
+                break;
+            }
+        }
+        float o[3] = {0.0F, 0.0F, 0.0F};
+        std::string modell;
+        bool glm = false;
+        const bool da = *ent >= 0 && gegenstandInstanz(static_cast<std::size_t>(*ent), o, &modell, &glm);
+        if (!da && *ent >= 0) {
+            (void)std::sscanf(g_app->map.entities[static_cast<std::size_t>(*ent)].origin.c_str(), "%f %f %f", &o[0],
+                              &o[1], &o[2]);
+        }
+        *ort = {o[0], o[1], o[2]};
+        diag::detail("Knopftest: Gegenstand " + name + " - Entity " + std::to_string(*ent) + ", aufgestellt " +
+                     std::to_string(da ? 1 : 0) + ", Modell " + modell + (glm ? " (glm)" : "") + ", Ort " +
+                     std::to_string(o[0]) + " " + std::to_string(o[1]) + " " + std::to_string(o[2]));
+        g_app->leftMode = 1;
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->cam.pos[0] = o[0];
+        g_app->cam.pos[1] = o[1];
+        g_app->cam.pos[2] = o[2] + 48.0F;
+        g_app->cam.angles[0] = 89.0F;
+        g_app->cam.angles[1] = 90.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("gegenstand_" + name + "_mit"));
+    add(pruefe("Gegenstand " + name + ": aufgestellt wie FinishSpawningItem (gefallen, Modell)", [=] {
+        float o[3];
+        std::string modell;
+        bool glm = false;
+        const bool da = *ent >= 0 && gegenstandInstanz(static_cast<std::size_t>(*ent), o, &modell, &glm);
+        float roh[3] = {0.0F, 0.0F, 0.0F};
+        if (*ent >= 0) {
+            (void)std::sscanf(g_app->map.entities[static_cast<std::size_t>(*ent)].origin.c_str(), "%f %f %f", &roh[0],
+                              &roh[1], &roh[2]);
+        }
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        // Gefallen heisst: nicht hoeher als origin + 1 (FinishSpawningItem).
+        return da && glm == glmErwartet && o[2] <= roh[2] + 1.0F + 0.01F;
+    }));
+    add(tu("Gegenstand " + name + ": verstecken", [=] {
+        if (*ent >= 0) { gegenstandVerstecken(static_cast<std::size_t>(*ent), true); }
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Gegenstand " + name + ": von oben sichtbar (Bildmitte mit/ohne)", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        if (*ent >= 0) { gegenstandVerstecken(static_cast<std::size_t>(*ent), false); }
+        g_app->mapDirty = true;
+        if (!gelesen || w != *bw || h != *bh || mit->size() != ohne.size() || w <= 0) { return false; }
+        // Mittleres Fuenftel des Bildes: mittlerer Farbunterschied je Punkt.
+        double summe = 0.0;
+        long long n = 0;
+        for (int y = h * 2 / 5; y < h * 3 / 5; ++y) {
+            for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                for (int k = 0; k < 3; ++k) { summe += std::abs(static_cast<int>((*mit)[i + k]) - static_cast<int>(ohne[i + k])); }
+                ++n;
+            }
+        }
+        const double mittel = n > 0 ? summe / static_cast<double>(n * 3) : 0.0;
+        char z[160];
+        std::snprintf(z, sizeof(z), "Knopftest: Gegenstand %s - Bildmitte mit/ohne: mittlerer Unterschied %.2f",
+                      name.c_str(), mittel);
+        diag::detail(z);
+        return mittel > 4.0;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    return s;
+}
+
+// md_am_sith: item_medpak_instant (models/items/medpac.md3) - fuer den Modus karte.
+std::vector<Schritt> gegenstaendeKarteSchritte() {
+    return gegenstandSchritte("item_medpak_instant", "medpak", false);
+}
+
+// Modus gegenstaende: md_am_sith (md3) und md_agditf_sith (weapon_blaster, glm).
+std::vector<Schritt> gegenstaendeModusSchritte() {
+    std::vector<Schritt> s;
+    for (const char* karte : {"maps/md_am_sith.bsp", "maps/md_agditf_sith.bsp"}) {
+        const std::string k = karte;
+        s.push_back(tu("Gegenstaende: " + k + " laden", [=] {
+            g_app->leftMode = 1;   // Kartenansicht - sonst baut die Ansicht nichts
+            (void)loadMapFromArchive(k);
+            g_app->mapDirty = true;
+        }));
+        s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+        s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+        s.push_back(gezeichnet(k));
+        const bool erste = k.find("md_am_sith") != std::string::npos;
+        for (Schritt& x : erste ? gegenstandSchritte("item_medpak_instant", "medpak", false)
+                                : gegenstandSchritte("weapon_blaster", "blaster", true)) {
+            s.push_back(std::move(x));
+        }
+    }
+    return s;
+}
+
+// --- rc602 kartenpruefung: Effektteilchen mit glow-Stufe gluehen ----------
+//
+// Die Kartenpruefung fand auf 109 Karten Effektshader mit "glow" (Feuer
+// gfx/effects/fire2-4, Funken gfx/misc/spark ...). Im Spiel landen ihre
+// Teilchen wie jede Flaeche mit glow-Stufe im Gluehpuffer (RB_DrawSurfs,
+// g_bRenderGlowingObjects) - behaved gab dem Gluehen nur Welt, Mover und
+// Figuren. Geprueft an md_ts_sith (ein fx_runner mit Feuer): Zahl der
+// Effektaufrufe im Gluehen und die Helligkeit um das Feuer ohne/mit Gluehen.
+std::vector<Schritt> effektGluehenSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto hell = [] {
+        std::vector<std::uint8_t> px;
+        int w = 0;
+        int h = 0;
+        if (!gpu::leseFarbe(px, w, h) || px.empty() || w <= 0 || h <= 0) { return -1.0; }
+        double summe = 0.0;
+        long long n = 0;
+        for (int y = h * 2 / 5; y < h * 3 / 5; ++y) {
+            for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                summe += px[i] + px[i + 1] + px[i + 2];
+                ++n;
+            }
+        }
+        return n > 0 ? summe / static_cast<double>(n) : -1.0;
+    };
+    auto ohne = std::make_shared<double>(-1.0);
+    auto stelle = [](bool gluehen) {
+        g_app->leftMode = 1;
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 5000.0;   // der fx_runner laeuft (Start nach 600 ms, Wiederholung)
+        g_app->showGlow = gluehen;
+        g_app->showEffects = true;
+        if (!g_app->effectRunners.empty()) {
+            const EffectInstance& ei = g_app->effectRunners.front();
+            g_app->cam.pos[0] = ei.origin[0] - 96.0F;
+            g_app->cam.pos[1] = ei.origin[1];
+            g_app->cam.pos[2] = ei.origin[2] + 24.0F;
+            g_app->cam.angles[0] = 10.0F;
+            g_app->cam.angles[1] = 0.0F;
+            g_app->cam.angles[2] = 0.0F;
+        }
+        g_app->mapDirty = true;
+    };
+    add(tu("Effektgluehen: md_ts_sith laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/md_ts_sith.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(gezeichnet("md_ts_sith"));
+    add(tu("Effektgluehen: vor dem Feuer, Gluehen aus", [=] { stelle(false); }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(tu("Effektgluehen: messen", [=] { *ohne = hell(); }));
+    add(tu("Effektgluehen: Gluehen an", [=] { stelle(true); }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("effekt_gluehen_mit"));
+    add(pruefe("Effektgluehen: die Feuerteilchen (glow) gehen ins Gluehen", [=] {
+        const double mit = hell();
+        const int n = gpu::gluehenEffektAufrufe();
+        char z[200];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Effektgluehen - %zu fx_runner, Helligkeit ohne/mit Gluehen %.1f / %.1f, "
+                      "Effektaufrufe im Gluehen %d",
+                      g_app->effectRunners.size(), *ohne, mit, n);
+        diag::detail(z);
+        return !g_app->effectRunners.empty() && n > 0 && mit > *ohne + 3.0;
+    }));
+    add(tu("Effektgluehen: Gluehen wie vorher", [] {
+        g_app->showGlow = true;
+        g_app->mapDirty = true;
+    }));
+    return s;
+}
+
+// --- rc602 kartenpruefung: feste Modelle der Spawnfunktionen --------------
+//
+// misc_shield_floor_unit (24 Karten), misc_ammo_floor_unit (22),
+// misc_security_panel (5) und misc_camera (8) setzen ihr Modell im Code
+// (g_misc.cpp, g_mover.cpp) - behaved zeichnete sie nicht. Geprueft an einer
+// echten Karte: das Modell steht (MapModel der Entity), und es veraendert das
+// Bild (mit/ohne, eigener Farbpuffer).
+std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::string& klasse, int modelleErwartet) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto ent = std::make_shared<long long>(-1);
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    auto merk = std::make_shared<std::vector<std::pair<std::size_t, float>>>();
+    add(tu("Kartenmodell " + klasse + ": " + karte + " laden", [=] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive(karte);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(gezeichnet(karte));
+    add(tu("Kartenmodell " + klasse + ": ansehen", [=] {
+        *ent = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == klasse) {
+                *ent = static_cast<long long>(i);
+                break;
+            }
+        }
+        float o[3] = {0.0F, 0.0F, 0.0F};
+        if (*ent >= 0) {
+            (void)std::sscanf(g_app->map.entities[static_cast<std::size_t>(*ent)].origin.c_str(), "%f %f %f", &o[0],
+                              &o[1], &o[2]);
+        }
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->cam.pos[0] = o[0];
+        g_app->cam.pos[1] = o[1];
+        g_app->cam.pos[2] = o[2] + 64.0F;
+        g_app->cam.angles[0] = 89.0F;
+        g_app->cam.angles[1] = 90.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Kartenmodell " + klasse + ": steht (feste Modelle der Spawnfunktion)", [=] {
+        int n = 0;
+        std::string pfade;
+        for (const App::MapModel& mm : g_app->mapModels) {
+            if (*ent >= 0 && mm.entity == static_cast<std::size_t>(*ent)) {
+                ++n;
+                pfade += " " + mm.path;
+            }
+        }
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        diag::detail("Knopftest: Kartenmodell " + klasse + " - Entity " + std::to_string(*ent) + ", Modelle " +
+                     std::to_string(n) + ":" + pfade);
+        return *ent >= 0 && n == modelleErwartet;
+    }));
+    add(tu("Kartenmodell " + klasse + ": verstecken", [=] {
+        merk->clear();
+        for (std::size_t k = 0; k < g_app->mapModels.size(); ++k) {
+            App::MapModel& mm = g_app->mapModels[k];
+            if (*ent >= 0 && mm.entity == static_cast<std::size_t>(*ent)) {
+                merk->emplace_back(k, mm.origin[2]);
+                mm.origin[2] -= 100000.0F;
+            }
+        }
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Kartenmodell " + klasse + ": sichtbar (Bildmitte mit/ohne)", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        for (const auto& [k, z] : *merk) {
+            if (k < g_app->mapModels.size()) { g_app->mapModels[k].origin[2] = z; }
+        }
+        g_app->mapDirty = true;
+        if (!gelesen || w != *bw || h != *bh || mit->size() != ohne.size() || w <= 0) { return false; }
+        double summe = 0.0;
+        long long n = 0;
+        for (int y = h * 2 / 5; y < h * 3 / 5; ++y) {
+            for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                for (int c = 0; c < 3; ++c) { summe += std::abs(static_cast<int>((*mit)[i + c]) - static_cast<int>(ohne[i + c])); }
+                ++n;
+            }
+        }
+        const double mittel = n > 0 ? summe / static_cast<double>(n * 3) : 0.0;
+        char z[160];
+        std::snprintf(z, sizeof(z), "Knopftest: Kartenmodell %s - Bildmitte mit/ohne: mittlerer Unterschied %.2f",
+                      klasse.c_str(), mittel);
+        diag::detail(z);
+        return mittel > 4.0;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    return s;
+}
+
+std::vector<Schritt> festeModelleSchritte() {
+    std::vector<Schritt> s;
+    for (Schritt& x : kartenmodellSchritte("maps/hoth2.bsp", "misc_shield_floor_unit", 1)) { s.push_back(std::move(x)); }
+    for (Schritt& x : kartenmodellSchritte("maps/hoth2.bsp", "misc_ammo_floor_unit", 1)) { s.push_back(std::move(x)); }
+    for (Schritt& x : kartenmodellSchritte("maps/t1_fatal.bsp", "misc_camera", 2)) { s.push_back(std::move(x)); }
+    for (Schritt& x : kartenmodellSchritte("maps/t1_fatal.bsp", "misc_security_panel", 1)) { s.push_back(std::move(x)); }
+    return s;
+}
+
+// Die drei rc602-Pruefungen am Stueck, mit gemerkter und zurueckgesetzter
+// Ansicht (Modus, Kamera, Zeit, Gluehen) - fuer den Modus karte.
+std::vector<Schritt> effekteKartenstartSchritte() {
+    std::vector<Schritt> s;
+    struct Merk {
+        int leftMode = 0;
+        Camera cam;
+        double playMs = 0.0;
+        bool glow = true;
+        bool durch = false;
+    };
+    auto m = std::make_shared<Merk>();
+    s.push_back(tu("Effekte: Ansicht merken", [=] {
+        m->leftMode = g_app->leftMode;
+        m->cam = g_app->cam;
+        m->playMs = g_app->playMs;
+        m->glow = g_app->showGlow;
+        m->durch = g_app->throughCamera;
+    }));
+    for (Schritt& x : gluehenMoverSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : fxRunnerStartSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : gluehenFigurSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : gegenstaendeKarteSchritte()) { s.push_back(std::move(x)); }   // rc602 kartenpruefung
+    s.push_back(tu("Effekte: Ansicht zurueck", [=] {
+        g_app->leftMode = m->leftMode;
+        g_app->cam = m->cam;
+        g_app->playMs = m->playMs;
+        g_app->showGlow = m->glow;
+        g_app->throughCamera = m->durch;
+        g_app->mapDirty = true;
+    }));
+    return s;
+}
+
+// --- rc602: NPC-Klassen mit eigenem NPC_type (md_am_sith) ---------------------
+//
+// Gemeldet: "der NPC droid fehlt in dem script" - md_am_sith setzt einen
+// NPC_Droid_R2D2 ohne Namen und ohne NPC_type neben ani1. Im Spiel setzt
+// SP_NPC_Droid_R2D2 den Typ "r2d2" und spawnt ihn beim Laden der Karte; der
+// Inspektor warnte "Kein NPC_type", die Ansicht zeigte nur einen Kasten.
+// Braucht die geladene Mission md_am_sith (karteSchritte).
+std::vector<Schritt> npcKlasseSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto ei = std::make_shared<int>(-1);
+    add(tu("NPC-Klasse: NPC_Droid_R2D2 in md_am_sith suchen", [=] {
+        *ei = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == "NPC_Droid_R2D2") { *ei = static_cast<int>(i); }
+        }
+        diag::detail("Knopftest: NPC-Klasse - Entity " + std::to_string(*ei) + ", Typ \"" +
+                     (*ei >= 0 ? effektiverNpcTyp(g_app->map.entities[static_cast<std::size_t>(*ei)]) : std::string()) +
+                     "\"");
+    }));
+    add(pruefe("NPC-Klasse: NPC_Droid_R2D2 gefunden, wirksamer Typ r2d2", [=] {
+        return *ei >= 0 && effektiverNpcTyp(g_app->map.entities[static_cast<std::size_t>(*ei)]) == "r2d2";
+    }));
+    add(tu("NPC-Klasse: Mission-Tab, Droide waehlen, hinfliegen", [=] {
+        if (*ei < 0) { return; }
+        g_app->leftMode = 1;
+        g_app->pickedEntity = *ei;
+        g_app->entNpcHinweis = "(nicht gezeichnet)";
+        g_app->figurGezeichnet.assign(g_app->scene.actors.size(), {0.0F, 0.0F, -99999.0F});
+        g_app->playing = false;
+        g_app->throughCamera = false;
+        zurEntityFliegen(static_cast<std::size_t>(*ei));
+        g_app->mapDirty = true;
+    }));
+    add(pause(1.0));
+    add(pruefe("NPC-Klasse: Inspektor ohne Warnung \"Kein NPC_type\"", [] {
+        diag::detail("Knopftest: NPC-Klasse - Hinweis \"" + g_app->entNpcHinweis + "\"");
+        return g_app->entNpcHinweis.empty() && finde(tr(Str::EntNpcTypeMissing), "", 0, false) == nullptr;
+    }));
+    add(pruefe("NPC-Klasse: der Droide ist eine Figur der Szene mit geladenem Modell", [=] {
+        const int f = *ei >= 0 ? figurFuerEntity(*ei) : -1;
+        const bool ok = f >= 0 && static_cast<std::size_t>(f) < g_app->actorAssets.size() &&
+                        g_app->scene.actors[static_cast<std::size_t>(f)].npcType == "r2d2" &&
+                        !g_app->actorAssets[static_cast<std::size_t>(f)].model.surfaces.empty();
+        diag::detail("Knopftest: NPC-Klasse - Figur " + std::to_string(f) +
+                     (f >= 0 ? " \"" + g_app->scene.actors[static_cast<std::size_t>(f)].name + "\" Typ \"" +
+                                   g_app->scene.actors[static_cast<std::size_t>(f)].npcType + "\", Flaechen " +
+                                   std::to_string(static_cast<std::size_t>(f) < g_app->actorAssets.size()
+                                                      ? g_app->actorAssets[static_cast<std::size_t>(f)].model.surfaces.size()
+                                                      : 0U)
+                             : std::string()));
+        return ok;
+    }));
+    add(pruefe("NPC-Klasse: der Droide wird gezeichnet, am Spawner auf dem Boden", [=] {
+        const int f = *ei >= 0 ? figurFuerEntity(*ei) : -1;
+        if (f < 0 || static_cast<std::size_t>(f) >= g_app->figurGezeichnet.size()) { return false; }
+        const auto& p = g_app->figurGezeichnet[static_cast<std::size_t>(f)];
+        char z[160];
+        std::snprintf(z, sizeof(z), "Knopftest: NPC-Klasse - gezeichnet bei %.0f %.0f %.0f (Spawner 340 6932 24)",
+                      static_cast<double>(p[0]), static_cast<double>(p[1]), static_cast<double>(p[2]));
+        diag::detail(z);
+        return std::fabs(p[0] - 340.0F) < 2.0F && std::fabs(p[1] - 6932.0F) < 2.0F && p[2] > -100.0F && p[2] <= 25.0F;
+    }));
+    // Mit den Kartenfiguren im Bild: jede Schattenart zeichnet ohne Fehler.
+    for (int art = 0; art <= 3; ++art) {
+        const std::string n = std::to_string(art);
+        add(tu("NPC-Klasse: Schattenart " + n, [=] {
+            g_app->schattenArt = art;
+            g_app->gpuFehler.clear();
+            g_app->mapDirty = true;
+        }));
+        add(pause(0.4));
+        add(pruefe("NPC-Klasse: Schattenart " + n + " zeichnet ohne Fehler", [=] {
+            diag::detail("Knopftest: NPC-Klasse - Schattenart " + n + ", gpuFehler \"" + g_app->gpuFehler + "\"");
+            return g_app->gpuFehler.empty();
+        }));
+    }
+    add(tu("NPC-Klasse: Schattenart rund", [] { g_app->schattenArt = 1; g_app->mapDirty = true; }));
+    add(tu("NPC-Klasse: Auswahl zuruecksetzen", [] {
+        g_app->pickedEntity = -1;
+        g_app->leftMode = 0;
+    }));
     return s;
 }
 
@@ -23359,12 +24398,17 @@ void selbsttest() {
     static const bool nurLava = std::strcmp(modus, "lava") == 0;
     static const bool nurHolo = std::strcmp(modus, "holo") == 0;
     static const bool nurOrt = std::strcmp(modus, "ort") == 0;
+    static const bool nurNpcKlasse = std::strcmp(modus, "npcklasse") == 0;   // rc602
+    static const bool nurGluehen = std::strcmp(modus, "gluehen") == 0;   // rc602
     static const bool nurKamera = std::strcmp(modus, "kamera") == 0;
     // Nur der Umriss der Auswahl (rc597).
     static const bool nurUmriss = std::strcmp(modus, "umriss") == 0;
     static const bool nurWeg = std::strcmp(modus, "wegpunkte") == 0;
     static const bool nurModell = std::strcmp(modus, "modell") == 0;
     static const bool nurAlleKarten = std::strcmp(modus, "allekarten") == 0;
+    static const bool nurKartenpruefung = std::strcmp(modus, "kartenpruefung") == 0;   // rc602
+    // rc602: die Funde der Kartenpruefung (Gegenstaende, Effektgluehen) - "kartenfunde".
+    static const bool nurGegenstaende = std::strcmp(modus, "gegenstaende") == 0 || std::strcmp(modus, "kartenfunde") == 0;
     static const bool nurAblauf = std::strcmp(modus, "ablauf") == 0;
     static const bool nurZeitleiste = std::strcmp(modus, "zeitleiste") == 0;
     static const bool nurFenster = std::strcmp(modus, "fenster") == 0;
@@ -23506,6 +24550,18 @@ void selbsttest() {
                 a.schritte = alleKartenSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
+            } else if (nurGegenstaende) {
+                // rc602: Gegenstaende der Karte (md3 und glm).
+                a.schritte = gegenstaendeModusSchritte();
+                for (Schritt& x : effektGluehenSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : festeModelleSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurKartenpruefung) {
+                // rc602: jede Karte gegen das Spiel (tools/kartenpruefung.py).
+                a.schritte = kartenPruefungSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
             } else if (nurKuerzel) {
                 a.schritte = aehnlichSchritte();
                 for (Schritt& x : wunschSchritte()) { a.schritte.push_back(std::move(x)); }
@@ -23547,9 +24603,19 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff || nurNpcKlasse || nurGluehen) {
                 a.schritte = karteSchritte();
-                if (nurRoff) {
+                if (nurNpcKlasse) {
+                    // rc602: nur laden, dann der Droide (npcKlasseSchritte).
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    for (Schritt& x : npcKlasseSchritte()) { a.schritte.push_back(std::move(x)); }
+                } else if (nurGluehen) {
+                    // rc602: nur laden, dann das Gluehen der Brush-Entities.
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    for (Schritt& x : gluehenMoverSchritte()) { a.schritte.push_back(std::move(x)); }
+                    for (Schritt& x : fxRunnerStartSchritte()) { a.schritte.push_back(std::move(x)); }
+                    for (Schritt& x : gluehenFigurSchritte()) { a.schritte.push_back(std::move(x)); }
+                } else if (nurRoff) {
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
                     for (Schritt& x : roffSchritte()) { a.schritte.push_back(std::move(x)); }
                 } else if (nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss) {
@@ -23590,6 +24656,17 @@ void selbsttest() {
                     for (Schritt& x : tonKarteSchritte()) { a.schritte.push_back(std::move(x)); }   // rc601 ton
                     // rc601 bewegung, teil 3: Tueren zur Zeit fuer die Wege.
                     for (Schritt& x : bewegungTeil3Schritte()) { a.schritte.push_back(std::move(x)); }
+                    // rc602: NPC-Klassen mit eigenem NPC_type (der Droide in md_am_sith).
+                    for (Schritt& x : npcKlasseSchritte()) { a.schritte.push_back(std::move(x)); }
+                    // rc602: Gluehen auf Brush-Entities/Kartenmodellen/Figuren und
+                    // der erste fx_runner-Durchgang - gleich nach dem Laden, bevor
+                    // die Kartenfunktionen Entities verschieben und aendern.
+                    {
+                        std::vector<Schritt> g = effekteKartenstartSchritte();
+                        const std::size_t an = std::min<std::size_t>(a.schritte.size(), 8);
+                        a.schritte.insert(a.schritte.begin() + static_cast<std::ptrdiff_t>(an),
+                                          std::make_move_iterator(g.begin()), std::make_move_iterator(g.end()));
+                    }
                 }
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;

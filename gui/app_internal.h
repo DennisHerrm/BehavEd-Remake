@@ -42,8 +42,10 @@
 #include "bhed/mission.h"
 #include "bhed/missionsgraph.h"
 #include "bhed/scene.h"
+#include "bhed/npcklasse.h"   // rc602
 #include "bhed/saberspuren.h"   // rc601 saber review: SpurPoly
 #include "bhed/kollision.h"     // rc601 integ: geladeneKollision
+#include "bhed/gegenstaende.h"  // rc602 kartenpruefung: Gegenstaende der Karte
 #include "bhed/timeline.h"
 #include "bhed/image.h"
 #include "bhed/gla.h"
@@ -414,6 +416,9 @@ struct App {
     // meiste Zeit still; jedes Bild neu zu rechnen kostet Strom und macht
     // den Luefter laut, ohne dass sich etwas bewegt.
     bool mapDirty = true;
+    // rc602: der Hinweis unter NPC_type im Entity-Inspektor, wie zuletzt
+    // gezeichnet (leer: keiner) - fuer den Selbsttest.
+    std::string entNpcHinweis;
     TextureSet textures;
     bool showEntities = true;
     // Himmelsflaechen umschliessen die Karte; ausgeblendet sieht man von
@@ -1094,6 +1099,17 @@ struct App {
     std::map<std::string, Md3Model> md3Files;          // Pfad -> Modell
     std::map<std::string, BspMesh> md3Meshes;          // "Pfad#Bild" -> Netz
     std::vector<MapModel> mapModels;
+    // rc602 kartenpruefung: Gegenstaende (item_*, weapon_*, ammo_*). Die mit
+    // .md3 stehen als MapModel in mapModels (gegenstand = true); die mit .glm
+    // zeichnet Ghoul2 starr mit G2_GenerateWorldMatrix(s.angles) - hier.
+    struct GegenstandGlm {
+        std::size_t entity = 0;
+        std::string pfad;
+        float welt[16]{};
+        float ort[3]{};
+        bool versteckt = false;   // nur Selbsttest
+    };
+    std::vector<GegenstandGlm> gegenstandGlm;
     // Je Kartenmodell die Figur der Szene, die es bewegt (move, rotate,
     // PLAY_ROFF, SET_INVISIBLE, remove) - oder -1. Nach jedem Szenenaufbau.
     std::vector<int> modellFigur;
@@ -1227,6 +1243,9 @@ struct App {
     // .sab-Datei - anders als bei Figuren, die immer unter
     // models/players/<name>/model.glm liegen.
     std::map<std::string, ActorAssets> hiltCache;
+    // rc602: Ghoul2-Modelle der Gegenstaende (ohne .skin: G2API_InitGhoul2Model
+    // ohne customSkin nimmt die Shadernamen aus dem .glm).
+    std::map<std::string, ActorAssets> gegenstandGlmCache;
     Timeline timeline;
     bool showTracks = true;
     // Klaenge beim Abspielen mitspielen. Bis wohin sie schon ausgeloest
@@ -2330,6 +2349,15 @@ std::vector<KameraSchluessel> kameraSchluessel(const Script& script);
 int schluesselFuerZeit(double ms);
 // Eine Karte ueber ihre Kennung aus den Archiven holen (Mission aus .pk3).
 bool loadMapFromArchive(const std::string& id);
+// rc602 kartenpruefung: der aufgestellte Gegenstand (item_*, weapon_*, ammo_*)
+// zu einer Entity - Ort nach dem Fallen, Modell; false = keiner (spawnt nicht,
+// wartet auf use, unsichtbar, im Festen entfernt). Fuer Pruefung und Selbsttest.
+bool gegenstandInstanz(std::size_t entity, float ort[3], std::string* modell, bool* glm);
+// Steht der Gegenstand im Spiel NICHT (wartet auf use, Schwierigkeit/
+// notsingle, ITMSF_INVISIBLE, im Festen entfernt)? Dann mit Grund.
+bool gegenstandNichtImSpiel(std::size_t entity, std::string* grund);
+// Selbsttest: einen Gegenstand verstecken (Vergleich mit/ohne).
+void gegenstandVerstecken(std::size_t entity, bool aus);
 // Die Bytes einer Karte ueber ihre Kennung: aus den Archiven, sonst ueber
 // kartenQuelle (neue Mission).
 bool kartenBytes(const std::string& id, std::string& out);

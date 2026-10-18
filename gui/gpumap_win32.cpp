@@ -185,6 +185,11 @@ bool g_umrissVersucht = false;
 bool g_verdunkeln = false;
 ID3D11PixelShader* g_verdunkelnPs = nullptr;
 int g_gluehenRauch = 0;
+int g_gluehenMover = 0;   // rc602: Aufrufe der Brush-Entities/Kartenmodelle im Gluehen
+// rc602: Leuchtstufen der Figuren im Gluehpuffer.
+bool g_figurGluehenAn = false;      // zeichneFigur schreibt mit hinein
+bool g_glowVollVorbelegt = false;   // Puffer in diesem Bild schon geloescht und belegt
+int g_figurGluehen = 0;             // Aufrufe in diesem Bild
 // --- Ein grosser Ring fuer die Stapelkonstanten (rc596) -------------------
 //
 // Bis rc595 wurde fuer jeden Stapel g_cbStapel mit WRITE_DISCARD neu
@@ -1533,6 +1538,18 @@ ID3D11ShaderResourceView* holeHimmel(const TextureSet* textures,
     return srv;
 }
 
+// rc602: Hat das Modell ueberhaupt etwas zu zeichnen? Ein Anbau ohne
+// sichtbare Flaeche (md_am_sith: ein Anbau einer der Kartenfiguren, seit die
+// Figuren vom Kartenstart dazukommen) zeichnet im Spiel einfach nichts - der
+// Schatten- und der Nebeldurchgang meldeten dafuer "Modell ohne sichtbare
+// Flaechen" als Fehler des ganzen Bildes.
+bool hatSichtbareFlaechen(const GlmModel& model) {
+    for (const GlmSurface& sf : model.surfaces) {
+        if (sf.isVisible(true) && !sf.indexes.empty()) { return true; }
+    }
+    return false;
+}
+
 // Die Ecken eines Modells hochladen - einmal je Modell.
 FigurPuffer* holeFigurPuffer(const GlmModel& model, std::string* fehler) {
     const std::uint64_t sig = figurSignatur(model);
@@ -2654,11 +2671,55 @@ int zeichneMover(const BspMesh& mesh, const TextureSet* textures,
 
 int gluehenRauchAufrufe() { return g_gluehenRauch; }
 
+// rc602 kartenpruefung: Effektteilchen im Gluehen (noch nicht - roter Test).
+const BspMesh* g_gluehEffekte = nullptr;
+int g_gluehenEffekte = 0;
+void gluehenEffekte(const BspMesh* effekte) { g_gluehEffekte = effekte; }
+// rc602 kartenpruefung: Leuchtklingen im Gluehen (roter Test: noch nicht).
+const std::vector<KlingenQuad>* g_gluehKlingen = nullptr;
+int g_gluehenKlingen = 0;
+void gluehenKlingen(const std::vector<KlingenQuad>* klingen) { g_gluehKlingen = klingen; }
+int gluehenKlingenAufrufe() { return g_gluehenKlingen; }
+int zeichneKlingenIn(const std::vector<KlingenQuad>& quads, const float* viewProj, std::string* fehler,
+                     ID3D11RenderTargetView* ziel);
+int gluehenEffektAufrufe() { return g_gluehenEffekte; }
+
 int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                    const BspGeometry* geo, const float* viewProj,
                    float zeitSekunden, int breite, int hoehe, bool weich,
                    std::string* fehler, const BspMesh* rauch) {
+    return zeichneGluehen(mesh, textures, geo, viewProj, zeitSekunden, breite, hoehe, weich, fehler, rauch,
+                          std::vector<GluehQuelle>{});
+}
+
+int gluehenMoverAufrufe() { return g_gluehenMover; }
+
+int gluehenFigurAufrufe() { return g_figurGluehen; }
+
+void gluehenFigurenBeginnen(bool an, int breite, int hoehe) {
+    g_figurGluehenAn = false;
+    g_glowVollVorbelegt = false;
+    g_figurGluehen = 0;
+    ID3D11DeviceContext* c = ctx();
+    if (!an || c == nullptr || g_zielRtv == nullptr || !bereiteGluehpuffer(breite, hoehe) ||
+        g_glowVollRtv == nullptr) {
+        return;
+    }
+    const float leer[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+    c->ClearRenderTargetView(g_glowVollRtv, leer);
+    g_figurGluehenAn = true;
+    g_glowVollVorbelegt = true;
+}
+
+void gluehenFigurenEnde() { g_figurGluehenAn = false; }
+
+int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
+                   const BspGeometry* geo, const float* viewProj,
+                   float zeitSekunden, int breite, int hoehe, bool weich,
+                   std::string* fehler, const BspMesh* rauch,
+                   const std::vector<GluehQuelle>& weitere) {
     g_gluehenRauch = 0;
+    g_gluehenMover = 0;
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (d == nullptr || c == nullptr || g_zielRtv == nullptr ||
@@ -2671,6 +2732,24 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     // (gpudraw.cpp), damit die Reihenfolge dieselbe bleibt.
     const std::vector<DrawCall>& alle = zeichenliste(mesh, textures, zeitSekunden);
     const std::vector<DrawCall> gluehend = nurGluehende(alle);
+    // rc602: die leuchtenden Stapel der Brush-Entities und Kartenmodelle.
+    // Nur Netze, deren Puffer zeichneMover in diesem Bild angelegt hat.
+    struct WeitereGluehend {
+        const GluehQuelle* quelle;
+        Netzpuffer* np;
+        std::vector<DrawCall> calls;
+    };
+    std::vector<WeitereGluehend> weitereGluehend;
+    for (const GluehQuelle& q : weitere) {
+        if (q.mesh == nullptr || q.mesh->indexes.empty()) { continue; }
+        const auto it = g_moverNetze.find(q.mesh);
+        if (it == g_moverNetze.end() || it->second.vb == nullptr || it->second.ib == nullptr ||
+            it->second.schrittweite == 0) {
+            continue;
+        }
+        std::vector<DrawCall> calls = nurGluehende(zeichenliste(*q.mesh, textures, zeitSekunden));
+        if (!calls.empty()) { weitereGluehend.push_back({&q, &it->second, std::move(calls)}); }
+    }
     // --- Die Puffer HIER binden ---------------------------------------
     //
     // `zeichneAufrufe` bindet sie nicht selbst; das tat bisher allein
@@ -2685,7 +2764,29 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     //
     // Die Reihenfolge im Bild ist Karte, Effekte, Mover, Figuren, Gluehen -
     // die Figuren kommen also unmittelbar davor, jedes Mal.
-    if (gluehend.empty()) {
+    // rc602: was die Figuren schon in den Puffer geschrieben haben.
+    const bool vorbelegt = g_glowVollVorbelegt && g_glowVollRtv != nullptr;
+    const int figurAufrufe = vorbelegt ? g_figurGluehen : 0;
+    g_glowVollVorbelegt = false;
+    g_figurGluehenAn = false;
+    // rc602 kartenpruefung: die leuchtenden Effektteilchen (Durchgang 1c).
+    std::vector<DrawCall> effektGlueh;
+    if (g_gluehEffekte != nullptr && !g_gluehEffekte->indexes.empty()) {
+        for (const DrawCall& call : zeichenliste(*g_gluehEffekte, textures, zeitSekunden)) {
+            if ((call.state.features & kGlow) != 0U) { effektGlueh.push_back(call); }
+        }
+    }
+    g_gluehenEffekte = 0;
+    // rc602 kartenpruefung: die Leuchtklingen (Durchgang 1d).
+    std::vector<KlingenQuad> klingenGlueh;
+    if (g_gluehKlingen != nullptr) {
+        for (const KlingenQuad& q : *g_gluehKlingen) {
+            if (q.gluehen) { klingenGlueh.push_back(q); }
+        }
+    }
+    g_gluehenKlingen = 0;
+    if (gluehend.empty() && weitereGluehend.empty() && figurAufrufe == 0 && effektGlueh.empty() &&
+        klingenGlueh.empty()) {
         // Kein Fehler: viele Karten haben keine leuchtenden Flaechen.
         return 0;
     }
@@ -2718,7 +2819,9 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     // Groesse gezeichnet und danach verkleinert, wie beim Rasterer.
     const float leer[4] = {0.0F, 0.0F, 0.0F, 1.0F};
     c->OMSetRenderTargets(1, &g_glowVollRtv, g_tiefeDsv);
-    c->ClearRenderTargetView(g_glowVollRtv, leer);
+    if (!vorbelegt) {
+        c->ClearRenderTargetView(g_glowVollRtv, leer);
+    }
     D3D11_VIEWPORT vp{};
     vp.Width = static_cast<float>(g_zielW);
     vp.Height = static_cast<float>(g_zielH);
@@ -2727,7 +2830,7 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     // Die Puffer der KARTE binden, bevor Kartenaufrufe abgesetzt werden.
     // Ohne diese drei Zeilen galt, was der letzte Zeichner gebunden hatte -
     // bei der ueblichen Reihenfolge also die Figur davor.
-    {
+    if (!gluehend.empty()) {
         setzeSchritt("Gluehen: Puffer binden");
         Netzpuffer& np = g_netz[0];
         if (np.vb == nullptr || np.ib == nullptr || np.schrittweite == 0) {
@@ -2748,9 +2851,74 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
     // klemmende, und gluehende Laufschriften verschmierten am Rand
     // (Code-Pruefung rc592).
     c->PSSetSamplers(0, 1, &g_sampler);
-    const int n = zeichneAufrufe(gluehend, mesh, textures, geo, zeitSekunden,
-                                 fehler);
-    if (n == 0) {
+    int n = gluehend.empty() ? 0 : zeichneAufrufe(gluehend, mesh, textures, geo, zeitSekunden, fehler);
+    n += figurAufrufe;
+    // --- Durchgang 1a (rc602): die Brush-Entities und Kartenmodelle --------
+    //
+    // Dieselbe Tiefe, derselbe Puffer - im Spiel landen sie in derselben
+    // Liste wie die Welt (RB_RenderDrawSurfList). Je Quelle die Kamera mal
+    // ihre Stellung in den Bildpuffer, wie zeichneMover es tut; danach die
+    // reine Kamera zurueck, falls der Rauch noch kommt.
+    if (!weitereGluehend.empty()) {
+        setzeSchritt("Gluehen: Mover");
+        for (const WeitereGluehend& wg : weitereGluehend) {
+            if (g_bildDatenDa && g_cbBild != nullptr && viewProj != nullptr) {
+                float daten[sizeof(g_bildDaten) / sizeof(float)];
+                std::memcpy(daten, g_bildDaten, sizeof(daten));
+                multipliziere(viewProj, wg.quelle->welt, daten);
+                D3D11_MAPPED_SUBRESOURCE mb{};
+                if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
+                    std::memcpy(mb.pData, daten, sizeof(daten));
+                    c->Unmap(g_cbBild, 0);
+                }
+            }
+            const UINT schritt = wg.np->schrittweite;
+            const UINT versatz = 0;
+            c->IASetVertexBuffers(0, 1, &wg.np->vb, &schritt, &versatz);
+            c->IASetIndexBuffer(wg.np->ib, DXGI_FORMAT_R32_UINT, 0);
+            c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            std::string fm;
+            const int nm = zeichneAufrufe(wg.calls, *wg.quelle->mesh, textures, geo, zeitSekunden, &fm);
+            g_gluehenMover += nm;
+            n += nm;
+            if (fehler != nullptr && fehler->empty()) { *fehler = fm; }
+        }
+        if (g_bildDatenDa && g_cbBild != nullptr) {
+            D3D11_MAPPED_SUBRESOURCE mb{};
+            if (SUCCEEDED(c->Map(g_cbBild, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
+                std::memcpy(mb.pData, g_bildDaten, sizeof(g_bildDaten));
+                c->Unmap(g_cbBild, 0);
+            }
+        }
+    }
+    // --- Durchgang 1c (rc602 kartenpruefung): Effektteilchen mit glow ------
+    //
+    // Feuer (gfx/effects/fire2-4), Funken (gfx/misc/spark) und Co. tragen
+    // "glow" in ihrer Stufe. Ihre Polygone landen im Spiel wie jede Flaeche in
+    // der Liste, die RB_DrawSurfs mit g_bRenderGlowingObjects noch einmal
+    // zeichnet (tr_backend.cpp) - mit der Mischart der Stufe, der Tiefe der
+    // Szene, ohne Tiefe zu schreiben. Vorher gingen nur Welt, Mover und
+    // Figuren ins Gluehen. Das Effektnetz liegt (wie beim Rauch unten) in
+    // g_netz[1], in Weltkoordinaten - die reine Kamera gilt.
+    if (!effektGlueh.empty()) {
+        Netzpuffer& np = g_netz[1];
+        if (np.vb != nullptr && np.ib != nullptr && np.schrittweite != 0) {
+            const std::vector<DrawCall>& glueh = effektGlueh;
+            {
+                setzeSchritt("Gluehen: Effekte");
+                const UINT schritt = np.schrittweite;
+                const UINT versatz = 0;
+                c->IASetVertexBuffers(0, 1, &np.vb, &schritt, &versatz);
+                c->IASetIndexBuffer(np.ib, DXGI_FORMAT_R32_UINT, 0);
+                c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                std::string ef;
+                g_gluehenEffekte = zeichneAufrufe(glueh, *g_gluehEffekte, textures, geo, zeitSekunden, &ef);
+                n += g_gluehenEffekte;
+                if (fehler != nullptr && fehler->empty()) { *fehler = ef; }
+            }
+        }
+    }
+    if (n == 0 && klingenGlueh.empty()) {
         return 0;
     }
     // --- Durchgang 1b: Rauch davor dunkelt das Gluehen ab (rc597) ---------
@@ -2783,6 +2951,23 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
         }
     }
 
+    // --- Durchgang 1d (rc602 kartenpruefung): die Leuchtklingen -----------
+    //
+    // Die Leuchtklinge eines Lichtschwerts (gfx/effects/sabers/<farbe>_glow,
+    // ebenso sabers_ep3/..., sabers_tfa/... der Mod) traegt in ihrer Stufe
+    // "glow" - im Spiel geht sie wie jede solche Flaeche in den Gluehpuffer
+    // (RB_DrawSurfs mit g_bRenderGlowingObjects): der Schein um die Klinge.
+    // Additiv, mit der Tiefe der Szene, ohne sie zu schreiben - wie
+    // zeichneKlingen, nur in den Gluehpuffer.
+    if (!klingenGlueh.empty()) {
+        std::string kf;
+        g_gluehenKlingen = zeichneKlingenIn(klingenGlueh, viewProj, &kf, g_glowVollRtv);
+        n += g_gluehenKlingen;
+        if (fehler != nullptr && fehler->empty()) { *fehler = kf; }
+    }
+    if (n == 0) {
+        return 0;
+    }
     // --- Durchgang 2: verkleinern und fuenfmal weichzeichnen --------------
     //
     // Fuenf Durchgaenge, Abstand waechst um 0,8 und wird gerundet,
@@ -3538,6 +3723,90 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
         c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
         ++abgesetzt;
     }
+    // --- rc602: die Leuchtstufen (ModelTextures::gluehStufen) --------------
+    //
+    // Im Spiel zeichnet RB_IterateStagesGeneric die Stufen des Shaders
+    // nacheinander, die Leuchtstufe also additiv ueber die Grundstufe - und
+    // RB_DrawSurfs zeichnet sie mit g_bRenderGlowingObjects noch einmal in
+    // den Gluehpuffer. Erst die mit rgbGen lightingDiffuse (beleuchtet wie
+    // die Grundstufe), dann die ohne rgbGen (identityLighting, gLichtRichtung.w
+    // = 2 im Figurenpuffer).
+    if (textures != nullptr && !textures->gluehStufen.empty()) {
+        struct Leucht {
+            const FigurTeil* teil;
+            const TextureSet::Tex* tex;
+        };
+        std::vector<Leucht> beleuchtet;
+        std::vector<Leucht> unbeleuchtet;
+        for (const FigurTeil& t : fp->teile) {
+            if ((t.kappe && !kappen) || t.surface >= textures->gluehStufen.size()) {
+                continue;
+            }
+            for (const TextureSet::Tex& z : textures->gluehStufen[t.surface]) {
+                (z.rgbVertex ? beleuchtet : unbeleuchtet).push_back({&t, &z});
+            }
+        }
+        auto zeichne = [&](const std::vector<Leucht>& liste) {
+            for (const Leucht& l : liste) {
+                ID3D11ShaderResourceView* bild = holeTexBild(l.tex);
+                if (bild == nullptr) {
+                    continue;
+                }
+                const PipelineState z = pipelineFor(batchStateFor(*l.tex, 0.0F), false, false, false);
+                ID3D11BlendState* bs = holeBlend(z.blend, z.srcFactor, z.dstFactor);
+                if (bs != nullptr) {
+                    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+                    c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU);
+                }
+                if (tiefeAn()) {
+                    ID3D11DepthStencilState* ds = holeTiefe(z);
+                    if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
+                }
+                if (keulenAn()) {
+                    ID3D11RasterizerState* rs = holeRaster(z.features);
+                    if (rs != nullptr) { c->RSSetState(rs); }
+                }
+                umrissUeberschreiben(c);
+                ID3D11ShaderResourceView* srvs[3] = {bild, nullptr, nullptr};
+                c->PSSetShaderResources(0, 3, srvs);
+                c->DrawIndexed(l.teil->numIndexes, l.teil->firstIndex, 0);
+                ++abgesetzt;
+            }
+        };
+        // Ins Bild und - im Hauptbild mit Gluehen - in den Gluehpuffer.
+        auto beide = [&](const std::vector<Leucht>& liste) {
+            if (liste.empty()) {
+                return;
+            }
+            zeichne(liste);
+            ID3D11RenderTargetView* rtv = nullptr;
+            ID3D11DepthStencilView* dsv = nullptr;
+            c->OMGetRenderTargets(1, &rtv, &dsv);
+            if (g_figurGluehenAn && !ersatzBild && rtv == g_zielRtv && g_glowVollRtv != nullptr) {
+                c->OMSetRenderTargets(1, &g_glowVollRtv, dsv);
+                const int vorher = abgesetzt;
+                zeichne(liste);
+                g_figurGluehen += abgesetzt - vorher;
+                c->OMSetRenderTargets(1, &rtv, dsv);
+            }
+            if (rtv != nullptr) { rtv->Release(); }
+            if (dsv != nullptr) { dsv->Release(); }
+        };
+        beide(beleuchtet);
+        if (!unbeleuchtet.empty()) {
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (SUCCEEDED(c->Map(g_cbFigur, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+                auto* f = static_cast<float*>(m.pData);
+                packeKnochen(knochen, f);
+                std::memcpy(f + static_cast<std::size_t>(kMaxKnochen) * 12U, welt, 16U * sizeof(float));
+                float* l = f + static_cast<std::size_t>(kMaxKnochen) * 12U + 16U;
+                for (int k = 0; k < 12; ++k) { l[k] = 0.0F; }
+                l[11] = 2.0F;
+                c->Unmap(g_cbFigur, 0);
+                beide(unbeleuchtet);
+            }
+        }
+    }
     return abgesetzt;
 }
 
@@ -3756,6 +4025,9 @@ int zeichneFigurSchatten(const std::vector<FigurSchatten>& figuren, int art,
     for (const FigurSchatten& f : figuren) {
         if (f.model == nullptr || !f.schatten) {
             continue;
+        }
+        if (!hatSichtbareFlaechen(*f.model)) {
+            continue;   // rc602: nichts zu zeichnen ist kein Fehler
         }
         FigurPuffer* fp = holeFigurPuffer(*f.model, fehler);
         if (fp == nullptr) {
@@ -4138,6 +4410,9 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
             g_cbFigur == nullptr) {
             continue;
         }
+        if (!hatSichtbareFlaechen(*f.model)) {
+            continue;   // rc602: nichts zu zeichnen ist kein Fehler
+        }
         FigurPuffer* fp = holeFigurPuffer(*f.model, fehler);
         if (fp == nullptr) {
             continue;
@@ -4262,8 +4537,15 @@ ShaderPaar* holeKlingeShader(std::string* fehler) {
     return &g_klingeShader;
 }
 
+// rc602 kartenpruefung: das Ziel waehlbar (Bild oder Gluehpuffer).
+int zeichneKlingenIn(const std::vector<KlingenQuad>& quads, const float* viewProj,
+                     std::string* fehler, ID3D11RenderTargetView* ziel);
 int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
                    std::string* fehler) {
+    return zeichneKlingenIn(quads, viewProj, fehler, g_zielRtv);
+}
+int zeichneKlingenIn(const std::vector<KlingenQuad>& quads, const float* viewProj,
+                     std::string* fehler, ID3D11RenderTargetView* ziel) {
     ID3D11Device* d = dev();
     ID3D11DeviceContext* c = ctx();
     if (quads.empty()) {
@@ -4337,7 +4619,7 @@ int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
             c->Unmap(g_cbBild, 0);
         }
     }
-    c->OMSetRenderTargets(1, &g_zielRtv, g_tiefeDsv);
+    c->OMSetRenderTargets(1, &ziel, g_tiefeDsv);
     D3D11_VIEWPORT vp{};
     vp.Width = static_cast<float>(g_zielW);
     vp.Height = static_cast<float>(g_zielH);
@@ -5875,6 +6157,20 @@ int gluehenRauchAufrufe() { return 0; }
 int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
                    const float*, float, int, int, bool,
                    std::string* fehler, const BspMesh*) {
+    if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
+    return 0;
+}
+int gluehenMoverAufrufe() { return 0; }
+void gluehenEffekte(const BspMesh*) {}
+int gluehenEffektAufrufe() { return 0; }
+void gluehenKlingen(const std::vector<KlingenQuad>*) {}
+int gluehenKlingenAufrufe() { return 0; }
+int gluehenFigurAufrufe() { return 0; }
+void gluehenFigurenBeginnen(bool, int, int) {}
+void gluehenFigurenEnde() {}
+int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
+                   const float*, float, int, int, bool,
+                   std::string* fehler, const BspMesh*, const std::vector<GluehQuelle>&) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }

@@ -3084,7 +3084,18 @@ void drawEntityInspector(float hoehe) {
         if (g_app->entRawAnsicht) { knoepfe += ImGui::GetFrameHeight() + st.ItemSpacing.x; }
         ImGui::SetNextItemWidth(std::max(ImGui::GetContentRegionAvail().x - knoepfe, ImGui::GetFontSize() * 3.0F));
         std::string neu;
-        if (textFeld("##wert", wert != nullptr ? *wert : std::string(), neu)) {
+        // rc602: beim NPC-Typ, was die Spawnfunktion der Klasse daraus macht
+        // (bhed/npcklasse.h) - leer steht dort "r2d2 (aus dem Klassennamen)".
+        const NpcKlassenTyp klassenTyp = npcTyp ? npcKlassenTyp(e) : NpcKlassenTyp{};
+        const bool schluesselLeer = wert == nullptr || wert->empty();
+        std::string platzhalter;
+        if (npcTyp && schluesselLeer && klassenTyp.spawnt && klassenTyp.ausKlasse && !klassenTyp.typ.empty()) {
+            char z[160];
+            std::snprintf(z, sizeof(z), tr(Str::EntNpcTypeFromClass), klassenTyp.typ.c_str());
+            platzhalter = z;
+        }
+        if (textFeld("##wert", wert != nullptr ? *wert : std::string(), neu,
+                     platzhalter.empty() ? nullptr : platzhalter.c_str())) {
             entityKeySetzen(i, name, neu);
         }
         if (skript) {
@@ -3123,10 +3134,45 @@ void drawEntityInspector(float hoehe) {
             if (ImGui::SmallButton(tr(Str::EntRemoveKey))) { entityKeySetzen(i, name, std::string()); }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::EntRemoveKeyHint)); }
         }
-        if (npcTyp && (wert == nullptr || wert->empty())) {
-            ImGui::PushTextWrapPos(0.0F);
-            ImGui::TextColored(ImVec4{1.0F, 0.75F, 0.3F, 1.0F}, "%s", tr(Str::EntNpcTypeMissing));
-            ImGui::PopTextWrapPos();
+        if (npcTyp) {
+            // rc602: die Warnung nur, wenn im Spiel wirklich niemand erscheint.
+            const ImVec4 gelb{1.0F, 0.75F, 0.3F, 1.0F};
+            char z[640];
+            z[0] = '\0';
+            bool warnung = false;
+            if (!klassenTyp.bekannt) {
+                std::snprintf(z, sizeof(z), "%s", tr(Str::EntNpcClassUnknown));
+                warnung = true;
+            } else if (!klassenTyp.spawnt) {
+                std::snprintf(z, sizeof(z), "%s", tr(Str::EntNpcClassNoSpawn));
+                warnung = true;
+            } else if (klassenTyp.typ.empty()) {
+                std::snprintf(z, sizeof(z), "%s", tr(Str::EntNpcTypeMissing));
+                warnung = true;
+            } else if (!schluesselLeer && klassenTyp.ausKlasse) {
+                std::snprintf(z, sizeof(z), tr(Str::EntNpcTypeOverridden), klassenTyp.typ.c_str());
+                warnung = true;
+            } else if (klassenTyp.zufall.size() > 1) {
+                std::string liste;
+                for (std::size_t k = 0; k < klassenTyp.zufall.size(); ++k) {
+                    if (k == 6) {
+                        liste += ", ... (" + std::to_string(klassenTyp.zufall.size()) + ")";
+                        break;
+                    }
+                    liste += (k == 0 ? "" : ", ") + klassenTyp.zufall[k];
+                }
+                std::snprintf(z, sizeof(z), tr(Str::EntNpcTypeRandom), liste.c_str(), klassenTyp.typ.c_str());
+            }
+            g_app->entNpcHinweis = z;   // fuer den Selbsttest
+            if (z[0] != '\0') {
+                ImGui::PushTextWrapPos(0.0F);
+                if (warnung) {
+                    ImGui::TextColored(gelb, "%s", z);
+                } else {
+                    ImGui::TextDisabled("%s", z);
+                }
+                ImGui::PopTextWrapPos();
+            }
         }
         ImGui::PopID();
     };

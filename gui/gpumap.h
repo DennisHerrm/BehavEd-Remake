@@ -152,6 +152,9 @@ struct KlingenQuad {
     // und mit `staerke` ausgeblendet - wie die CTrail-Baender der Engine.
     bool spur = false;
     float staerke = 1.0F;
+    // rc602 kartenpruefung: der Shader traegt eine glow-Stufe (die Leucht-
+    // klinge gfx/effects/sabers/<farbe>_glow) - sie geht ins Gluehen.
+    bool gluehen = false;
 };
 int zeichneKlingen(const std::vector<KlingenQuad>& quads, const float* viewProj,
                    std::string* fehler);
@@ -187,6 +190,45 @@ int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
                    std::string* fehler, const BspMesh* rauch = nullptr);
 // Wie viele Rauchaufrufe das letzte Gluehen abgedunkelt haben (Selbsttest).
 int gluehenRauchAufrufe();
+
+// --- rc602: das Gluehen der Brush-Entities und Kartenmodelle ---------------
+//
+// rd-vanilla rendert fuer das Gluehen JEDE Flaeche der Szene, deren Shader
+// eine glow-Stufe hat, ein zweites Mal (tr_backend.cpp, RB_DrawSurfs:
+// g_bRenderGlowingObjects -> RB_RenderDrawSurfList) - nicht nur die Welt,
+// auch Untermodelle (func_wall, func_static, Tueren ...) und md3-Modelle.
+// `mesh` muss das Netz sein, das zeichneMover in diesem Bild gezeichnet hat
+// (dessen Puffer werden wiederverwendet), `welt` dieselbe Stellung.
+struct GluehQuelle {
+    const BspMesh* mesh = nullptr;
+    float welt[16]{};
+};
+int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
+                   const BspGeometry* geo, const float* viewProj,
+                   float zeitSekunden, int breite, int hoehe, bool weich,
+                   std::string* fehler, const BspMesh* rauch,
+                   const std::vector<GluehQuelle>& weitere);
+// Wie viele Aufrufe der weiteren Quellen das letzte Gluehen gezeichnet hat.
+int gluehenMoverAufrufe();
+// rc602 kartenpruefung: Effektteilchen mit glow-Stufe gehen ins Gluehen.
+// Vor zeichneGluehen das Effektnetz dieses Bildes nennen (nullptr = keins);
+// gluehenEffektAufrufe zaehlt, was davon gezeichnet wurde (Selbsttest).
+void gluehenEffekte(const BspMesh* effekte);
+int gluehenEffektAufrufe();
+// rc602 kartenpruefung: die Leuchtklingen (KlingenQuad::gluehen) gehen ins
+// Gluehen. Vor zeichneGluehen die Klingen dieses Bildes nennen (nullptr =
+// keine); gluehenKlingenAufrufe zaehlt, wie viele gezeichnet wurden.
+void gluehenKlingen(const std::vector<KlingenQuad>* klingen);
+int gluehenKlingenAufrufe();
+// rc602: Figuren geben ihre Leuchtstufen (ModelTextures::gluehStufen) dem
+// Gluehen. Vor den Figuren des Hauptbildes `gluehenFigurenBeginnen(true)`:
+// legt den Gluehpuffer an und loescht ihn; zeichneFigur schreibt dann jede
+// Leuchtstufe auch dort hinein (mit der Tiefe der Szene), und zeichneGluehen
+// loescht ihn nicht noch einmal. Nach den Figuren `gluehenFigurenEnde()`.
+// Mit `false` (Gluehen aus, Nebenbild, Spiegel) schreiben Figuren nur ins Bild.
+void gluehenFigurenBeginnen(bool an, int breite, int hoehe);
+void gluehenFigurenEnde();
+int gluehenFigurAufrufe();
 
 // --- Dynamisches Licht und Blobschatten auf der Karte ----------------------
 //

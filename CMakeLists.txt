@@ -91,6 +91,12 @@ add_library(bhed_core STATIC
   src/gla.cpp
   src/camtrack.cpp
   src/scene.cpp
+  # rc602: SP_NPC_* -> NPC_type (beide Regelwerke), siehe bhed/npcklasse.h.
+  src/npcklasse.cpp
+  # rc602: Abgleich aller Karten mit dem Spiel (Selbsttest kartenpruefung).
+  src/kartenpruefung.cpp
+  # rc602: Gegenstaende der Karte (items.dat, G_CallSpawn, FinishSpawningItem).
+  src/gegenstaende.cpp
   # Waffe und Lichtschwerter einer Figur ueber die Zeit (SET_WEAPON,
   # SET_SABER*, Handmodelle). Siehe den Kopf der Datei.
   src/ausruestung.cpp
@@ -412,7 +418,7 @@ if(BEHAVED_TESTS)
   # Die Proben des GPU-Wegs und des Gluehens. Sie lagen in tests/, wurden
   # aber nicht gebaut - Aenderungen an Konstantenlagen, Shadertext und
   # Zeichenliste liefen damit ungeprueft durch (rc568, gDeformSpread).
-  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren)
+  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren npcklasse kartenpruefung)
     add_executable(${t}_probe tests/${t}.cpp)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)

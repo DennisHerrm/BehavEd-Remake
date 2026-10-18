@@ -426,6 +426,13 @@ void drawVollblende(MapImage& out, const float farbe[4]);
 // Texturen je Flaeche des Modells. Der Index ist die Flaechennummer.
 struct ModelTextures {
     std::vector<TextureSet::Tex> bySurface;
+    // rc602: die glow-Stufen des gleichnamigen Shaderskripts je Flaeche
+    // (Index wie bySurface, leer = keine). R_FindShader nimmt fuer einen
+    // Hautnamen ZUERST das Skript; dessen Leuchtstufe ("blendFunc GL_ONE
+    // GL_ONE", "glow") liegt ueber der Grundstufe und geht ins Gluehen -
+    // die Augen der MagnaGuards, die Lichter der Superkampfdroiden.
+    // Glanz- (lightingSpecular) und Umgebungsstufen sind nicht dabei.
+    std::vector<std::vector<TextureSet::Tex>> gluehStufen;
     int found = 0;
     int missing = 0;
 };

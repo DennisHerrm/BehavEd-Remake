@@ -6,6 +6,56 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc602 2026-10-18
+[en]
+- NPC classes set their own NPC_type like the game (all SP_NPC_* spawn functions of OpenJK and Movie Duels, including random and spawnflag choices); NPCs that spawn at map start appear in the preview even when no script names them - e.g. the R2 droid in md_am_sith. The inspector shows the effective type.
+- Figures outside the view's PVS are not drawn (like the game's snapshot) - faster with many figures.
+- Glow now also lights brush entities and map models (holograms, force fields, light strips) and the glowing parts of figures (droid lamps, MagnaGuard eyes), like r_DynamicGlow in the game.
+- Figures draw the glow stages of their shader (the shader script wins over the image of the same name, as in the game).
+- fx_runner effects start 600 ms after the map loads, like the game (was 200 ms).
+- New map audit (self-test mode kartenpruefung, tools/kartenpruefung.py): opens every map of the game folders and lists what the game shows that the preview does not - entities, NPC models, effects, sounds, shader features - plus load and render errors.
+- Weapons, medpacks, shields and ammo lying in the map are drawn where the game drops them (items.dat, FinishSpawningItem); items with a targetname appear only when used.
+- Floor charging stations, security panels and wall cameras appear with the models the game gives them.
+- Effects with a glow stage (fire, sparks) and the glow sprite of lightsaber blades glow like in the game.
+- Fixed: opening duel_jt_outside after another map crashed (waypoint graph with more than 1023 points).
+- Fixed: weapon models whose shader names use backslashes were invisible.
+[de]
+- NPC-Klassen setzen ihren NPC_type selbst wie im Spiel (alle SP_NPC_*-Spawnfunktionen von OpenJK und Movie Duels, auch Zufalls- und spawnflags-Wahlen); NPCs, die beim Kartenstart erscheinen, stehen in der Vorschau, auch wenn kein Skript sie nennt - etwa der R2-Droide in md_am_sith. Der Inspektor zeigt den wirksamen Typ.
+- Figuren ausserhalb des PVS der Ansicht werden nicht gezeichnet (wie der Snapshot im Spiel) - schneller bei vielen Figuren.
+- Das Gluehen erfasst jetzt auch Brush-Entities und Kartenmodelle (Hologramme, Kraftfelder, Lichtleisten) und die leuchtenden Teile der Figuren (Droidenlampen, Augen der MagnaGuards), wie r_DynamicGlow im Spiel.
+- Figuren zeichnen die Leuchtstufen ihres Shaders (das Shaderskript geht vor dem gleichnamigen Bild, wie im Spiel).
+- fx_runner-Effekte beginnen 600 ms nach dem Laden der Karte, wie im Spiel (vorher 200 ms).
+- Neue Kartenpruefung (Selbsttest-Modus kartenpruefung, tools/kartenpruefung.py): oeffnet jede Karte der Spielordner und listet, was das Spiel zeigt und die Vorschau nicht - Entities, NPC-Modelle, Effekte, Klaenge, Shader-Merkmale - dazu Lade- und Bildfehler.
+- Waffen, Medipacks, Schilde und Munition in der Karte werden dort gezeichnet, wo das Spiel sie fallen laesst (items.dat, FinishSpawningItem); Gegenstaende mit targetname erscheinen erst, wenn sie benutzt werden.
+- Ladestationen, Sicherheitspaneele und Wandkameras stehen mit den Modellen, die das Spiel ihnen gibt.
+- Effekte mit glow-Stufe (Feuer, Funken) und der Schein der Lichtschwertklingen gluehen wie im Spiel.
+- Behoben: duel_jt_outside nach einer anderen Karte zu oeffnen stuerzte ab (Wegnetz mit mehr als 1023 Punkten).
+- Behoben: Waffenmodelle mit Rueckwaertsstrichen in den Shadernamen waren unsichtbar.
+[zh]
+- NPC 类别像游戏中一样自行设定 NPC_type(OpenJK 与 Movie Duels 的全部 SP_NPC_* 生成函数,包括随机与 spawnflags 选择);地图开始时出现的 NPC 即使没有脚本提到也会显示在预览中——例如 md_am_sith 中的 R2 机器人。检查器显示实际生效的类型。
+- 不在视图 PVS 内的角色不再绘制(与游戏快照相同)——角色多时更快。
+- 辉光现在也作用于笔刷实体和地图模型(全息影像、力场、灯带)以及角色的发光部位(机器人的灯、MagnaGuard 的眼睛),与游戏中的 r_DynamicGlow 一致。
+- 角色会绘制其着色器的发光阶段(与游戏一样,着色器脚本优先于同名图像)。
+- fx_runner 特效在地图加载 600 毫秒后开始,与游戏一致(之前为 200 毫秒)。
+- 新的地图检查(自检模式 kartenpruefung,tools/kartenpruefung.py):打开游戏文件夹中的每张地图,列出游戏会显示而预览未显示的内容——实体、NPC 模型、特效、声音、着色器特性——以及加载和渲染错误。
+- 地图中的武器、医疗包、护盾和弹药会绘制在游戏让它们落下的位置(items.dat、FinishSpawningItem);带 targetname 的物品要在被使用后才出现。
+- 充能站、安全面板和墙上摄像机使用游戏赋予它们的模型显示。
+- 带辉光阶段的特效(火焰、火花)以及光剑剑刃的光晕与游戏一样发光。
+- 已修复:在打开其他地图后再打开 duel_jt_outside 会崩溃(路径点网络超过 1023 个点)。
+- 已修复:着色器名称中使用反斜杠的武器模型不可见。
+[ja]
+- NPC クラスはゲームと同じく自分の NPC_type を設定します(OpenJK と Movie Duels のすべての SP_NPC_* 生成関数。ランダムや spawnflags による選択も含む)。マップ開始時に現れる NPC は、スクリプトが名前を挙げていなくてもプレビューに表示されます(例: md_am_sith の R2 ドロイド)。インスペクターは実際に有効なタイプを表示します。
+- ビューの PVS の外にあるキャラクターは描画しません(ゲームのスナップショットと同じ)。キャラクターが多いときに速くなります。
+- グローがブラシエンティティとマップモデル(ホログラム、フォースフィールド、ライトの帯)、およびキャラクターの発光部分(ドロイドのランプ、マグナガードの目)にもかかるようになりました。ゲームの r_DynamicGlow と同じです。
+- キャラクターはシェーダーの発光ステージを描画します(ゲームと同じく、同名の画像よりシェーダースクリプトが優先されます)。
+- fx_runner のエフェクトはゲームと同じくマップ読み込みの 600 ms 後に始まります(以前は 200 ms)。
+- 新しいマップ検査(セルフテストモード kartenpruefung、tools/kartenpruefung.py):ゲームフォルダーのすべてのマップを開き、ゲームでは表示されるのにプレビューに出ないもの(エンティティ、NPC モデル、エフェクト、サウンド、シェーダー機能)と、読み込み・描画エラーを一覧にします。
+- マップに置かれた武器、メディパック、シールド、弾薬は、ゲームが落とす位置に描画されます(items.dat、FinishSpawningItem)。targetname のあるアイテムは使われたときに現れます。
+- 充電ステーション、セキュリティパネル、壁のカメラはゲームが与えるモデルで表示されます。
+- グローステージを持つエフェクト(炎、火花)とライトセーバーの刃の光は、ゲームと同じく発光します。
+- 修正:別のマップの後に duel_jt_outside を開くとクラッシュしていた問題(1023 点を超えるウェイポイントネットワーク)。
+- 修正:シェーダー名にバックスラッシュを使う武器モデルが表示されなかった問題。
+
 ## rc601 2026-10-18
 [en]
 - Game rules: the cutscene preview now follows OpenJK or Movie Duels - chosen in Preferences → Cutscene preview (Automatic: Movie Duels when a Movie Duels folder is among the game folders, otherwise OpenJK). It switches NPC turn speeds per difficulty, the default difficulty, the NPC steering rate (OpenJK 100 ms), lightsaber clash rules, cg_fovAspectAdjust, the default game window and ROFF sounds on figures. The status list shows the rule set at map load.
