@@ -31,6 +31,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -172,6 +173,70 @@ struct Raumlaut {
 [[nodiscard]] Raumlaut raumlaut(const float quelle[3], const float hoerer[3],
                                 const float hoererRechts[3], Kanal k);
 
+// --- rc601 ton: was die Engine um raumlaut herum tut ----------------------
+//
+// Gemeldet (Tester, Movie Duels): "You can hear everything on the map,
+// including all the invisible NPCs sabers". raumlaut selbst stimmte; falsch
+// waren der Hoerer, das Einfrieren beim Start, die Mischpegel und das
+// Zusammenlegen gleicher Schleifen. Die Bausteine dafuer stehen hier, damit
+// sie sich ohne Tongeraet pruefen lassen (tests/soundtest.cpp).
+
+// Der Rechtsvektor der Kamera MIT Roll, wie AngleVectors (shared/qcommon/
+// q_math.c:1291 in Movie Duels, :1314 in OpenJK):
+//     right = (-sr*sp*cy + cr*sy, -sr*sp*sy - cr*cy, -sr*cp)
+// Die Engine hoert mit listener_axis[1] = -right (AnglesToAxis, q_math.c:997 MD,
+// aus cg.refdef.viewaxis, cg_view.cpp:3307 MD); raumlaut erwartet den
+// Rechtsvektor selbst. Vorher kam er nur aus der Gier - eine gerollte
+// Skriptkamera vertauschte dann die Ohren nicht.
+void rechtsAusWinkeln(const float winkel[3], float rechts[3]);
+
+// Ab welcher Entfernung ein Kanal stumm ist (raumlaut erreicht 0), aus
+// S_SpatializeOrigin (Movie Duels code/client/snd_dma.cpp:1402 ff.):
+//     sonst            256 + 1/0.0008 = 1506
+//     CHAN_VOICE       768 + 1250     = 2018
+//     CHAN_LESS_ATTEN  1280 + 1250    = 2530
+//     CHAN_VOICE_ATTEN 345.6 + 250    = 595.6
+//     CHAN_VOICE_GLOBAL, CHAN_ANNOUNCER: nie (unendlich)
+[[nodiscard]] float hoerweite(Kanal k);
+
+// Die Mischpegel der Engine. Vorgaben der Cvars (snd_dma.cpp:455 ff. MD,
+// gleich in OpenJK snd_dma.cpp:462 ff.): s_volume 0.5, s_volumeVoice 1.0,
+// s_musicvolume 0.25. S_PaintChannels nimmt fuer die drei Stimmkanaele
+// voice_vol, fuer alles andere normal_vol (snd_mix.cpp:263 ff. MD); die Musik
+// geht mit s_musicvolume in S_RawSamples (snd_dma.cpp:2175 ff. MD).
+struct Mischpegel {
+    float effekte = 0.5F;   // s_volume
+    float stimmen = 1.0F;   // s_volumeVoice
+    float musik = 0.25F;    // s_musicvolume
+};
+// SOUND_FMAXVOL (snd_dma.cpp:152 MD): ein Klang AUF der Hoerer-Entity wird
+// nicht gedaempft, also mit master_vol 255 * 0.75 leiser gestellt
+// (S_StartSound, snd_dma.cpp:1705 ff. MD) - nur fuer Kanaele unter
+// CHAN_AMBIENT.
+inline constexpr float kSoundFMaxVol = 0.75F;
+
+// CHAN_VOICE, CHAN_VOICE_ATTEN, CHAN_VOICE_GLOBAL: s_volumeVoice, und sie
+// laufen bei Pegel 0 weiter (S_Respatialize, snd_dma.cpp:2721 ff. MD).
+[[nodiscard]] bool istStimmkanal(Kanal k);
+
+// Der Faktor, mit dem ein Kanal in den Mischer geht: s_volumeVoice oder
+// s_volume, auf der Hoerer-Entity (k < CHAN_AMBIENT) zusaetzlich
+// SOUND_FMAXVOL.
+[[nodiscard]] float kanalPegel(Kanal k, bool amHoerer, const Mischpegel& p = {});
+
+// S_AddLoopSounds (snd_dma.cpp:2082 ff. MD): alle Schleifen DERSELBEN Datei
+// werden ein Kanal - je Ohr die Beitraege summiert, jedes Ohr bei
+// SOUND_MAXVOL (hier 1) gekappt. "Multiple identical looping sounds will just
+// increase volume without any speed cost" (target_speaker, g_target.cpp:190 MD).
+[[nodiscard]] Raumlaut schleifenSumme(const std::vector<Raumlaut>& beitraege);
+
+// Ist ein Kanal fuer die Engine stumm? S_SpatializeOrigin rechnet die
+// Lautstaerke als GANZE Zahl, leftvol = (int)(master_vol * scale), mit
+// master_vol 255 bzw. auf der Hoerer-Entity 255 * 0.75 (snd_dma.cpp:1466 ff.,
+// 1695 ff. MD); S_Respatialize loescht einen Nicht-Stimmkanal, sobald beide
+// Ohren 0 sind (snd_dma.cpp:2721 ff. MD).
+[[nodiscard]] bool engineStumm(const Raumlaut& r, bool amHoerer = false);
+
 // --- Mehrere Klaenge GLEICHZEITIG ----------------------------------------
 //
 // Gemeldet: "als wuerden Sounds aufeinander warten beim Abspielen."
@@ -213,16 +278,64 @@ public:
     // 32 wie MAX_CHANNELS in snd_local.h:189.
     static constexpr std::size_t kMaxVoices = 32;
 
+    // --- rc601 ton: Stimmen mit Nummer, je Bild nachregelbar ---------------
+    //
+    // S_Respatialize (Movie Duels snd_dma.cpp:2571 ff.) rechnet JEDEN
+    // laufenden Kanal in jedem Bild neu - der Hoerer bewegt sich, die Quelle
+    // auch. behaved rechnete die Lautstaerke einmal beim Start und nie
+    // wieder; ein Summen, das nah begann, blieb zwei Minuten so laut. Dafuer
+    // braucht der Mischer: eine Nummer je Stimme, den Pegel nachtraeglich,
+    // einzeln anhalten, und Schleifen ohne vorab ausgerollten Puffer (vorher
+    // 120 s, rund 21 MB je Schleife, beim Start noch einmal kopiert).
+    using Daten = std::shared_ptr<const std::vector<int16_t>>;
+    struct Start {
+        float links = 1.0F;
+        float rechts = 1.0F;
+        // Channel-Stomp wie add(): ein laufender Klang mit demselben
+        // Schluessel (nicht 0) endet sofort.
+        std::uint64_t schluessel = 0;
+        // Einstieg im Klang, in Werten (verschraenkt, auf Bildgrenze).
+        std::size_t abWert = 0;
+        // Am Ende wieder vorn - und zwar im GEMEINSAMEN Takt aller
+        // Schleifen: S_PaintChannels liest ltime % iSoundLengthInSamples
+        // (snd_mix.cpp:332 MD). Eine Schleife, die neu einen Kanal bekommt,
+        // setzt also dort ein, wo sie ohnehin gerade waere.
+        bool schleife = false;
+        // Auch bei Pegel 0 starten (Stimmkanaele laufen still weiter).
+        bool stummErlaubt = false;
+        // Ein Klang auf der Hoerer-Entity: S_PickChannel verdraengt ihn nur
+        // fuer einen anderen Klang am Hoerer (snd_dma.cpp:1186 MD).
+        bool amHoerer = false;
+    };
+    // Liefert die Nummer der Stimme, 0 wenn nicht gestartet (leer, stumm
+    // ohne Erlaubnis, oder alle 32 belegt mit nichts Verdraengbarem). Ist
+    // der Mischer voll, weicht wie in S_PickChannel der AELTESTE Kanal -
+    // keine Schleife, und nichts am Hoerer.
+    std::uint64_t starte(Daten daten, const Start& s);
+    // false, wenn die Stimme schon fertig ist.
+    bool setzePegel(std::uint64_t id, float links, float rechts);
+    void stoppe(std::uint64_t id);
+    [[nodiscard]] bool laeuft(std::uint64_t id) const;
+
 private:
     struct Voice {
-        std::vector<int16_t> samples;
+        // rc601 ton: geteilt statt kopiert - eine Schleife je Datei liest
+        // denselben Puffer, ohne ihn bei jedem Start zu kopieren.
+        Daten daten;
         std::size_t pos = 0;
         float volume = 1.0F;       // die lautere Seite, fuer das Verdraengen
         float links = 1.0F;
         float rechts = 1.0F;
         std::uint64_t schluessel = 0;
+        std::uint64_t id = 0;      // rc601 ton: Nummer fuer setzePegel/stoppe
+        std::uint64_t nummer = 0;  // Startreihenfolge (startSample der Engine)
+        bool schleife = false;
+        bool amHoerer = false;
     };
     std::vector<Voice> voices_;
+    std::uint64_t naechsteId_ = 1;
+    std::uint64_t gemischt_ = 0;   // gemischte Werte seit dem Anfang
+    int kanaele_ = 2;              // aus dem letzten mixInto
 };
 
 }  // namespace bhed::sound

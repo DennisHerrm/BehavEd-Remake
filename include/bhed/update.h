@@ -67,6 +67,22 @@ struct Release {
 // leer, wenn es keinen gibt.
 [[nodiscard]] std::string gemeinsamerOrdner(const std::vector<std::string>& eintraege);
 
+// --- rc601 release: was das Update mit einem Eintrag tut ------------------
+//
+// `rel` ist zielImOrdner(...) eines Archiveintrags, `laufenderName` der
+// Dateiname der laufenden .exe ("behaved.exe" oder
+// "BehavEd-Remake-rc601-windows-x64.exe"). `nurProgramm`: neben der .exe
+// liegt kein data\base - das Programm laeuft eigenstaendig mit seinen
+// eingebauten Daten (bhed/eingebaut.h).
+//
+//   Programm       an die Stelle der LAUFENDEN .exe (sie wird dafuer nur
+//                  umbenannt, ueberschreiben laesst sie sich nicht)
+//   Datei          neben die .exe, an ihren Platz im Programmordner
+//   Ueberspringen  gar nicht
+enum class Einspielen { Ueberspringen, Programm, Datei };
+[[nodiscard]] Einspielen einspielenAls(const std::string& rel, const std::string& laufenderName,
+                                       bool nurProgramm);
+
 }  // namespace bhed::update
 
 #endif  // BHED_UPDATE_H

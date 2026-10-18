@@ -10,6 +10,7 @@
 #define BHED_I18N_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace bhed::i18n {
@@ -790,6 +791,10 @@ enum class Str {
     GraphEmpty,
     GraphPickHint,
     GraphScript,
+    GraphCommands,
+    GraphCommandsOpen,
+    GraphEditHere,
+    GraphCommandsEmpty,
     GraphShowInMap,
     GraphLinks,
     GraphConnectAs,
@@ -805,6 +810,8 @@ enum class Str {
     TracksMoving,
     TracksEmpty,
     TracksHint,
+    TracksList,
+    TracksListHint,
     TracksPlay,
     TracksPause,
     TracksZoom,
@@ -946,6 +953,77 @@ enum class Str {
     InsertInto,
     InsertAfter,
     MsgSelected,
+    DataMissing,
+    DataUnpackFailed,
+    GameScreen,
+    GameScreenAspect,
+    GameScreenMonitor,
+    GameScreenAspectHint,
+    GameFovAdjust,
+    GameFovAdjustAutoOn,
+    GameFovAdjustAutoOff,
+    GameFovAdjustOff,
+    GameFovAdjustOn,
+    GameFovAdjustHint,
+    GameFrameFree,
+    GameFrameFreeHint,
+    TourMenu,
+    TourMenuHint,
+    TourWindowTitle,
+    TourListIntro,
+    TourStart,
+    TourContinue,
+    TourRestart,
+    TourDoneMark,
+    TourStep,
+    TourBack,
+    TourSkip,
+    TourNext,
+    TourShowMe,
+    TourDoIt,
+    TourClose,
+    TourGuide,
+    TourAllList,
+    TourSkipHint,
+    TourShowMeHint,
+    TourDoItHint,
+    TourStepDone,
+    TourFinished,
+    TourFirst,
+    TourNotVisible,
+    TourMissing,
+    TourViewSwitched,
+    TourStartGuide,
+    TourStartGuideHint,
+    TourSearchHint,
+    TourSearchNone,
+    TourSearchGuide,
+    TourStartFailed,
+    PrefsTonPegel,
+    PrefsTonEffekte,
+    PrefsTonStimmen,
+    PrefsTonMusik,
+    PrefsTonSpielwerte,
+    PrefsTonHinweis,
+    BewDrehUeberWatch,
+    BewNavOhneWeg,
+    PrefsGroupPreview,
+    PrefsDifficulty,
+    PrefsDifficultyNote,
+    DiffPadawan,
+    DiffJedi,
+    DiffKnight,
+    DiffMaster,
+    PrefsRegelwerk,
+    PrefsRegelAuto,
+    PrefsRegelOpenJK,
+    PrefsRegelMd,
+    PrefsRegelNote,
+    PrefsDifficultyAuto,
+    RegelStatusAutoMd,
+    RegelStatusAutoOjk,
+    RegelStatusFest,
+    GameScreenAuto43,
     Count,
 };
 
@@ -970,6 +1048,15 @@ Language fromSystemLocale(const std::string& locale);
 
 // Nur fuer Tests: ein Text in einer bestimmten Sprache.
 const char* trIn(Language language, Str id);
+
+// rc601 tour: die Kennung als Text ("FileSave"). Das Handbuch und die
+// Tutorials im Programm nennen Oberflaechentexte ueber ihre Kennung
+// ({{FileSave}}); zur Laufzeit werden sie damit in der eingestellten Sprache
+// beschriftet. "" fuer einen Wert ausserhalb der Tabelle.
+const char* strName(Str id);
+// Umgekehrt: die Kennung zu einem Namen. false (und *out unberuehrt), wenn es
+// den Namen nicht gibt - Gross- und Kleinschreibung zaehlt.
+bool strVonName(std::string_view name, Str* out);
 
 }  // namespace bhed::i18n
 #endif

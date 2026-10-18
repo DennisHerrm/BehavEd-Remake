@@ -118,6 +118,26 @@ bool Audio::play(const std::vector<int16_t>& samples, float links, float rechts,
     return true;
 }
 
+// --- rc601 ton: Stimmen mit Nummer -------------------------------------------
+std::uint64_t Audio::starte(sound::Mixer::Daten daten, const sound::Mixer::Start& s) {
+    if (!handle_) {
+        return 0;
+    }
+    const std::uint64_t id = mixer_.starte(std::move(daten), s);
+    // Gleich nachlegen, damit der neue Klang nicht erst beim naechsten Bild
+    // hoerbar wird (wie play).
+    update();
+    return id;
+}
+
+bool Audio::setzePegel(std::uint64_t id, float links, float rechts) {
+    return mixer_.setzePegel(id, links, rechts);
+}
+
+void Audio::stoppe(std::uint64_t id) { mixer_.stoppe(id); }
+
+bool Audio::laeuft(std::uint64_t id) const { return mixer_.laeuft(id); }
+
 void Audio::update() {
     if (!handle_) return;
     auto device = static_cast<HWAVEOUT>(handle_);

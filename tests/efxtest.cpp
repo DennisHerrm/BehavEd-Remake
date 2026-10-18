@@ -1300,6 +1300,40 @@ void probenLeistung() {
     }
 }
 
+// --- rc601 ton: wann ein Effekt KLINGT -------------------------------------
+//
+// Ein fx_runner mit START_OFF laeuft vom ersten bis zum naechsten use
+// (fx_runner_use, g_fx.cpp) - das Zeichnen hielt sich daran (durchgaenge),
+// die Klangschleife in der Zeitleiste rechnete ihre Wiederholungen selbst und
+// spielte nach dem Abschalten weiter. Jetzt fragen beide dieselbe Regel.
+void probenTon() {
+    bhed::EffectInstance inst;
+    inst.startMs = 0.0;
+    inst.loops = true;
+    inst.intervalMs = 200.0F;
+    inst.endMs = 500.0;   // beim zweiten use abgeschaltet
+    const std::vector<double> vorher = bhed::klangStarts(inst, -1.0, 450.0);
+    expect("klangStarts: Wiederholungen 0, 200, 400 vor dem Abschalten",
+           vorher.size() == 3U && vorher[0] == 0.0 && vorher[1] == 200.0 && vorher[2] == 400.0);
+    const std::vector<double> nachher = bhed::klangStarts(inst, 450.0, 1100.0);
+    expect("klangStarts: nach endMs keine Wiederholung mehr (START_OFF abgeschaltet)", nachher.empty());
+    // Das Fenster ist halb offen (von, bis]: ein Start genau auf der Grenze
+    // kommt einmal, nicht in beiden Bildern.
+    bhed::EffectInstance immer = inst;
+    immer.endMs = -1.0;
+    const std::vector<double> a = bhed::klangStarts(immer, 150.0, 200.0);
+    const std::vector<double> b = bhed::klangStarts(immer, 200.0, 250.0);
+    expect("klangStarts: ein Start auf der Fenstergrenze kommt genau einmal",
+           a.size() == 1U && a[0] == 200.0 && b.empty());
+    // Ein Sprung weit nach vorn spielt nicht hunderte Klaenge auf einmal.
+    expect("klangStarts: hoechstens drei je Fenster", bhed::klangStarts(immer, -1.0, 100000.0).size() == 3U);
+    // Ohne Wiederholung: einmal, wenn der Start ins Fenster faellt.
+    bhed::EffectInstance einmal;
+    einmal.startMs = 300.0;
+    expect("klangStarts: ein Einmaleffekt klingt einmal",
+           bhed::klangStarts(einmal, 250.0, 350.0).size() == 1U && bhed::klangStarts(einmal, 350.0, 400.0).empty());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2364,6 +2398,9 @@ int main(int argc, char** argv) {
 
     // SpurHilfe, Spurbuch, Vorrechnen: schneller, aber bitgleich
     probenLeistung();
+
+    // rc601 ton: die Klangstarts eines Effekts (endMs, Fenster, Obergrenze)
+    probenTon();
 
     std::printf("\n%s (%d Fehlschlaege)\n",
                 g_fails == 0 ? "alle Effektproben bestanden" : "FEHLGESCHLAGEN",

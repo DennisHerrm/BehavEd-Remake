@@ -23,6 +23,7 @@
 // Radiants Entity-Inspektor, Unreals "auf die Oberflaeche ziehen".
 #include "app_internal.h"
 #include "update.h"
+#include "tour.h"   // rc601 tour: "Interaktive Tour" auf der Startflaeche
 
 #include "bhed/entdefs.h"
 #include "bhed/missionbau.h"
@@ -1405,9 +1406,19 @@ void entityZiehen(float rasterSkal) {
         z.zwBewegt = true;
         Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)];
         a.steps = z.zwSteps;
+        // rc601 (bewegung): die eingerechnete Schwerkraft gilt fuer die alte
+        // Bahn - waehrend der Vorschau kommt Z wieder aus den Schritten, das
+        // Loslassen baut die Szene neu und rechnet sie wieder ein.
+        a.hoehe.clear();
+        // rc601 (bewegung, Wege): ebenso die Bahn je Denkbild (planeLauf) -
+        // die Vorschau verschiebt from/to, also linear zwischen ihnen.
+        for (ActorStep& st : a.steps) { st.lauf.reset(); }
         for (std::size_t i = 0; i < a.steps.size(); ++i) {
             ActorStep& st = a.steps[i];
             if (st.path != z.zwPfad || (st.kind != ActorStep::Kind::WalkTo && st.kind != ActorStep::Kind::Glide)) { continue; }
+            // rc601 (bewegung): bei einem Weg aus mehreren Stuecken das
+            // Stueck, in dem die Zeit liegt.
+            if (st.endMs <= z.zwT && st.teilweg) { continue; }
             ActorStep zweiter = st;
             for (int k = 0; k < 3; ++k) {
                 st.to[k] = ort[k];
@@ -1426,6 +1437,11 @@ void entityZiehen(float rasterSkal) {
         z.dkBewegt = true;
         Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.zwFigur)];
         a.steps = z.zwSteps;
+        // rc601 (bewegung): die eingerechnete Schwerkraft gilt fuer die alte
+        // Bahn - waehrend der Vorschau kommt Z wieder aus den Schritten, das
+        // Loslassen baut die Szene neu und rechnet sie wieder ein.
+        a.hoehe.clear();
+        for (ActorStep& st : a.steps) { st.lauf.reset(); }   // rc601 (bewegung, Wege): linear in der Vorschau
         std::size_t at = 0;
         while (at < a.steps.size() && a.steps[at].startMs <= z.zwT) { ++at; }
         ActorStep tp;
@@ -1438,7 +1454,16 @@ void entityZiehen(float rasterSkal) {
             tp.to[k] = z.dkOrt[k];
             fc.to[k] = z.dkWinkel[k];
         }
-        a.steps.insert(a.steps.begin() + static_cast<std::ptrdiff_t>(at), {tp, fc});
+        // rc601 (bewegung): der Drehschluessel einer NPC-Figur wird ein
+        // SET_DYAW (figurBlickSetzen) - die Vorschau dreht sie darum mit der
+        // Drehrate statt zu springen.
+        if (z.dkArt == 3 && !a.npcType.empty() && !a.echterSpieler && a.brushModel <= 0) {
+            fc.kind = ActorStep::Kind::Wunschgier;
+            fc.value = z.dkWinkel[1];
+            a.steps.insert(a.steps.begin() + static_cast<std::ptrdiff_t>(at), fc);
+        } else {
+            a.steps.insert(a.steps.begin() + static_cast<std::ptrdiff_t>(at), {tp, fc});
+        }
         g_app->mapDirty = true;
     };
     const auto winkelSetzen = [&](MapEntity& ent, const float w3[3]) {
@@ -1740,10 +1765,33 @@ std::vector<BahnGriff> bahnGriffe() {
         z.startMs = st.startMs;
         z.endMs = st.endMs;
         if (st.kind == ActorStep::Kind::WalkTo && n->args.size() >= 2) {
+            // rc601 (bewegung): ein Weg kann aus mehreren Stuecken bestehen
+            // (ein anderes Tempo unterwegs, NULL, SET_ORIGIN - scene.cpp
+            // plant ihn wie die Engine jedes Denkbild neu). Ein Griff je
+            // SET_NAVGOAL: die Stuecke mit demselben Pfad gehoeren zusammen,
+            // und der Griff sitzt am Ziel, nicht am Schnitt.
+            BahnGriff* da = nullptr;
+            for (BahnGriff& x : g) {
+                if (x.art == 1 && x.pfad == st.path) { da = &x; }
+            }
+            if (da != nullptr) {
+                da->endMs = std::max(da->endMs, st.endMs);
+                if (!st.teilweg) {
+                    for (int k = 0; k < 3; ++k) { da->ort[k] = st.to[k]; }
+                }
+                continue;
+            }
             z.art = 1;
             z.name = n->args[1].text;
             z.entity = zielEntity(z.name);
             z.gehen = st.text == "BOTH_WALK1";
+            if (st.teilweg && z.entity >= 0) {
+                // Unterwegs abgeschnitten: der Griff gehoert ans Laufziel.
+                float o[3];
+                if (entityOrt(g_app->map.entities[static_cast<std::size_t>(z.entity)], o)) {
+                    for (int k = 0; k < 3; ++k) { z.ort[k] = o[k]; }
+                }
+            }
             if (z.entity >= 0) { g.push_back(z); }
         } else if (st.kind == ActorStep::Kind::Glide && n->name == "move" && !n->args.empty() &&
                    n->args[0].kind == Arg::Kind::Vector) {
@@ -1866,7 +1914,32 @@ void setzeVorNavgoal(const Path& navgoal, const std::vector<std::pair<std::strin
 }
 }  // namespace
 
+namespace {
+// rc601 (bewegung): ein Watchtarget dreht den Koerper nur in BS_CINEMATIC
+// (NPC_BSCinematic, NPC_behavior.cpp:304; NPC_BSDefault kennt es nicht). Steht
+// die Figur beim Losgehen nicht darin, kommt SET_BEHAVIOR_STATE BS_CINEMATIC
+// mit davor - sonst taete das Menue im Spiel nichts.
+std::vector<std::pair<std::string, std::string>> blickZeilen(const Actor& a, const ActorStep& lauf, const std::string& ziel) {
+    std::vector<std::pair<std::string, std::string>> z;
+    if (a.at(lauf.startMs).verhalten != "BS_CINEMATIC") {
+        z.emplace_back("SET_BEHAVIOR_STATE", "BS_CINEMATIC");
+    }
+    z.emplace_back("SET_WATCHTARGET", ziel);
+    return z;
+}
+}  // namespace
+
 void blickSetzen(const Path& navgoal, const std::string& ziel) {
+    if (ziel != "NULL") {
+        for (const Actor& a : g_app->scene.actors) {
+            for (const ActorStep& st : a.steps) {
+                if (st.kind == ActorStep::Kind::WalkTo && st.path == navgoal) {
+                    setzeVorNavgoal(navgoal, blickZeilen(a, st, ziel), tr(Str::BahnAnsehen));
+                    return;
+                }
+            }
+        }
+    }
     setzeVorNavgoal(navgoal, {{"SET_WATCHTARGET", ziel}}, tr(ziel == "NULL" ? Str::BahnBlickFrei : Str::BahnAnsehen));
 }
 
@@ -1883,13 +1956,17 @@ void rueckwaertsLaufen(const Path& navgoal) {
             const float ort[3] = {st.from[0] - d[0] / l * 400.0F, st.from[1] - d[1] / l * 400.0F, st.from[2] + 40.0F};
             std::vector<MapEntity> vorher = g_app->map.entities;
             MapEntity e;
-            setKey(e, "classname", "ref_tag");
+            // rc601 (bewegung): ein target_position, kein ref_tag - das Spiel
+            // gibt ref_tags beim Laden frei (SP_reference_tag ruft
+            // G_FreeEntity, g_ref.cpp:400), und Q3_SetWatchTarget sucht mit
+            // G_Find: ein ref_tag wird nie gefunden, die Figur liefe vorwaerts.
+            setKey(e, "classname", "target_position");
             setKey(e, "origin", ortText(ort));
             const std::string name = freierEntityName(a.name + "_blick");
             setKey(e, "targetname", name);
             g_app->map.entities.push_back(std::move(e));
             aenderung(std::move(vorher));
-            setzeVorNavgoal(navgoal, {{"SET_WATCHTARGET", name}}, tr(Str::BahnRueckwaerts));
+            setzeVorNavgoal(navgoal, blickZeilen(a, st, name), tr(Str::BahnRueckwaerts));
             return;
         }
     }
@@ -1907,6 +1984,21 @@ void gangartSetzen(const Path& navgoal, bool gehen) {
     if (i >= geschw->size()) { return; }
     // Vorhandene set-Zeilen direkt davor umstellen, sonst eine neue davor.
     const auto setze = [&](const char* typ, const char* wert) {
+        // rc601 (bewegung): auch die set-Zeilen direkt DANACH. Die Skripte
+        // der Mod setzen die Gangart oft erst nach dem Ziel (cin2_jedi.txt:
+        // 75-77), und im selben Bild gilt die letzte - STEER::Activate liest
+        // sie erst im naechsten Denkbild (g_navigator.cpp:3983). Stand dort
+        // SET_RUNNING "true", blieb ein "Gehen" ein Laufen.
+        bool danach = false;
+        for (std::size_t j = i + 1; j < geschw->size(); ++j) {
+            Node& v = (*geschw)[j];
+            if (v.kind != Node::Kind::Command || v.name != "set") { break; }
+            if (v.args.size() >= 2 && v.args[0].text == typ) {
+                v.args[1].text = wert;
+                danach = true;
+            }
+        }
+        if (danach) { return; }
         for (std::size_t j = i; j > 0; --j) {
             Node& v = (*geschw)[j - 1];
             if (v.kind != Node::Kind::Command || v.name != "set") { break; }
@@ -2005,7 +2097,16 @@ bool figurBlickSetzen(int figur, double ms, float gier) {
     for (const ActorStep& st : a.steps) {
         if (st.startMs > ms) { break; }
         if (!st.path.empty() && st.fremd.empty()) { ref = &st; }
-        if (st.kind == ActorStep::Kind::WalkTo && ms < st.endMs) { ziel = st.endMs; }
+        if (st.kind == ActorStep::Kind::WalkTo && ms < st.endMs) {
+            ziel = st.endMs;
+            // rc601 (bewegung): folgt ein weiteres Stueck desselben Weges
+            // (anderes Tempo unterwegs), kommt sie erst an dessen Ende an.
+            for (const ActorStep& w : a.steps) {
+                if (w.kind == ActorStep::Kind::WalkTo && w.path == st.path && w.startMs >= st.startMs) {
+                    ziel = std::max(ziel, w.endMs);
+                }
+            }
+        }
     }
     if (ref == nullptr) { return false; }
     Script s = g_app->doc.script();
@@ -2026,6 +2127,24 @@ bool figurBlickSetzen(int figur, double ms, float gier) {
     a1.kind = Arg::Kind::String;
     const int g = static_cast<int>(std::lround(std::fmod(std::fmod(gier, 360.0F) + 360.0F, 360.0F))) % 360;
     a1.text = "0 " + std::to_string(g) + " 0";
+    // rc601 (bewegung): ein NPC dreht sich mit seiner Drehrate. Gemeldet:
+    // "NPCs don't rotate with their YAW_SPEED. They just instantly turn." -
+    // und genau das schrieb dieser Schluessel: SET_ANGLES springt auch im
+    // Spiel (Q3_SetAngles -> SetClientViewAngle, Q3_Interface.cpp:1286).
+    // SET_DYAW setzt nur desiredYaw (Q3_SetDYaw, ebenda:2832), gedreht wird
+    // in NPC_UpdateAngles mit (60 + 3*yawSpeed) Grad/s. Der Spieler selbst
+    // ist kein NPC - fuer ihn bleibt SET_ANGLES.
+    const bool npc = !a.npcType.empty() && !a.echterSpieler && a.brushModel <= 0;
+    bool ueberWatch = false;
+    if (npc) {
+        a0.text = "SET_DYAW";
+        a1.kind = Arg::Kind::Number;
+        a1.text = std::to_string(g) + ".000";
+        // Ein Watchtarget in BS_CINEMATIC ueberschreibt desiredYaw in jedem
+        // Denkbild (NPC_BSCinematic) - dann dreht SET_DYAW im Spiel nicht.
+        const ActorState dann = a.at(ziel);
+        ueberWatch = dann.hasWatchTarget && dann.verhalten == "BS_CINEMATIC";
+    }
     n.args = {a0, a1};
     if (!befehlZurZeit(*geschw, ref->path.back() + 1, ref->startMs, ziel, n)) {
         addStatus(tr(Str::BahnBlickZeitUnbekannt));
@@ -2033,8 +2152,10 @@ bool figurBlickSetzen(int figur, double ms, float gier) {
     }
     g_app->doc.ersetzeSkript(std::move(s), tr(Str::BahnBlickUndo));
     nachSkriptGeaendert();
-    char t[160];
-    std::snprintf(t, sizeof(t), tr(ziel > ms + 1.0 ? Str::BahnBlickAnkunft : Str::BahnBlickGesetzt), g, ziel / 1000.0);
+    char t[260];
+    std::snprintf(t, sizeof(t),
+                  tr(ueberWatch ? Str::BewDrehUeberWatch : ziel > ms + 1.0 ? Str::BahnBlickAnkunft : Str::BahnBlickGesetzt), g,
+                  ziel / 1000.0);
     addStatus(t);
     return true;
 }
@@ -2046,7 +2167,18 @@ bool bahnPunktMoeglich(int ei, double ms, int& figur, Path& pfad, bool& lauf) {
     for (const ActorStep& st : a.steps) {
         const bool l = st.kind == ActorStep::Kind::WalkTo;
         if ((!l && st.kind != ActorStep::Kind::Glide) || st.path.empty() || !st.fremd.empty()) { continue; }
-        if (!(ms > st.startMs + 50.0 && ms < st.endMs - 25.0)) { continue; }
+        // rc601 (bewegung): ein Weg aus mehreren Stuecken zaehlt als einer.
+        double ab = st.startMs;
+        double bis = st.endMs;
+        if (l) {
+            for (const ActorStep& w : a.steps) {
+                if (w.kind == ActorStep::Kind::WalkTo && w.path == st.path) {
+                    ab = std::min(ab, w.startMs);
+                    bis = std::max(bis, w.endMs);
+                }
+            }
+        }
+        if (!(ms > ab + 50.0 && ms < bis - 25.0)) { continue; }
         if (!a.at(ms).visible) { return false; }   // eine unsichtbare Figur greift man nicht
         const Node* n = nodeAt(g_app->doc.script(), st.path);
         if (n == nullptr) { return false; }
@@ -2340,6 +2472,11 @@ void bahnGriffeMaus() {
         if (z.figur >= 0 && static_cast<std::size_t>(z.figur) < g_app->scene.actors.size() && !z.stepsVorher.empty()) {
             Actor& a = g_app->scene.actors[static_cast<std::size_t>(z.figur)];
             a.steps = z.stepsVorher;
+            // rc601 (bewegung): die eingerechnete Schwerkraft gilt fuer die alte
+            // Bahn - waehrend der Vorschau kommt Z wieder aus den Schritten, das
+            // Loslassen baut die Szene neu und rechnet sie wieder ein.
+            a.hoehe.clear();
+            for (ActorStep& st : a.steps) { st.lauf.reset(); }   // rc601 (bewegung, Wege): linear in der Vorschau
             const auto gleich = [](const float* p, const float* q) {
                 return std::fabs(p[0] - q[0]) + std::fabs(p[1] - q[1]) + std::fabs(p[2] - q[2]) < 1.0F;
             };
@@ -2364,13 +2501,25 @@ void bahnGriffeMaus() {
                     const bool bewegung = st.kind == ActorStep::Kind::WalkTo || st.kind == ActorStep::Kind::Glide;
                     if (!bewegung) { continue; }
                     if (danach) {
+                        // rc601 (bewegung): weitere Stuecke desselben Weges
+                        // (anderes Tempo unterwegs) zielen auch dorthin.
+                        if (st.path == z.pfad && st.kind == ActorStep::Kind::WalkTo) {
+                            if (!st.teilweg) {
+                                for (int k = 0; k < 3; ++k) { st.to[k] = z.ort[k]; }
+                            }
+                            continue;
+                        }
                         if (gleich(st.from, z.startOrt)) {
                             for (int k = 0; k < 3; ++k) { st.from[k] = z.ort[k]; }
                         }
                         break;
                     }
                     if (st.path == z.pfad) {
-                        for (int k = 0; k < 3; ++k) { st.to[k] = z.ort[k]; }
+                        // Ein abgeschnittenes Stueck endet am Schnitt, nicht
+                        // am Ziel - nur das ankommende zieht mit.
+                        if (!st.teilweg) {
+                            for (int k = 0; k < 3; ++k) { st.to[k] = z.ort[k]; }
+                        }
                         danach = true;
                     }
                 }
@@ -3808,6 +3957,11 @@ void drawStartflaeche(float breite, float hoehe) {
     ImGui::SameLine();
     if (iconTextKnopf(tr(Str::StartGuideTut), UiIcon::Liste, tr(Str::StartGuideTutHint))) {
         handbuchOeffnen("tutorials.html");
+    }
+    // rc601 tour: die Tutorials im Programm - es zeigt selbst, was zu klicken ist.
+    ImGui::SameLine();
+    if (iconTextKnopf(tr(Str::TourStartGuide), UiIcon::Zielen, tr(Str::TourStartGuideHint))) {
+        tourFensterOeffnen();
     }
     ImGui::Dummy(ImVec2{0.0F, fs * 0.6F});
 

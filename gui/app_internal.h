@@ -33,6 +33,7 @@
 #include "icons_gen.h"
 #include "platform.h"
 #include "bhed/diag.h"
+#include "bhed/regelwerk.h"
 #include "bhed/ablauf.h"
 #include "bhed/bsp.h"
 #include "bhed/camtrack.h"
@@ -41,6 +42,8 @@
 #include "bhed/mission.h"
 #include "bhed/missionsgraph.h"
 #include "bhed/scene.h"
+#include "bhed/saberspuren.h"   // rc601 saber review: SpurPoly
+#include "bhed/kollision.h"     // rc601 integ: geladeneKollision
 #include "bhed/timeline.h"
 #include "bhed/image.h"
 #include "bhed/gla.h"
@@ -207,6 +210,7 @@ struct App {
     int graphFeld = 0;
     GraphZustand& graph() { return graphe[graphFeld]; }
     float spurenZoom = 1.0F;                  // Spuren-Ansicht: Zoom der Zeitachse
+    bool spurenListe = true;                  // Spuren-Ansicht: die Befehlsliste rechts (rc601)
     // Wo die Bloecke im letzten Bild standen (Pfad, Rechteck) - fuer den Selbsttest.
     std::vector<std::pair<Path, ImRect>> spurenBloecke;
     // Kurze Einblendungen unten rechts (meldung / drawEinblendungen).
@@ -876,6 +880,9 @@ struct App {
     // Dieselben Klaenge, schon auf das Ausgabeformat (44,1 kHz Stereo)
     // umgerechnet. playSound entpackte und rechnete bisher bei JEDEM
     // Abspielen neu - 130 bis 215 ms je Klang, waehrend das Bild stand.
+    // rc601 ton: der Mischer liest DIREKT aus diesen Eintraegen (tonDaten,
+    // ohne Kopie) - nur anlegen, nie loeschen oder ersetzen, solange das
+    // Tongeraet Stimmen hat; und vor `audio` deklariert lassen.
     std::map<std::string, std::vector<std::int16_t>> klangPuffer;
     // So viele Bilder zaehlen nach dem Start des Abspielens nicht als
     // Abspielzeit: die Zeit fuers Vorladen der Klaenge wuerde sonst auf
@@ -1362,6 +1369,27 @@ struct App {
     bool kameraPilot = false;
     int pilotSchluessel = -1;
     Camera pilotVorher;
+    // --- Das Spielfenster (Paket kamera, rc601) -------------------------
+    //
+    // Wo das Spielbild in der Ansicht liegt (mittig, Anteile), im letzten
+    // gezeichneten Bild. Ausserhalb deckt die Ueberlagerung ab: beim Blick
+    // durch die Kamera und beim Abspielen schwarz (spielRahmenDeckung 255),
+    // in der freien Ansicht und im Pilot halbdurchsichtig, ohne Rahmen 0.
+    SpielRahmen spielRahmen;
+    int spielRahmenDeckung = 0;
+    // rc601 integ: zuletzt angewandtes Regelwerk (-1 = noch nie, 0 OpenJK,
+    // 1 Movie Duels) und die Schwierigkeits-Einstellung dazu (regelwerkPruefen).
+    int regelwerkMdStand = -1;
+    int regelwerkSchwierigkeitStand = -2;
+    // Wo Balken und Blende zuletzt lagen (Bildschirm, x0 y0 x1 y1) und wie
+    // hoch ein Balken war - fuer den Selbsttest.
+    float blendeFlaeche[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    float blendeBalkenPx = 0.0F;
+    // Die halbe Breite und Hoehe der Sichtpyramide der zuletzt gezeichneten
+    // laufenden Kamera im Abstand 1 (tan der halben Bildwinkel).
+    float kamPyramideTan[2] = {0.0F, 0.0F};
+    // Der senkrechte Bildwinkel der Kameravorschau unten rechts.
+    float vorschauFovY = 0.0F;
     bool pk3Open = false;
     // 0 = Skripte, 1 = Karten, 2 = Modelle
     int pk3Kind = 0;
@@ -1935,6 +1963,13 @@ struct App {
     // gelegt hat. Steht er noch drin, gilt die interne Ablage (samt allem,
     // was ein Text nicht traegt).
     std::string ablageText;
+    // Die Ablage des ANWENDERS - fuer alle Reiter (rc601). Document::clip_ ist
+    // nur noch der Zwischenschritt beim Einfuegen: er stirbt mit seinem Reiter
+    // (Schliessen, Neu, Oeffnen, "+"). Gemeldet: "copy a command, close the
+    // script file - it won't paste into another file". Geschrieben NUR in
+    // ablageNachWindows, zusammen mit ablageText: steht in Windows noch genau
+    // dieser Text (auch ueber den Verlauf Win+V), gehoert diese Ablage dazu.
+    std::vector<Node> ablage;
     bool askSaveOpen = false;
     std::string askSaveName;
     std::function<void()> askSaveThen;
@@ -2352,6 +2387,9 @@ void kameraNeueEinstellung();
 bool kameraEinstellungLoeschen(int key);
 void kameraPilotStarten();
 void kameraPilotBeenden(bool uebernehmen);
+// Paket kamera, rc601 (Review): g_app->cam, im Pilot mit dem Bildwinkel der
+// freien Ansicht statt dem der Einstellung - zum Merken (Strg+1..9, Draufsicht).
+Camera freieKamera();
 // Beim Pilotieren: die geflogene Ansicht als Schluessel zur eingestellten
 // Zeit (rc597) - mitten in einer Fahrt ein neuer, sonst der dieser Zeit.
 bool kameraPilotSchluesselSetzen();
@@ -2359,6 +2397,24 @@ bool kameraPilotSchluesselSetzen();
 // gelb schon gefahren, die Schluessel als Quadrate.
 void kameraBahnZeichnen();
 void kameraUeberlagerung(float rasterSkal);
+
+// --- Das Spielfenster (Paket kamera, rc601; gui/app_view3d.cpp) ---------------
+//
+// Seitenverhaeltnis und cg_fovAspectAdjust des Spiels aus den Einstellungen
+// (0 = wie der Hauptbildschirm, -1 = automatisch nach den Spielordnern) -
+// damit rechnet die Ansicht den Bildwinkel wie CG_CalcFOVFromX.
+bool movieDuelsOrdner(const std::string& verzeichnis);
+float spielFensterSeiten();
+bool spielFovAspectAdjust();
+SpielFenster spielFensterJetzt();
+// Das Rechteck des Spielbilds (g_app->spielRahmen) in der Ansicht a..b.
+void spielRahmenRechteck(ImVec2 a, ImVec2 b, ImVec2& ra, ImVec2& rb);
+// Ausserhalb des Spielbilds abdecken (g_app->spielRahmenDeckung).
+void spielRahmenUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b);
+// Deckung ausserhalb des Rahmens in der freien Ansicht und im Pilot.
+inline constexpr int kSpielRahmenHalb = 140;
+// Die Einstellungen dazu im Klappfenster der Ansicht.
+void spielFensterEinstellungen();
 
 // --- Wegnetz (gui/app_wegpunkte.cpp) -----------------------------------------
 void wegNetzAktuell();                       // neu bauen, wenn sich etwas geaendert hat
@@ -2506,6 +2562,11 @@ void skriptOeffnen(const std::string& ref, bool anlegen);
 // Einen Reiter speichern, auf Wunsch unter einem neuen Pfad (ohne Dialog).
 bool reiterSpeichernUnter(int reiter, const std::string& pfad);
 void selectByPath(const Path& p);
+// Graph und Spuren (rc601): das Rechtsklick-Menue einer Zeile des offenen
+// Skripts (true = geaendert; `editor` = den Editor danach oeffnen) und das
+// Ablegen eines Befehls aus der Ereignisliste vor/hinter eine Zeile.
+bool befehlsMenue(const Path& p, bool& editor);
+bool neuAblegenAn(const ImGuiPayload* pl, const Path& p, bool davor);
 void drawMapSidebar();
 void drawMapView();
 void drawModelToolbar();
@@ -2593,6 +2654,42 @@ void fensterZeigen(bool& offen, const char* id);
 // Kamera, Zeitleiste, Szene, Mover und Effekte aus dem aktiven Skript neu
 // aufbauen (app_view3d.cpp).
 void prepareScene();
+
+// --- Paket bewegung (rc601): Schwerkraft der Figuren (app_bewegung.cpp) ---
+// Rechnet Actor::hoehe fuer die fertige Szene ein (scene.h,
+// schwerkraftEinrechnen) gegen die Welt der Karte und die Brush-Modelle an
+// ihrem jeweiligen Platz. mitMovern: die Mover-Simulation ist gebaut und
+// traegt mit (Aufzuege, Tueren) - nur noetig, wenn sich ein Mover mit
+// tragender Flaeche bewegt (schwerkraftMitMovernNoetig).
+void schwerkraftVorschau(bool mitMovern);
+// rc601 (bewegung, Wege wie im Spiel): die Brushes der Karte fuer die Spuren
+// von NAV/STEER (beim Laden der .bsp), und daraus die Welt fuer planeLauf -
+// Wegnetz wie im Spiel, Spuren, Sichttabelle, Boden. Zwischengespeichert,
+// bis sich Karte oder Entities aendern.
+void kollisionLaden(const std::string& bsp, const std::string& karte);
+// rc601 integ: dieselbe Kollisionskarte fuer andere Teile (die Lichtschwerter,
+// Paket saber) - nullptr, wenn fuer `karte` keine geladen ist.
+[[nodiscard]] std::shared_ptr<const KollisionsKarte> geladeneKollision(const std::string& karte);
+[[nodiscard]] std::shared_ptr<const NavWelt> navWeltVorschau();
+// rc601 (bewegung, teil 3): den Stand der Mover aus der Mover-Simulation
+// (g_app->moverSim, bis endeMs) fuer die Wege uebernehmen (NavWelt::mover,
+// spurZeit). true: er hat sich geaendert - Ablauf und Szene noch einmal.
+bool navMoverPlanAusSim(double endeMs);
+[[nodiscard]] bool schwerkraftMitMovernNoetig();
+// rc601 (bewegung, Durchsicht 2): die Schwierigkeit der Vorschau (g_spskill
+// 0-3, Einstellungen) setzen - die Szene wird danach neu aufgebaut, denn
+// yawSpeed und Tempo mancher NPCs haengen daran (bhed/scene.h,
+// npcWerteBeimSpawnen).
+void schwierigkeitWaehlen(int n);
+// rc601 integ: der zentrale Schalter OpenJK / Movie Duels (app_regelwerk.cpp,
+// bhed/regelwerk.h). regelwerkPruefen jedes Bild: wendet Einstellung und
+// Erkennung an und baut die Szene neu, wenn sich etwas aenderte (true: neu
+// angewandt). schwierigkeitJetzt: g_spskill, wie es gilt (-1 = Vorgabe des
+// Regelwerks aufgeloest).
+[[nodiscard]] bool regelwerkOrdnerErkannt();
+bool regelwerkPruefen();
+[[nodiscard]] int schwierigkeitJetzt();
+[[nodiscard]] std::string regelwerkStatusZeile();
 
 // Ersetzen aus dem Find-Fenster (siehe ersetzeInKnoten in edit.h).
 // ersetzeEinen: steht die Auswahl auf einem Treffer, wird er ersetzt, dann
@@ -2703,6 +2800,185 @@ void loadMissionArchive();
 void missionenAusArchiv(const std::string& archiv, const std::string& wunsch = std::string());
 void loadMission(const Mission& m);
 void drawMissionPicker();
+
+// --- rc601 ton: der Vorschauton wie im Spiel (gui/app_ton.cpp) ---------------
+//
+// Mitschrift fuer den Selbsttest: was die Vorschau spielen wuerde, auch wenn
+// sie stumm ist (g_app->stumm). Nur aufgezeichnet, solange eingeschaltet.
+struct KlangMitschrift {
+    // 'E' Einmalklang gestartet, 'S' Schleife gestartet, 'P' Pegel neu,
+    // 'X' angehalten, 'B' Beitrag EINER Quelle zu einer Schleife, 'M' Musik.
+    char art = 'E';
+    std::string quelle;      // Figur oder Entity, falls bekannt
+    std::string datei;
+    float links = 0.0F;      // Lautstaerke je Ohr, wie sie in den Mischer geht
+    float rechts = 0.0F;
+    std::uint64_t id = 0;    // Stimme bzw. Kanalschluessel
+    double ms = 0.0;         // Abspielzeit (playMs)
+    double abMs = 0.0;       // Einstieg im Klang (Wiedereinstieg)
+};
+std::vector<KlangMitschrift>& klangMitschrift();
+void klangMitschriftAn(bool an);
+void klangMitschreiben(const KlangMitschrift& m);
+void klangMitschreiben(char art, const std::string& quelle, const std::string& datei, float links,
+                       float rechts, std::uint64_t id, double abMs = 0.0);
+// Alles anhalten, was der Raumklang gerade fuehrt (zusaetzlich zu
+// audio.stopAll() und laufendeSchleifen.clear()).
+void tonZuruecksetzen();
+
+// Der Hoerer: die Kamera, die die 3D-Ansicht zeigt - beim Abspielen die
+// Skriptkamera (camStateAt), sonst "Through camera" oder die freie Kamera.
+// rechts ist der Rechtsvektor mit Roll (sound::rechtsAusWinkeln). Die Engine:
+// cgi_S_Respatialize(..., cg.refdef.vieworg, cg.refdef.viewaxis, ...),
+// cg_view.cpp:3307 MD (app_view3d.cpp).
+void tonHoerer(float ort[3], float rechts[3]);
+
+// Ein Klang, wie cgi_S_StartSound ihn bekommt. Er wird gefuehrt und jedes
+// Bild nachgeregelt wie in S_Respatialize: Ort (fest oder der Figur bzw. dem
+// Mover folgend), Kanal (Daempfung, Pegel, Stomp), Hoerer-Entity.
+struct KlangWunsch {
+    std::string datei;
+    std::string quelle;            // fuer Mitschrift und Protokoll
+    std::string figur;             // folgt dieser Figur (Scene::find), solange sie im Snapshot ist
+    int moverModell = -1;          // folgt der Mitte dieses Brush-Modells (EV_BMODEL_SOUND)
+    float ort[3]{};                // fester Ort (bzw. Ersatz, solange die Figur unbekannt ist)
+    sound::Kanal kanal = sound::Kanal::Auto;
+    bool amHoerer = false;         // auf der Hoerer-Entity (Spieler, EV_GLOBAL_SOUND): immer voll
+    std::uint64_t schluessel = 0;  // Channel-Stomp (0: CHAN_AUTO sucht sich einen freien Kanal)
+    double abMs = 0.0;             // Einstieg im Klang
+};
+// Liefert die Nummer des Klangs, 0 wenn er nicht gestartet wurde (Datei
+// fehlt, schon vorbei, beim Start stumm und kein Stimmkanal).
+std::uint64_t tonStarte(const KlangWunsch& w);
+
+// Fuer Einmalklaenge am festen Ort - gedacht fuer das Schwertpaket
+// (Klirren, Wandtreffer): cgi_S_StartSound(ort, ..., kanal, ...).
+//   ms                 Zeitpunkt des Ereignisses auf der Zeitleiste. Liegt er
+//                      VOR dem laufenden Abspielfenster (audioUpTo), beginnt
+//                      der Klang an der passenden Stelle, sonst von vorn.
+//   imSnapshotPruefen  true fuer Klaenge, die als Ereignis/Temp-Entity ueber
+//                      den Snapshot kommen (G_Sound, G_AddEvent): dann nur,
+//                      wenn der Ort vom Hoerer aus im PVS liegt. false fuer
+//                      cgame-Klaenge (direktes cgi_S_StartSound).
+// Danach regelt tonBild ihn jedes Bild nach (Hoerer bewegt sich).
+std::uint64_t spieleRaumKlang(const std::string& datei, const float ort[3], sound::Kanal kanal, double ms,
+                              bool imSnapshotPruefen = false);
+// rc601 saber review: der Channel-Stomp-Schluessel einer Entity und eines
+// Kanals, wie ihn die Skriptklaenge nehmen (S_PickChannel/S_CheckChannelStomp).
+std::uint64_t tonKanalSchluessel(const std::string& wer, sound::Kanal k);
+
+// Ein sound-Befehl des Skripts nach PlayIcarusSound: wer = Entity (schon
+// aufgeloest), schluessel = Channel-Stomp der Stimmkanaele.
+void tonSkriptKlang(const std::string& wer, const std::string& datei, sound::Kanal k, std::uint64_t schluessel,
+                    double ms, double abMs);
+// Wie spieleSkriptKlang, mit Einstieg mitten im Klang (Wiedereinstieg).
+void spieleSkriptKlang(const std::string& werSpur, const std::string& datei, const std::string& kanalName,
+                       double ms, double abMs);
+
+// Einmal je Bild beim Abspielen: alle laufenden Klaenge neu
+// (S_Respatialize), die Schleifen frisch (S_AddLoopSounds), die Klingen
+// (soundOn wie CG_Player).
+void tonBild();
+// rc601 ton (Review): einmal am ENDE jedes Bildes (draw): hat tonBild in
+// diesem Bild nicht gemeldet (Abspielen aus, auf welchem Weg auch immer:
+// Ende der Zeitleiste, Reiterwechsel, Schluesselsprung, Spurenansicht ...),
+// enden die Schleifen - wie S_ClearLoopingSounds jedes Bild in der Engine.
+// Einmalklaenge laufen weiter.
+void tonWache();
+// Die Kartenereignisse im Abspielfenster (vonMs, bisMs]: target_speaker,
+// Tueren, ROFF-Notizen, Zerbrechen, fx_runner.
+void tonEreignisse(double vonMs, double bisMs);
+// Ton wieder an / Abspielen fortgesetzt: jeden laufenden sound-Befehl an
+// seiner Stelle wieder einsetzen.
+void tonWiedereinstieg();
+// Alles vorab entpacken, was die Szene klingen laesst (Schwerter,
+// Lautsprecher, Tueren, Zerbrechen).
+void tonVorladen();
+// Liegt ein Kasten (Ursprung + mins/maxs) vom Hoerer aus im PVS?
+bool tonImSnapshot(const float ort[3], const float mins[3], const float maxs[3]);
+// Die Mischpegel (s_volume, s_volumeVoice, s_musicvolume) aus den
+// Einstellungen, Vorgaben wie die Engine.
+sound::Mischpegel tonPegel();
+float tonMusikPegel();
+// Die im Hintergrund geoeffneten Tongeraete uebernehmen (app.cpp).
+void tonUebernehmen(bool warten);
+// rc601 ton (Review): Einblick fuer Selbsttest und Protokoll - wie viele
+// Schleifenkanaele bzw. gefuehrte Einmalklaenge der Raumklang gerade hat
+// (datei leer: alle), und der Puffer, den der Mischer fuer eine Datei bekommt.
+std::size_t tonSchleifenZahl(const std::string& datei = std::string());
+std::size_t tonEinmalZahl(const std::string& datei = std::string());
+sound::Mixer::Daten tonMischerDaten(const std::string& datei);
+
+// --- Paket saber (rc601): Lichtschwerter an Waenden und gegeneinander -------
+// (gui/app_saber.cpp; die Rechnungen in bhed/saberkontakt.h)
+//
+// Aus drawMapView herausgezogen, damit die Schwertproben dieselbe
+// Knochenrechnung haben wie die Zeichnung (app_view3d.cpp):
+void figurBilderSetzen(const Actor& a, App::ActorAssets& assets, const ActorState& st, double ms, ActorDraw& d);
+void figurWeltMatrix(const ActorDraw& a, float fw[16]);
+void figurKopfGier(const ActorState& st, ActorDraw& d);
+void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d);
+void npcSkalaFuer(const std::string& npcType, float aus[3]);
+const efx::Effect* effectByName(const std::string& name);
+// Nach dem Laden einer .bsp (kollisionLaden): die Schwertspuren der alten Karte
+// vergessen. rc601 integ: die Brushes kommen aus geladeneKollision().
+void saberKarteGeladen();
+// Die Takte bis ms rechnen (Clientbilder 8 ms, Serverbilder 50 ms).
+void saberRechneBis(double ms);
+// Funken, Kochen und Klirren als Effekte fuer die Effektliste zu nowMs.
+std::vector<EffectInstance> saberEffekteBei(double nowMs);
+// Die Klaenge im Abspielfenster (vonMs, bisMs] - wie tonEreignisse.
+void saberTonEreignisse(double vonMs, double bisMs);
+// In der Klingenschleife der Zeichnung: die Spitze wB auf die Laenge dieses
+// Clientbildes setzen (CG_DoSaber). false: die Klinge steht nicht (Laenge 0).
+bool saberKlingeZeichnen(int figur, int fach, int klinge, const float wA[3], float wB[3], float laengeSzene);
+// rc601 saber review: die Laenge, die CG_DoSaber in diesem Clientbild bekommt
+// (L+8 beim Wachsen, an Waenden gekuerzt, Zuendgeschwindigkeit nach Kampfstil),
+// sobald die Schwertrechnung sie kennt; sonst laengeSzene. 0: steht nicht.
+float saberZeichenLaengeBei(int figur, int fach, int klinge, double ms, float laengeSzene);
+// Fuer Selbsttest und Protokoll.
+struct SaberGezeichnet {
+    int figur = -1;
+    int fach = 0;
+    int klinge = 0;
+    float wurzel[3]{};
+    float spitze[3]{};
+};
+std::vector<SaberGezeichnet> saberGezeichnetesBild();
+std::vector<SaberKlirren> saberKlirrenBis(double ms);
+std::vector<SaberWandEreignis> saberWandEreignisseBis(double ms);
+struct SaberZaehlung {
+    long long takte = 0;
+    long long figurenProben = 0;
+    int klirren = 0;
+    int funken = 0;
+    int wandKlaenge = 0;
+    double erstesKlirrenMs = -1.0;
+    double ms = 0.0;
+};
+// Die ganze Szene von 0 bis bisMs der Reihe nach (Szenenlauf im Selbsttest).
+SaberZaehlung saberZaehlen(double bisMs);
+std::string saberLeistung();
+void ladeEffektShader(const efx::Effect& ef);
+// CG_SaberClashFlare (rc601 saber review 2c: als 2D-Bild nach den Kinobalken).
+// saberBlitzAnsicht merkt beim Rendern die Kamera einer Ansicht (0 Hauptansicht,
+// 1 Kameravorschau; kam nullptr: keine), saberBlitzZeichnen2D zeichnet den
+// Blitz ueber deren Bild [a, b].
+void saberBlitzAnsicht(int ansicht, const Camera* kam, int w, int h, double nowMs);
+void saberBlitzZeichnen2D(int ansicht, ImDrawList* dl, ImVec2 a, ImVec2 b, bool nachBalken);
+extern int g_saberBlitze;
+extern int g_saberBlitzeNetz;
+extern int g_saberBlitze2D;
+extern int g_saberBlitzeNachBalken;
+// rc601 saber review: Brandspuren (CG_CreateSaberMarks, CG_AddMarks) - ins
+// Effektnetz haengen, ob es welche gibt, und fuer den Selbsttest die lebenden
+// Marken zu ms (rechnet bis ms).
+void saberSpurenAnhaengen(BspMesh& netz, double nowMs);
+bool saberSpurenDa(double nowMs);
+std::vector<SpurPoly> saberSpurenBei(double ms);
+// Alles vergessen (Selbsttest: Vorspulen gegen Abspielen vergleichen).
+void saberVergessen();
+extern int g_saberSpurenGezeichnet;
 
 }  // namespace bhed::gui
 #endif

@@ -461,4 +461,14 @@ void vergissEffektBahnen();
                                       const BspGeometry* geo = nullptr,
                                       const EffectCull* cull = nullptr);
 
+// --- rc601 ton: wann ein Effekt KLINGT ---------------------------------------
+//
+// Die Starts eines Effekts im Abspielfenster (vonMs, bisMs] - fuer seine
+// Klangprimitive. Herausgezogen aus der Klangschleife der Zeitleiste
+// (app_view3d.cpp), damit sie sich pruefen laesst (tests/efxtest.cpp).
+// Hoechstens `hoechstens` Starts: springt man weit nach vorn, laegen sonst
+// hunderte Wiederholungen im Fenster.
+[[nodiscard]] std::vector<double> klangStarts(const EffectInstance& inst, double vonMs, double bisMs,
+                                              int hoechstens = 3);
+
 }  // namespace bhed

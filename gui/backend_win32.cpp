@@ -60,6 +60,7 @@ HWND g_hwnd = nullptr;
 // --- Direct3D 11 -------------------------------------------------------
 #ifdef BHED_WITH_D3D11
 ID3D11Device* g_device = nullptr;
+ID3D11BlendState* g_additivMischung = nullptr;   // rc601 saber review: zeichneAdditiv
 ID3D11DeviceContext* g_context = nullptr;
 IDXGISwapChain* g_swap = nullptr;
 UINT g_swapFlags = 0;   // dieselben Flags fuer ResizeBuffers wie beim Anlegen
@@ -238,6 +239,8 @@ bool initD3D11(HWND hwnd) {
 void shutdownD3D11() {
     if (g_bildFrei != nullptr) { CloseHandle(g_bildFrei); g_bildFrei = nullptr; }
     g_geraetVerloren = false;
+    // rc601 saber review: die additive Mischung gehoert zum alten Geraet.
+    if (g_additivMischung != nullptr) { g_additivMischung->Release(); g_additivMischung = nullptr; }
     ImGui_ImplDX11_Shutdown();
     releaseRtv();
     // D3D11 zerstoert verzoegert: ohne ClearState und Flush haengt die alte
@@ -351,6 +354,55 @@ void* d3dContext() {
 #else
     return nullptr;
 #endif
+}
+
+// --- rc601 saber review: additiv zeichnen (Klirrblitz) ------------------------
+namespace {
+#ifdef BHED_WITH_D3D11
+void additivD3d(const ImDrawList* /*liste*/, const ImDrawCmd* /*befehl*/) {
+    if (g_device == nullptr || g_context == nullptr) {
+        return;
+    }
+    if (g_additivMischung == nullptr) {
+        D3D11_BLEND_DESC d{};
+        d.RenderTarget[0].BlendEnable = TRUE;
+        d.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;     // GL_ONE
+        d.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;    // GL_ONE
+        d.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        d.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+        d.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        d.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        d.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        if (FAILED(g_device->CreateBlendState(&d, &g_additivMischung))) {
+            g_additivMischung = nullptr;
+            return;
+        }
+    }
+    const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    g_context->OMSetBlendState(g_additivMischung, faktor, 0xffffffffU);
+}
+#endif
+void additivGl(const ImDrawList* /*liste*/, const ImDrawCmd* /*befehl*/) { glBlendFunc(GL_ONE, GL_ONE); }
+}  // namespace
+
+unsigned g_texturStand = 0;
+unsigned texturStand() { return g_texturStand; }
+
+void zeichneAdditiv(ImDrawList* dl, void* textur, ImVec2 a, ImVec2 b, unsigned int farbe) {
+    if (dl == nullptr || textur == nullptr || !g_ready) {
+        return;
+    }
+#ifdef BHED_WITH_D3D11
+    if (g_backend == Backend::Direct3D11) {
+        dl->AddCallback(additivD3d, nullptr);
+    } else {
+        dl->AddCallback(additivGl, nullptr);
+    }
+#else
+    dl->AddCallback(additivGl, nullptr);
+#endif
+    dl->AddImage(reinterpret_cast<ImTextureID>(textur), a, b, ImVec2{0.0F, 0.0F}, ImVec2{1.0F, 1.0F}, farbe);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 }
 
 void* createTexture(const unsigned char* rgba, int width, int height) {
@@ -601,6 +653,7 @@ bool sparsamGewuenscht() {
 }
 
 void destroyTextures() {
+    ++g_texturStand;   // rc601 saber review
 #ifdef BHED_WITH_D3D11
     for (ID3D11ShaderResourceView* t : g_d3dTextures) {
         if (t != nullptr) { t->Release(); }

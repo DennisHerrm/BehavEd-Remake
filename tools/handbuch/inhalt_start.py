@@ -1,5 +1,5 @@
 """Einstieg: Willkommen, Erste Schritte, Das Fenster."""
-from inhalt_basis import T
+from inhalt_basis import T, Tf
 import inhalt_kurz
 import inhalt_kurz2
 import inhalt_kurz3
@@ -33,11 +33,11 @@ SEITEN = [
             "BehavEd-Remake 用于编写在《绝地学院》和 Movie Duels 中驱动过场动画与任务的脚本,并在你编写时把它们显示在地图上。",
             "BehavEd-Remake は『ジェダイ・アカデミー』と Movie Duels のカットシーンやミッションを動かすスクリプトを書くためのツールです。書いている間、その内容をマップ上で見ることができます。"),
         "bloecke": [
-            ("img", "h_fenster", T(
-                "A mission of your own on yavin1 in BehavEd-Remake: the script on the right, the map in the middle, the timeline below.",
-                "Eine eigene Mission auf yavin1 in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste.",
-                "在 BehavEd-Remake 中打开的 yavin1 自制任务:右侧是脚本,中间是地图,下方是时间轴。",
-                "BehavEd-Remake で開いた yavin1 の自作ミッション。右にスクリプト、中央にマップ、下にタイムライン。"), "breit"),
+            ("img", "h_willkommen", T(
+                "A mission of your own on taspir1 in BehavEd-Remake: the script on the right, the map in the middle, the timeline below. Every part is explained on [[fenster]].",
+                "Eine eigene Mission auf taspir1 in BehavEd-Remake: rechts das Skript, in der Mitte die Karte, unten die Zeitleiste. Jeden Teil erklärt [[fenster]].",
+                "在 BehavEd-Remake 中打开的 taspir1 自制任务:右侧是脚本,中间是地图,下方是时间轴。各部分的说明见 [[fenster]]。",
+                "BehavEd-Remake で開いた taspir1 の自作ミッション。右にスクリプト、中央にマップ、下にタイムライン。各部分の説明は [[fenster]] にあります。"), "breit"),
             ("p", T(
                 "The game runs its scenes with **ICARUS** scripts: lists of commands such as \"walk to this spot\", \"play this sound\", \"move the camera there\". Raven's original BehavEd let you build those lists from buttons. BehavEd-Remake does the same, file for file compatible, and adds what the original never had: the map in 3D, the figures walking their paths, the camera flying its shots, and a timeline that plays it all - before you ever start the game.",
                 "Das Spiel steuert seine Szenen mit **ICARUS**-Skripten: Listen von Befehlen wie \"geh zu dieser Stelle\", \"spiel diesen Ton\", \"stell die Kamera dorthin\". Ravens Original-BehavEd baute diese Listen aus Knöpfen. BehavEd-Remake tut dasselbe, Datei für Datei verträglich, und bringt mit, was das Original nie hatte: die Karte in 3D, die Figuren auf ihren Wegen, die Kamera in ihren Einstellungen und eine Zeitleiste, die alles abspielt - bevor du das Spiel überhaupt startest.",
@@ -60,7 +60,7 @@ SEITEN = [
             ]),
             ("h2", "tutorials", T("Tutorials", "Tutorials", "教程", "チュートリアル")),
             ("cards", ["tut-projekt"]),
-            ("p", T("Besides the big mission there are %d short tutorials - each shows one thing in three to six steps. All of them, with pictures: [[tutorials]]." % _ANZAHL_KURZ)),
+            ("p", Tf("Besides the big mission there are %d short tutorials - each shows one thing in three to six steps. All of them, with pictures: [[tutorials]].", _ANZAHL_KURZ)),
         ] + _KURZ_LISTEN + [
             ("h2", "kann", T("What the program can do", "Was das Programm kann", "程序能做什么", "できること")),
             ("table", [T("Area", "Bereich", "领域", "分野"), T("In short", "Kurz", "简介", "概要")], [
@@ -124,15 +124,20 @@ SEITEN = [
         "bloecke": [
             ("h2", "installieren", T("Install", "Installieren", "安装", "インストール")),
             ("steps", [
-                T("Download the latest `BehavEd-Remake-….zip` from the releases page and unpack it into a folder of your choice - for example next to your game. Nothing is installed into Windows.",
-                  "Lade die neueste `BehavEd-Remake-….zip` von der Release-Seite und pack sie in einen Ordner deiner Wahl aus - etwa neben dein Spiel. In Windows wird nichts installiert.",
-                  "从发布页面下载最新的 `BehavEd-Remake-….zip`,解压到任意文件夹,例如游戏旁边。不会向 Windows 安装任何东西。",
-                  "リリースページから最新の `BehavEd-Remake-….zip` をダウンロードし、好きなフォルダー(例えばゲームの隣)に展開します。Windows には何もインストールされません。"),
+                T("Download the latest `BehavEd-Remake-…-windows-x64.zip` from the releases page - under **Assets**, not \"Source code\", which contains no program - and unpack it into a folder of your choice, for example next to your game. Nothing is installed into Windows.",
+                  "Lade die neueste `BehavEd-Remake-…-windows-x64.zip` von der Release-Seite - unter **Assets**, nicht „Source code“, darin ist kein Programm - und pack sie in einen Ordner deiner Wahl aus, etwa neben dein Spiel. In Windows wird nichts installiert.",
+                  "从发布页面下载最新的 `BehavEd-Remake-…-windows-x64.zip`(在 **Assets** 下;不要下载“Source code”,里面没有程序),解压到任意文件夹,例如游戏旁边。不会向 Windows 安装任何东西。",
+                  "リリースページから最新の `BehavEd-Remake-…-windows-x64.zip` をダウンロードし(**Assets** の下にあります。「Source code」にはプログラムが入っていません)、好きなフォルダー(例えばゲームの隣)に展開します。Windows には何もインストールされません。"),
                 T("Start `behaved.exe`. At startup the program looks for a newer version on GitHub and offers it; nothing is downloaded without asking you (the switch is in **{{MenuHelp}}**).",
                   "Starte `behaved.exe`. Beim Start sieht das Programm auf GitHub nach einer neueren Fassung und bietet sie an; ohne Nachfrage wird nichts geladen (der Schalter steht unter **{{MenuHelp}}**).",
                   "启动 `behaved.exe`。程序启动时会在 GitHub 上检查新版本并提示你;未经同意不会下载任何内容(开关位于 **{{MenuHelp}}**)。",
                   "`behaved.exe` を起動します。起動時に GitHub で新しいバージョンを確認して案内します。確認なしにダウンロードすることはありません(切り替えは **{{MenuHelp}}** にあります)。"),
             ]),
+            ("note", T(
+                "**Just the program?** `BehavEd-Remake-…-windows-x64.exe` from the same release runs on its own: on the first start it puts its data into `%APPDATA%\\behaved\\data\\base`. The guide is only in the zip. Windows SmartScreen may warn the first time because the program is not code-signed: click **More info → Run anyway**.",
+                "**Nur das Programm?** `BehavEd-Remake-…-windows-x64.exe` aus demselben Release läuft auch allein: beim ersten Start legt sie ihre Daten nach `%APPDATA%\\behaved\\data\\base`. Das Handbuch gibt es nur im Zip. Windows SmartScreen warnt beim ersten Start womöglich, weil das Programm nicht signiert ist: **Weitere Informationen → Trotzdem ausführen**.",
+                "**只需要程序?** 同一发布中的 `BehavEd-Remake-…-windows-x64.exe` 可以单独运行:首次启动时会把数据放到 `%APPDATA%\\behaved\\data\\base`。手册只在 zip 中。由于程序没有代码签名,Windows SmartScreen 首次启动时可能会警告:点击 **更多信息 → 仍要运行**。",
+                "**プログラムだけでよい場合:** 同じリリースの `BehavEd-Remake-…-windows-x64.exe` は単体で動きます。初回起動時にデータを `%APPDATA%\\behaved\\data\\base` に置きます。ガイドは zip にだけ入っています。プログラムにコード署名がないため、初回起動時に Windows SmartScreen が警告することがあります:**詳細情報 → 実行** をクリックしてください。")),
             ("h2", "spielordner", T("Tell it where the game is", "Den Spielordner angeben", "指定游戏文件夹", "ゲームフォルダーを指定する")),
             ("p", T(
                 "Maps, models, sounds and the scripts of the game live in the game's `.pk3` archives. Open **{{MenuEdit}} → {{PathsTitle}}** and add the game folders with **{{Pk3AddPath}}**: first `base`, then a mod such as Movie Duels (`MD`). The bottom folder wins, exactly as `fs_game` overrides `base` in the game.",
@@ -171,7 +176,7 @@ SEITEN = [
                 "Das Programm spricht Englisch, Deutsch, Chinesisch und Japanisch. Es startet in der Sprache von Windows; umstellen lässt es sich unter **{{MenuView}} → {{ViewLanguage}}**. Befehlsnamen und Werte bleiben so, wie das Spiel sie schreibt (`affect`, `SET_NAVGOAL`), denn so stehen sie in der Datei.",
                 "程序支持英语、德语、中文和日语。启动时使用 Windows 的语言,可在 **{{MenuView}} → {{ViewLanguage}}** 中更改。命令名和值保持游戏中的写法(`affect`、`SET_NAVGOAL`),因为文件中就是这样写的。",
                 "プログラムは英語・ドイツ語・中国語・日本語に対応しています。起動時は Windows の言語になり、**{{MenuView}} → {{ViewLanguage}}** で変更できます。コマンド名と値はゲームの表記のまま(`affect`、`SET_NAVGOAL`)です。ファイルにはそのまま書かれるからです。")),
-            ("note", T("This guide opens with <kbd>F1</kbd>, from **{{MenuHelp}} → {{HelpGuide}}**, from **{{StartGuideFirst}}** and **{{StartGuideTut}}** on the start page, and from the **{{AboutGuide}}** button in {{HelpAbout}}. It lives in the `handbuch` folder next to `behaved.exe` and works without internet.", "Dieses Handbuch öffnet sich mit <kbd>F1</kbd>, über **{{MenuHelp}} → {{HelpGuide}}**, über **{{StartGuideFirst}}** und **{{StartGuideTut}}** auf der Startfläche und über den Knopf **{{AboutGuide}}** in {{HelpAbout}}. Es liegt im Ordner `handbuch` neben `behaved.exe` und braucht kein Internet.", "本手册可通过 <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、起始页面上的 **{{StartGuideFirst}}** 和 **{{StartGuideTut}}** 打开,也可在 {{HelpAbout}} 中点击 **{{AboutGuide}}** 按钮。它位于 `behaved.exe` 旁边的 `handbuch` 文件夹中,无需联网。", "このガイドは <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、スタート画面の **{{StartGuideFirst}}** と **{{StartGuideTut}}** から、または {{HelpAbout}} の **{{AboutGuide}}** ボタンから開きます。`behaved.exe` の隣の `handbuch` フォルダーにあり、インターネットなしで使えます。")),
+            ("note", T("This guide opens with <kbd>F1</kbd>, from **{{MenuHelp}} → {{HelpGuide}}**, from **{{StartGuideFirst}}** and **{{StartGuideTut}}** on the start page, and from the **{{AboutGuide}}** button in {{HelpAbout}}. It lives in the `handbuch` folder next to `behaved.exe` and works without internet. **{{MenuHelp}} → {{TourMenu}}** shows the first steps right in the program, one highlighted click at a time.", "Dieses Handbuch öffnet sich mit <kbd>F1</kbd>, über **{{MenuHelp}} → {{HelpGuide}}**, über **{{StartGuideFirst}}** und **{{StartGuideTut}}** auf der Startfläche und über den Knopf **{{AboutGuide}}** in {{HelpAbout}}. Es liegt im Ordner `handbuch` neben `behaved.exe` und braucht kein Internet. **{{MenuHelp}} → {{TourMenu}}** zeigt die ersten Schritte direkt im Programm, Klick für Klick hervorgehoben.", "本手册可通过 <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、起始页面上的 **{{StartGuideFirst}}** 和 **{{StartGuideTut}}** 打开,也可在 {{HelpAbout}} 中点击 **{{AboutGuide}}** 按钮。它位于 `behaved.exe` 旁边的 `handbuch` 文件夹中,无需联网。**{{MenuHelp}} → {{TourMenu}}** 直接在程序中展示入门步骤,每次高亮一个点击。", "このガイドは <kbd>F1</kbd>、**{{MenuHelp}} → {{HelpGuide}}**、スタート画面の **{{StartGuideFirst}}** と **{{StartGuideTut}}** から、または {{HelpAbout}} の **{{AboutGuide}}** ボタンから開きます。`behaved.exe` の隣の `handbuch` フォルダーにあり、インターネットなしで使えます。**{{MenuHelp}} → {{TourMenu}}** では、最初の手順をプログラムの中で、クリックごとに強調表示しながら案内します。")),
         ],
     },
 ]

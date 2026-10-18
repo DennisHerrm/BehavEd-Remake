@@ -174,6 +174,26 @@
     });
   }
 
+  // Bewegte Bilder anhalten (man kann ein GIF sonst nicht stoppen).
+  document.querySelectorAll("button.anhalten").forEach(function (k) {
+    k.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var img = k.parentNode.querySelector("img");
+      var steht = k.classList.toggle("steht");
+      img.src = steht ? k.dataset.stand : k.dataset.lauf + "?" + Date.now();
+      k.innerHTML = steht ? "&#9654;" : "&#10074;&#10074;";
+    });
+  });
+
+  // Classic / Graph / Tracks, gemerkt (rc601).
+  document.querySelectorAll(".moduswahl button").forEach(function (k) {
+    k.addEventListener("click", function () {
+      document.documentElement.dataset.modus = k.dataset.modus;
+      try { localStorage.setItem("bhed-modus", k.dataset.modus); } catch (e) { /* ohne Speicher */ }
+    });
+  });
+
   // Bilder gross.
   var gross = document.getElementById("gross");
   document.querySelectorAll("a.zoom").forEach(function (a) {

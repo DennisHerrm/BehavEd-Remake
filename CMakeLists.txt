@@ -9,9 +9,37 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# --- Statische C++-Laufzeit (rc601 release) ------------------------------
+#
+# shank: "bei jedem Release sollte es auch eine .exe geben, die gebaut wird,
+# dass die Leute sie runterladen und nutzen koennen". Bis rc600 band MSVC die
+# Laufzeit dynamisch (/MD): behaved.exe brauchte MSVCP140.dll,
+# MSVCP140_ATOMIC_WAIT.dll, VCRUNTIME140.dll, VCRUNTIME140_1.dll und elf
+# api-ms-win-crt-*.dll - keine davon lag im Zip. tools/check_exe_imports.py
+# meldete am veroeffentlichten rc600 "Importpruefung: 16 Beanstandung(en)".
+# Ohne VC++-Redistributable, das mindestens so neu ist wie die Bauwerkzeuge
+# (so verlangt es Microsoft), startet so ein Programm gar nicht.
+#
+# /MT bindet die Laufzeit ins Programm (etwa 1 MB mehr). Die DLLs NEBEN die
+# .exe zu legen waere keine Loesung: der Updater ersetzt alles ausser der
+# laufenden .exe mit MoveFileExW, und eine geladene DLL laesst sich nicht
+# ersetzen (gui/update_win32.cpp). Seit rc601 prueft der ctest exe_importe
+# die Importtabelle bei jedem Testlauf.
+#
+# Eigene Bauordner (Fuzzing mit AddressSanitizer) koennen weiterhin
+# -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL angeben.
+if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 add_library(bhed_core STATIC
   src/script.cpp
   src/update.cpp
+  # rc601 tour: JSON lesen und schreiben (der Leser stammt aus update.cpp).
+  src/json.cpp
+  # rc601 tour: Tutorials im Programm - Daten, Zielangaben, Pruefungen,
+  # Ablauf, Fortschritt, Suche im Handbuch (die Oberflaeche: gui/tour.cpp).
+  src/tour.cpp
   src/bhc.cpp
   src/validate.cpp
   src/tree.cpp
@@ -44,6 +72,16 @@ add_library(bhed_core STATIC
   src/gpuskin.cpp
   src/gpustate.cpp
   src/mapview.cpp
+  # rc601 saber: Lichtschwerter beruehren Waende und einander (Funken, Klang,
+  # gekuerzte Klinge) wie WP_SaberDamageTrace/CG_AddSaberBladeGo. Siehe
+  # bhed/saberkontakt.h.
+  src/saberkontakt.cpp
+  # rc601 integ: der zentrale Schalter OpenJK / Movie Duels. Siehe
+  # bhed/regelwerk.h.
+  src/regelwerk.cpp
+  # rc601 saber (Review): Brandspuren an Waenden - CG_CreateSaberMarks,
+  # R_MarkFragments, cg_marks.cpp. Siehe bhed/saberspuren.h.
+  src/saberspuren.cpp
   src/image.cpp
   src/interplay.cpp
   src/image_jpeg.cpp
@@ -63,6 +101,18 @@ add_library(bhed_core STATIC
   # Der ICARUS-Nachbau: alle Skripte einer Zwischensequenz Bild fuer Bild
   # ausfuehren (run, affect, do/dowait, use, Spawner). Siehe bhed/ablauf.h.
   src/ablauf.cpp
+  # rc601 bewegung: Schwerkraft wie Pmove (fallen, Stufen, Boden). Siehe
+  # bhed/scene.h, schwerkraftEinrechnen.
+  src/schwerkraft.cpp
+  # rc601 bewegung: Laufziele ohne Weg im Wegnetz (STEER::SafeToGoTo /
+  # NAV::GoTo). Siehe bhed/scene.h, navZieleOhneWeg.
+  src/navweg.cpp
+  # rc601 bewegung: Laufen und Wege wie im Spiel (STEER, NAV::GoTo, A*,
+  # Pmove je Denkbild). Siehe bhed/navlauf.h.
+  src/navlauf.cpp
+  # rc601 bewegung: Spuren gegen die Brushes der Karte (CM_BoxTrace) fuer
+  # NAV/STEER. Siehe bhed/kollision.h.
+  src/kollision.cpp
   # ROFF-Bahnen (*.rof) fuer play ( "PLAY_ROFF", ... ): lesen wie
   # G_LoadRoff, abspielen wie G_Roff. Siehe bhed/roff.h.
   src/roff.cpp
@@ -137,6 +187,18 @@ else()
   target_compile_options(bhed_core PUBLIC -Wall -Wextra -Wshadow)
 endif()
 
+# --- Eingebaute Daten (rc601 release) ------------------------------------
+#
+# Eine behaved.exe ALLEIN lief bis rc600 nicht: ohne data\base daneben kam
+# "behaved.bhc not found in ..." und das Programm endete mit 2
+# (gui/main_win32.cpp). Fuer die eigenstaendige .exe im Release stecken die
+# Dateien von data/base jetzt im Programm (bhed/eingebaut.h); fehlt der Ordner
+# neben der .exe, packt behaved sie in den Einstellungsordner aus.
+target_sources(bhed_core PRIVATE src/eingebaut.cpp)
+include(${CMAKE_CURRENT_SOURCE_DIR}/tools/eingebaute_daten.cmake)
+file(GLOB BEHAVED_EINGEBAUT CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/data/base/*")
+behaved_eingebaute_daten(bhed_core ${CMAKE_BINARY_DIR}/eingebaut/eingebaute_daten.inc ${BEHAVED_EINGEBAUT})
+
 # Werkzeug
 add_executable(bhed tools/bhed_cli.cpp)
 target_link_libraries(bhed PRIVATE bhed_core)
@@ -197,6 +259,12 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/app_modell.cpp
     gui/app_animation.cpp
     gui/app_wetter.cpp
+    gui/app_ton.cpp
+    gui/app_saber.cpp
+    # rc601 bewegung: Schwerkraft der Figuren gegen die Karte
+    gui/app_bewegung.cpp
+    # rc601 integ: der zentrale Schalter OpenJK / Movie Duels
+    gui/app_regelwerk.cpp
     gui/backend_win32.cpp
     gui/gpumap_win32.cpp
     gui/main_win32.cpp
@@ -204,6 +272,11 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/audio_win32.cpp
     gui/icons_gen.cpp
     gui/selbsttest.cpp
+    # rc601 tour: das Element-Register (bis rc600 in selbsttest.cpp) - auch
+    # fuer die Tutorials im Programm, gefiltert.
+    gui/elemente.cpp
+    # rc601 tour: Tutorials im Programm - Fenster, Hervorhebung, Auswertung.
+    gui/tour.cpp
     gui/update_win32.cpp
     gui/vektoricons.cpp
     gui/wache_win32.cpp
@@ -339,7 +412,7 @@ if(BEHAVED_TESTS)
   # Die Proben des GPU-Wegs und des Gluehens. Sie lagen in tests/, wurden
   # aber nicht gebaut - Aenderungen an Konstantenlagen, Shadertext und
   # Zeichenliste liefen damit ungeprueft durch (rc568, gDeformSpread).
-  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter)
+  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren)
     add_executable(${t}_probe tests/${t}.cpp)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)
@@ -371,6 +444,13 @@ if(BEHAVED_TESTS)
   add_executable(updatetest tests/updatetest.cpp)
   target_link_libraries(updatetest PRIVATE bhed_core)
   add_test(NAME update COMMAND updatetest)
+  # rc601 tour: die Tutorials im Programm ohne Oberflaeche - Kennung <-> Text,
+  # JSON, Tourdaten, Zielangaben, Schrittfolge, Fortschritt, Suche. Das
+  # Argument ist der Handbuchordner: sind handbuch/<sprache>/touren.json
+  # erzeugt (tools/handbuch/gen_handbuch.py), werden sie mitgeprueft.
+  add_executable(tourtest tests/tourtest.cpp)
+  target_link_libraries(tourtest PRIVATE bhed_core)
+  add_test(NAME tour COMMAND tourtest ${CMAKE_CURRENT_SOURCE_DIR}/handbuch)
   # Gegenproben zur Code-Pruefung vom 03.10.2026 (Skriptkern, Kartenleser,
   # Einstellungen, Modell- und Archivleser).
   add_executable(pruefung tests/pruefung.cpp)
@@ -395,6 +475,13 @@ if(BEHAVED_TESTS)
   add_executable(ablauftest tests/ablauftest.cpp)
   target_link_libraries(ablauftest PRIVATE bhed_core)
   add_test(NAME ablauf COMMAND ablauftest)
+  # rc601 bewegung: NPCs laufen, drehen sich und fallen wie im Spiel
+  # (scene.cpp, ablauf.cpp) - reine Proben, dazu die md_twj-Daten.
+  add_executable(bewegungtest tests/bewegungtest.cpp)
+  target_link_libraries(bewegungtest PRIVATE bhed_core)
+  add_test(NAME bewegung COMMAND bewegungtest
+           ${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/intro_jedi.txt
+           ${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/md_twj_jedi.ent)
   # ROFF-Bahnen (bhed/roff.h): kleine Dateien im Speicher, beide Fassungen,
   # Zeitplan, Mover- und Figurenweg, Notizen, kaputte Dateien.
   add_executable(rofftest tests/rofftest.cpp)
@@ -477,5 +564,40 @@ if(BEHAVED_TESTS)
       set(BEHAVED_IBI_ARG "-")
     endif()
     add_test(NAME ibi COMMAND ibitest ${BEHAVED_IBI_ARG} ${BEHAVED_SCRIPTS} ${BEHAVED_BHC} ${BEHAVED_DATA} ${BEHAVED_SUPP})
+  endif()
+endif()
+
+# --- Pruefungen fuer das Release (rc601 release) -------------------------
+#
+# Was beim Herunterladen zaehlt, lief bisher nirgends als Test: die
+# Importpruefung meldete nur in build.bat einen Hinweis, das Zip entstand von
+# Hand (siehe .github/workflows/release.yml und tools/release_paket.py).
+if(BEHAVED_TESTS)
+  # data/base im Programm (bhed/eingebaut.h): Byte fuer Byte gleich, und
+  # loadCommandDb zaehlt aus der ausgepackten Kopie dasselbe wie aus data/base.
+  add_executable(eingebautedatentest tests/eingebautedatentest.cpp)
+  target_link_libraries(eingebautedatentest PRIVATE bhed_core)
+  add_test(NAME eingebaute_daten COMMAND eingebautedatentest ${BEHAVED_DATA})
+
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    # Was behaved.exe FEST braucht. Nur Windows-DLLs duerfen dort stehen -
+    # am rc600 standen die VC-Laufzeit (MSVCP140, VCRUNTIME140 ...) und elf
+    # api-ms-win-crt-*.dll darin, die kein Zip mitbrachte.
+    if(TARGET behaved)
+      add_test(NAME exe_importe
+               COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_exe_imports.py
+                       $<TARGET_FILE:behaved>)
+    endif()
+    # Das Werkzeug fuer Zip, Pruefung und Notizen prueft sich selbst: es muss
+    # die Fehler eines kaputten Zips finden (zwei oberste Ordner, "..",
+    # Rueckstrich, Packverfahren 9, VC-Laufzeit in der .exe, falscher Name).
+    add_test(NAME release_paket
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/release_paket.py selbsttest)
+    # rc601: jede Handbuchseite in allen vier Sprachen (en, de, zh, ja) - kein
+    # Text faellt auf Englisch zurueck, kein Bild mit Oberflaeche fehlt in
+    # einer Sprache (Bilder nur, wenn handbuch/bilder vorhanden ist).
+    add_test(NAME handbuch_sprachen
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/handbuch/gen_handbuch.py --pruefen)
   endif()
 endif()

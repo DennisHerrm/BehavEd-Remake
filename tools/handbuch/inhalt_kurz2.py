@@ -55,7 +55,7 @@ KAMERA2 = [
             T("**Put the figure into a group.** In the figure's `affect` block insert `set ( SET_CAMERA_GROUP, \"hero\" )`."),
             T("**Follow.** After the camera shot insert `camera` and choose `FOLLOW`: the group `hero`, a turning speed (for example `100`) and `1` to blend into it. The camera now keeps turning towards the figure."),
             T("**Keep a distance.** `camera ( DISTANCE, 200, 1 )` keeps the camera 200 units from the group, moving with it."),
-            (T("**Watch it.** Play the timeline: the **Follow** row under **{{TlKamera}}** shows how long it lasts, and the view turns with the figure."),
+            (T("**Watch it.** Turn on **{{MapThroughCam}}** and play the timeline: the view keeps turning towards the figure. In the timeline, the **Follow** row under **{{TlKamera}}** shows how long it lasts."),
              "k_folgen_blick", T("Through the camera: it keeps turning towards Kyle.")),
         ],
         [T("`SET_CAMERA_GROUP_Z_OFS` aims higher or lower on the followed figure.")]),
@@ -107,12 +107,14 @@ FIGUREN2 = [
         T("Figures · three steps"), "k_saber",
         [
             T("**The weapon.** In the figure's `affect` block (or its spawn script): `set ( SET_WEAPON, WP_SABER )`."),
-            (T("**On.** Where it should ignite: `set ( SET_SABERACTIVE, true )`. In the timeline the blade appears at that moment - with its sound when **{{TlAudio}}** is on."),
+            (T("**On.** Where it should ignite: `set ( SET_SABERACTIVE, true )`. In the timeline the blade appears at that moment - with its sound when **{{TlAudio}}** is on and the camera can see the figure, as in the game."),
              "k_saber", T("Kyle with his blade ignited, in the view.")),
             (T("**Off.** `set ( SET_SABERACTIVE, false )`."),
              "k_saber_baum", T("The saber commands in Kyle's affect block.")),
         ],
-        [T("`SET_SABER1` gives the figure another saber by its name from the game's saber files.")]),
+        [T("`SET_SABER1` gives the figure another saber by its name from the game's saber files."),
+         T("**Walls.** A blade that touches a wall is shortened there, with sparks, sound and a burn mark - [[figuren#schwerter]]."),
+         T("**Clash.** For two blades to clash in Movie Duels, put both NPCs in `BS_CINEMATIC` and add `set ( SET_SABERCOLLISIONS, true )` before the attack animation. Under OpenJK rules only the animations `BOTH_CIN_16` and `BOTH_CIN_17` clash.")]),
 ]
 
 KARTE2 = [

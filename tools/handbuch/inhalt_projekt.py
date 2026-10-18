@@ -10,7 +10,7 @@ Zuerst auf yavin1 versucht - die Felsen der Schlucht verdeckten fast jeden
 Blick; die Landeplattform von taspir1 ist offen und gut zu lesen.
 Englisch zuerst.
 """
-from inhalt_basis import T
+from inhalt_basis import T, Tf
 
 
 def teil(sid, nr, titel, kurz, bild, schritte, danach=None):
@@ -18,7 +18,7 @@ def teil(sid, nr, titel, kurz, bild, schritte, danach=None):
     if danach:
         bloecke += danach
     return {"id": sid, "gruppe": "tut", "titel": titel, "kurz": kurz, "titelbild": bild,
-            "meta": T("Part %d of 8 · Taspir mission" % nr), "bloecke": bloecke}
+            "meta": Tf("Part %d of 8 · Taspir mission", nr), "bloecke": bloecke}
 
 
 UEBERSICHT = {
@@ -31,6 +31,12 @@ UEBERSICHT = {
     "bloecke": [
         ("anim", "a_kamera", T("The finished cutscene, seen through its camera.")),
         ("p", T("This tutorial uses only the base game: the map `taspir1` - the landing pad at the start of the Taspir III mission - with Kyle's ship, the Raven's Claw, and the characters Kyle and Rosh. You need nothing but Jedi Academy and BehavEd. Every picture on the following pages was taken while exactly this mission was built, step by step.")),
+        ("fluss", T("The mission in eight parts"),
+         [T("Create the mission"), T("Place the characters"), T("Let them walk"), T("The camera"),
+          T("The ship takes off"), T("Cut, shake, fade"), T("A second script"), T("Save and play")],
+         [[T("player start + script runner")], [T("NPC spawners, walk targets")], [T("affect, task, dowait")],
+          [T("shots, travel time, pilot")], [T("a ROFF file")], [T("SHAKE, PAN, FADE")], [T("spawnscript, macro")],
+          [T("zz_taspir_tut.pk3"), T("devmap taspir_tut")]]),
         ("h2", "teile", T("The parts")),
         ("cards", ["tut-p1", "tut-p2", "tut-p3", "tut-p4", "tut-p5", "tut-p6", "tut-p7", "tut-p8"]),
         ("h2", "vorher", T("Before you start")),
@@ -50,7 +56,13 @@ TEILE = [
              (T("**Open the start page.** Switch the mode bar to **{{ViewMap}}**. Without a map, the tab shows the start page."),
               "h_start", T("The start page of the Mission tab.")),
              (T("**New mission.** Click **{{StartCardNew}}**. In the list type `taspir1` and pick it. As **{{MissionName}}** type `taspir_tut` - letters, digits and `_`. The **{{MissionFolder}}** is filled in by itself. Press **{{MissionCreate}}**."),
-              "h_mission_neu", T("The New mission window.")),
+              "h_mission_neu", T("The New mission window."),
+             [
+                 (T("Map list"), T("Type to search, click the map the mission is built on.")),
+                 (T("**{{MissionName}}**"), T("Letters, digits and `_`. The game loads it with `devmap <name>`.")),
+                 (T("**{{MissionFolder}}**"), T("The folder under `scripts/` for the mission's scripts.")),
+                 (T("**{{MissionCreate}}** / **{{MissionCancel}}**"), T("Creates the mission - or closes the window.")),
+             ]),
              (T("**Look at what you got.** The map opens on the landing pad. behaved has added a `target_scriptrunner` next to the player start: when the player spawns, the script `taspir_tut/intro` runs. It is open in a tab - a short camera shot behind the player start."),
               "t4_2", T("The new mission: the player start is selected, the intro script is open on the right.")),
              T("**Switch off the original intro.** taspir1 has its own start: its player start already triggers a runner with `taspir1/preIntro`, and the same trigger now starts yours too - both would play at once. Type `t271` into the search box of the entity list - that is the runner of the original (its `usescript` is `taspir1/preIntro`) - select it and press <kbd>Delete</kbd>. The **{{FlowGraph}}** view shows such connections at a glance ([[skriptfluss#graph]])."),
@@ -65,7 +77,16 @@ TEILE = [
               "a_k_setzen", T("Placing the two characters and their walk targets.")),
              T("**Place Kyle.** Click the tile **{{EntKindNpc}}** on the left edge of the view, then click near the south edge of the pad. A character marker appears and is selected."),
              (T("**Name him.** In the inspector under the entity list set **{{EntName}}** to `kyle` and `NPC_type` to `Kyle` (the **...** button lists every character of the game). **{{EntDropFloor}}** puts him exactly on the ground."),
-              "k_inspektor", T("The inspector with Kyle selected.")),
+              "k_inspektor", T("The inspector with Kyle selected."),
+             [
+                 (T("**{{EntityFlyTo}}**"), T("Flies the view to the entity.")),
+                 (T("**{{EntDropFloor}}**"), T("Puts it exactly on the floor below.")),
+                 (T("**{{EntDuplicate}}** / **{{EntDelete}}**"), T("Copies or removes it - every selected entity.")),
+                 (T("Undo / Redo"), T("The history of entity changes, separate from the script's.")),
+                 (T("**{{EntRaw}}**"), T("Shows every key as plain text.")),
+                 (T("Filter fields"), T("Shows only the keys whose name contains the text.")),
+                 (T("**...**"), T("Next to `NPC_type`: searches every character of the game.")),
+             ]),
              T("**Place Rosh** the same way beside him: **{{EntName}}** `rosh`, `NPC_type` `rosh_penin`."),
              (T("**Two walk targets.** Click the tile **{{EntKindNav}}** and click in front of the ship - name it `nav_kyle`. A second one beside it: `nav_rosh`."),
               "t4_3", T("The new entities in the list and on the map.")),
@@ -110,7 +131,16 @@ TEILE = [
              (T("**Select the ship.** The Raven's Claw on the pad is a `misc_model_breakable` named `ravensClaw`. Click it on the map, then **{{EntAnimate}}** in the inspector."),
               "t3_1", T("The ship selected, the Animation window open.")),
              (T("**ROFF file.** In the **{{AnimTitle}}** window choose **{{AnimModeRoff}}**. The script gets a block that plays the file, and the first key is where the ship stands now."),
-              "t3_2", T("The Animation window in ROFF mode.")),
+              "t3_2", T("The Animation window in ROFF mode."),
+             [
+                 (T("**{{AnimModeMove}}** / **{{AnimModeRoff}}**"), T("How the movement is stored: as `move` commands in the script, or as a ROFF file the script plays.")),
+                 (T("**{{AnimRoffName}}**"), T("The name of the ROFF, as in `play ( PLAY_ROFF, ... )`; saved as `scripts/<name>.rof` next to the script.")),
+                 (T("**{{AnimRoffSmooth}}**"), T("On: one curve through all keys, easing in and out. Off: straight from key to key at constant speed.")),
+                 (T("**{{AnimAddKey}}**"), T("Adds a key at the playhead, with the entity where it is now.")),
+                 (T("**{{AnimDeleteKey}}** / **{{AnimGotoKey}}**"), T("Removes the selected key / moves the timeline to it.")),
+                 (T("**{{AnimRemove}}**"), T("Removes the animation block from the script.")),
+                 (T("Key table"), T("Time, position and direction of every key. Type new values, or click a row to jump there.")),
+             ]),
              (T("**Set the keys.** At 5 s press **{{AnimAddKey}}** - the ship still stands. At 6.5 s drag it straight up a little: a key is set at the playhead. At 8.5 s drag it forward and higher, and tip the nose up with the ring. At 10.5 s it is far away and high."),
               "t3_4", T("The keys of the flight, with the rotate ring.")),
              (T("**Watch.** Play the timeline: the ship lifts off and flies away. **{{AnimRoffSmooth}}** makes one curve through the keys."),
@@ -150,7 +180,11 @@ TEILE = [
          "h_mission_speichern",
          [
              (T("**Save mission.** Press **{{MissionSave}}** in the map toolbar. The window lists every file it will pack and checks the mission: errors in red must be fixed, warnings in orange may stay."),
-              "h_mission_speichern", T("The Save mission window.")),
+              "h_mission_speichern", T("The Save mission window."),
+             [
+                 (T("**{{MissionTarget}}**"), T("Where the `.pk3` is written; **{{MissionChoose}}** picks another place.")),
+                 (T("**{{MissionSaveNow}}** / **{{MissionCancel}}**"), T("Saves, compiles and packs - or closes the window. Above them: every file of the package and the checks.")),
+             ]),
              (T("**Pack.** Press **{{MissionSaveNow}}**: scripts are saved and compiled, the `.ent` with your entities and the ROFF are written, and `zz_taspir_tut.pk3` goes into the game folder."),
               "t4_5", T("The message after saving.")),
              T("**Play.** Start Jedi Academy, open the console (<kbd>Shift</kbd>+<kbd>~</kbd>) and type `devmap taspir_tut`. The cutscene runs as soon as you spawn."),

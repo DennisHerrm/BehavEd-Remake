@@ -1,4 +1,5 @@
 #include "bhed/settings.h"
+#include "bhed/regelwerk.h"
 
 #include "bhed/num.h"
 #include <algorithm>
@@ -88,6 +89,10 @@ std::string writeSettings(const Settings& s) {
     for (const auto& kv : s.lesezeichen) {
         put(o, ("lesezeichen." + kv.first).c_str(), kv.second);
     }
+    // rc601 tour: wie weit die Tutorials im Programm sind.
+    for (const auto& kv : s.tourStand) {
+        put(o, ("tour." + kv.first).c_str(), kv.second);
+    }
     put(o, "changeHistory", s.changeHistory);
     put(o, "updateCheck", s.updateCheck);
     put(o, "highlightSame", s.highlightSame);
@@ -116,10 +121,25 @@ std::string writeSettings(const Settings& s) {
     put(o, "nebel", s.nebel);
     put(o, "dynLicht", s.dynLicht);
     put(o, "mpZiel", s.mpZiel);
+    // Paket kamera, rc601: das Spielfenster.
+    std::snprintf(buf, sizeof(buf), "%.4f", static_cast<double>(s.spielSeiten));
+    put(o, "spielSeiten", std::string(buf));
+    put(o, "fovAspectAdjust", std::to_string(s.fovAspectAdjust));
+    put(o, "spielRahmenFrei", s.spielRahmenFrei);
+    put(o, "difficulty", std::to_string(s.schwierigkeit));   // rc601 (bewegung, Durchsicht 2): g_spskill
+    put(o, "regelwerk", std::string(regelwerkSchluessel(s.regelwerk)));   // rc601 integ
     put(o, "flussAnsicht", std::to_string(s.flussAnsicht));
     put(o, "showTypes", s.showTypes);
     put(o, "gFloats", s.gFloats);
     put(o, "foldMacros", s.foldMacros);
+    // rc601 ton: die Mischpegel der Vorschau (s_volume, s_volumeVoice,
+    // s_musicvolume).
+    std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(s.tonEffekte));
+    put(o, "tonEffekte", std::string(buf));
+    std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(s.tonStimmen));
+    put(o, "tonStimmen", std::string(buf));
+    std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(s.tonMusik));
+    put(o, "tonMusik", std::string(buf));
     for (const std::string& r : s.recent) {
         put(o, "recent", r);
     }
@@ -166,6 +186,13 @@ bool readSettings(const std::string& text, Settings& out) {
             // ueberlesen und beim naechsten Speichern nicht mehr geschrieben.
         }
         else if (key == "windowPlacement") { out.windowPlacement = value; }
+        // rc601 ton: die Mischpegel der Vorschau, nur 0..1 uebernehmen.
+        else if (key == "tonEffekte" || key == "tonStimmen" || key == "tonMusik") {
+            float v = 0.0F;
+            if (parseFloat(value, v) && v >= 0.0F && v <= 1.0F) {
+                (key == "tonEffekte" ? out.tonEffekte : key == "tonStimmen" ? out.tonStimmen : out.tonMusik) = v;
+            }
+        }
         else if (key.rfind("helfer.", 0) == 0) {
             out.helfer[key.substr(7)] = value;
         }
@@ -175,6 +202,9 @@ bool readSettings(const std::string& text, Settings& out) {
             // am LETZTEN '=' trennen - sonst ging das Lesezeichen verloren.
             const std::size_t le = line.rfind('=');
             out.lesezeichen[trim(line.substr(12, le - 12))] = trim(line.substr(le + 1));
+        }
+        else if (key.rfind("tour.", 0) == 0) {   // rc601 tour
+            out.tourStand[key.substr(5)] = value;
         }
         else if (key == "changeHistory") { out.changeHistory = toBool(value); }
         else if (key == "updateCheck") { out.updateCheck = toBool(value); }
@@ -290,6 +320,28 @@ bool readSettings(const std::string& text, Settings& out) {
         else if (key == "nebel") { out.nebel = toBool(value); }
         else if (key == "dynLicht") { out.dynLicht = toBool(value); }
         else if (key == "mpZiel") { out.mpZiel = toBool(value); }
+        // Paket kamera, rc601: das Spielfenster. 0 = wie der Bildschirm;
+        // sonst ein Seitenverhaeltnis, wie es Bildschirme haben (9:16 hochkant
+        // bis 32:9) - eine von Hand verdorbene Zahl bleibt auf der Vorgabe.
+        else if (key == "spielSeiten") {
+            float v = 0.0F;
+            if (parseFloat(value, v) && (v == 0.0F || (v >= 0.25F && v <= 8.0F))) { out.spielSeiten = v; }
+        }
+        else if (key == "fovAspectAdjust") {
+            if (value == "-1" || value == "0" || value == "1") { out.fovAspectAdjust = std::atoi(value.c_str()); }
+        }
+        else if (key == "spielRahmenFrei") { out.spielRahmenFrei = toBool(value); }
+        else if (key == "difficulty") {
+            // rc601 (bewegung, Durchsicht 2): g_spskill 0-3. rc601 integ: -1 =
+            // nie gewaehlt (die Vorgabe des Regelwerks), Unsinn ebenso.
+            const int n = std::atoi(value.c_str());
+            out.schwierigkeit = (n >= -1 && n <= 3) ? n : -1;
+        }
+        else if (key == "regelwerk") {
+            // rc601 integ: auto/openjk/movieduels, sonst automatisch.
+            int w = kRegelwerkAuto;
+            out.regelwerk = regelwerkAusSchluessel(value, w) ? w : kRegelwerkAuto;
+        }
         else if (key == "flussAnsicht") {
             const int n = std::atoi(value.c_str());
             out.flussAnsicht = (n >= 0 && n <= 2) ? n : 0;

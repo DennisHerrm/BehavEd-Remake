@@ -111,6 +111,9 @@ struct Settings {
     // Lesezeichen je Datei: Pfad -> Nummern der Zeilen in Dateireihenfolge
     // ("3,17,42"). Wie in Notepad++ bleiben sie ueber einen Neustart.
     std::map<std::string, std::string> lesezeichen;
+    // rc601 tour: Fortschritt der Tutorials im Programm, je Tour
+    // "<naechster Schritt>/<Anzahl>" oder "fertig" (bhed/tour.h, standText).
+    std::map<std::string, std::string> tourStand;
     // Den Aenderungsrand (orange/gruen/blassblau) zeigen.
     bool changeHistory = true;
     // Beim Start im Hintergrund auf GitHub nach einer neueren Fassung sehen
@@ -156,6 +159,30 @@ struct Settings {
     // Zielspiel: true = Multiplayer. Dann prueft der Pruefer zusaetzlich die
     // MP-Regeln (validate(..., mp), Codes M001...).
     bool mpZiel = false;
+    // --- Das Spielfenster (Paket kamera, rc601) -------------------------
+    //
+    // Seitenverhaeltnis des Spielfensters (vidWidth / vidHeight), fuer den
+    // Bildwinkel der Kameras wie in CG_CalcFOVFromX. 0 = wie der
+    // Hauptbildschirm: Movie Duels startet mit r_mode -2, der
+    // Desktopaufloesung (sdl_window.cpp:779 im Movie-Duels-Quelltext).
+    float spielSeiten = 0.0F;
+    // cg_fovAspectAdjust: -1 automatisch (ein Movie-Duels-Ordner unter den
+    // Spielordnern: 1, sonst 0), 0 aus, 1 an.
+    int fovAspectAdjust = -1;
+    // Den Rahmen des Spielbilds auch in der freien Ansicht zeigen
+    // (halbdurchsichtig; beim Blick durch die Kamera immer, dort deckend).
+    bool spielRahmenFrei = true;
+    // rc601 (bewegung, Durchsicht 2): die Schwierigkeit der Vorschau wie
+    // g_spskill - 0 Padawan, 1 Jedi, 2 Jedi Knight, 3 Jedi Master. Sie aendert,
+    // wie schnell manche NPCs drehen und laufen (bhed/scene.h,
+    // npcWerteBeimSpawnen). rc601 integ: -1 = nie gewaehlt - dann gilt die
+    // Vorgabe des Regelwerks (schwierigkeitWirksam: Movie Duels 2, g_main.cpp:752;
+    // OpenJK 0, g_main.cpp:631). Eine Wahl im Einstellungsfenster bleibt.
+    int schwierigkeit = -1;
+    // rc601 integ: das Regelwerk der Vorschau (bhed/regelwerk.h) -
+    // kRegelwerkAuto (0, nach den Spielordnern), kRegelwerkOpenJK (1),
+    // kRegelwerkMovieDuels (2). Schluessel "regelwerk": auto/openjk/movieduels.
+    int regelwerk = 0;
     // Script Flow: 0 Classic (der Baum), 1 Graph (Missionsfluss), 2 Spuren.
     int flussAnsicht = 0;
     // Die Trennlinien im Raster der geteilten Ansicht.
@@ -197,6 +224,17 @@ struct Settings {
         int chord = 0;        // ImGuiKeyChord
     };
     std::vector<KeyBinding> keyBindings;
+
+    // --- rc601 ton: die Mischpegel der Vorschau ----------------------------
+    //
+    // Wie die Klang-Cvars der Engine, mit deren Vorgaben (Movie Duels
+    // code/client/snd_dma.cpp:455 ff.): s_volume 0.5 fuer alles ausser
+    // Stimmen, s_volumeVoice 1.0, s_musicvolume 0.25. Vorher mischte die
+    // Vorschau alles mit 1.0 - Effekte 6 dB, Musik 12 dB zu laut gegen die
+    // Saetze. Einstellbar unter Einstellungen, 0 bis 1.
+    float tonEffekte = 0.5F;
+    float tonStimmen = 1.0F;
+    float tonMusik = 0.25F;
 
     // Wie das Original: MRU0 bis MRU19 in der Registry, also 20 Eintraege.
     static constexpr std::size_t kMaxRecent = 20;

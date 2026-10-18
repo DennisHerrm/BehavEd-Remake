@@ -3,6 +3,8 @@
 
 #include <cstddef>
 #include <cmath>
+#include <limits>
+#include <memory>
 #include <string>
 #include <cstring>
 #include <cctype>
@@ -468,6 +470,73 @@ Raumlaut raumlaut(const float quelle[3], const float hoerer[3], const float hoer
     return r;
 }
 
+// --- rc601 ton: was die Engine um raumlaut herum tut ----------------------
+
+void rechtsAusWinkeln(const float winkel[3], float rechts[3]) {
+    // AngleVectors, shared/qcommon/q_math.c:1291 (MD; OpenJK :1314) - Grad nach Bogenmass mit
+    // M_PI*2/360, dann wortgleich der rechte Vektor.
+    constexpr float kGrad = 3.14159265358979323846F * 2.0F / 360.0F;
+    const float sy = std::sin(winkel[1] * kGrad);   // YAW
+    const float cy = std::cos(winkel[1] * kGrad);
+    const float sp = std::sin(winkel[0] * kGrad);   // PITCH
+    const float cp = std::cos(winkel[0] * kGrad);
+    const float sr = std::sin(winkel[2] * kGrad);   // ROLL
+    const float cr = std::cos(winkel[2] * kGrad);
+    rechts[0] = (-1.0F * sr * sp * cy + -1.0F * cr * -sy);
+    rechts[1] = (-1.0F * sr * sp * sy + -1.0F * cr * cy);
+    rechts[2] = -1.0F * sr * cp;
+}
+
+float hoerweite(Kanal k) {
+    // Die Zahlen von raumlaut (S_SpatializeOrigin): bis zum Abzug voll, dann
+    // 1/dist_mult Einheiten bis 0.
+    switch (k) {
+    case Kanal::VoiceGlobal:
+    case Kanal::Announcer: return std::numeric_limits<float>::infinity();
+    case Kanal::Voice: return 256.0F * 3.0F + 1.0F / 0.0008F;
+    case Kanal::LessAtten: return 256.0F * 5.0F + 1.0F / 0.0008F;
+    case Kanal::VoiceAtten: return 256.0F * 1.35F + 1.0F / 0.004F;
+    default: return 256.0F + 1.0F / 0.0008F;
+    }
+}
+
+bool istStimmkanal(Kanal k) {
+    // S_PaintChannels, snd_mix.cpp:313 ff. (MD): VOICE, VOICE_ATTEN,
+    // VOICE_GLOBAL nehmen voice_vol.
+    return k == Kanal::Voice || k == Kanal::VoiceAtten || k == Kanal::VoiceGlobal;
+}
+
+float kanalPegel(Kanal k, bool amHoerer, const Mischpegel& p) {
+    float g = istStimmkanal(k) ? p.stimmen : p.effekte;
+    // S_StartSound, snd_dma.cpp:1705 (MD): "if (entchannel < CHAN_AMBIENT &&
+    // entityNum == listener_number) master_vol = SOUND_MAXVOL * SOUND_FMAXVOL"
+    // - die Aufzaehlung Kanal folgt channels.h, also gilt der Vergleich.
+    if (amHoerer && static_cast<int>(k) < static_cast<int>(Kanal::Ambient)) {
+        g *= kSoundFMaxVol;
+    }
+    return g;
+}
+
+Raumlaut schleifenSumme(const std::vector<Raumlaut>& beitraege) {
+    // S_AddLoopSounds, snd_dma.cpp:2082 ff. (MD): left_total/right_total
+    // ueber alle Schleifen mit derselben sfx, dann je Ohr auf SOUND_MAXVOL.
+    Raumlaut s{0.0F, 0.0F};
+    for (const Raumlaut& b : beitraege) {
+        s.links += b.links;
+        s.rechts += b.rechts;
+    }
+    s.links = std::min(s.links, 1.0F);
+    s.rechts = std::min(s.rechts, 1.0F);
+    return s;
+}
+
+bool engineStumm(const Raumlaut& r, bool amHoerer) {
+    // master_vol 255, am Hoerer 255 * 0.75 (S_StartSound); die Lautstaerke
+    // je Ohr ist (int)(master_vol * scale) (S_SpatializeOrigin).
+    const float master = 255.0F * (amHoerer ? kSoundFMaxVol : 1.0F);
+    return static_cast<int>(master * r.links) <= 0 && static_cast<int>(master * r.rechts) <= 0;
+}
+
 void Mixer::add(const std::vector<int16_t>& samples, float volume) {
     add(samples, volume, volume, 0);
 }
@@ -502,12 +571,101 @@ void Mixer::add(const std::vector<int16_t>& samples, float links, float rechts, 
         voices_.erase(leisester);
     }
     Voice v;
-    v.samples = samples;
+    v.daten = std::make_shared<const std::vector<int16_t>>(samples);
     v.volume = volume;
     v.links = links;
     v.rechts = rechts;
     v.schluessel = schluessel;
+    v.id = naechsteId_++;
+    v.nummer = v.id;
     voices_.push_back(std::move(v));
+}
+
+// --- rc601 ton: Stimmen mit Nummer -----------------------------------------
+std::uint64_t Mixer::starte(Daten daten, const Start& s) {
+    if (s.schluessel != 0) {
+        // Channel-Stomp wie add() (S_PickChannel mit S_CheckChannelStomp).
+        voices_.erase(std::remove_if(voices_.begin(), voices_.end(),
+                                     [&s](const Voice& v) { return v.schluessel == s.schluessel; }),
+                      voices_.end());
+    }
+    if (!daten || daten->empty()) {
+        return 0;
+    }
+    const float volume = std::max(s.links, s.rechts);
+    if (volume <= 0.0F && !s.stummErlaubt) {
+        return 0;
+    }
+    if (voices_.size() >= kMaxVoices) {
+        // S_PickChannel (snd_dma.cpp:1138 ff. MD): "firstToDie" ist der
+        // Kanal mit dem kleinsten startSample, also der AELTESTE - nur keine
+        // Schleife ("don't override loop sounds") und nichts am Hoerer, wenn
+        // der neue Klang nicht selbst dorthin gehoert ("don't let anything
+        // else override local player sounds").
+        auto weg = voices_.end();
+        for (auto it = voices_.begin(); it != voices_.end(); ++it) {
+            if (it->schleife || (it->amHoerer && !s.amHoerer)) {
+                continue;
+            }
+            if (weg == voices_.end() || it->nummer < weg->nummer) {
+                weg = it;
+            }
+        }
+        if (weg == voices_.end()) {
+            return 0;
+        }
+        voices_.erase(weg);
+    }
+    Voice v;
+    const std::size_t kanaele = static_cast<std::size_t>(std::max(kanaele_, 1));
+    // Auf ganze Bilder: bei Stereo liegen links und rechts abwechselnd, und
+    // eine ungerade Laenge oder Stelle vertauschte sie.
+    const std::size_t laenge = daten->size() - daten->size() % kanaele;
+    if (laenge == 0) {
+        return 0;
+    }
+    if (s.schleife) {
+        // Der gemeinsame Takt: ltime % iSoundLengthInSamples
+        // (S_PaintChannels, snd_mix.cpp:332 MD).
+        v.pos = static_cast<std::size_t>(gemischt_ % laenge);
+    } else {
+        v.pos = std::min(s.abWert - s.abWert % kanaele, laenge);
+        if (v.pos >= laenge) {
+            return 0;   // laengst vorbei
+        }
+    }
+    v.daten = std::move(daten);
+    v.volume = volume;
+    v.links = s.links;
+    v.rechts = s.rechts;
+    v.schluessel = s.schluessel;
+    v.id = naechsteId_++;
+    v.nummer = v.id;
+    v.schleife = s.schleife;
+    v.amHoerer = s.amHoerer;
+    voices_.push_back(std::move(v));
+    return voices_.back().id;
+}
+
+bool Mixer::setzePegel(std::uint64_t id, float links, float rechts) {
+    for (Voice& v : voices_) {
+        if (v.id == id) {
+            v.links = links;
+            v.rechts = rechts;
+            v.volume = std::max(links, rechts);
+            return true;
+        }
+    }
+    return false;
+}
+
+void Mixer::stoppe(std::uint64_t id) {
+    voices_.erase(std::remove_if(voices_.begin(), voices_.end(), [id](const Voice& v) { return v.id == id; }),
+                  voices_.end());
+}
+
+bool Mixer::laeuft(std::uint64_t id) const {
+    return id != 0 && std::any_of(voices_.begin(), voices_.end(), [id](const Voice& v) { return v.id == id; });
 }
 
 std::size_t Mixer::mixInto(std::vector<int16_t>& out, std::size_t frames,
@@ -515,7 +673,9 @@ std::size_t Mixer::mixInto(std::vector<int16_t>& out, std::size_t frames,
     const std::size_t werte =
         frames * static_cast<std::size_t>(std::max(channels, 1));
     out.assign(werte, 0);
+    kanaele_ = std::max(channels, 1);
     if (voices_.empty()) {
+        gemischt_ += werte;
         return 0;
     }
     // In INT gerechnet, nicht in int16.
@@ -525,32 +685,56 @@ std::size_t Mixer::mixInto(std::vector<int16_t>& out, std::size_t frames,
     // umgekehrtem Vorzeichen (ein Knacken). Deshalb erst summieren, dann
     // begrenzen.
     std::vector<int> summe(werte, 0);
+    const auto kanaele = static_cast<std::size_t>(kanaele_);
     for (Voice& v : voices_) {
-        const std::size_t rest = v.samples.size() - v.pos;
-        const std::size_t n = std::min(werte, rest);
-        // Bei Stereo liegen die Werte verschraenkt: gerade links, ungerade
-        // rechts. Der Anfang eines Blocks ist immer ein linker Wert, weil
-        // pos stets um ganze Bilder weiterzaehlt.
-        if (channels == 2) {
-            for (std::size_t i = 0; i < n; ++i) {
-                const float lv = (((v.pos + i) & 1U) == 0U) ? v.links : v.rechts;
-                summe[i] += static_cast<int>(static_cast<float>(v.samples[v.pos + i]) * lv);
+        const std::vector<int16_t>& s = *v.daten;
+        const std::size_t laenge = s.size() - s.size() % kanaele;
+        std::size_t i = 0;
+        // rc601 ton: eine Schleife faengt am Ende wieder vorn an, auch
+        // mitten im Block (die zweite Runde in S_PaintChannels, "we might
+        // have to make 2 passes if it is a looping sound effect").
+        while (i < werte && laenge > 0) {
+            if (v.pos >= laenge) {
+                if (!v.schleife) {
+                    break;
+                }
+                v.pos = 0;
             }
-        } else {
-            for (std::size_t i = 0; i < n; ++i) {
-                summe[i] += static_cast<int>(static_cast<float>(v.samples[v.pos + i]) * v.volume);
+            const std::size_t n = std::min(werte - i, laenge - v.pos);
+            // Stumm geregelte Stimmen laufen weiter, ohne zu klingen
+            // (S_PaintChannels ueberspringt leftvol und rightvol 0).
+            if (v.links != 0.0F || v.rechts != 0.0F) {
+                // Bei Stereo liegen die Werte verschraenkt: gerade links,
+                // ungerade rechts - gezaehlt im AUSGANG, der immer mit einem
+                // linken Wert beginnt.
+                if (channels == 2) {
+                    for (std::size_t k = 0; k < n; ++k) {
+                        const float lv = (((i + k) & 1U) == 0U) ? v.links : v.rechts;
+                        summe[i + k] += static_cast<int>(static_cast<float>(s[v.pos + k]) * lv);
+                    }
+                } else {
+                    for (std::size_t k = 0; k < n; ++k) {
+                        summe[i + k] += static_cast<int>(static_cast<float>(s[v.pos + k]) * v.volume);
+                    }
+                }
             }
+            v.pos += n;
+            i += n;
         }
-        v.pos += n;
+        if (laenge == 0) {
+            v.pos = 0;   // nichts zu spielen - unten herauswerfen
+        }
     }
     for (std::size_t i = 0; i < werte; ++i) {
         out[i] = static_cast<int16_t>(
             std::clamp(summe[i], -32768, 32767));
     }
-    // Fertige herauswerfen.
+    gemischt_ += werte;
+    // Fertige herauswerfen (Schleifen nie - die haelt nur stoppe an).
     voices_.erase(std::remove_if(voices_.begin(), voices_.end(),
-                                 [](const Voice& v) {
-                                     return v.pos >= v.samples.size();
+                                 [kanaele](const Voice& v) {
+                                     const std::size_t laenge = v.daten->size() - v.daten->size() % kanaele;
+                                     return laenge == 0 || (!v.schleife && v.pos >= laenge);
                                  }),
                   voices_.end());
     return voices_.size();

@@ -60,6 +60,14 @@ SEITE = {
 
         ("h2", "kartenleiste", T("The map toolbar (Mission mode)")),
         ("img", "r_leiste_karte", T("The toolbar above the map."), "breit"),
+        ("legende", [
+            (T("Mission"), T("**{{MissionNew}}**, **{{LoadMission}}**, **{{MissionSave}}** - and the name of the open mission.")),
+            (T("**{{MapMore}}**"), T("Open a map, a mission folder or an `.ent` file; **Scripts (N)** next to it lists the map's scripts.")),
+            (T("What the view shows"), T("Entities, names, figures, effects, glow, dynamic light, fog, sky - each a switch.")),
+            (T("Looking"), T("Through the camera, top view, the NPC waypoint window.")),
+            (T("Tools"), T("Grid, view settings, statistics.")),
+        ]),
+        ("p", T("Every button in detail:")),
         tabelle([
             k("Neu", "MissionNew", "Starts a mission on any map: player start, script runner, intro script and mission folder are created. [[tut-p1]]"),
             k("Oeffnen", "LoadMission", "Opens a mission from a `.pk3`: map, entities, every script in tabs, the figures. [[missionen]]"),
@@ -79,7 +87,7 @@ SEITE = {
             k("Oben", "MapTopView", "Looks straight down; a cut height hides ceilings. [[k-draufsicht]]"),
             k("Pfad", "WegTitel", "The NPC waypoint window: show, create and check the network. [[wegpunkte]]"),
             k("Raster", "Grid", "Snaps entities to 8 to 64 units while dragging and placing."),
-            k("Einstellungen", "MapViewSettings", "Brightness, ambient light, detail, shadows, highlighting the active script's entities. [[k-hell]]"),
+            k("Einstellungen", "MapViewSettings", "Brightness, ambient light, detail, shadows, highlighting the active script's entities, and the game screen: aspect ratio, cg_fovAspectAdjust and the frame in the free view ([[kamera#vorschau]]). [[k-hell]]"),
             k("Statistik", "MapStats", "Frame rate, textures, triangles and graphics card values."),
         ]),
 
@@ -131,11 +139,19 @@ SEITE = {
 
         ("h2", "zeitleiste", T("The timeline")),
         ("img", "r_transport", T("The transport bar of the timeline."), "breit"),
+        ("legende", [
+            (T("Playing"), T("Back to the start, play / stop - the time display next to it switches between seconds and frames.")),
+            (T("Playback"), T("Loop, sound, follow the camera - and the speed list.")),
+            (T("Zoom"), T("Shows more or less time.")),
+            (T("Rows"), T("One row per figure, quiet rows, waits as blocks.")),
+            (T("**{{MapInsertCamera}}**"), T("Inserts a camera shot at the playhead.")),
+        ]),
+        ("p", T("Every button in detail:")),
         tabelle([
             k("ZumAnfang", "TlRewind", "Back to the start of the script."),
             k("Abspielen", "TlPlay", "Plays the scene - camera, figures, sound - in game time."),
             k("Schleife", "TlLoop", "Starts again at the end."),
-            k("Ton", "TlAudio", "Plays the sounds while the timeline runs."),
+            k("Ton", "TlAudio", "Plays the sounds while the timeline runs - heard from the camera the view shows, like in the game. [[zeitleiste#ton]]"),
             k("Folgen", "TlFollow", "Moves the view along with the camera."),
             k("ZoomMinus", "TlZoomOut", "Shows more time."),
             k("ZoomPlus", "TlZoomIn", "Shows less time, in more detail."),
@@ -148,6 +164,13 @@ SEITE = {
 
         ("h2", "modell", T("The model toolbar (Model mode)")),
         ("img", "r_leiste_modell", T("The toolbar above the model."), "breit"),
+        ("legende", [
+            (T("Open"), T("A `.glm` from disk, a model from the archives, or a character of the game (**{{NpcBrowser}}**).")),
+            (T("Skin and skeleton"), T("Another `.skin`, another `.gla`.")),
+            (T("Looking"), T("Turntable, bones, caps, textures.")),
+            (T("**{{ModelResetView}}**"), T("The whole model in view, from the front.")),
+        ]),
+        ("p", T("Every button in detail:")),
         tabelle([
             k("Oeffnen", "OpenGlm", "Opens a `.glm` model from disk."),
             k("Paket", "OpenGlmPk3", "Opens a model from the game's archives."),

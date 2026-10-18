@@ -110,3 +110,67 @@ footer { color: var(--leise); font-size: .82em; padding: 0 56px 30px; }
 .gruppe ul.unter a.hier { color: var(--akzent); font-weight: 600; background: rgba(79,140,255,.12); box-shadow: inset 3px 0 0 var(--akzent); }
 img.ikon { height: 1.5em; width: auto; vertical-align: -0.35em; margin-right: .3em; border-radius: 4px; }
 figure.bild.schmal { max-width: 300px; }
+/* rc600: Bilder hoechstens in Originalgroesse (kleine Ausschnitte nicht
+   hochskalieren), Schrittbilder duerfen breiter sein als der Text. */
+figure img { width: auto; max-width: 100%; }
+figure.bild, figure.breit, .schritt figure { max-width: 1060px; }
+ol.schritte { max-width: 1110px; }
+.schritt p { max-width: 760px; }
+/* rc600: Ausklapp-Pfeile in der Seitenleiste (statt der Nummern), Untergruppen. */
+.pfeil { flex: none; width: 8px; height: 8px; border-right: 2px solid var(--leise); border-bottom: 2px solid var(--leise);
+  transform: rotate(-45deg); transition: transform .15s; margin: 0 4px 0 2px; }
+details[open] > summary > .pfeil { transform: rotate(45deg); }
+.untergruppe > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0 0 0 4px; border-radius: 8px; }
+.untergruppe > summary::-webkit-details-marker { display: none; }
+.untergruppe > summary:hover { background: rgba(127,127,127,.12); }
+.untergruppe > summary > a { flex: 1; padding: 6px 6px; }
+.untergruppe .ugtitel { padding: 6px 6px; font-size: .95em; font-weight: 600; color: var(--text); }
+.untergruppe > ul { list-style: none; margin: 2px 0 6px; padding: 0 0 0 18px; border-left: 1px solid var(--rand); margin-left: 9px; }
+.gruppe ul { padding-left: 14px; }
+li.aktiv > .untergruppe > summary > a { background: var(--akzent); color: #fff; border-radius: 8px; }
+/* rc600: Legende zu nummerierten Bildern, Pause-Knopf an bewegten Bildern. */
+table.legende { max-width: 1060px; margin: 6px 0 14px; }
+table.legende td.lnr { width: 46px; font-weight: 700; color: #ffd60a; text-align: center; }
+figure .anhalten { position: absolute; top: 10px; right: 10px; width: 34px; height: 30px; border: 0; border-radius: 8px;
+  background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 14px; }
+figure .anhalten:hover { background: rgba(0,0,0,.85); }
+/* rc600: Ablaufgrafiken (SVG) - Farben aus dem Thema. */
+figure.fluss { max-width: 1060px; margin: 18px 0 26px; overflow-x: auto; }
+figure.fluss svg { width: 100%; min-width: 640px; height: auto; display: block; }
+.fluss-kasten { fill: var(--karte); stroke: var(--text); stroke-width: 2; }
+.fluss-unter { fill: none; stroke: var(--leise); stroke-width: 1.6; }
+.fluss-text { fill: var(--text); font: 600 19px system-ui, sans-serif; }
+.fluss-titel { fill: var(--text); font: 600 21px system-ui, sans-serif; }
+.fluss-fuss { fill: var(--leise); font: 17px system-ui, sans-serif; }
+.fluss-linie { stroke: var(--leise); stroke-width: 3; fill: none; }
+.fluss-spitze { fill: var(--leise); }
+figure img { max-height: 760px; object-fit: contain; }
+
+/* Drei Ansichten (rc601): Classic, Graph, Tracks. Ohne Wahl gilt Classic. */
+.moduswahl { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 22px; padding: 10px 14px; border: 1px solid var(--rand); border-radius: 10px; background: var(--karte); }
+.moduswahl span { color: var(--leise); margin-right: 4px; }
+.moduswahl button { font: inherit; padding: 6px 16px; border-radius: 7px; border: 1px solid var(--rand);
+  background: transparent; color: var(--text); cursor: pointer; }
+.moduswahl button:hover { border-color: var(--akzent); }
+html:not([data-modus]) .moduswahl button[data-modus="classic"],
+html[data-modus="classic"] .moduswahl button[data-modus="classic"],
+html[data-modus="graph"] .moduswahl button[data-modus="graph"],
+html[data-modus="tracks"] .moduswahl button[data-modus="tracks"] { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+html:not([data-modus]) .modusinhalt:not(.m-classic),
+html[data-modus="classic"] .modusinhalt:not(.m-classic),
+html[data-modus="graph"] .modusinhalt:not(.m-graph),
+html[data-modus="tracks"] .modusinhalt:not(.m-tracks) { display: none; }
+
+/* Tutorials: alle auf einen Blick (rc601). */
+.tutindex { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px 22px; margin: 8px 0 26px; }
+.tutindex section { border: 1px solid var(--rand); border-radius: 10px; padding: 12px 16px; background: var(--karte); }
+.tutindex h4 { margin: 0 0 8px; font-size: 1rem; }
+.tutindex h4 span { color: var(--leise); font-weight: normal; margin-left: 4px; }
+.tutindex ul { margin: 0; padding-left: 18px; }
+.tutindex li { margin: 3px 0; font-size: .93rem; }
+/* Eine breite Karte: Bild links, Text rechts. */
+.karten.breit { grid-template-columns: 1fr; }
+.karten.breit .karte { display: grid; grid-template-columns: minmax(220px, 44%) 1fr; }
+.karten.breit .karte img, .karten.breit .karte .platzhalter { height: 100%; min-height: 220px; object-fit: cover; }
+@media (max-width: 700px) { .karten.breit .karte { grid-template-columns: 1fr; } }

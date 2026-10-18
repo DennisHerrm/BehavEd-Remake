@@ -51,16 +51,23 @@ MISSIONEN = {
             "**{{MissionSave}}** zeigt, was ins Archiv kommt - jede Datei mit ihrer Größe - und prüft die Mission vorher: ein Skript, das eine Entity benutzt, das es aber nicht gibt, ein Skript, das sich nicht übersetzen lässt, kein Spielerstart, ein Ziel, das ins Leere zeigt, eine `.str` ohne `ENDMARKER`. Fehler (rot) müssen behoben werden, Warnungen (orange) dürfen bleiben. **{{MissionSaveNow}}** speichert alle Skripte, schreibt die `.ent`, übersetzt die Skripte, nimmt deine eigenen ROFF-Dateien mit und packt das `.pk3` in den Spielordner.",
             "**{{MissionSave}}** 会显示将放入压缩包的内容——每个文件及其大小——并先检查任务:实体使用了但不存在的脚本、无法编译的脚本、缺少玩家出生点、指向不存在目标的引用、缺少 `ENDMARKER` 的 `.str`。错误(红色)必须修正,警告(橙色)可以保留。**{{MissionSaveNow}}** 保存所有脚本、写入 `.ent`、编译脚本、加入你自己的 ROFF 文件,并把 `.pk3` 打包到游戏文件夹。",
             "**{{MissionSave}}** はアーカイブに入るもの(各ファイルとサイズ)を表示し、先にミッションをチェックします。エンティティが使うのに存在しないスクリプト、コンパイルできないスクリプト、プレイヤースタートがない、存在しない対象を指すターゲット、`ENDMARKER` のない `.str`。エラー(赤)は直す必要があり、警告(オレンジ)は残してもかまいません。**{{MissionSaveNow}}** はすべてのスクリプトを保存し、`.ent` を書き、スクリプトをコンパイルし、自作の ROFF ファイルを加え、`.pk3` をゲームフォルダーに作ります。")),
+        ("fluss", T("How a mission starts in the game"),
+         [T("The player spawns"), T("info_player_start"), T("target_scriptrunner"), T("The intro script"), T("affect blocks")],
+         [[], [T("its key target fires the runner")], [T("its key usescript names the script")],
+          [T("camera ENABLE ... DISABLE")], [T("figures walk, look, speak"), T("their spawnscripts run when they appear")]],
+         T("A new mission sets this up for you - the Graph view shows the same chain.")),
         ("img", "h_mission_speichern", T(
             "The {{MissionSaveTitle}} dialog with its checks.",
             "Der Dialog {{MissionSaveTitle}} mit seinen Prüfungen.",
             "带检查结果的 {{MissionSaveTitle}} 对话框。",
             "チェック結果付きの {{MissionSaveTitle}} ダイアログ。")),
+        ("legende", [
+            (T("**{{MissionTarget}}**"), T("Where the `.pk3` is written; **{{MissionChoose}}** picks another place.")),
+            (T("**{{MissionSaveNow}}** / **{{MissionCancel}}**"), T("Saves, compiles and packs - or closes the window. Above them: every file of the package and the checks.")),
+        ]),
         ("note", T(
-            "The archive is written next to the other mod archives (`zz_<name>.pk3` in the Movie Duels folder, so it wins over older files). Start the game and type `devmap <name>` in the console to play it.",
-            "Das Archiv landet neben den anderen Mod-Archiven (`zz_<Name>.pk3` im Movie-Duels-Ordner, damit es gegen ältere Dateien gewinnt). Starte das Spiel und tippe `devmap <Name>` in die Konsole, um sie zu spielen.",
-            "压缩包会写到其他模组压缩包旁边(Movie Duels 文件夹中的 `zz_<名称>.pk3`,以便优先于旧文件)。启动游戏并在控制台输入 `devmap <名称>` 即可游玩。",
-            "アーカイブは他の MOD アーカイブの隣に書き出されます(Movie Duels フォルダーの `zz_<名前>.pk3`。古いファイルより優先されます)。ゲームを起動してコンソールに `devmap <名前>` と入力すると遊べます。")),
+            "The archive goes into the game folder that wins - the bottom one under **{{MenuEdit}} → {{PathsTitle}}** - as `zz_<name>.pk3`, so it wins over older files. Start the game and type `devmap <name>` in the console to play it.",
+            "Das Archiv landet im Spielordner, der gewinnt - dem untersten unter **{{MenuEdit}} → {{PathsTitle}}** - als `zz_<Name>.pk3`, damit es gegen ältere Dateien gewinnt. Starte das Spiel und tippe in der Konsole `devmap <Name>`.")),
     ],
 }
 

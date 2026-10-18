@@ -1,0 +1,358 @@
+{
+ "fassung": 1,
+ "sprache": "ja",
+ "touren": [
+  {
+   "id": "k-neues-skript",
+   "gruppe": "tut_skript",
+   "titel": "スクリプトを一から書く",
+   "kurz": "新しい空のスクリプト、1 人のキャラクター用の affect ブロック、その中の最初のコマンド。",
+   "seite": "k-neues-skript.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**空のタブを開きます。** タブバーの末尾にある **+** をクリックします(または **{{MenuFile}} → {{FileNew}}**)。空のスクリプトが入った新しいタブ `unnamed.txt` が開きます。左のモードバーは **{{ViewEvents}}** にしておく必要があります。そうすると左側に、すべてのコマンドを含む **{{GroupEvents}}** 一覧が表示されます。",
+      "bild": "s_neu_plus",
+      "unter": "タブバー末尾の + で空のスクリプトが開きます。",
+      "ziel": "reiter:+;menue:MenuFile>FileNew",
+      "fertig": "reiter+|leer",
+      "voraus": "",
+      "einrichten": "neuerReiter",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**一覧で affect を探します。** **{{GroupEvents}}** 一覧には、ゲームのすべてのコマンドが値とともに表示されます。`affect` は上のほうにあります。マウスを重ねると、何をするコマンドかが表示されます。",
+      "bild": "s_neu_affect_liste",
+      "unter": "イベント一覧の affect。",
+      "ziel": "eintrag:affect",
+      "fertig": "schwebt|befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**ダブルクリックします。** 中央のスクリプトツリーに `affect` が現れます。ブロックは他のコマンドを含むものなので、最初から開いています(前の四角がマイナスになっています)。",
+      "bild": "s_neu_affect_baum",
+      "unter": "ツリーに追加された affect ブロック。",
+      "ziel": "eintrag:affect",
+      "fertig": "befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:affect",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**キャラクターに名前を付けます。** 新しい行をダブルクリックします(または選択して <kbd>Enter</kbd> を押します)。**{{EditorTitle}}** が開きます。最初の欄にキャラクターの名前を入力します。マップを読み込んでいれば、横の小さな矢印でマップ内のすべての名前を一覧できます。2 番目の欄は `FLUSH` のままにして **{{EditorOk}}** を押します。",
+      "bild": "s_neu_editor",
+      "unter": "affect のイベントエディター:名前欄と OK。",
+      "ziel": "knopfN:##v@###editor#0;knopf:EditorOk@###editor",
+      "fertig": "wert:affect#0:0",
+      "voraus": "editor:affect < zeile:affect#0",
+      "einrichten": "wert:affect#0:0=kyle",
+      "sicher": true,
+      "ueberspringen": "editorzu"
+     },
+     {
+      "text": "**ブロックを選択してから、次のコマンドを選びます。** `affect` の行を 1 回クリックします(1)。次に一覧の `wait` をダブルクリックします(2)。選択中のブロックが開いているので、コマンドはブロックの先頭に入ります。",
+      "bild": "s_neu_wait_liste",
+      "unter": "1:選択した affect ブロック。2:一覧の wait。",
+      "ziel": "zeile:affect#0;eintrag:wait",
+      "fertig": "kind:affect>wait",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;waehle:affect#0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**結果を確認します。** `wait` はブロックの中に入り、`affect` の下に字下げされています。この後に挿入するコマンドは、同じブロックの中で順に続きます。",
+      "bild": "s_neu_ergebnis",
+      "unter": "affect ブロックの中の wait。",
+      "ziel": "zeile:wait#0",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**保存します。** 右の操作列にある **{{FileSave}}** を押します(または <kbd>Ctrl</kbd>+<kbd>S</kbd>)。初回は behaved が名前を尋ねます。スクリプト名は小文字で空白なし、たとえば `my_first.txt` のようにします。",
+      "bild": "s_neu_speichern",
+      "unter": "操作列の「保存」。",
+      "ziel": "knopf:FileSave",
+      "fertig": "gespeichert",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-befehl-einfuegen",
+   "gruppe": "tut_skript",
+   "titel": "コマンドを追加する 3 つの方法",
+   "kurz": "ダブルクリック、ドラッグ&ドロップ、Insert キー。そして、コマンドを狙った場所に正確に置く方法。",
+   "seite": "k-befehl-einfuegen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**ダブルクリック。** コマンドを入れたい位置の直前の行を選択し(1)、**{{GroupEvents}}** 一覧でコマンドをダブルクリックします(2)。新しい行は選択した行のすぐ下に入ります。ここでは `camera ( MOVE )` の後ろに `wait` が入っています。オリジナルの BehavEd と同じ動作です。",
+      "bild": "s_ein_doppel",
+      "unter": "1:選択した行。2:一覧のコマンド。",
+      "ziel": "baum;eintrag:wait",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Insert キー。** 一覧でコマンドを 1 回クリックすると、ハイライトされたままになります(1)。ツリーで行を選択し(2)、<kbd>Insert</kbd> を押します。同じコマンドを何度も追加するときに便利です。選択、<kbd>Insert</kbd>、選択、<kbd>Insert</kbd>……",
+      "bild": "s_ein_einfg",
+      "unter": "1:一覧で選択されたままのコマンド。2:挿入先。",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**ドラッグ。** 一覧のコマンド(1)をツリーの行(2)へドラッグします。ドラッグ中は、どこに入るかを線が示します。行の上、行の下、または開いたブロックの中央ならブロックの中です。",
+      "bild": "s_ein_ziehen",
+      "unter": "一覧(1)からツリー(2)へドラッグ。",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**右クリック。** ツリーの行を右クリックすると、サブメニュー **{{GroupEvents}}** と **マクロ** にすべてのコマンドが並びます。クリックしたコマンドはその行の後ろに挿入されます。開いたブロックを右クリックした場合はブロックの中に入ります。",
+      "bild": "s_ein_kontext",
+      "unter": "行のコンテキストメニューとイベントのサブメニュー。",
+      "ziel": "baum",
+      "fertig": "knoten+",
+      "voraus": "",
+      "einrichten": "befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-werte-bearbeiten",
+   "gruppe": "tut_skript",
+   "titel": "コマンドの値を変える",
+   "kurz": "イベントエディター。リスト、数値、ファイル欄、マップの名前、そして get・tag・random などの式。",
+   "seite": "k-werte-bearbeiten.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**エディターを開きます。** ツリーの行をダブルクリックするか、選択して <kbd>Enter</kbd> を押します。上にコマンドのヘルプが表示され、その下に値ごとの欄があります。",
+      "bild": "h_editor",
+      "unter": "カメラコマンドのイベントエディター。",
+      "ziel": "baum",
+      "fertig": "editor",
+      "voraus": "",
+      "einrichten": "editor",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**値の欄。** 数値、ベクトル、テキストはそれぞれの欄に入力します。位置のようなベクトルは、空白で区切った 3 つの数値です。",
+      "bild": "s_wert_felder",
+      "unter": "camera ( MOVE ) の値の欄:位置と時間。",
+      "ziel": "knopfN:##v@###editor#0;knopfN:##v@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**選択肢が決まった欄。** `SET_TYPES` や `true` / `false` のような欄は、入力もできるリストです。入力を始めるとリストが絞り込まれます。リストにない値も使えます(Mod は独自の値を持ち込みます)が、**不明** と表示されます。入力ミスがないか確認してください。",
+      "bild": "s_wert_liste",
+      "unter": "set ( SET_WALKING, true ) の 2 つのリスト欄。",
+      "ziel": "knopfN:##combo@###editor#0;knopfN:##combo@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**ファイル。** ファイル欄には、ゲームのファイルを選ぶ **{{EditorBrowse}}** と、サウンドを再生したりスクリプトを開いたりする **{{EditorPlay}}** があります。マップを読み込んでいれば、名前欄の横の矢印でマップから名前を選べます。",
+      "bild": "s_wert_datei",
+      "unter": "サウンドコマンド:参照と再生。",
+      "ziel": "knopf:EditorBrowse@###editor;knopf:EditorPlay@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**式。** 一部の欄には **{{EditorHelper}}** があり、式を組み立ててくれます。**{{EditorGet}}** は変数を読み(`get`)、**{{EditorTag}}** は `ref_tag` の位置や角度を(`tag`)、**{{EditorRnd}}** は乱数を(`random`)作ります。",
+      "bild": "s_wert_helper",
+      "unter": "カメラコマンドの欄の横にあるヘルパー。",
+      "ziel": "knopf:EditorHelper@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**自由なテキスト。** 他の欄には **{{EditorExpr}}** があり、欄を自由なテキストに変えます。リストにないものは何でも入力できます。**{{EditorRevert}}** で通常の値に戻ります。",
+      "bild": "s_wert_expr",
+      "unter": "affect の欄の横にある「式！」。",
+      "ziel": "knopf:EditorExpr@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**完了。** **{{EditorOk}}**(<kbd>Enter</kbd>)で値がスクリプトに書かれ、**{{EditorCancel}}**(<kbd>Esc</kbd>)ですべて元のままになります。各欄の下には、変更前の値が表示されます(**{{EditorWas}}**)。",
+      "bild": "s_wert_ok",
+      "unter": "OK とキャンセル。",
+      "ziel": "knopf:EditorOk@###editor;knopf:EditorCancel@###editor",
+      "fertig": "editorzu",
+      "voraus": "",
+      "einrichten": "editorzu",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-zeilen-ordnen",
+   "gruppe": "tut_skript",
+   "titel": "行の移動・コピー・コメント化",
+   "kurz": "スクリプトを並べ替える。複数行を選び、ドラッグし、複製し、削除せずに行を無効にします。",
+   "seite": "k-zeilen-ordnen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**選択。** ツリーの行をクリックします。<kbd>Ctrl</kbd>+クリックで行を追加し、<kbd>Shift</kbd>+クリックで間の行をすべて選択します。操作列のボタンはどれも、選択中のすべての行にまとめて働きます。",
+      "bild": "s_auswahl",
+      "unter": "選択した 2 行。",
+      "ziel": "baum",
+      "fertig": "auswahl",
+      "voraus": "",
+      "einrichten": "waehle:*",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**移動。** 選択範囲を新しい場所へドラッグします。または操作列の **{{ActMoveUp}}** / **{{ActMoveDown}}**(<kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd>)で 1 行ずつ動かします。選択範囲は自分のブロックの中に留まります。ブロックは中身ごと移動します。",
+      "bild": "s_verschieben",
+      "unter": "上へと下へ。",
+      "ziel": "gruppe:ActMoveUp,ActMoveDown",
+      "fertig": "aenderung+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**複製。** **{{ActClone}}**(<kbd>Space</kbd>)で、選択範囲のコピーがすぐ下に挿入されます。2 つ目のカメラショットや 2 つ目の移動を作る最速の方法です。",
+      "bild": "s_clone",
+      "unter": "複製。",
+      "ziel": "knopf:ActClone",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**スクリプト間でコピー。** **{{ActCopy}}**(<kbd>Ctrl</kbd>+<kbd>C</kbd>)で選択範囲をコピーします。別のタブに切り替えて行を選び、**{{ActPaste}}**(<kbd>Ctrl</kbd>+<kbd>V</kbd>)を押すと、その行の下にコマンドが挿入されます。",
+      "bild": "s_copy",
+      "unter": "コピーと貼り付け。",
+      "ziel": "knopf:ActCopy;knopf:ActPaste",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**削除せずに無効にします。** **{{ActRem}}**(<kbd>Backspace</kbd>)で、選択した行がコメントになります。スクリプトには残りますが、ゲームはそれを飛ばします。もう一度押す(または <kbd>Ctrl</kbd>+<kbd>Backspace</kbd>)と元に戻ります。",
+      "bild": "s_rem",
+      "unter": "コメント化:2 行がコメントになりました。",
+      "ziel": "knopf:ActRem",
+      "fertig": "rem+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-uebersetzen",
+   "gruppe": "tut_skript",
+   "titel": "コンパイルとエラーの修正",
+   "kurz": "スクリプトをゲームが実行する .ibi に変え、メッセージを読み、間違った行へジャンプします。",
+   "seite": "k-uebersetzen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**コンパイルします。** 操作列の下にある **{{Compile}}** を押します。`.txt` が保存され、その隣にゲームが実行する `.ibi` が書き出されます。成功するとボタンが緑に光ります。",
+      "bild": "t1_6",
+      "unter": "コンパイルボタン。",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**失敗したとき。** ボタンが赤く光り、ツリーで最初の誤った行が選択されます。ここでは、ICARUS が知らない比較演算子 `~` を使った `if` です。",
+      "bild": "s_comp_fehler",
+      "unter": "コンパイル失敗:ボタンと、選択された誤った行。",
+      "ziel": "knopf:Compile",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**メッセージを読みます。** 下のステータス行にある件数をクリックすると、**{{MessagesTitle}}** ウィンドウにすべてのメッセージが、行番号と問題点付きで一覧されます。",
+      "bild": "s_comp_meldung",
+      "unter": "ステータス行の件数でメッセージウィンドウが開きます。",
+      "ziel": "meldungen",
+      "fertig": "fenster:messages",
+      "voraus": "",
+      "einrichten": "fenster:messages",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**修正して再コンパイルします。** 誤った行をダブルクリックし、値を直します。ここでは比較演算子を `=`、`<`、`>`、`!` のいずれかにします。**{{EditorOk}}** を押し、もう一度 **{{Compile}}** を押します。",
+      "bild": "s_comp_editor",
+      "unter": "イベントエディターの誤った値。",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  }
+ ]
+}

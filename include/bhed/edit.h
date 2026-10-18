@@ -390,7 +390,8 @@ public:
     //
     // Gebraucht, damit die Ablage dem ANWENDER folgt statt dem Dokument:
     // wer in einem Reiter kopiert, will es im naechsten einfuegen koennen.
-    // Die Oberflaeche traegt sie beim Reiterwechsel hinueber.
+    // Die Oberflaeche liest sie nach jedem Kopieren in ihre eigene Ablage
+    // (App::ablage) und legt diese vor dem Einfuegen wieder hier hinein.
     [[nodiscard]] const std::vector<Node>& clipboard() const { return clip_; }
 
     // --- Rueckgaengig -------------------------------------------------------

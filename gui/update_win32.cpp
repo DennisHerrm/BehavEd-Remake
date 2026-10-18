@@ -378,15 +378,24 @@ void installAuftrag(bhed::update::Release r) {
     const fs::path ordner = exe.parent_path();
     int ersetzt = 0;
     std::string problem;
+    // rc601 release: WAS mit einem Eintrag geschieht (an die Stelle der
+    // laufenden .exe, daneben, gar nicht), entscheidet einspielenAls in
+    // src/update.cpp - dort laesst es sich ohne Netz pruefen
+    // (tests/updatetest.cpp). Ohne data\base neben der .exe laeuft das
+    // Programm eigenstaendig mit seinen eingebauten Daten.
+    const bool nurProgramm = !fs::exists(ordner / L"data" / L"base" / L"behaved.bhc", ec);
+    const std::string laufenderName = schmal(exe.filename().wstring());
     for (const Pk3Entry& e : archiv.entries) {
         const std::string rel = bhed::update::zielImOrdner(e.name, ober);
-        if (rel.empty()) { continue; }
+        const bhed::update::Einspielen art = bhed::update::einspielenAls(rel, laufenderName, nurProgramm);
+        if (art == bhed::update::Einspielen::Ueberspringen) { continue; }
         std::string inhalt;
         if (!readPk3File(archiv, e, inhalt, &fehler)) {
             problem = e.name + ": " + fehler;
             break;
         }
-        const fs::path ziel = ordner / fs::u8path(rel);
+        const bool istExe = art == bhed::update::Einspielen::Programm;
+        const fs::path ziel = istExe ? exe : ordner / fs::u8path(rel);
         fs::create_directories(ziel.parent_path(), ec);
         fs::path neu = ziel;
         neu += L".neu";
@@ -398,7 +407,6 @@ void installAuftrag(bhed::update::Release r) {
                 break;
             }
         }
-        const bool istExe = _wcsicmp(ziel.filename().c_str(), exe.filename().c_str()) == 0;
         if (istExe) {
             // Die laufende .exe nur umbenennen - ueberschreiben geht nicht.
             fs::path alt = exe;
@@ -410,6 +418,7 @@ void installAuftrag(bhed::update::Release r) {
                 problem = text(Str::UpdErrReplace, rel, static_cast<long long>(GetLastError()));
                 break;
             }
+            diag::detail("Update: neues Programm an " + schmal(exe.wstring()) + " (aus " + rel + ")");
         } else if (!MoveFileExW(neu.c_str(), ziel.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
             problem = text(Str::UpdErrReplace, rel, static_cast<long long>(GetLastError()));
             break;
@@ -519,6 +528,14 @@ void neustartVergessen() { g_neustartVorgemerkt = false; }
 void neustartWennVorgemerkt() {
     if (!g_neustartVorgemerkt) { return; }
     g_neustartVorgemerkt = false;
+    // rc601 release: exePfad() ist auch nach dem Update genau die Datei, die
+    // installAuftrag geschrieben hat - auch bei einer eigenstaendigen .exe mit
+    // anderem Namen. GetModuleFileNameW meldet den Pfad, unter dem der Lader
+    // das Programm geladen hat, und behaelt ihn, wenn die laufende Datei in
+    // ".alt" umbenannt wird (nachgeprueft am 17.10.2026 mit einem kleinen
+    // Programm, das sich selbst umbenennt; beimStart verlaesst sich mit
+    // exePfad() + ".alt" auf dasselbe). An diesen Pfad legt installAuftrag
+    // das neue Programm.
     const std::wstring exe = exePfad();
     std::wstring zeile = L"\"" + exe + L"\" --nach-update=" + std::to_wstring(GetCurrentProcessId());
     STARTUPINFOW si{};

@@ -14,6 +14,10 @@ SEITE = {
     "bloecke": [
         ("p", T("BehavEd-Remake writes ICARUS scripts - the scripts behind every cutscene and every scripted moment of Jedi Academy and its mods. It writes them exactly like Raven's original BehavEd, file for file, and then shows you what they do: on the map, in 3D, over time. Each section below links to the tutorials that practise it.")),
 
+        ("fluss", T("From an idea to the game"),
+         [T("Write the script"), T("See it on the map"), T("Time it"), T("Save mission"), T("Play it")],
+         [[T("commands, values, blocks")], [T("figures, camera, ships")], [T("timeline, Tracks")],
+          [T("checks, compile, .pk3")], [T("devmap <name>")]]),
         ("h2", "skripte", T("Write scripts like the original")),
         ("img", "h_skriptbaum", T("The command list, the script tree and the action column."), "breit"),
         ("list", [

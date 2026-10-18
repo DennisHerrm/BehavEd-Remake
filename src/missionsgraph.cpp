@@ -146,25 +146,23 @@ MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphS
     for (const int i : immer) {
         if (i >= 0 && static_cast<std::size_t>(i) < ents.size()) { (void)knotenFuerEntity(i); }
     }
-    // Entity -> Entity (target) und Entity -> Skript (*script).
+    // Entity -> Skript (*script) zuerst, dann was fuer die Mission zaehlt.
+    //
+    // Die target-Verbindungen zwischen Entities kommen erst ZUM SCHLUSS (unten):
+    // auf grossen Karten (taspir1, hunderte Wegpunkte in target-Ketten) fuellten
+    // sie sonst alle Plaetze, bevor die Skripte drankamen - das Intro fehlte
+    // im Graphen (Handbuch-Fotolauf rc601: "400 nodes (shortened)").
     for (std::size_t i = 0; i < ents.size(); ++i) {
         const MapEntity& e = ents[i];
-        for (const char* tk : {"target", "target2", "target3", "target4", "NPC_target"}) {
-            const std::string* t = e.find(tk);
-            if (t == nullptr || t->empty() || e.classname == "target_level_change") { continue; }
-            const auto it = namen.find(klein(*t));
-            if (it == namen.end()) { continue; }
-            for (const int z : it->second) {
-                if (z == static_cast<int>(i)) { continue; }
-                kante(knotenFuerEntity(static_cast<int>(i)), knotenFuerEntity(z), GraphKante::Art::Ausloesen, tk);
-            }
-        }
         for (const auto& [k, v] : e.keys) {
             const std::string kl = klein(k);
             if (kl.size() <= 6 || kl.compare(kl.size() - 6, 6, "script") != 0 || v.empty() || istVerhalten(v)) {
                 continue;
             }
-            kante(knotenFuerEntity(static_cast<int>(i)), knotenFuerSkript(v), GraphKante::Art::Skript, kl);
+            // Erst die Entity, dann das Skript - die Reihenfolge der Argumente
+            // waere nicht festgelegt, und die der Knoten soll es sein.
+            const int von = knotenFuerEntity(static_cast<int>(i));
+            kante(von, knotenFuerSkript(v), GraphKante::Art::Skript, kl);
         }
     }
     if (!startSkript.empty()) { (void)knotenFuerSkript(startSkript); }
@@ -202,6 +200,29 @@ MissionsGraph baueMissionsGraph(const std::vector<MapEntity>& ents, const GraphS
             for (const int z : it->second) {
                 kante(von, knotenFuerEntity(z),
                       w.befehl == "use" ? GraphKante::Art::Ausloesen : GraphKante::Art::Steuern, w.befehl);
+            }
+        }
+    }
+    // Entity -> Entity (target): nur, wo eine Seite schon zur Mission gehoert
+    // (ein Knoten von oben). Eine Kette von Wegpunkten ohne Bezug bleibt
+    // draussen; der erste Wegpunkt hinter einer Figur kommt mit.
+    std::set<int> dabei;
+    for (const auto& [i, k] : entityKnoten) {
+        (void)k;
+        dabei.insert(i);
+    }
+    for (std::size_t i = 0; i < ents.size(); ++i) {
+        const MapEntity& e = ents[i];
+        for (const char* tk : {"target", "target2", "target3", "target4", "NPC_target"}) {
+            const std::string* t = e.find(tk);
+            if (t == nullptr || t->empty() || e.classname == "target_level_change") { continue; }
+            const auto it = namen.find(klein(*t));
+            if (it == namen.end()) { continue; }
+            for (const int z : it->second) {
+                if (z == static_cast<int>(i)) { continue; }
+                if (dabei.count(static_cast<int>(i)) == 0 && dabei.count(z) == 0) { continue; }
+                const int von = knotenFuerEntity(static_cast<int>(i));
+                kante(von, knotenFuerEntity(z), GraphKante::Art::Ausloesen, tk);
             }
         }
     }

@@ -515,7 +515,8 @@ void drawWegFenster() {
 void draufsichtSchalten(bool an) {
     if (an == g_app->draufsicht) { return; }
     if (an) {
-        g_app->vorDraufsicht = g_app->cam;
+        // Paket kamera, rc601 (Review): im Pilot ohne dessen Bildwinkel.
+        g_app->vorDraufsicht = freieKamera();
         // Schnitt: etwas ueber dem Boden unter der Kamera (eine Etage).
         float boden = g_app->cam.pos[2] - 64.0F;
         if (!g_app->geo.empty()) {

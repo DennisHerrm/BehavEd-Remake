@@ -1,0 +1,358 @@
+{
+ "fassung": 1,
+ "sprache": "en",
+ "touren": [
+  {
+   "id": "k-neues-skript",
+   "gruppe": "tut_skript",
+   "titel": "Write a script from scratch",
+   "kurz": "A new empty script, an affect block for one figure and a first command inside it.",
+   "seite": "k-neues-skript.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Open an empty tab.** Click the **+** at the end of the tab bar (or **{{MenuFile}} → {{FileNew}}**). A new tab `unnamed.txt` opens with an empty script. The mode bar on the left must be on **{{ViewEvents}}** - then the **{{GroupEvents}}** list with every command is on the left.",
+      "bild": "s_neu_plus",
+      "unter": "The + at the end of the tab bar opens an empty script.",
+      "ziel": "reiter:+;menue:MenuFile>FileNew",
+      "fertig": "reiter+|leer",
+      "voraus": "",
+      "einrichten": "neuerReiter",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Find affect in the list.** The **{{GroupEvents}}** list shows every command of the game with its values. `affect` is near the top. Hover over it to read what it does.",
+      "bild": "s_neu_affect_liste",
+      "unter": "affect in the Events list.",
+      "ziel": "eintrag:affect",
+      "fertig": "schwebt|befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Double-click it.** `affect` appears in the script tree in the middle. It is already open (the box in front shows a minus), because a block holds other commands.",
+      "bild": "s_neu_affect_baum",
+      "unter": "The new affect block in the tree.",
+      "ziel": "eintrag:affect",
+      "fertig": "befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:affect",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Name the figure.** Double-click the new line (or select it and press <kbd>Enter</kbd>). The **{{EditorTitle}}** opens. Type the name of the figure into the first field - with a map loaded, the small arrow next to it lists every name of the map. Leave `FLUSH` in the second field and press **{{EditorOk}}**.",
+      "bild": "s_neu_editor",
+      "unter": "The event editor for affect: the name field and Ok.",
+      "ziel": "knopfN:##v@###editor#0;knopf:EditorOk@###editor",
+      "fertig": "wert:affect#0:0",
+      "voraus": "editor:affect < zeile:affect#0",
+      "einrichten": "wert:affect#0:0=kyle",
+      "sicher": true,
+      "ueberspringen": "editorzu"
+     },
+     {
+      "text": "**Select the block, then pick the next command.** Click the `affect` line once (1). Then double-click `wait` in the list (2). Because the selected block is open, the command goes to the start of the block.",
+      "bild": "s_neu_wait_liste",
+      "unter": "1: the selected affect block. 2: wait in the list.",
+      "ziel": "zeile:affect#0;eintrag:wait",
+      "fertig": "kind:affect>wait",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;waehle:affect#0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Check the result.** `wait` now sits inside the block, indented under `affect`. Commands you insert after it follow it, in order, inside the same block.",
+      "bild": "s_neu_ergebnis",
+      "unter": "wait inside the affect block.",
+      "ziel": "zeile:wait#0",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Save.** Press **{{FileSave}}** in the action column on the right (or <kbd>Ctrl</kbd>+<kbd>S</kbd>). The first time, behaved asks for a name - script names are lower case without spaces, for example `my_first.txt`.",
+      "bild": "s_neu_speichern",
+      "unter": "Save in the action column.",
+      "ziel": "knopf:FileSave",
+      "fertig": "gespeichert",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-befehl-einfuegen",
+   "gruppe": "tut_skript",
+   "titel": "Three ways to add a command",
+   "kurz": "Double-click, drag and drop, or the Insert key - and how to put a command exactly where you want it.",
+   "seite": "k-befehl-einfuegen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Double-click.** Select the line after which the command should come (1), then double-click the command in the **{{GroupEvents}}** list (2). The new line appears right below the selected one - here a `wait` after `camera ( MOVE )`. That is how the original BehavEd worked.",
+      "bild": "s_ein_doppel",
+      "unter": "1: the selected line. 2: the command in the list.",
+      "ziel": "baum;eintrag:wait",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Insert key.** Click a command in the list once - it stays highlighted (1). Select a line in the tree (2) and press <kbd>Insert</kbd>. Handy when you add the same command several times: select, <kbd>Insert</kbd>, select, <kbd>Insert</kbd> ...",
+      "bild": "s_ein_einfg",
+      "unter": "1: the command stays selected in the list. 2: where it goes.",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Drag.** Drag a command from the list (1) onto a line of the tree (2). While you drag, a line shows where it lands: above a line, below it, or - on the middle of an open block - inside the block.",
+      "bild": "s_ein_ziehen",
+      "unter": "Drag from the list (1) onto the tree (2).",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Right-click.** Right-click a line in the tree: the submenus **{{GroupEvents}}** and **Macros** list every command; the one you click is inserted after that line - or into the block, if you right-clicked an open block.",
+      "bild": "s_ein_kontext",
+      "unter": "The context menu of a line with its Events submenu.",
+      "ziel": "baum",
+      "fertig": "knoten+",
+      "voraus": "",
+      "einrichten": "befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-werte-bearbeiten",
+   "gruppe": "tut_skript",
+   "titel": "Change the values of a command",
+   "kurz": "The event editor: lists, numbers, file fields, names from the map - and expressions such as get, tag and random.",
+   "seite": "k-werte-bearbeiten.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Open the editor.** Double-click a line in the tree or select it and press <kbd>Enter</kbd>. The help text of the command stands on top; below it, every value has its own field.",
+      "bild": "h_editor",
+      "unter": "The event editor for a camera command.",
+      "ziel": "baum",
+      "fertig": "editor",
+      "voraus": "",
+      "einrichten": "editor",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Fields for values.** Numbers, vectors and text are typed into their fields. A vector like a position has three numbers separated by spaces.",
+      "bild": "s_wert_felder",
+      "unter": "The value fields of camera ( MOVE ): a position and a time.",
+      "ziel": "knopfN:##v@###editor#0;knopfN:##v@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Fields with fixed choices.** Fields like `SET_TYPES` or `true` / `false` are lists you can also type into - start typing to filter the list. A value that is not in the list is allowed (mods bring their own), but it is marked **unknown**: check it for a typo.",
+      "bild": "s_wert_liste",
+      "unter": "The two list fields of set ( SET_WALKING, true ).",
+      "ziel": "knopfN:##combo@###editor#0;knopfN:##combo@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Files.** File fields have **{{EditorBrowse}}** to pick a file of the game and **{{EditorPlay}}** to play a sound or open a script. With a map loaded, an arrow next to name fields picks a name from the map.",
+      "bild": "s_wert_datei",
+      "unter": "A sound command: browse and play.",
+      "ziel": "knopf:EditorBrowse@###editor;knopf:EditorPlay@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Expressions.** Some fields have **{{EditorHelper}}**: it builds an expression for you - **{{EditorGet}}** reads a variable (`get`), **{{EditorTag}}** the place or angles of a `ref_tag` (`tag`), **{{EditorRnd}}** a random number (`random`).",
+      "bild": "s_wert_helper",
+      "unter": "Helper next to a field of the camera command.",
+      "ziel": "knopf:EditorHelper@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Free text.** Other fields have **{{EditorExpr}}**: it turns the field into free text, for anything the lists do not offer. **{{EditorRevert}}** goes back to a plain value.",
+      "bild": "s_wert_expr",
+      "unter": "Expr! next to the fields of affect.",
+      "ziel": "knopf:EditorExpr@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Done.** **{{EditorOk}}** (<kbd>Enter</kbd>) writes the values into the script, **{{EditorCancel}}** (<kbd>Esc</kbd>) leaves everything as it was. Under each field you see the value it had before (**{{EditorWas}}**).",
+      "bild": "s_wert_ok",
+      "unter": "Ok and Cancel.",
+      "ziel": "knopf:EditorOk@###editor;knopf:EditorCancel@###editor",
+      "fertig": "editorzu",
+      "voraus": "",
+      "einrichten": "editorzu",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-zeilen-ordnen",
+   "gruppe": "tut_skript",
+   "titel": "Move, copy and comment out lines",
+   "kurz": "Rearrange a script: select several lines, drag them, duplicate them, and switch lines off without deleting them.",
+   "seite": "k-zeilen-ordnen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Select.** Click a line in the tree. <kbd>Ctrl</kbd>+click adds more lines, <kbd>Shift</kbd>+click selects everything between. Every button of the action column works on all selected lines at once.",
+      "bild": "s_auswahl",
+      "unter": "Two selected lines.",
+      "ziel": "baum",
+      "fertig": "auswahl",
+      "voraus": "",
+      "einrichten": "waehle:*",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Move.** Drag the selection to a new place - or press **{{ActMoveUp}}** / **{{ActMoveDown}}** in the action column (<kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd>) to move it one line. It stays inside its block. A block moves with everything inside it.",
+      "bild": "s_verschieben",
+      "unter": "Move up and Move down.",
+      "ziel": "gruppe:ActMoveUp,ActMoveDown",
+      "fertig": "aenderung+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Duplicate.** **{{ActClone}}** (<kbd>Space</kbd>) inserts a copy of the selection right below - the quickest way to a second camera shot or a second walk.",
+      "bild": "s_clone",
+      "unter": "Duplicate.",
+      "ziel": "knopf:ActClone",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Copy between scripts.** **{{ActCopy}}** (<kbd>Ctrl</kbd>+<kbd>C</kbd>) copies the selection. Switch to another tab, select a line and press **{{ActPaste}}** (<kbd>Ctrl</kbd>+<kbd>V</kbd>): the commands are inserted below that line.",
+      "bild": "s_copy",
+      "unter": "Copy and Paste.",
+      "ziel": "knopf:ActCopy;knopf:ActPaste",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Switch off without deleting.** **{{ActRem}}** (<kbd>Backspace</kbd>) turns the selected lines into comments: they stay in the script, but the game skips them. Press it again (or <kbd>Ctrl</kbd>+<kbd>Backspace</kbd>) to switch them back on.",
+      "bild": "s_rem",
+      "unter": "REM: the two lines are now comments.",
+      "ziel": "knopf:ActRem",
+      "fertig": "rem+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-uebersetzen",
+   "gruppe": "tut_skript",
+   "titel": "Compile and fix errors",
+   "kurz": "Turn the script into the .ibi the game runs, read the messages and jump to the line that is wrong.",
+   "seite": "k-uebersetzen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Compile.** Press **{{Compile}}** at the bottom of the action column. It saves the `.txt` and writes the `.ibi` the game runs next to it. When it worked, the button flashes green.",
+      "bild": "t1_6",
+      "unter": "The Compile button.",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**When it fails.** The button flashes red, and the first wrong line is selected in the tree - here an `if` with the comparison `~`, which ICARUS does not know.",
+      "bild": "s_comp_fehler",
+      "unter": "Compile failed: the button and the selected wrong line.",
+      "ziel": "knopf:Compile",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Read the messages.** Click the counter in the status line at the bottom: the **{{MessagesTitle}}** window lists every message with its line and what is wrong.",
+      "bild": "s_comp_meldung",
+      "unter": "The counters in the status line open the Messages window.",
+      "ziel": "meldungen",
+      "fertig": "fenster:messages",
+      "voraus": "",
+      "einrichten": "fenster:messages",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Fix and compile again.** Double-click the wrong line, correct the value - here the comparison: `=`, `<`, `>` or `!` - press **{{EditorOk}}** and **{{Compile}}** again.",
+      "bild": "s_comp_editor",
+      "unter": "The wrong value in the event editor.",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -21,6 +21,9 @@
 #include "bhed/edit.h"
 #include "bhed/i18n.h"
 #include "bhed/theme.h"
+// rc601 release: eingebaute Daten und --pruefe-daten.
+#include "bhed/commands.h"
+#include "bhed/eingebaut.h"
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -324,6 +327,121 @@ std::string exeDirectory() {
     std::wstring path(buffer, n);
     const std::size_t cut = path.find_last_of(L"\\/");
     return toUtf8(cut == std::wstring::npos ? std::wstring{} : path.substr(0, cut));
+}
+
+// --- rc601 release: die .exe allein ---------------------------------------
+//
+// shank: "bei jedem Release sollte es auch eine .exe geben, die gebaut wird,
+// dass die Leute sie runterladen und nutzen koennen". Bis rc600 lud behaved
+// sein Befehlsmodell nur aus <exe>\data\base; fehlte der Ordner (die .exe
+// allein aus dem Zip gezogen, oder heruntergeladen), kam das Meldungsfenster
+// "behaved.bhc not found in ..." und das Programm endete mit 2.
+//
+// Jetzt: liegt data\base neben der .exe, gilt er wie bisher. Sonst packt
+// behaved die eingebauten Daten (bhed/eingebaut.h) nach
+// <Einstellungsordner>\data\base aus - %APPDATA%\behaved, mit
+// BHED_EINSTELLUNGEN ein eigener - und laedt von dort.
+std::wstring breitAusUtf8(const std::string& text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int n = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
+    std::wstring out(static_cast<std::size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), n);
+    return out;
+}
+
+// `hinweis` (Durchsicht): scheiterte das Auspacken, die uebersetzte zweite
+// Zeile fuer das Meldungsfenster (bhed::eingebaut::auspackHinweis), sonst leer.
+std::string datenOrdnerFuerStart(std::string* bericht, std::string* hinweis = nullptr) {
+    namespace fs = std::filesystem;
+    const auto pfad = [](const std::string& s) {
+        return fs::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+    };
+    const std::string einst = bhed::platform::settingsDirectory();
+    const bhed::eingebaut::Wahl w = bhed::eingebaut::datenOrdnerWaehlen(
+        pfad(exeDirectory()), einst.empty() ? fs::path() : pfad(einst), bhed::kFassung);
+    if (bericht != nullptr) {
+        const std::u8string z = w.auspackZiel.u8string();
+        const std::string ziel = z.empty() ? std::string() : " (" + std::string(z.begin(), z.end()) + ")";
+        *bericht = w.eingebaut ? "eingebaute Daten, ausgepackt (" + std::to_string(w.geschrieben) +
+                                     " Dateien neu geschrieben)"
+                   : w.fehler.empty() ? std::string("neben der .exe")
+                                      : "neben der .exe; eingebaute Daten nicht nutzbar" + ziel + ": " + w.fehler;
+    }
+    if (hinweis != nullptr) {
+        *hinweis = bhed::eingebaut::auspackHinweis(w);
+    }
+    const std::u8string o = w.ordner.u8string();
+    return std::string(o.begin(), o.end());
+}
+
+// Eine Zeile Text fuer den, der behaved aus der Konsole oder einem Skript
+// startet: auf die umgeleitete Standardausgabe (CI, ctest), sonst in die
+// Konsole des Aufrufers. Ein Fensterprogramm hat beides nicht von selbst.
+void schreibeAusgabe(const std::string& text) {
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    bool eigene = false;
+    if ((h == nullptr || h == INVALID_HANDLE_VALUE) && AttachConsole(ATTACH_PARENT_PROCESS)) {
+        h = CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                        0, nullptr);
+        eigene = true;
+    }
+    if (h == nullptr || h == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    DWORD n = 0;
+    WriteFile(h, text.data(), static_cast<DWORD>(text.size()), &n, nullptr);
+    if (eigene) {
+        CloseHandle(h);
+    }
+}
+
+// "behaved.exe --pruefe-daten": fuer die CI (.github/workflows/release.yml,
+// die eigenstaendige .exe allein in einem leeren Ordner) und den Selbsttest
+// "eigenstaendig". Waehlt den Datenordner wie beim Start, laedt das
+// Befehlsmodell wie loadModel und endet - ohne Fenster, Ton, Protokoll und
+// ohne Meldungsfenster (das hielte einen CI-Lauf bis zur Zeitgrenze an).
+// Rueckgabe -1: nicht verlangt; 0: geladen; 3: nicht geladen.
+int pruefeDatenAufruf() {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    const bool verlangt = argv != nullptr && argc > 1 && std::wcscmp(argv[1], L"--pruefe-daten") == 0;
+    if (argv != nullptr) {
+        LocalFree(argv);
+    }
+    if (!verlangt) {
+        return -1;
+    }
+    std::string bericht;
+    const std::string ordner = datenOrdnerFuerStart(&bericht);
+    bhed::CommandDb db;
+    std::vector<bhed::LoadDiag> meldungen;
+    const bool geladen = bhed::loadCommandDb(ordner + "/behaved.bhc", ordner, db, meldungen);
+    if (geladen) {
+        (void)bhed::loadCommandDb(ordner + "/supplement.bhc", ordner, db, meldungen);
+    }
+    const bool ok = geladen && !db.commands.empty();
+    schreibeAusgabe(std::string("behaved 1.0.0-") + bhed::kFassung + " --pruefe-daten\r\n" + "Daten: " + ordner +
+                    " (" + bericht + ")\r\n" + "Befehlsmodell: " + std::to_string(db.commands.size()) +
+                    " Befehle, " + std::to_string(db.typesets.size()) + " Typmengen, " +
+                    std::to_string(db.macros.size()) + " Makros, " + std::to_string(meldungen.size()) +
+                    " Meldungen\r\n" + (ok ? "ok" : "FEHLER: Befehlsmodell nicht geladen") + "\r\n");
+    return ok ? 0 : 3;
+}
+
+// --- rc601 release (Durchsicht): Startmeldung ohne Meldungsfenster ---------
+//
+// Nur fuer den Selbsttest "eigenstaendig": er startet eine Kopie dieser exe
+// OHNE BHED_EDITORTEST, also nicht stumm. Ging dort etwas schief (etwa wenn
+// --pruefe-daten einmal nicht mehr erkannt wird), stand bisher ein modales
+// Meldungsfenster mit dem Windows-Klang "Kritischer Abbruch" acht Sekunden
+// auf dem Schirm des Maintainers, bis der Schritt die Kopie beendete. Mit
+// BHED_KEIN_MELDUNGSFENSTER steht die Meldung nur im Protokoll, und der Start
+// endet gleich mit 2 - ein Rueckschritt faellt leise und sofort auf.
+bool keinMeldungsfenster() {
+    const char* wert = std::getenv("BHED_KEIN_MELDUNGSFENSTER");
+    return wert != nullptr && wert[0] != '\0';
 }
 
 std::string systemLocale() {
@@ -772,6 +890,13 @@ std::string windowsVersion() {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    // rc601 release: --pruefe-daten vor allem anderen - kein Fenster, keine
+    // Einzelinstanz-Weitergabe (sonst ginge das Argument als "Datei" an ein
+    // laufendes behaved), kein Protokoll.
+    if (const int code = pruefeDatenAufruf(); code >= 0) {
+        return code;
+    }
+
     // Skalierung anmelden, bevor irgendein Fenster entsteht. Danach ist es
     // zu spaet und alles erscheint verwaschen.
     announceDpiAwareness();
@@ -964,8 +1089,32 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bhed::gui::loadSettings(app);
 
     std::string error;
-    if (!bhed::gui::loadModel(app, exeDirectory() + "\\data\\base", &error)) {
-        MessageBoxA(hwnd, error.c_str(), "BehavEd", MB_ICONERROR);
+    // rc601 release: data\base neben der .exe oder die eingebauten Daten
+    // (datenOrdnerFuerStart). Die Meldung kommt aus loadModel in der
+    // eingestellten Sprache (Str::DataMissing) und ist UTF-8 - daher
+    // MessageBoxW. MessageBoxA verliesse sich auf die UTF-8-Codepage aus dem
+    // Manifest, und die kennt Windows erst ab 10 (1903).
+    std::string datenBericht;
+    std::string auspackHinweis;
+    const std::string datenOrdner = datenOrdnerFuerStart(&datenBericht, &auspackHinweis);
+    bhed::diag::info("Befehlsmodell aus " + datenOrdner + " (" + datenBericht + ")");
+    if (!bhed::gui::loadModel(app, datenOrdner, &error)) {
+        // rc601 release (Durchsicht): scheiterte das Auspacken der
+        // eingebauten Daten (Platte voll, Einstellungsordner
+        // schreibgeschuetzt oder umgeleitet), sagt eine zweite Zeile, wohin es
+        // gehen sollte und warum es nicht ging - vorher stand nur "das ganze
+        // Zip entpacken" mit dem Ordner neben der .exe da, irrefuehrend fuer
+        // die eigenstaendige .exe, und der Grund nur im Protokoll.
+        if (!auspackHinweis.empty()) {
+            error += "\n\n" + auspackHinweis;
+        }
+        // Die ganze Meldung auch ins Protokoll; mit BHED_KEIN_MELDUNGSFENSTER
+        // (Selbsttest) nur dorthin.
+        bhed::diag::error("Startmeldung:\n" + error);
+        if (keinMeldungsfenster()) {
+            return 2;
+        }
+        MessageBoxW(hwnd, breitAusUtf8(error).c_str(), L"BehavEd", MB_ICONERROR);
         return 2;
     }
     // Sprache aus den Regionseinstellungen; der Nutzer kann sie im Menue

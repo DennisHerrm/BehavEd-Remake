@@ -24,6 +24,8 @@
 #include "update.h"
 #include "app_internal.h"
 #include "gpumap.h"
+#include "elemente.h"   // rc601 tour: das Element-Register (auch ohne Selbsttest)
+#include "tour.h"       // rc601 tour: Tutorials im Programm
 
 #include <atomic>
 #include <algorithm>
@@ -2048,6 +2050,11 @@ void drawEditor() {
         ImGui::SetTooltip("%s", tr(Str::EditorReEvalHint));
     }
 
+    // rc601 tour (Review): das Tutorial-Fenster im Begin-Stapel dieses
+    // Modals zeichnen - sonst nimmt es bei offenem Editor keine Klicks an
+    // (ImGui sperrt die Maus fuer Fenster ausserhalb, gui/tour.cpp).
+    tourImModal();
+
     ImGui::EndPopup();
 }
 
@@ -2976,6 +2983,14 @@ void prefsZurueck() {
     st.alternativeIcons = v.alternativeIcons;
     st.queryOnDiscard = v.queryOnDiscard;
     st.dialogUsesLastDir = v.dialogUsesLastDir;
+    // rc601 ton: die Mischpegel der Vorschau
+    st.tonEffekte = v.tonEffekte;
+    st.tonStimmen = v.tonStimmen;
+    st.tonMusik = v.tonMusik;
+    // rc601 (bewegung, Durchsicht 2): baut die Szene neu, wenn sie sich aenderte.
+    schwierigkeitWaehlen(v.schwierigkeit);
+    // rc601 integ: das Regelwerk (regelwerkPruefen baut neu).
+    st.regelwerk = v.regelwerk;
 }
 
 void drawPrefs() {
@@ -3059,6 +3074,63 @@ void drawPrefs() {
     ImGui::Checkbox(tr(Str::PrefsAltIcons), &st.alternativeIcons);
     ImGui::Checkbox(tr(Str::PrefsQuery), &st.queryOnDiscard);
     ImGui::Checkbox(tr(Str::PrefsLastDir), &st.dialogUsesLastDir);
+
+    // --- rc601 ton: die Mischpegel der Vorschau ---------------------------
+    //
+    // Wie die Klang-Cvars der Engine (s_volume, s_volumeVoice,
+    // s_musicvolume), mit deren Vorgaben. Wirkt sofort auf alles, was
+    // gerade klingt (tonBild regelt jedes Bild nach); die Musik ab dem
+    // naechsten Stueck. Cancel stellt zurueck (prefsZurueck).
+    ImGui::SeparatorText(tr(Str::PrefsTonPegel));
+    ImGui::SetNextItemWidth(w * 0.45F);
+    ImGui::SliderFloat(tr(Str::PrefsTonEffekte), &st.tonEffekte, 0.0F, 1.0F, "%.2f");
+    ImGui::SetNextItemWidth(w * 0.45F);
+    ImGui::SliderFloat(tr(Str::PrefsTonStimmen), &st.tonStimmen, 0.0F, 1.0F, "%.2f");
+    ImGui::SetNextItemWidth(w * 0.45F);
+    ImGui::SliderFloat(tr(Str::PrefsTonMusik), &st.tonMusik, 0.0F, 1.0F, "%.2f");
+    if (ImGui::Button(tr(Str::PrefsTonSpielwerte))) {
+        const sound::Mischpegel vorgabe;
+        st.tonEffekte = vorgabe.effekte;
+        st.tonStimmen = vorgabe.stimmen;
+        st.tonMusik = vorgabe.musik;
+    }
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w);
+    ImGui::TextDisabled("%s", tr(Str::PrefsTonHinweis));
+    ImGui::PopTextWrapPos();
+    // rc601 (bewegung, Durchsicht 2): die Schwierigkeit wie g_spskill. Sie
+    // aendert, wie schnell manche NPCs drehen und laufen (NPC_Begin,
+    // NPC_SetMiscDefaultData) - die Vorschau baut die Szene dann neu.
+    ImGui::SeparatorText(tr(Str::PrefsGroupPreview));
+    {
+        // rc601 integ: die Spielregeln (OpenJK / Movie Duels), automatisch nach
+        // den Spielordnern. regelwerkPruefen (jedes Bild) baut die Szene neu.
+        const bool erkannt = regelwerkOrdnerErkannt();
+        char autoName[160];
+        std::snprintf(autoName, sizeof(autoName), tr(Str::PrefsRegelAuto),
+                      erkannt ? tr(Str::PrefsRegelMd) : tr(Str::PrefsRegelOpenJK));
+        const char* const regeln[3] = {autoName, tr(Str::PrefsRegelOpenJK), tr(Str::PrefsRegelMd)};
+        int r = std::clamp(st.regelwerk, 0, 2);
+        ImGui::SetNextItemWidth(w * 0.5F);
+        if (ImGui::Combo(tr(Str::PrefsRegelwerk), &r, regeln, 3)) {
+            st.regelwerk = r;
+            (void)regelwerkPruefen();
+        }
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::PrefsRegelNote)); }
+    }
+    {
+        // rc601 integ: Eintrag 0 = nie gewaehlt (-1) - die Vorgabe des
+        // Regelwerks (MD Jedi-Ritter, OpenJK Padawan); dahinter 0..3.
+        const char* const namen[4] = {tr(Str::DiffPadawan), tr(Str::DiffJedi), tr(Str::DiffKnight),
+                                      tr(Str::DiffMaster)};
+        char vorgabe[160];
+        std::snprintf(vorgabe, sizeof(vorgabe), tr(Str::PrefsDifficultyAuto),
+                      namen[schwierigkeitWirksam(-1, regelwerkMovieDuels())]);
+        const char* const stufen[5] = {vorgabe, namen[0], namen[1], namen[2], namen[3]};
+        int n = std::clamp(st.schwierigkeit, -1, 3) + 1;
+        ImGui::SetNextItemWidth(w * 0.5F);
+        if (ImGui::Combo(tr(Str::PrefsDifficulty), &n, stufen, 5)) { schwierigkeitWaehlen(n - 1); }
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tr(Str::PrefsDifficultyNote)); }
+    }
 
     ImGui::Dummy(ImVec2{0, ImGui::GetStyle().ItemSpacing.y});
     ImGui::Separator();
@@ -4350,26 +4422,11 @@ void switchTab(int index, bool rollen = true, bool layout = true) {
     if (index == g_app->activeTab) {
         return;
     }
-    // --- Die Zwischenablage folgt dem ANWENDER ---------------------------
-    //
-    // Gemeldet: Kopieren in einem Skript und Einfuegen in einem anderen geht
-    // nicht.
-    //
-    // Der Grund: die Ablage gehoert dem DOKUMENT, und jeder Reiter hat sein
-    // eigenes. Was man links kopiert, liegt rechts nicht.
-    //
-    // Sie gehoert aber zum Anwender, nicht zur Datei - so hat es jedes
-    // Programm, in dem man mit mehreren Dateien arbeitet. Also wird sie beim
-    // Wechsel mitgenommen.
-    //
-    // Nur wenn sie etwas ENTHAELT: sonst loeschte ein Wechsel aus einem
-    // frischen Reiter die Ablage des Ziels.
-    std::vector<Node> mitnehmen = g_app->doc.clipboard();
+    // Die Zwischenablage gehoert dem ANWENDER (App::ablage, rc601) - beim
+    // Wechsel muss nichts mehr mitgenommen werden. Bis rc600 trug dieser
+    // Wechsel sie hinueber; geschlossene oder neue Reiter verloren sie trotzdem.
     parkActive(layout);
     takeTab(index, rollen, layout);
-    if (!mitnehmen.empty()) {
-        g_app->doc.setClipboard(std::move(mitnehmen));
-    }
     // Das Feld mit dem Fokus zeigt jetzt diesen Reiter - aber NUR beim
     // Fokuswechsel.
     //
@@ -10281,6 +10338,10 @@ void drawMenu() {
         // Das Handbuch mit Tutorials (rc599).
         if (ImGui::MenuItem(tr(Str::HelpGuide), chordName(keys::Action::Guide))) { handbuchOeffnen(); }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GuideHint)); }
+        // rc601 tour: die Tutorials im Programm - es zeigt selbst, was zu
+        // klicken ist.
+        if (ImGui::MenuItem(tr(Str::TourMenu))) { tourFensterOeffnen(); }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::TourMenuHint)); }
         ImGui::Separator();
         if (ImGui::MenuItem(tr(Str::HelpAbout))) {
             g_app->aboutOpen = true;
@@ -11194,6 +11255,7 @@ void ablageNachWindows() {
     if (c.empty()) {
         return;
     }
+    g_app->ablage = c;   // gehoert dem Anwender, nicht dem Reiter
     std::string text = "//(BHVD)\r\n";
     text += writeNodes(c, 0);
     ImGui::SetClipboardText(text.c_str());
@@ -11262,6 +11324,10 @@ void einfuegen(const Path& hinter) {
     // Nichts in Windows, oder noch unser eigener Text: die interne Ablage.
     if (text.find_first_not_of(" \t\r\n") == std::string::npos ||
         text == g_app->ablageText) {
+        // Die Ablage des Programms, nicht die des Reiters - der kann neu sein
+        // (die Quelle geschlossen, "+", Neu, Oeffnen) oder eine aeltere haben.
+        // Nicht IN rein(): der Zweig unten legt den gelesenen Text selbst ab.
+        g_app->doc.setClipboard(g_app->ablage);
         rein();
         return;
     }
@@ -12002,6 +12068,9 @@ void playSound(const std::string& name, double abMs, bool background,
     if (rechts < 0.0F) {
         rechts = lautstaerke;   // ohne Raum: beide Ohren gleich
     }
+    // rc601 ton: mitschreiben, BEVOR Stille oder `stumm` aussteigen - der
+    // Selbsttest soll sehen, was gespielt worden waere.
+    klangMitschreiben(background ? 'M' : 'E', std::string{}, name, lautstaerke, rechts, schluessel, abMs);
     if (lautstaerke <= 0.001F && rechts <= 0.001F) {
         // Auch ein unhoerbarer Satz schneidet den vorigen ab.
         if (schluessel != 0 && g_app->audio.ready()) {
@@ -12145,8 +12214,14 @@ void spieleMusik(const std::string& spec, double abMs) {
         return;
     }
     puffer.erase(puffer.begin(), puffer.begin() + static_cast<std::ptrdiff_t>(ab));
+    // rc601 ton: mit s_musicvolume (Vorgabe 0.25, snd_dma.cpp:458 MD) - die
+    // Engine gibt die Musik mit diesem Faktor in S_RawSamples (snd_dma.cpp:2175
+    // ff. MD), die Stimmen mit s_volumeVoice 1.0. Vorher 1.0: die Musik stand
+    // um 12 dB zu laut gegen die Saetze.
+    const float pegel = tonMusikPegel();
+    klangMitschreiben('M', std::string{}, spec, pegel, pegel, 0, abMs);
     if (!g_app->stumm) {
-        geraet.play(puffer, 1.0F);
+        geraet.play(puffer, pegel);
     }
 }
 
@@ -12155,6 +12230,8 @@ void playSoundSchleife(const std::string& name, double dauerMs, float lautstaerk
     if (rechts < 0.0F) {
         rechts = lautstaerke;
     }
+    // rc601 ton: mitschreiben wie in playSound.
+    klangMitschreiben('S', std::string{}, name, lautstaerke, rechts, schluessel);
     if (name.empty() || dauerMs <= 1.0 || (lautstaerke <= 0.001F && rechts <= 0.001F)) {
         return;
     }
@@ -13282,6 +13359,11 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
         diag::Step geoStep("Kartengeometrie lesen");
         BspGeometry geo;
         std::string gerr;
+        // rc601 (bewegung, Wege): die Brushes fuer die Spuren der NPCs. Die
+        // Lichtschwerter (Paket saber) nehmen dieselbe Kollisionskarte ueber
+        // kollisionsSpeicher() (rc601 integ: kein zweites Laden mehr).
+        kollisionLaden(bytes, shownPath);
+        saberKarteGeladen();
         if (readBspGeometry(bytes, geo, &gerr)) {
             // Externe Lightmaps (q3map2 -external) VOR dem Netz: die Stapel
             // haengen an der Lightmapnummer. tr.worldDir ist "maps/<karte>".
@@ -13362,6 +13444,11 @@ void loadMapFromBytes(const std::string& bytes, const std::string& shownPath) {
     g_app->mapDirty = true;
     setStatus(tr(Str::MapLoaded), static_cast<int>(g_app->map.entities.size()),
               static_cast<int>(g_app->map.targetNames.size()));
+    // rc601 integ: welches Regelwerk die Vorschau rechnet (OpenJK / Movie Duels).
+    (void)regelwerkPruefen();
+    addStatus(regelwerkStatusZeile());
+    diag::info("Karte mit Regelwerk " + std::string(regelwerkMovieDuels() ? "Movie Duels" : "OpenJK") +
+               ", g_spskill " + std::to_string(regelwerkSpielstufe()));
 }
 
 // Eine Karte ueber ihre KENNUNG aus den Archiven holen.
@@ -13851,7 +13938,14 @@ bool loadModel(App* a, const std::string& dataDir, std::string* error) {
     std::vector<LoadDiag> ld;
     if (!loadCommandDb(dataDir + "/behaved.bhc", dataDir, a->db, ld)) {
         if (error != nullptr) {
-            *error = "behaved.bhc not found in " + dataDir;
+            // rc601 release: in der eingestellten Sprache und mit dem, was zu
+            // tun ist. Vorher englisch und technisch ("behaved.bhc not found
+            // in ..."), meist nach dem Auspacken nur der .exe aus dem Zip.
+            // Der Ordner bleibt Teil der Meldung - er sagt, WO gesucht wurde.
+            char meldung[2048];
+            std::snprintf(meldung, sizeof(meldung), tr(Str::DataMissing), dataDir.c_str());
+            *error = meldung;
+            diag::warn("Befehlsmodell nicht gefunden: " + dataDir + "/behaved.bhc");
         }
         return false;
     }
@@ -14209,6 +14303,11 @@ bool darfRuhen() {
     if (g_app->audio.activeBuffers() > 0 || g_app->musicAudio.activeBuffers() > 0) {
         return false;
     }
+    // rc601 tour: Puls, "Zeig es mir" und das Weiterschalten nach einem
+    // erledigten Schritt brauchen Bilder.
+    if (tourAnimiert()) {
+        return false;
+    }
     const ImGuiIO& io = ImGui::GetIO();
     if (io.WantTextInput) {
         return false;
@@ -14246,6 +14345,47 @@ bool wantsQuit() {
     return q;
 }
 
+namespace {
+// --- Mausrad ueber der Reiterleiste (rc601) ----------------------------------
+//
+// Gemeldet (Tester, 17.10.): "It would be nice if I could use the scroll wheel
+// on the file tabs to move left and right so I can view all the files."
+// ImGui rollt eine FittingPolicyScroll-Leiste nur mit dem WAAGERECHTEN Rad oder
+// Umschalt+Rad: TabBarLayout liest `MouseWheelRequestAxisSwap ? MouseWheel :
+// MouseWheelH` (imgui_widgets.cpp:10225). Das normale Rad tat hier nichts.
+// Jetzt: Rad runter = nach rechts, eine Raste = 1/3 der sichtbaren Breite,
+// genau wie Umschalt+Rad. Aufrufen direkt nach BeginTabBar und VOR dem ersten
+// BeginTabItem: dort laeuft TabBarLayout, klemmt ScrollingTarget
+// (TabBarScrollClamp) und laesst ScrollingAnim im selben Bild hinterhergleiten.
+void reiterLeisteMausrad(ImGuiTabBar* leiste) {
+    if (leiste == nullptr) { return; }
+    const ImGuiIO& io = ImGui::GetIO();
+    // Strg+Rad zoomt die Oberflaeche (oben in draw), Umschalt+Rad rollt ImGui selbst.
+    if (io.KeyCtrl || io.MouseWheelRequestAxisSwap) { return; }
+    // Werte des letzten Bildes: BeginTabBar setzt BarRect neu, nicht aber
+    // ScrollingRectMinX/MaxX und ScrollButtonEnabled (= "laeuft ueber").
+    const float sichtbar = leiste->ScrollingRectMaxX - leiste->ScrollingRectMinX;
+    if (!leiste->ScrollButtonEnabled || sichtbar <= 0.0F) { return; }
+    // Nur ueber dem rollbaren Teil der Leiste (wie ImGuis eigener Zweig) und
+    // nur, wenn das Hauptfenster selbst unter der Maus liegt - kein
+    // schwebendes Fenster, keine offene Liste, kein Modal darueber.
+    if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) ||
+        !ImGui::IsMouseHoveringRect(ImVec2{leiste->ScrollingRectMinX, leiste->BarRect.Min.y},
+                                    ImVec2{leiste->ScrollingRectMaxX, leiste->BarRect.Max.y})) {
+        return;
+    }
+    // Wie ImGui: erst pruefen, dann besitzen - mit DERSELBEN Kennung
+    // (leiste->ID), damit Umschalt+Rad nicht ausgesperrt wird.
+    if (io.MouseWheel != 0.0F && ImGui::TestKeyOwner(ImGuiKey_MouseWheelY, leiste->ID)) {
+        leiste->ScrollingTargetDistToVisibility = 0.0F;   // gleiten statt springen
+        // Nur unten klemmen; die genaue Obergrenze (Listen- und Pfeilknoepfe
+        // abgezogen) setzt TabBarScrollClamp in TabBarLayout gleich danach.
+        leiste->ScrollingTarget = std::max(0.0F, leiste->ScrollingTarget - io.MouseWheel * sichtbar / 3.0F);
+    }
+    ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, leiste->ID);
+}
+}  // namespace
+
 void draw() {
     BHED_MESS("Oberflaeche");
     if (g_app == nullptr) { return; }
@@ -14256,6 +14396,9 @@ void draw() {
         updateGestartet = true;
         updater::beimStart();
     }
+    // rc601 integ: Regelwerk (OpenJK / Movie Duels) anwenden, wenn sich
+    // Einstellung, Schwierigkeit oder Spielordner geaendert haben.
+    (void)regelwerkPruefen();
 
     // --- Den Klangstrom nachfuellen ------------------------------------
     //
@@ -14357,9 +14500,10 @@ void draw() {
     //
     // ImGui bringt dafuer BeginTabBar mit. Verwendet werden drei Merkmale:
     //   Reorderable   die Reiter lassen sich mit der Maus umsortieren
-    //   AutoSelectNew ein neu geoeffnetes Skript ist gleich vorn
     //   FittingPolicyScroll  bei vielen Reitern wird gerollt, nicht
-    //                        gequetscht - Namen bleiben lesbar
+    //                        gequetscht - Namen bleiben lesbar; das Mausrad
+    //                        ueber der Leiste rollt waagerecht (rc601)
+    //   TabListPopupButton   der Pfeil links listet alle offenen Skripte
     //
     // Der Stern hinter dem Namen ist derselbe wie im Fenstertitel.
     if (!g_app->tabs.empty()) {
@@ -14374,6 +14518,7 @@ void draw() {
                                ImGuiTabBarFlags_Reorderable |
                                    ImGuiTabBarFlags_FittingPolicyScroll |
                                    ImGuiTabBarFlags_TabListPopupButton)) {
+            reiterLeisteMausrad(ImGui::GetCurrentTabBar());   // VOR dem ersten BeginTabItem
             int wechselZu = -1;
             int schliesse = -1;
             // --- ImGuis eigene Auswahl dem Programm nachfuehren -------------
@@ -14553,6 +14698,7 @@ void draw() {
             g_app->playing = false;
             g_app->audio.stopAll();
             g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();   // rc601 ton: auch der Raumklang
             g_app->musicAudio.stopAll();
         }
         if (g_app->moduswechselBild) {
@@ -15676,9 +15822,22 @@ void draw() {
         drawEinblendungen();
         drawAbout();
     }
+    // rc601 tour: Tutorial-Fenster, Hervorhebung und Schrittpruefung - VOR
+    // selbsttest(), damit der Test die Knoepfe des Fensters im selben Bild
+    // findet (das Register wird erst danach geleert).
+    tourBild();
     selbsttest();   // nur mit BHED_EDITORTEST, siehe selbsttest.cpp
+    // rc601 tour: das Element-Register leeren und die Stufe fuer das naechste
+    // Bild setzen (Voll im Selbsttest, Gefiltert waehrend einer Tour, sonst
+    // Aus). Bis rc600 leerte selbsttest() es selbst.
+    elemente::bildEnde();
     handleShortcuts();
     handleTreeKeys();
+    // rc601 ton (Review): als LETZTES im Bild - nach allem, was das Abspielen
+    // anhalten kann. Schleifen, die tonBild in diesem Bild nicht gemeldet
+    // hat, enden (vorher summte ein Schwert nach dem Ende der Zeitleiste
+    // endlos weiter).
+    tonWache();
     ImGui::End();
 }
 
@@ -16190,5 +16349,103 @@ int ersetzeAlle(bool alleDokumente) {
 
 ImGuiKeyChord kuerzelVon(keys::Action a) { return chordFor(a); }
 const char* kuerzelName(keys::Action a) { return chordName(a); }
+
+// --- Rechtsklick und Ablegen in Graph und Spuren -------------------------------
+//
+// shank (14.10.): "das jedes Tutorial in jedem Modus erstellt werden kann".
+// Bis hier liess sich in Graph und Spuren nur waehlen und ziehen - Werte,
+// Loeschen, Verschieben gingen nur in Classic. Dieses Menue ist das der
+// Classic-Zeile ohne die Mehrfachauswahl-Feinheiten; es arbeitet auf der
+// Zeile `p` des offenen Skripts (die Auswahl wird darauf gesetzt).
+// `editor` wird gesetzt statt den Editor sofort zu oeffnen: er ist ein
+// Modal und darf nicht im Kontextmenue aufgehen.
+bool befehlsMenue(const Path& p, bool& editor) {
+    if (p.empty() || nodeAt(g_app->doc.script(), p) == nullptr) {
+        return false;
+    }
+    if (g_app->selectedPath != p) {
+        g_app->selectedPath = p;
+        g_app->selection.assign(1, p);
+    }
+    bool geaendert = false;
+    if (ImGui::MenuItem(tr(Str::ActEdit), chordName(keys::Action::EditItem))) { editor = true; }
+    if (ImGui::MenuItem(tr(Str::ActBookmarkToggle), chordName(keys::Action::BookmarkToggle))) {
+        lesezeichenUmschalten(std::vector<Path>{p});
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem(tr(Str::ActClone), chordName(keys::Action::Clone))) { geaendert = g_app->doc.cloneAt(p); }
+    if (ImGui::MenuItem(tr(Str::ActCopy), chordName(keys::Action::Copy))) { kopiereWeg(p, false); }
+    if (ImGui::MenuItem(tr(Str::ActCut), chordName(keys::Action::Cut))) {
+        kopiereWeg(p, true);
+        geaendert = true;
+    }
+    if (ImGui::MenuItem(tr(Str::ActPaste), chordName(keys::Action::Paste))) {
+        einfuegen(p);
+        geaendert = true;
+    }
+    ImGui::Separator();
+    for (const bool hoch : {true, false}) {
+        if (ImGui::MenuItem(tr(hoch ? Str::MoveUp : Str::MoveDown), chordName(hoch ? keys::Action::MoveUp : keys::Action::MoveDown))) {
+            Path nachher;
+            if (hoch ? g_app->doc.moveUp(p, &nachher) : g_app->doc.moveDown(p, &nachher)) {
+                geaendert = true;
+                if (!nachher.empty()) {
+                    g_app->selectedPath = nachher;
+                    g_app->selection.assign(1, nachher);
+                }
+            } else {
+                zeigeAbweisung();
+            }
+        }
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem(tr(Str::ActRem), chordName(keys::Action::CommentOut))) { geaendert = remUmschalten(p); }
+    if (ImGui::MenuItem(tr(Str::ActDelete), chordName(keys::Action::Delete))) { geaendert = g_app->doc.removeAt(p); }
+    ImGui::Separator();
+    // Neue Befehle kommen hinter diese Zeile (bei einem offenen Block
+    // hinein) - wie der Doppelklick in der Ereignisliste.
+    if (ImGui::BeginMenu(tr(Str::GroupEvents))) {
+        for (const Command& c : g_app->db.commands) {
+            if (ImGui::MenuItem((c.name + "  " + signatureText(c)).c_str())) {
+                insertCommand(c);
+                geaendert = true;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu(tr(Str::MsgMacros))) {
+        for (const Macro& mm : g_app->db.macroBodies) {
+            if (ImGui::MenuItem(mm.name.c_str())) {
+                insertMacro(mm);
+                geaendert = true;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    if (geaendert) {
+        rebuildTree();
+        g_app->camTrackValid = false;
+    }
+    return geaendert;
+}
+
+// Ein Befehl oder Makro aus der Ereignisliste, in Graph oder Spuren
+// abgelegt: vor oder hinter die Zeile `p` des offenen Skripts, bei leerem
+// Weg ans Ende.
+bool neuAblegenAn(const ImGuiPayload* pl, const Path& p, bool davor) {
+    if (pl == nullptr || pl->DataSize != static_cast<int>(sizeof(NewDrag))) {
+        return false;
+    }
+    NewDrag neu{};
+    std::memcpy(&neu, pl->Data, sizeof(neu));
+    const auto vorher = g_app->doc.stand();
+    dropNewAt(neu, p, p.empty() ? DropWhere::After : (davor ? DropWhere::Before : DropWhere::After));
+    if (g_app->doc.stand() == vorher) {
+        return false;
+    }
+    rebuildTree();
+    g_app->camTrackValid = false;
+    return true;
+}
 
 }  // namespace bhed::gui

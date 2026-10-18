@@ -27,8 +27,10 @@
 #define BHED_CAMTRACK_H
 
 #include "bhed/script.h"
+#include "bhed/roff.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 
 #include <cstddef>
@@ -79,6 +81,15 @@ struct CameraState {
     // Male mit "NULL" - also zum ABSCHALTEN. Die Engine behandelt "none",
     // "NULL" und den leeren Namen gleich: Zielen aus.
     std::string followGroup;
+
+    // Paket kamera, rc601 (Review): zeigt das Spiel hier den Blick des
+    // Spielers (cg_fov 80) statt der Skriptkamera? Nur, wenn die Bahn die
+    // Kamera selbst schaltet: nach DISABLE, und vor dem ersten ENABLE, wenn
+    // das erste Schalten ein ENABLE ist. Ein Skriptteil ohne ENABLE und
+    // DISABLE - seine Kamera schaltet ein anderes Skript ein - und die Zeit
+    // vor einem ersten DISABLE zeigen die Kamera. Gesetzt von
+    // CameraTrack::at; sichtFovX liest es.
+    bool spielerBlick = false;
 };
 
 // Ein Abschnitt der Kamerabahn: von wann bis wann sich was aendert.
@@ -131,7 +142,12 @@ struct CamSegment {
         // Zusammen sieben Verwendungen in den 284 Skripten der Mod - selten,
         // aber die letzten beiden Unterbefehle, die noch fehlten. Damit sind
         // 1902 von 1902 abgedeckt.
-        Shake, Follow };
+        Shake, Follow,
+        // Paket kamera, rc601: ein Bild einer camera ( PATH )-Fahrt
+        // (CGCam_Roff) - Ort von from nach to, Winkel von vonWinkel nach
+        // zuWinkel. Eine eigene Art, damit Zeitleiste, Einstellungsliste und
+        // Auto-Key die vielen ROFF-Bilder nicht fuer MOVE-Schluessel halten.
+        Pfad };
 
     Kind kind = Kind::Move;
     double startMs = 0.0;
@@ -155,6 +171,20 @@ struct CamSegment {
     // FOLLOW: Tempo und Anfangsblende.
     float speed = 100.0F;
     bool initLerp = false;
+    // --- Paket kamera, rc601: camera ( PATH ) ---------------------------
+    // Pfad: die Winkel dieses ROFF-Bilds; ob es Ort und Winkel bewegt (das
+    // letzte Bild bewegt den Ort nicht mehr, waehrend FOLLOW bleiben die
+    // Winkel); "cut" springt sofort ans Ziel (CAMERA_CUT).
+    float vonWinkel[3]{};
+    float zuWinkel[3]{};
+    bool pfadOrt = true;
+    bool pfadWinkel = true;
+    bool schnitt = false;
+    // Zoom aus einer "fovaccel"-Notiz (CAMERA_ACCEL): from[0] ist der
+    // Anfangswert, dazu Tempo (Grad/s) und Beschleunigung (Grad/s^2).
+    bool beschleunigt = false;
+    float zoomTempo = 0.0F;
+    float zoomBeschl = 0.0F;
 };
 
 struct CameraTrack {
@@ -228,6 +258,37 @@ using TagLookup =
 // Nicht zu verwechseln mit einem Ein- UND Ausklingen: der Beginn ist die
 // schnellste Stelle.
 [[nodiscard]] float nonlinearStop(float frac) noexcept;
+
+// --- Paket kamera, rc601 ------------------------------------------------------
+//
+// Vor camera ( ENABLE ) und nach camera ( DISABLE ) zeigt das Spiel nicht die
+// Skriptkamera, sondern den Blick des Spielers: CG_DrawActiveFrame ruft dann
+// statt CGCam_RenderScene CG_CalcViewValues (cg_view.cpp:2103-2113 OpenJK,
+// :3181-3191 Movie Duels), und das endet in CG_CalcFov mit
+// fov_x = cg_fov.value (cg_view.cpp:1399 OpenJK, :1899 MD). Vorgabe von
+// cg_fov ist in beiden "80" (cg_main.cpp:354 OpenJK, :554 MD).
+inline constexpr float kSpielerFovX = 80.0F;
+
+// Der waagerechte Bildwinkel, den das Spiel zu diesem Kamerastand zeigt:
+// kSpielerFovX, wo st.spielerBlick gilt, sonst st.fovX.
+[[nodiscard]] float sichtFovX(const CameraState& st) noexcept;
+
+// Wann die Einstellung mit dem MOVE in Zeile `movePfad` steht: das Ende
+// seiner Fahrt (startMs + Dauer, bei Dauer 0 der Start) - dieselbe Zeit, auf
+// die kameraSchluesselWaehlen die Zeitleiste stellt. -1, wenn die Bahn
+// diesen MOVE nicht kennt (Marke fehlt, Bahn noch nicht gebaut).
+[[nodiscard]] double einstellungsZeit(const CameraTrack& t, const Path& movePfad);
+
+// --- camera ( PATH, "datei" ): eine Kamerafahrt aus einer ROFF-Datei ----------
+//
+// CGCam_StartRoff / CGCam_Roff (cg_camera.cpp:1813/1864 OpenJK, 1798/1849
+// Movie Duels): je ROFF-Bild ein Versatz im Ort und in den Winkeln, dazu die
+// Notizen "cut", "fov", "fovzoom" und "fovaccel" (CG_RoffNotetrackCallback).
+// Die Datei kommt von aussen, weil der Kern die Archive nicht kennt:
+// scripts/<datei>.rof wie bei PLAY_ROFF (roffPfad). Ohne Auskunft oder ohne
+// Datei bewegt PATH die Kamera nicht.
+using RoffLookup = std::function<std::shared_ptr<const Roff>(const std::string& name)>;
+[[nodiscard]] CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags, const RoffLookup& roffs);
 
 }  // namespace bhed
 #endif

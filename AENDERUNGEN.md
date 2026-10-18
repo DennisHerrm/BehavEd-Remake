@@ -1,5 +1,49 @@
 # Änderungen seit rc94
 
+## rc601 — wie im Spiel: Laufen, Drehen, Schwerkraft, Lichtschwerter, Ton und Kamerabild; Tutorials im Programm; Handbuch in allen vier Sprachen
+
+Gewünscht: „es soll genauso laufen wie im Spiel“ (NPCs laufen, drehen, fallen,
+Lichtschwerter, Ton, Kamerabild), „OpenJK UND Movie Duels umschaltbar“,
+Tutorials, bei denen das Programm selbst zeigt, welche Knöpfe man drücken muss,
+zwei Downloads ohne Visual-C++-Laufzeit – und für das Handbuch: „mach es für
+alle 4 sprachen“.
+
+* Spielregeln: die Szenenvorschau folgt jetzt OpenJK oder Movie Duels - gewählt in Einstellungen → Szenenvorschau (Automatisch: Movie Duels, wenn ein Movie-Duels-Ordner unter den Spielordnern ist, sonst OpenJK). Umgeschaltet werden Drehgeschwindigkeit der NPCs je Schwierigkeit, die vorgegebene Schwierigkeit, der Steuertakt der NPCs (OpenJK 100 ms), die Regeln fürs Lichtschwert-Klirren, cg_fovAspectAdjust, das vorgegebene Spielfenster und ROFF-Klänge auf Figuren. Die Statusliste nennt das Regelwerk beim Laden einer Karte.
+* Einstellungen: neue „Schwierigkeit (g_spskill)“ für die Szenenvorschau (Padawan bis Jedi-Meister; „Vorgabe des Spiels“ = Movie Duels Jedi-Ritter, OpenJK Padawan) - Drehraten der NPCs, Tempo der Tusken und wie nah sich Lichtschwerter zum Klirren kommen müssen folgen ihr wie im Spiel.
+* NPCs laufen genau wie im Spiel: Steuerung und Bewegungsphysik im Takt des Spiels, Wege über das Wegnetz (A*) um Ecken, ohne Weg bleiben sie stehen (ein dowait auf so einen Lauf endet nie, wie im Spiel - die Statusliste nennt Figur und Ziel).
+* NPCs laufen mit dem Tempo aus dem Skript, auch wenn SET_WALKING/SET_RUNNING/SET_WALKSPEED/SET_RUNSPEED direkt nach SET_NAVGOAL stehen; Tempowechsel unterwegs gelten; SET_NAVGOAL NULL hält an; ein neues Ziel beginnt dort, wo die Figur ist; Geh-/Laufanimation nach dem aktuellen Tempo.
+* NPCs drehen sich mit ihrer YAW_SPEED (60 + 3 x yawSpeed °/s) statt zu springen, mit der Winkelgenauigkeit des Spiels; neu: SET_VIEWTARGET; der Drehring im Missions-Tab schreibt bei NPCs SET_DYAW; Rocket Trooper und NPCs mit WP_EMPLACED_GUN drehen mit ihrer festen Rate aus dem Spiel.
+* NPCs unterliegen der Schwerkraft: sie stehen auf dem Boden der Karte, fallen (auch beim Laufen von Kanten und, beim Laden der Karte gespawnt, zu Beginn der Zwischensequenz), steigen Stufen (Höhe je Klasse), bleiben am Hang und fahren mit Aufzügen mit - mit der Schwerkraft der Karte, SET_GRAVITY, Schwerkraft unter 0 und target_gravity_change.
+* NPCs gehen nicht mehr durch Wände, gekrümmte Flächen (Patches) oder einander hindurch; Türen und bewegte Brushes stehen dort, wo das Spiel sie gerade hat (per Auslöser oder Skript geöffnet, Türteams, verriegelte Türen). BS_NOCLIP fliegt wie im Spiel.
+* Lichtschwerter halten an Wänden, Böden und Türen wie im Spiel (gekürzte Klinge, die nachwächst), mit Funken, saberhitwall/saberstrikewall-Klängen, glühenden Brandspuren, die nach 10 s verblassen, und Kochen im Wasser; .sab noIdleEffect/noWallMarks/blockEffect/blockSound/noClashFlare werden beachtet; Schwerteffekte auch in Karten ohne fx_runner.
+* Klirren Klinge gegen Klinge in Zwischensequenzen genau dort, wo das Spiel es tut: SET_SABERCOLLISIONS von Movie Duels auf BS_CINEMATIC-NPCs (oder BOTH_CIN_16/17), OpenJK nur BOTH_CIN_16/17 - Effekt saber_block, die Klirrklänge des Spiels und der Klirrblitz (über den Kinobalken). SET_SABERCOLLISIONS und SET_BEHAVIOR_STATE werden verstanden; NPC_spawner mit spawnflags 32 beginnt in BS_CINEMATIC.
+* Funken, Brandspuren und Wandklänge nur für Figuren, die die Kamera sehen kann (PVS); in Movie Duels zündet der schnelle Stil schneller; ein Sprung auf der Zeitleiste zeigt genau dieselben Funken, Spuren und dasselbe Klirren wie das Durchspielen.
+* Vorschauton wie im Spiel: gehört von der Kamera, die die Ansicht zeigt (beim Abspielen die Skriptkamera, mit Roll), jedes Bild nachgeregelt; Sätze laufen außer Hörweite still weiter; nur Quellen im PVS der Kamera lassen Schwerter summen, Lautsprecher laufen, Türen und Effekte klingen (Stimmen, ROFF-Notizen und Zerbrechendes hört man immer) - „man hört alles auf der Karte“ ist behoben.
+* Schwerter unsichtbarer, nicht gespawnter oder nicht sichtbarer Figuren zünden nicht mehr hörbar (der Klang kommt, wenn sie erscheinen); SET_SABERACTIVE false und ein zweites Einschalten sind still wie im Spiel.
+* `use` spielt target_speaker wie das Spiel; Skriptklänge nach PlayIcarusSound (Stimme des Spielers 0,75, Ansager global, andere Kanäle am Ort); Wiedereinstieg spielt laufende Klänge an ihrer Stelle weiter; Zerbrechen mit links/rechts; Effektklänge beachten START_OFF.
+* Mischpegel wie im Spiel (Effekte 0,5, Stimmen 1,0, Musik 0,25), einstellbar unter Einstellungen. Schwertsummen und andere Schleifen enden, wann immer das Abspielen endet; die Klänge der Vorschau liegen nicht mehr doppelt im Speicher.
+* Eine gewählte Kameraeinstellung zeigt jetzt ihren eigenen Zoom und ihre Winkel (Durchblick und Vorschau) - vorher ZOOM und PAN der vorigen.
+* Die Ansicht zeigt das Spielbild: ein Rahmen im Seitenverhältnis des Spiels mit dessen Bildwinkelformel, beim Blick durch die Kamera außen schwarz, Balken und Blenden innen. Neu unter Ansicht einstellen → Spielbildschirm: Seitenverhältnis, cg_fovAspectAdjust (automatisch nach den Spielregeln, aus, an) und ein heller Rahmen in der freien Ansicht. Kameravorschau und Steuern zeigen ebenfalls das Spielbild.
+* Das Rollen der Kamera (ROLL, Rollanteil von PAN) ist zu sehen; vor ENABLE und nach DISABLE gilt beim Abspielen der Bildwinkel des Spielers (80); die Sichtpyramide am Kameramodell passt zum Zoom; camera ( PATH ) spielt die ROFF-Datei wie das Spiel ab, samt den Notizen cut, fov, fovzoom und fovaccel.
+* Kamera-Korrekturen: der Zoom beim Steuern bleibt nicht mehr an der freien Kamera hängen; Skriptteile ohne ENABLE/DISABLE behalten ihre ZOOMs; die Vorschau am Gizmo zeigt genau das Geschriebene; ein PAN ohne Dauer während einer Kamerafahrt (PATH) lässt deren letzte Drehung weg wie das Spiel; die freie Kamera fliegt auch mit Rollwinkel waagerecht.
+* Neu: interaktive Tutorials im Programm (Hilfe → Interaktive Tutorials, oder „Interaktive Tour“ auf der Startfläche). Das Programm hebt das Bedienelement hervor, dunkelt den Rest ab und geht weiter, sobald der Schritt erledigt ist; Zurück, Überspringen, Zeig es mir, Mach es für mich (nur wo sicher), der Fortschritt bleibt. Zuerst die fünf Skript-Tutorials, Ansicht Classic. Das Fenster durchsucht außerdem das Handbuch ohne Netz.
+* Behoben: jeder Skriptreiter und das „+“ der Reiterleiste standen mit dem Rechteck des Elements davor im Register.
+* Jedes Release hat jetzt zwei Downloads: BehavEd-Remake-rcNNN-windows-x64.zip (Programm, Daten und Handbuch) und BehavEd-Remake-rcNNN-windows-x64.exe, die allein läuft. Beide baut und prüft GitHub Actions automatisch.
+* Das Programm braucht kein Visual-C++-Redistributable mehr. Ohne seinen Ordner data gestartet, packt es die eingebauten Daten nach %APPDATA%\behaved\data\base aus, statt mit „behaved.bhc not found“ abzubrechen. Der Updater ersetzt das laufende Programm und startet es neu, egal wie die Datei heißt.
+* Das Handbuch beschreibt all das in vier Sprachen: Vorschauton, Spielbild, wie Figuren sich bewegen, Lichtschwerter, Spielregeln und Schwierigkeit, interaktive Tutorials und die zwei Downloads; neue Bilder der Einstellungen und eines interaktiven Tutorials.
+* Das ganze Handbuch gibt es jetzt in allen vier Sprachen: jede Seite, die Nachschlageseiten „Jeder Knopf“ und „Alle Befehle“ (samt den Beschreibungen jedes SET_-Felds, Kamerabefehls und Makros), die Befehlsseiten, alle Kurz-Tutorials und die Schritte der interaktiven Tutorials - vorher waren viele Seiten und die Schritte der interaktiven Tutorials nur englisch.
+
+* **Handbuch in vier Sprachen** (tools/handbuch): kein Text fällt mehr auf
+  Englisch zurück. Texte aus Daten und Schleifen (Befehlsseiten, Knopftabellen,
+  Tutorial-Schritte, die Beschreibungen aus Q3_Interface.h/behaved.bhc) stehen
+  in `uebersetzung/<sprache>/*.json` (englischer Text → Übersetzung, rund 2000
+  Texte je Sprache); `Tf()` übersetzt Vorlagen mit `%s`/`%d`. `gen_handbuch.py`
+  endet mit Fehler, wenn einer Seite eine Sprache fehlt (Text oder Bild mit
+  Oberfläche); ctest `handbuch_sprachen` (`--pruefen`). Die Skriptfelder
+  (SET_SPAWNSCRIPT …) zeigten in „Alle Befehle“ einen Rest des Dateifilters
+  (`*.txt" #`) – behoben. Die Schritte der Tutorials im Programm erscheinen
+  damit auch auf Deutsch, Chinesisch und Japanisch; Bild `t_tour` je Sprache neu.
+
 ## rc600 — Handbuch für die ganze JKA-Community: eigene Mission, viele Tutorials, jeder Knopf und Befehl
 
 Gewünscht: „mehr Tutorials, wirklich viele, auch Kleinigkeiten“, „Erklärungen, was

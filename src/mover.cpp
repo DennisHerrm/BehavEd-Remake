@@ -471,6 +471,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                     std::vector<MoverUse> uses, const FigurImKasten& figur,
                     double endeMs) {
     mover_.clear();
+    tuerWechsel_.clear();   // rc601 (bewegung, teil 3)
     fx_.clear();
     auf_.clear();
     bruch_.clear();
@@ -885,6 +886,17 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         warte.push_back(Ereignis{u.ms, u.target, u.aufgeloest ? -1 : 0, u.ausloeser});
     }
 
+    // rc601 (bewegung, teil 3): moverState und MOVER_LOCKED je Tuer merken -
+    // is_valid fragt beides bei jedem A* (g_navigator.cpp:584-622 MD).
+    // MatchTeam setzt den Zustand fuer das ganze Team (g_mover.cpp).
+    const auto merke = [&](const Team& t, double ab) {
+        const int z = t.lage == Lage::Pos1 ? 0 : t.lage == Lage::Pos2 ? 1 : t.lage == Lage::AufDemWeg ? 2 : 3;
+        for (const Tuer& d : t.tueren) {
+            tuerWechsel_[mover_[d.mover].modell].push_back(TuerWechsel{ab, z, (t.flags & kLocked) != 0});
+        }
+    };
+    for (const Team& t : teams) { merke(t, -1.0e9); }
+
     auto bahnStueck = [&](Team& t, double ab, bool auf) {
         // Jede Tuer des Teams vom AKTUELLEN Ort zum Ziel. Kehrt sie mitten
         // im Weg um, bleibt der Ort stetig; die Dauer ist der Rest.
@@ -927,6 +939,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         switch (team.lage) {
             case Lage::Pos1:
                 team.lage = Lage::AufDemWeg;
+                merke(team, t);   // rc601 (bewegung, teil 3)
                 bahnStueck(team, t + 50.0, true);   // "start moving 50 msec later"
                 {
                     Oeffnung o;
@@ -944,10 +957,12 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 break;
             case Lage::ZurueckDemWeg:
                 team.lage = Lage::AufDemWeg;
+                merke(team, t);   // rc601 (bewegung, teil 3)
                 bahnStueck(team, t, true);
                 break;
             case Lage::AufDemWeg:
                 team.lage = Lage::ZurueckDemWeg;
+                merke(team, t);   // rc601 (bewegung, teil 3)
                 bahnStueck(team, t, false);
                 break;
         }
@@ -960,6 +975,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         }
         if ((team.flags & kLocked) != 0) {   // UnLockDoors: nur entsperren
             team.flags &= ~kLocked;
+            merke(team, t);   // rc601 (bewegung, teil 3)
             return;
         }
         if (team.delayMs > 0.0) {
@@ -970,12 +986,16 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
     };
 
     // --- Zerbrechen ---------------------------------------------------------
-    const auto klang = [&](std::size_t ent, const std::string& datei, double t, const float ort[3]) {
+    // rc601 ton: `temp` - der Klang ist eine Temp-Entity/G_Sound (siehe
+    // KartenKlang::tempEntity), nicht CG_Chunks.
+    const auto klang = [&](std::size_t ent, const std::string& datei, double t, const float ort[3],
+                           bool temp = false) {
         KartenKlang k;
         k.entity = ent;
         k.datei = datei;
         k.ms = t;
         k.bisMs = t;
+        k.tempEntity = temp;
         for (int q = 0; q < 3; ++q) { k.ort[q] = ort[q]; }
         bruchKlang_.push_back(k);
     };
@@ -1126,7 +1146,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
         }
         if (b.splash) {
             // G_TempEntity(org, EV_GENERAL_SOUND) mit cargoexplode
-            klang(b.entity, "sound/weapons/explosions/cargoexplode.wav", t, mitte);
+            klang(b.entity, "sound/weapons/explosions/cargoexplode.wav", t, mitte, true);
         }
         werfeStuecke(b.entity, mitte, b.absMin, b.absMax, anzahl, b.material, std::string{}, skala,
                      b.noise, t, w);
@@ -1166,11 +1186,11 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 fx.ms = t;
                 for (int k = 0; k < 3; ++k) { fx.ort[k] = b.ursprung[k]; }
                 bruchFx_.push_back(fx);
-                klang(b.entity, "sound/weapons/tie_fighter/TIEexplode.wav", t, b.ursprung);
+                klang(b.entity, "sound/weapons/tie_fighter/TIEexplode.wav", t, b.ursprung, true);
             } else {
                 explosion(b.entity, b.absMin, b.absMax, groesse, b.material, t, w);
                 // G_Sound(self, cargoexplode) - auch beim blossen Zerbrechen
-                klang(b.entity, "sound/weapons/explosions/cargoexplode.wav", t, b.ursprung);
+                klang(b.entity, "sound/weapons/explosions/cargoexplode.wav", t, b.ursprung, true);
             }
         }
         // Schadensmodell oder weg. modelindex2 wird nie -1 (FIXME der
@@ -1557,6 +1577,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 const double da = team.bahnAb + team.bahnDauer;
                 if (team.lage == Lage::AufDemWeg) {
                     team.lage = Lage::Pos2;
+                    merke(team, t);   // rc601 (bewegung, teil 3)
                     if (team.waitMs < 0.0) {
                         team.fertig = true;
                     } else if ((team.flags & kToggle) == 0) {
@@ -1565,6 +1586,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                     if (!team.opentarget.empty()) { benutze(team.opentarget, da, 1, std::string{}); }
                 } else {
                     team.lage = Lage::Pos1;
+                    merke(team, t);   // rc601 (bewegung, teil 3)
                     if (!team.closetarget.empty()) { benutze(team.closetarget, da, 1, std::string{}); }
                 }
             }
@@ -1573,6 +1595,7 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 const double wann = team.zurueckUm;
                 team.zurueckUm = -1.0;
                 team.lage = Lage::ZurueckDemWeg;
+                merke(team, t);   // rc601 (bewegung, teil 3): G_RunThink in diesem Bild
                 bahnStueck(team, wann, false);
             }
             // Ausloesefeld: eine Figur darin oeffnet und haelt offen
@@ -1947,4 +1970,50 @@ std::array<std::array<float, 3>, 256> lichtStilGewichteZuZeit(const std::vector<
     return g;
 }
 
+}  // namespace bhed
+
+// --- Paket bewegung (rc601, teil 3): moverState fuer die Wegsuche -------------
+namespace bhed {
+int MoverSim::tuerZustand(int modell, double ms, bool* verriegelt) const {
+    const auto it = tuerWechsel_.find(modell);
+    if (it == tuerWechsel_.end() || it->second.empty()) {
+        if (verriegelt != nullptr) { *verriegelt = false; }
+        return -1;
+    }
+    const TuerWechsel* w = &it->second.front();
+    for (const TuerWechsel& x : it->second) {
+        if (x.ms <= ms + 1e-6) { w = &x; }
+    }
+    if (verriegelt != nullptr) { *verriegelt = w->verriegelt; }
+    return w->zustand;
+}
+}  // namespace bhed
+
+// --- Paket bewegung (rc601, teil 3): pos1/pos2 einer func_door ----------------
+namespace bhed {
+bool tuerStellungen(const MapEntity& e, const BspGeometry& geo, float pos1[3], float pos2[3]) {
+    if (e.classname != "func_door") { return false; }
+    const int modell = modellVon(e);
+    if (modell <= 0 || static_cast<std::size_t>(modell) >= geo.models.size()) { return false; }
+    const auto& sm = geo.models[static_cast<std::size_t>(modell)];
+    // SP_func_door (g_mover.cpp:1553-1566 MD): pos1 = s.origin, pos2 = pos1 +
+    // movedir * (DotProduct(abs_movedir, size) - lip); START_OPEN vertauscht.
+    float o[3] = {0.0F, 0.0F, 0.0F};
+    if (!e.origin.empty()) { vektor(e.origin, o); }
+    float ang[3];
+    winkelAus(e, ang);
+    float dir[3];
+    bewegungsRichtung(ang, dir);
+    const float lip = zahl(e, "lip", 8.0F);
+    const float weite = std::fabs(dir[0]) * (sm.maxs[0] - sm.mins[0]) + std::fabs(dir[1]) * (sm.maxs[1] - sm.mins[1]) +
+                        std::fabs(dir[2]) * (sm.maxs[2] - sm.mins[2]) - lip;
+    for (int k = 0; k < 3; ++k) {
+        pos1[k] = o[k];
+        pos2[k] = o[k] + dir[k] * weite;
+    }
+    if ((ganz(e, "spawnflags") & 1) != 0) {
+        for (int k = 0; k < 3; ++k) { std::swap(pos1[k], pos2[k]); }
+    }
+    return true;
+}
 }  // namespace bhed

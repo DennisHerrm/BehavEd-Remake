@@ -17,6 +17,7 @@ import inhalt_kurz3
 import inhalt_referenz
 import inhalt_befehle
 import inhalt_knoepfe
+import inhalt_befehlseiten
 
 GRUPPEN = [
     ("start", T("Start here", "Einstieg", "入门", "はじめに")),
@@ -26,10 +27,14 @@ GRUPPEN = [
     ("tut", T("Tutorials", "Tutorials", "教程", "チュートリアル")),
 ] + inhalt_kurz.GRUPPEN + [
     ("ref", T("Reference", "Nachschlagen", "参考", "リファレンス")),
+    ("befehle", T("Commands", "Befehle", "命令", "コマンド")),
 ]
 
 SEITEN = (inhalt_start.SEITEN[:1] + inhalt_funktionen.SEITEN + inhalt_start.SEITEN[1:] + [inhalt_skript.FENSTER] + inhalt_skript.SEITEN + inhalt_karte.SEITEN +
-          inhalt_mission.SEITEN + inhalt_tutorials.SEITEN + inhalt_kurz.SEITEN + inhalt_kurz2.SEITEN + inhalt_kurz3.SEITEN + inhalt_referenz.SEITEN + inhalt_knoepfe.SEITEN + inhalt_befehle.SEITEN)
+          inhalt_mission.SEITEN + inhalt_tutorials.SEITEN + inhalt_kurz.SEITEN + inhalt_kurz2.SEITEN + inhalt_kurz3.SEITEN + inhalt_referenz.SEITEN + inhalt_knoepfe.SEITEN + inhalt_befehle.SEITEN + inhalt_befehlseiten.SEITEN)
+
+import inhalt_schritte
+inhalt_schritte.anwenden(SEITEN)
 
 _ids = [s["id"] for s in SEITEN]
 assert len(_ids) == len(set(_ids)), "doppelte Seiten-id"

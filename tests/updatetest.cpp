@@ -82,6 +82,60 @@ int main() {
            zielImOrdner("/abs/x", "").empty() && zielImOrdner("C:/Windows/x.dll", "").empty());
     expect("zielImOrdner: Backslashes werden zu /", zielImOrdner("data\\base\\x.h", "") == "data/base/x.h");
 
+    // --- rc601 release: die Dateien eines Releases aus der CI -------------
+    //
+    // .github/workflows/release.yml haengt GENAU ein .zip an, dazu die
+    // eigenstaendige .exe und SHA256SUMS.txt. Die installierten Updater
+    // (rc570-rc600) nehmen das erste .zip - .exe und Pruefsummen duerfen sie
+    // nicht verwirren, und die Marke muss weiter "rc" enthalten.
+    const std::string ci = R"({"tag_name": "v1.0.0-rc601", "name": "BehavEd-Remake 1.0.0-rc601", "assets": [
+    {"url": "https://api.github.com/repos/DennisHerrm/BehavEd-Remake/releases/assets/1",
+     "name": "BehavEd-Remake-rc601-windows-x64.exe", "size": 9000000,
+     "browser_download_url": "https://github.com/DennisHerrm/BehavEd-Remake/releases/download/v1.0.0-rc601/BehavEd-Remake-rc601-windows-x64.exe"},
+    {"url": "https://api.github.com/repos/DennisHerrm/BehavEd-Remake/releases/assets/2",
+     "name": "SHA256SUMS.txt", "size": 200,
+     "browser_download_url": "https://github.com/DennisHerrm/BehavEd-Remake/releases/download/v1.0.0-rc601/SHA256SUMS.txt"},
+    {"url": "https://api.github.com/repos/DennisHerrm/BehavEd-Remake/releases/assets/3",
+     "name": "BehavEd-Remake-rc601-windows-x64.zip", "size": 14000000,
+     "browser_download_url": "https://github.com/DennisHerrm/BehavEd-Remake/releases/download/v1.0.0-rc601/BehavEd-Remake-rc601-windows-x64.zip"}
+  ]})";
+    Release rc601;
+    expect("CI-Release: gelesen, drei Dateien", parseRelease(ci, rc601) && rc601.assets.size() == 3);
+    const Asset* z601 = zipAsset(rc601);
+    expect("CI-Release: zipAsset nimmt das -windows-x64.zip, nicht die .exe",
+           z601 != nullptr && z601->name == "BehavEd-Remake-rc601-windows-x64.zip");
+    expect("CI-Release: rcNummer(v1.0.0-rc601) = 601, neuer als rc600",
+           rcNummer(rc601.tag) == 601 && istNeuer(rc601.tag, "rc600"));
+
+    // --- rc601 release: das Programm im Archiv auf die LAUFENDE .exe -------
+    //
+    // Bis rc600 war die laufende .exe der Eintrag mit IHREM Dateinamen. Die
+    // eigenstaendige .exe heisst aber BehavEd-Remake-rcNNN-windows-x64.exe,
+    // das Zip bringt behaved.exe: das Update legte eine zweite behaved.exe
+    // daneben, startete die alte Datei neu und bot sich beim naechsten Start
+    // wieder an. Und ohne data\base daneben schuettete es data/ und handbuch/
+    // (fast 600 Dateien) neben die .exe - etwa in "Downloads".
+    const std::string eigen = "BehavEd-Remake-rc600-windows-x64.exe";
+    expect("einspielenAls: behaved.exe -> die laufende behaved.exe (wie bisher)",
+           einspielenAls("behaved.exe", "behaved.exe", false) == Einspielen::Programm);
+    expect("einspielenAls: Gross-/Kleinschreibung egal",
+           einspielenAls("behaved.exe", "BehavEd.EXE", false) == Einspielen::Programm);
+    expect("einspielenAls: behaved.exe -> die laufende eigenstaendige .exe, wie immer sie heisst",
+           einspielenAls("behaved.exe", eigen, true) == Einspielen::Programm);
+    expect("einspielenAls: ... auch wenn neben ihr data\\base liegt",
+           einspielenAls("behaved.exe", eigen, false) == Einspielen::Programm);
+    expect("einspielenAls: ein Eintrag mit dem Namen der laufenden .exe bleibt das Programm",
+           einspielenAls(eigen, eigen, true) == Einspielen::Programm);
+    expect("einspielenAls: eigenstaendig -> data/ und handbuch/ NICHT neben die .exe",
+           einspielenAls("data/base/behaved.bhc", eigen, true) == Einspielen::Ueberspringen &&
+               einspielenAls("handbuch/index.html", eigen, true) == Einspielen::Ueberspringen);
+    expect("einspielenAls: mit data\\base daneben -> data/ und handbuch/ ersetzen",
+           einspielenAls("data/base/behaved.bhc", "behaved.exe", false) == Einspielen::Datei &&
+               einspielenAls("handbuch/index.html", eigen, false) == Einspielen::Datei);
+    expect("einspielenAls: eine behaved.exe in einem Unterordner ist nicht das Programm",
+           einspielenAls("tools/behaved.exe", "behaved.exe", false) == Einspielen::Datei);
+    expect("einspielenAls: leer -> ueberspringen", einspielenAls("", "behaved.exe", false) == Einspielen::Ueberspringen);
+
     std::printf(fehler == 0 ? "\nalle Updateproben bestanden\n" : "\nFEHLGESCHLAGEN (%d)\n", fehler);
     return fehler == 0 ? 0 : 1;
 }

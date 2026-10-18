@@ -19,11 +19,24 @@ game does (Jedi Academy / Movie Duels).
 
 ## Download
 
-Get the latest build from
-[Releases](https://github.com/DennisHerrm/BehavEd-Remake/releases/latest):
-unzip it and start `BehavEd-Remake/behaved.exe` (Windows 10/11). Add your
-Jedi Academy / Movie Duels game folders under **Edit → Game folders**. The
-program updates itself from here (Help → *Check for updates…*).
+Open the [latest release](https://github.com/DennisHerrm/BehavEd-Remake/releases/latest)
+and, under **Assets**, download **`BehavEd-Remake-rcNNN-windows-x64.zip`**
+(Windows 10/11, 64-bit). *Source code (zip)* and *Source code (tar.gz)* are
+for developers – they contain no program. Unzip the file (right-click →
+*Extract All…*) and start `BehavEd-Remake/behaved.exe`. Nothing is installed;
+keep `behaved.exe` next to its `data` folder.
+
+Just want the program? **`BehavEd-Remake-rcNNN-windows-x64.exe`** from the same
+release runs on its own: it carries its data and unpacks it to
+`%APPDATA%\behaved\data\base` the first time. The offline guide is only in the
+zip.
+
+The program is not code-signed, so Windows SmartScreen may warn the first time
+("Windows protected your PC"): click **More info → Run anyway**.
+`SHA256SUMS.txt` in the same release lists the checksums of both downloads.
+
+Add your Jedi Academy / Movie Duels game folders under **Edit → Game folders**.
+The program updates itself from here (Help → *Check for updates…*).
 
 The guide (`handbuch/` next to `behaved.exe`) explains every function and walks
 through four tutorials: a first cutscene, a walking figure, a ship on a ROFF

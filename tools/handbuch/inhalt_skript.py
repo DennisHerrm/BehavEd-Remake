@@ -16,6 +16,16 @@ FENSTER = {
             "Das Fenster im Mission-Tab mit einer offenen Mission.",
             "打开任务后处于“任务”标签页的窗口。",
             "ミッションを開いた「ミッション」タブのウィンドウ。"), "breit"),
+        ("legende", [
+            (T("Menu bar"), T("File, Edit, Debug, View, Help.")),
+            (T("Tabs"), T("One tab per open script; **+** opens an empty one, the mouse wheel over the bar scrolls through many.")),
+            (T("Mode bar"), T("**{{ViewEvents}}**, **{{ViewMap}}**, **{{ViewModel}}** - what the big area shows.")),
+            (T("Entity list and inspector"), T("Every entity of the map in groups; below, the keys of the selected one.")),
+            (T("Map"), T("The toolbar and the map in 3D, with the placement tiles on the left.")),
+            (T("Script column"), T("The script as **{{FlowClassic}}** tree, **{{FlowGraph}}** or **{{FlowTracks}}**.")),
+            (T("Timeline"), T("Plays the scene; every command is a block in time.")),
+            (T("Status line"), T("Messages, the undo history, when the script was compiled.")),
+        ]),
         ("h2", "bereiche", T("The parts", "Die Bereiche", "各个区域", "各部分")),
         ("table", [T("Part", "Bereich", "区域", "部分"), T("What it is for", "Wofür", "用途", "役割")], [
             [T("Menu bar", "Menüleiste", "菜单栏", "メニューバー"),
@@ -24,10 +34,10 @@ FENSTER = {
                "{{MenuFile}}、{{MenuEdit}}、{{MenuDebug}}、{{MenuView}}、{{MenuHelp}}——打开与保存、游戏文件夹、外观与语言、本手册。",
                "{{MenuFile}}・{{MenuEdit}}・{{MenuDebug}}・{{MenuView}}・{{MenuHelp}}。開く・保存、ゲームフォルダー、外観と言語、このガイド。")],
             [T("Script tabs", "Skript-Reiter", "脚本标签页", "スクリプトタブ"),
-             T("One tab per open script. A `*` means unsaved changes, `+` opens a new script, tabs can be dragged into another order. All tabs of a mission share the map and the camera.",
-               "Ein Reiter je offenem Skript. Ein `*` heißt: ungespeicherte Änderungen, `+` öffnet ein neues Skript, Reiter lassen sich umsortieren. Alle Reiter einer Mission teilen sich Karte und Kamera.",
-               "每个打开的脚本一个标签页。`*` 表示有未保存的修改,`+` 新建脚本,标签页可拖动排序。同一任务的所有标签页共享地图和摄像机。",
-               "開いているスクリプトごとに 1 つのタブ。`*` は未保存の変更、`+` で新しいスクリプト、ドラッグで並べ替えられます。同じミッションのタブはマップとカメラを共有します。")],
+             T("One tab per open script. A `*` means unsaved changes, `+` opens a new script, tabs can be dragged into another order. When there are more tabs than fit, turn the mouse wheel over the tab bar to scroll them; the small arrow at the left lists every open script. All tabs of a mission share the map and the camera.",
+               "Ein Reiter je offenem Skript. Ein `*` heißt: ungespeicherte Änderungen, `+` öffnet ein neues Skript, Reiter lassen sich umsortieren. Passen nicht alle hinein, rollt das Mausrad über der Reiterleiste sie durch; der kleine Pfeil links listet alle offenen Skripte. Alle Reiter einer Mission teilen sich Karte und Kamera.",
+               "每个打开的脚本一个标签页。`*` 表示有未保存的修改,`+` 新建脚本,标签页可拖动排序。标签页放不下时,在标签栏上滚动鼠标滚轮即可左右滚动;左侧的小箭头列出所有打开的脚本。同一任务的所有标签页共享地图和摄像机。",
+               "開いているスクリプトごとに 1 つのタブ。`*` は未保存の変更、`+` で新しいスクリプト、ドラッグで並べ替えられます。タブが収まらないときは、タブバーの上でマウスホイールを回すと左右にスクロールします。左端の小さな矢印で開いているスクリプトの一覧を表示できます。同じミッションのタブはマップとカメラを共有します。")],
             [T("Mode bar", "Modusleiste", "模式栏", "モードバー"),
              T("The strip at the far left: **{{GroupEvents}}** (build scripts), **{{ViewMap}}** (the mission: the map in 3D, entities, cameras, timeline - this tab was called *Map* before version rc600), **{{ViewModel}}** (look at a character model).",
                "Der Streifen ganz links: **{{GroupEvents}}** (Skripte bauen), **{{ViewMap}}** (die Mission: Karte in 3D, Entities, Kameras, Zeitleiste - bis rc599 hieß dieser Tab *Map*), **{{ViewModel}}** (ein Figurenmodell ansehen).",
@@ -199,10 +209,10 @@ FLUSS = {
             "{{GroupScriptFlow}} 列の上部の **{{FlowClassic}} / {{FlowGraph}} / {{FlowTracks}}** ボタンで表示を切り替えます。分割表示ではペインごとに設定できます。")),
         ("h2", "classic", T("Classic", "Classic", "经典", "クラシック")),
         ("p", T(
-            "The tree of the original BehavEd - every command one line, blocks to fold open. This is where you edit; see [[skripte]].",
-            "Der Baum des Original-BehavEd - jeder Befehl eine Zeile, Blöcke zum Aufklappen. Hier wird bearbeitet; siehe [[skripte]].",
-            "原版 BehavEd 的树状视图——每条命令一行,块可以展开。编辑在这里进行;参见 [[skripte]]。",
-            "オリジナル BehavEd のツリー。コマンド 1 つが 1 行で、ブロックは折りたためます。編集はここで行います。[[skripte]] を参照。")),
+            "The tree of the original BehavEd - every command one line, blocks to fold open; see [[skripte]]. Since rc601 you can build and change a script in **every** view - the tutorials on scripts have a switch at the top that shows their steps for Classic, Graph or Tracks.",
+            "Der Baum des Original-BehavEd - jeder Befehl eine Zeile, Blöcke zum Aufklappen; siehe [[skripte]]. Seit rc601 lässt sich ein Skript in **jeder** Ansicht bauen und ändern - die Skript-Tutorials haben oben einen Umschalter, der ihre Schritte für Classic, Graph oder Tracks zeigt.",
+            "原版 BehavEd 的树状视图——每条命令一行,块可以展开;参见 [[skripte]]。自 rc601 起,在**任何**视图中都能创建和修改脚本——脚本教程顶部有切换按钮,可显示经典、图表或轨道视图下的步骤。",
+            "オリジナル BehavEd のツリー。コマンド 1 つが 1 行で、ブロックは折りたためます。[[skripte]] を参照。rc601 からは**どの**表示でもスクリプトを作成・変更できます。スクリプトのチュートリアルには上部に切り替えがあり、クラシック・グラフ・トラックそれぞれの手順を表示します。")),
         ("h2", "graph", T("Graph: what starts what", "Graph: was startet was", "图表:谁启动谁", "グラフ:何が何を起動するか")),
         ("img", "h_graph", T(
             "The graph of a mission: player start, triggers, script runners, figures and scripts with their connections.",
@@ -219,6 +229,11 @@ FLUSS = {
             "**{{GraphFit}}** zeigt alles, **{{GraphRelayout}}** ordnet die Knoten, **{{GraphRightAngles}}** zieht die Leitungen rechtwinklig durch die Lücken. Doppelklick auf eine Leitung setzt einen Umlenkpunkt; Rechtsklick entfernt ihn.",
             "**{{GraphFit}}** 显示全部,**{{GraphRelayout}}** 整理节点,**{{GraphRightAngles}}** 让连线以直角穿过空隙。双击连线添加拐点,右键删除。",
             "**{{GraphFit}}** で全体表示、**{{GraphRelayout}}** でノードを整列、**{{GraphRightAngles}}** で配線を直角に通します。配線をダブルクリックで折れ点を追加、右クリックで削除します。")),
+        ("p", T(
+            "**Editing in the Graph.** Click a script node: on the right, **{{GraphCommands}}** lists every command of the script, blocks indented. Click a line to select it, double-click to open the editor, right-click for the same menu as in Classic (edit, duplicate, copy, cut, paste, move, REM, delete, insert). A command from the **{{GroupEvents}}** list dropped on a line goes after it; double-clicking a command in the list inserts it after the selected line. A script that is not open shows **{{GraphEditHere}}**.",
+            "**Bearbeiten im Graphen.** Einen Skript-Knoten anklicken: rechts stehen unter **{{GraphCommands}}** alle Befehle des Skripts, Blöcke eingerückt. Klick wählt eine Zeile, Doppelklick öffnet den Editor, Rechtsklick dasselbe Menü wie in Classic (bearbeiten, duplizieren, kopieren, ausschneiden, einfügen, verschieben, REM, löschen, einfügen). Ein Befehl aus der Liste **{{GroupEvents}}** auf eine Zeile fallen gelassen kommt dahinter; Doppelklick auf einen Befehl der Liste fügt ihn hinter der gewählten Zeile ein. Ein Skript, das nicht offen ist, zeigt **{{GraphEditHere}}**.",
+            "**在图表中编辑。**单击脚本节点:右侧 **{{GraphCommands}}** 列出该脚本的所有命令,块内命令缩进显示。单击选中一行,双击打开编辑器,右键打开与经典视图相同的菜单(编辑、复制、剪切、粘贴、移动、注释、删除、插入)。把 **{{GroupEvents}}** 列表中的命令拖放到某行上,会插入到该行之后;双击列表中的命令,会插入到所选行之后。未打开的脚本会显示 **{{GraphEditHere}}**。",
+            "**グラフでの編集。** スクリプトのノードをクリックすると、右側の **{{GraphCommands}}** にそのスクリプトの全コマンドが表示されます(ブロックは字下げ)。クリックで行を選択、ダブルクリックでエディターを開き、右クリックでクラシックと同じメニュー(編集・複製・コピー・切り取り・貼り付け・移動・REM・削除・挿入)が開きます。**{{GroupEvents}}** 一覧のコマンドを行にドロップするとその後ろに入り、一覧のコマンドをダブルクリックすると選択行の後ろに入ります。開いていないスクリプトには **{{GraphEditHere}}** が表示されます。")),
         ("h2", "spuren", T("Tracks: the script over time", "Spuren: das Skript über die Zeit", "轨道:随时间展开的脚本", "トラック:時間に沿ったスクリプト")),
         ("img", "h_spuren", T(
             "Tracks: camera shots, figures, dialogue and script as blocks in time.",
@@ -230,6 +245,11 @@ FLUSS = {
             "Eine kompakte Zeitleiste in der Skriptspalte: Zeilen für **{{TracksCamera}}**, jede Figur, **{{TracksDialog}}** (Sprachzeilen) und **{{TracksScript}}**. Klick auf einen Block wählt seine Zeile, seinen rechten Rand ziehen ändert die Dauer, im Lineal ziehen bewegt durch die Zeit. Die große [[zeitleiste]] unter der Karte tut dasselbe genauer.",
             "脚本栏中的紧凑时间轴:包含 **{{TracksCamera}}**、每个角色、**{{TracksDialog}}**(语音台词)和 **{{TracksScript}}** 等行。单击块选中其对应行,拖动右边缘修改时长,在标尺上拖动可浏览时间。地图下方的大 [[zeitleiste]] 提供更详细的同类功能。",
             "スクリプト列の中のコンパクトなタイムラインです。**{{TracksCamera}}**、各キャラクター、**{{TracksDialog}}**(音声)、**{{TracksScript}}** の行があります。ブロックをクリックで行を選択、右端をドラッグで長さを変更、ルーラーをドラッグで時間を移動します。マップ下の大きな [[zeitleiste]] は同じことをより詳しく行います。")),
+        ("p", T(
+            "**Editing in Tracks.** Double-click a block to open the editor; right-click it for the menu of the Classic line. Drag a command from the **{{GroupEvents}}** list into a row: a yellow line shows the moment, and the command goes after the last command of that row that starts before it - in a figure's row, inside that figure's `affect` block. On the right, **{{TracksList}}** lists every command, also those that take no time (`affect`, `task`, `declare`) and an empty script - it works like the list in the Graph. Switch it off with the checkbox to give the timeline the whole width.",
+            "**Bearbeiten in den Spuren.** Doppelklick auf einen Block öffnet den Editor, Rechtsklick das Menü der Classic-Zeile. Einen Befehl aus der Liste **{{GroupEvents}}** in eine Zeile ziehen: eine gelbe Linie zeigt den Zeitpunkt, und der Befehl kommt hinter den letzten Befehl dieser Zeile, der davor beginnt - in der Zeile einer Figur also in ihren `affect`-Block. Rechts listet **{{TracksList}}** jeden Befehl, auch die ohne Zeit (`affect`, `task`, `declare`) und ein leeres Skript - sie arbeitet wie die Liste im Graphen. Mit dem Häkchen ausgeschaltet bekommt die Zeitleiste die ganze Breite.",
+            "**在轨道中编辑。**双击块打开编辑器,右键打开与经典视图行相同的菜单。把 **{{GroupEvents}}** 列表中的命令拖到某一行:黄色竖线表示时间点,命令会插入到该行中在此之前开始的最后一条命令之后——在角色行中即插入到该角色的 `affect` 块内。右侧的 **{{TracksList}}** 列出每条命令,包括不占时间的命令(`affect`、`task`、`declare`)和空脚本——用法与图表中的列表相同。取消勾选可让时间轴占满整个宽度。",
+            "**トラックでの編集。** ブロックをダブルクリックでエディター、右クリックでクラシックの行と同じメニューが開きます。**{{GroupEvents}}** 一覧のコマンドを行にドラッグすると、黄色の線が時点を示し、その行でその時点より前に始まる最後のコマンドの後ろに入ります(キャラクターの行ならその `affect` ブロックの中)。右側の **{{TracksList}}** には時間を使わないコマンド(`affect`・`task`・`declare`)や空のスクリプトも含め、すべてのコマンドが表示され、グラフの一覧と同じように使えます。チェックを外すとタイムラインが全幅になります。")),
     ],
 }
 

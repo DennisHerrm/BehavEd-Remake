@@ -1,0 +1,176 @@
+# Release: baut BehavEd-Remake bei jeder Marke v1.0.0-rcNNN und legt einen
+# ENTWURF an - mit genau einem Zip, der eigenstaendigen .exe und SHA256SUMS.
+# (rc601 release)
+#
+# shank: "bei jedem Release sollte es auch eine .exe geben, die gebaut wird,
+# dass die Leute sie runterladen und nutzen koennen". Bis rc600 entstanden Zip
+# und Notizen von Hand; die ausgelieferte .exe brauchte die VC-Laufzeit, die
+# nicht im Zip lag, und ab rc598 fehlte die Download-Zeile in den Notizen.
+#
+# Regeln des eingebauten Updaters (gui/update_win32.cpp, src/update.cpp), an
+# die sich dieser Ablauf halten MUSS:
+#   - er fragt /releases/latest: das sieht weder Entwuerfe noch Vorab-Releases.
+#     Deshalb NIE --prerelease (jede Marke v1.0.0-rcNNN enthaelt ein "-", eine
+#     Regel "*-* = Vorab" wuerde jedes Release unsichtbar machen);
+#   - er installiert das ERSTE .zip des Releases: genau ein .zip anhaengen;
+#   - er vergleicht die rc-Nummer der Marke mit kFassung: die Marke muss
+#     v1.0.0-<kFassung> heissen, sonst boete er das Release ewig neu an.
+#
+# Ablauf: Marke pushen -> dieser Lauf baut, prueft, laedt die Dateien als
+# Artefakt hoch und legt den Entwurf an. Veroeffentlicht wird von Hand, nach
+# dem Selbsttest mit genau dieser .exe - die Schritte stehen in TESTING.md,
+# Abschnitt "Release builds (rc601)".
+# workflow_dispatch: Probelauf ohne Release (bauen, testen, Artefakt).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # die Vorgabe des Repos ist "read"; ein Release anzulegen braucht write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  release:
+    # windows-2025 = Windows Server 2025 mit Visual Studio 2026 (seit Juni
+    # 2026). Fest statt windows-latest: -latest wandert.
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Line endings as committed
+        # data/base/*.h und behaved.bhc sind mit CRLF eingecheckt, der Rest mit
+        # LF; das Zip und die eingebauten Daten sollen genau diese Bytes haben.
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive   # imgui (v1.92.9b-docking)
+
+      - name: Version, tag and toolchain
+        id: ver
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $rc = python tools/release_paket.py fassung
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            # Marke == v1.0.0-<kFassung>, sonst Abbruch (Updater: istNeuer).
+            python tools/release_paket.py fassung --marke $env:GITHUB_REF_NAME
+          }
+          python tools/lint_fassung.py
+          python tools/lint_sources.py
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
+          Write-Host "Visual Studio $vs"
+          if (-not "$vs".StartsWith('18.')) { throw "need Visual Studio 18 (2026), found '$vs'" }
+          cmake --version
+          python --version
+          "rc=$rc" >> $env:GITHUB_OUTPUT
+          # Zeitstempel im Zip = Zeit des Commits: zweimal gebaut, dieselben Bytes.
+          "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $env:GITHUB_ENV
+
+      - name: Configure
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $imgui = "$env:GITHUB_WORKSPACE/imgui" -replace '\\', '/'
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64 "-DIMGUI_DIR=$imgui"
+
+      - name: Build (second try with safe codegen, like build.bat)
+        run: |
+          cmake --build build --config Release --parallel
+          if ($LASTEXITCODE -ne 0) {
+            # MSVC 14.50 hatte einen internen Compilerfehler (CMakeLists.txt,
+            # BEHAVED_MSVC_SAFE_CODEGEN); build.bat macht denselben zweiten Anlauf.
+            Write-Host "::warning::build failed - second try with BEHAVED_MSVC_SAFE_CODEGEN=ON (/Ob1)"
+            cmake -S . -B build -DBEHAVED_MSVC_SAFE_CODEGEN=ON
+            cmake --build build --config Release --parallel
+          }
+          exit $LASTEXITCODE
+
+      - name: Unit tests (no GPU, no sound, no game data)
+        # Darunter exe_importe (nur Windows-DLLs fest gebunden: statische
+        # Laufzeit), eingebaute_daten und release_paket.
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 600
+
+      - name: Package and check
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $rc = '${{ steps.ver.outputs.rc }}'
+          $zip = "dist/BehavEd-Remake-$rc-windows-x64.zip"
+          $exe = "dist/BehavEd-Remake-$rc-windows-x64.exe"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python tools/release_paket.py zip build/bin/Release/behaved.exe $zip
+          # Die eigenstaendige .exe IST behaved.exe (die Daten stecken darin,
+          # bhed/eingebaut.h) - nur unter dem Namen des Releases.
+          Copy-Item build/bin/Release/behaved.exe $exe
+          python tools/release_paket.py pruefe $zip --fassung $rc --exe $exe
+          python -m pip install --disable-pip-version-check --quiet pefile
+          python tools/check_exe_resources.py build/bin/Release/behaved.exe
+          # Der Befehl zuerst, dann --data (tools/bhed_cli.cpp liest argv[1] als Befehl).
+          & ./build/bin/Release/bhed.exe info --data data/base
+
+      - name: Standalone exe runs on its own
+        # Die .exe ALLEIN in einem leeren Ordner, mit eigenem Einstellungsordner:
+        # --pruefe-daten muss mit 0 enden (Befehlsmodell aus den eingebauten
+        # Daten), ohne Fenster und ohne Meldungsfenster - ein Meldungsfenster
+        # haelt den Lauf an, deshalb die Zeitgrenze.
+        run: |
+          $rc = '${{ steps.ver.outputs.rc }}'
+          $probe = Join-Path $env:RUNNER_TEMP 'eigenstaendig'
+          New-Item -ItemType Directory -Force (Join-Path $probe 'prog'), (Join-Path $probe 'einst') | Out-Null
+          $exe = Join-Path $probe "prog/BehavEd-Remake-$rc-windows-x64.exe"
+          Copy-Item "dist/BehavEd-Remake-$rc-windows-x64.exe" $exe
+          $env:BHED_EINSTELLUNGEN = Join-Path $probe 'einst'
+          $out = Join-Path $probe 'ausgabe.txt'
+          $p = Start-Process -FilePath $exe -ArgumentList '--pruefe-daten' -PassThru -NoNewWindow -RedirectStandardOutput $out
+          $null = $p.Handle
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'standalone exe did not exit within 60 s (message box?)' }
+          Get-Content $out
+          if ($p.ExitCode -ne 0) { throw "standalone exe: --pruefe-daten exit code $($p.ExitCode)" }
+          if (Test-Path (Join-Path $probe 'prog/data')) { throw 'standalone exe wrote a data folder next to itself' }
+          if (-not (Test-Path (Join-Path $probe 'einst/data/base/behaved.bhc'))) { throw 'embedded data was not unpacked into BHED_EINSTELLUNGEN' }
+
+      - name: Checksums
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $rc = '${{ steps.ver.outputs.rc }}'
+          python tools/release_paket.py pruefsummen dist/SHA256SUMS.txt "dist/BehavEd-Remake-$rc-windows-x64.zip" "dist/BehavEd-Remake-$rc-windows-x64.exe"
+          $zips = @(Get-ChildItem dist -Filter *.zip)
+          if ($zips.Count -ne 1) { throw "exactly one .zip per release (the updater installs the first .zip), found $($zips.Count)" }
+          Get-ChildItem dist | Format-Table Name, Length -AutoSize
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: BehavEd-Remake-${{ steps.ver.outputs.rc }}
+          path: dist/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          # Die einzige PDB, die zu den Absturzabbildern (behaved-absturz.dmp)
+          # dieser .exe passt. Nicht im Release; Artefakte halten hoechstens 90 Tage.
+          name: BehavEd-Remake-${{ steps.ver.outputs.rc }}-debug-symbols
+          path: build/bin/Release/behaved.pdb
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Draft release (publish by hand after the self-test)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $rc = '${{ steps.ver.outputs.rc }}'
+          $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
+          python tools/release_paket.py notizen $rc $notes
+          $files = @("dist/BehavEd-Remake-$rc-windows-x64.zip", "dist/BehavEd-Remake-$rc-windows-x64.exe", "dist/SHA256SUMS.txt")
+          # NIE --prerelease: /releases/latest ueberspringt Vorab-Releases, der
+          # Updater (gui/update_win32.cpp) saehe das Release nie.
+          gh release create $env:GITHUB_REF_NAME @files --verify-tag --draft --title "BehavEd-Remake 1.0.0-$rc" --notes-file $notes

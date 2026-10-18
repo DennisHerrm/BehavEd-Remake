@@ -128,6 +128,11 @@ struct KartenKlang {
     bool amAusloeser = false;
     std::string ausloeser;
     float ort[3]{};
+    // rc601 ton: der Klang kommt als Temp-Entity bzw. G_Sound ueber den
+    // Snapshot (cargoexplode, TIEexplode - g_breakable.cpp:187 f., 647 ff. MD)
+    // und ist damit nur im PVS zu hoeren. Die Materialklaenge aus CG_Chunks
+    // ruft der Spielcode direkt (false).
+    bool tempEntity = false;
 };
 
 // Ein Text von target_print: Use_Target_Print -> "cp" -> CG_CenterPrint
@@ -321,7 +326,19 @@ public:
     };
     [[nodiscard]] const std::vector<Mover>& mover() const { return mover_; }
 
+    // rc601 (bewegung, teil 3): der moverState einer func_door zur Zeit ms
+    // (0 MOVER_POS1, 1 MOVER_POS2, 2 MOVER_1TO2, 3 MOVER_2TO1) und ob sie
+    // verriegelt ist (MOVER_LOCKED) - die Wegsuche der NPCs fragt beides
+    // (is_valid, g_navigator.cpp:584-622 MD). -1 fuer andere Modelle.
+    [[nodiscard]] int tuerZustand(int modell, double ms, bool* verriegelt = nullptr) const;
+
 private:
+    struct TuerWechsel {
+        double ms = 0.0;
+        int zustand = 0;
+        bool verriegelt = false;
+    };
+    std::map<int, std::vector<TuerWechsel>> tuerWechsel_;   // Modell -> Wechsel (rc601 bewegung)
     std::vector<Mover> mover_;
     std::vector<int> nachModell_;   // Modell -> Index in mover_, -1
     std::vector<FxRunnerStart> fx_;
@@ -342,6 +359,10 @@ private:
     };
     std::map<std::size_t, std::vector<ModellWechsel>> modellWechsel_;
 };
+
+// rc601 (bewegung, teil 3): pos1/pos2 einer func_door wie SP_func_door
+// (g_mover.cpp:1553-1566 MD, START_OPEN schon vertauscht). false: keine Tuer.
+[[nodiscard]] bool tuerStellungen(const MapEntity& e, const BspGeometry& geo, float pos1[3], float pos2[3]);
 
 // EvaluateTrajectory fuer TR_LINEAR_STOP und TR_NONLINEAR_STOP
 // (bg_misc.cpp:501): nichtlinear ist sin(90 Grad * Anteil) - schnell los,

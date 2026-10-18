@@ -499,7 +499,12 @@ void kameraPilotStarten() {
     const std::vector<KameraSchluessel> ks = schluessel();
     if (!gueltig(ks, g_app->selectedKey)) { return; }
     const KameraSchluessel& k = ks[static_cast<std::size_t>(g_app->selectedKey)];
-    g_app->pilotVorher = g_app->cam;
+    // Paket kamera, rc601 (Review): nur beim ERSTEN Start merken. Waehrend
+    // des Pilots steht in g_app->cam der enge Bildwinkel der Einstellung
+    // (drawMapView, jedes Bild) - ein zweiter Klick auf "Steuern" merkte
+    // sich ihn als "vorher", und nach dem Abbrechen blieb die freie Kamera
+    // eng ("Pilot's zoom can stick to the free camera").
+    if (!g_app->kameraPilot) { g_app->pilotVorher = g_app->cam; }
     g_app->pilotSchluessel = g_app->selectedKey;
     for (int a = 0; a < 3; ++a) {
         g_app->cam.pos[a] = k.pos[a];
@@ -713,10 +718,26 @@ void kameraPilotBeenden(bool uebernehmen) {
     if (uebernehmen) {
         kameraAufAnsicht(g_app->pilotSchluessel);
         g_app->selectedKey = g_app->pilotSchluessel;
+        // Paket kamera, rc601: der Pilot rechnet den Bildwinkel der
+        // Einstellung in g_app->cam (drawMapView). Die freie Ansicht bekommt
+        // ihren eigenen zurueck - sonst bliebe sie nach ZOOM 30 so eng.
+        g_app->cam.fovY = g_app->pilotVorher.fovY;
     } else {
         g_app->cam = g_app->pilotVorher;
     }
     g_app->mapDirty = true;
+}
+
+// --- Paket kamera, rc601 (Review): die freie Kamera ohne den Pilot-Zoom ----------
+//
+// Wer g_app->cam waehrend des Pilots merkt, um sie spaeter zurueckzuholen
+// (gemerkte Ansicht Strg+1..9, Draufsicht), bekam den engen Bildwinkel der
+// Einstellung mit. Ort und Winkel gehoeren dem Pilot, der Bildwinkel der
+// freien Ansicht.
+Camera freieKamera() {
+    Camera c = g_app->cam;
+    if (g_app->kameraPilot) { c.fovY = g_app->pilotVorher.fovY; }
+    return c;
 }
 
 // --- In der Ansicht: Hervorheben, Namensschild, Leiste --------------------------
@@ -916,9 +937,16 @@ void kameraVorschauZeigen() {
     const float fs = ImGui::GetFontSize();
     // Auf dem Schirm so breit wie ein Drittel der Ansicht - unabhaengig
     // davon, wie fein gerastert wurde.
-    const float b = std::clamp((x1 - x0) / 3.0F, 120.0F, 640.0F);
-    const float h = b * static_cast<float>(g_app->vorschauH) / static_cast<float>(g_app->vorschauW);
-    if (b > (x1 - x0) * 0.6F || h > (y1 - y0) * 0.6F) { return; }   // zu wenig Platz
+    float b = std::clamp((x1 - x0) / 3.0F, 120.0F, 640.0F);
+    float h = b * static_cast<float>(g_app->vorschauH) / static_cast<float>(g_app->vorschauW);
+    // Paket kamera, rc601: die Vorschau hat das Seitenverhaeltnis des
+    // Spielfensters (4:3 ist hoeher als 16:9). Passt sie in einer flachen
+    // Ansicht nicht in die Hoehe, wird sie kleiner statt zu verschwinden.
+    if (h > (y1 - y0) * 0.6F) {
+        h = (y1 - y0) * 0.6F;
+        b = h * static_cast<float>(g_app->vorschauW) / static_cast<float>(g_app->vorschauH);
+    }
+    if (b > (x1 - x0) * 0.6F || b < 60.0F) { return; }   // zu wenig Platz
     const ImVec2 p1{x1 - fs * 0.6F, y1 - fs * 0.6F};
     const ImVec2 p0{p1.x - b, p1.y - h};
     // Ein eigenes Kindfenster wie die Kameraleiste: solange die Maus darauf
@@ -931,6 +959,8 @@ void kameraVorschauZeigen() {
     if (ImGui::BeginChild("##kameravorschau", ImVec2{b, h}, ImGuiChildFlags_None,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         ImGui::Image(reinterpret_cast<ImTextureID>(tex), ImVec2{b, h});
+        // rc601 saber: der Klirrblitz (CG_SaberClashFlare) auch in der Vorschau.
+        saberBlitzZeichnen2D(1, ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), false);
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
             g_app->throughCamera = true;
             g_app->mapDirty = true;

@@ -1,0 +1,358 @@
+{
+ "fassung": 1,
+ "sprache": "zh",
+ "touren": [
+  {
+   "id": "k-neues-skript",
+   "gruppe": "tut_skript",
+   "titel": "从零编写脚本",
+   "kurz": "一个新的空脚本、一个针对某个角色的 affect 块,以及块中的第一条命令。",
+   "seite": "k-neues-skript.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**打开一个空标签页。** 单击标签栏末尾的 **+**(或 **{{MenuFile}} → {{FileNew}}**)。会打开一个新标签页 `unnamed.txt`,里面是空脚本。左侧的模式栏必须处于 **{{ViewEvents}}**——这样左侧才会显示包含所有命令的 **{{GroupEvents}}** 列表。",
+      "bild": "s_neu_plus",
+      "unter": "标签栏末尾的 + 会打开一个空脚本。",
+      "ziel": "reiter:+;menue:MenuFile>FileNew",
+      "fertig": "reiter+|leer",
+      "voraus": "",
+      "einrichten": "neuerReiter",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**在列表中找到 affect。** **{{GroupEvents}}** 列表显示游戏的每个命令及其参数值。`affect` 位于靠上的位置。把鼠标悬停在上面即可阅读它的作用。",
+      "bild": "s_neu_affect_liste",
+      "unter": "事件列表中的 affect。",
+      "ziel": "eintrag:affect",
+      "fertig": "schwebt|befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**双击它。** `affect` 出现在中间的脚本树中。它已经是展开的(前面的方框显示减号),因为块会包含其他命令。",
+      "bild": "s_neu_affect_baum",
+      "unter": "树中新建的 affect 块。",
+      "ziel": "eintrag:affect",
+      "fertig": "befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:affect",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**为角色命名。** 双击新行(或选中它后按 <kbd>Enter</kbd>)。**{{EditorTitle}}** 随即打开。在第一个字段中输入角色的名称——加载了地图时,旁边的小箭头会列出地图中的所有名称。第二个字段保留 `FLUSH`,然后按 **{{EditorOk}}**。",
+      "bild": "s_neu_editor",
+      "unter": "affect 的事件编辑器:名称字段和“确定”。",
+      "ziel": "knopfN:##v@###editor#0;knopf:EditorOk@###editor",
+      "fertig": "wert:affect#0:0",
+      "voraus": "editor:affect < zeile:affect#0",
+      "einrichten": "wert:affect#0:0=kyle",
+      "sicher": true,
+      "ueberspringen": "editorzu"
+     },
+     {
+      "text": "**选中块,再选取下一个命令。** 单击一次 `affect` 行(1)。然后在列表中双击 `wait`(2)。由于所选的块是展开的,命令会放到块的开头。",
+      "bild": "s_neu_wait_liste",
+      "unter": "1:选中的 affect 块。2:列表中的 wait。",
+      "ziel": "zeile:affect#0;eintrag:wait",
+      "fertig": "kind:affect>wait",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;waehle:affect#0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**检查结果。** `wait` 现在位于块内,缩进在 `affect` 下面。之后插入的命令会按顺序跟在它后面,位于同一个块内。",
+      "bild": "s_neu_ergebnis",
+      "unter": "affect 块中的 wait。",
+      "ziel": "zeile:wait#0",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**保存。** 按右侧操作栏中的 **{{FileSave}}**(或 <kbd>Ctrl</kbd>+<kbd>S</kbd>)。第一次保存时 behaved 会询问文件名——脚本名使用小写且不含空格,例如 `my_first.txt`。",
+      "bild": "s_neu_speichern",
+      "unter": "操作栏中的“保存”。",
+      "ziel": "knopf:FileSave",
+      "fertig": "gespeichert",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-befehl-einfuegen",
+   "gruppe": "tut_skript",
+   "titel": "添加命令的三种方法",
+   "kurz": "双击、拖放或 Insert 键——以及如何把命令准确放到你想要的位置。",
+   "seite": "k-befehl-einfuegen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**双击。** 选中要在其后插入命令的那一行(1),然后在 **{{GroupEvents}}** 列表中双击该命令(2)。新行会出现在所选行的正下方——这里是 `camera ( MOVE )` 之后的一个 `wait`。原版 BehavEd 就是这样工作的。",
+      "bild": "s_ein_doppel",
+      "unter": "1:选中的行。2:列表中的命令。",
+      "ziel": "baum;eintrag:wait",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Insert 键。** 在列表中单击一次某个命令——它会保持高亮(1)。在树中选中一行(2),然后按 <kbd>Insert</kbd>。需要多次添加同一个命令时很方便:选中、<kbd>Insert</kbd>、选中、<kbd>Insert</kbd>……",
+      "bild": "s_ein_einfg",
+      "unter": "1:命令在列表中保持选中。2:它要插入的位置。",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**拖动。** 把命令从列表(1)拖到树中的某一行上(2)。拖动时会有一条线显示它将落在哪里:某行上方、下方,或者——拖到展开块的中间时——块内。",
+      "bild": "s_ein_ziehen",
+      "unter": "从列表(1)拖到树中(2)。",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**右键单击。** 右键单击树中的一行:子菜单 **{{GroupEvents}}** 和 **宏** 列出所有命令;单击的命令会插入到该行之后——如果右键单击的是展开的块,则插入到块内。",
+      "bild": "s_ein_kontext",
+      "unter": "某行的右键菜单及其“事件”子菜单。",
+      "ziel": "baum",
+      "fertig": "knoten+",
+      "voraus": "",
+      "einrichten": "befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-werte-bearbeiten",
+   "gruppe": "tut_skript",
+   "titel": "修改命令的值",
+   "kurz": "事件编辑器:列表、数字、文件字段、地图中的名称——以及 get、tag、random 等表达式。",
+   "seite": "k-werte-bearbeiten.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**打开编辑器。** 双击树中的一行,或选中它后按 <kbd>Enter</kbd>。顶部是命令的帮助文本;下方每个值都有自己的字段。",
+      "bild": "h_editor",
+      "unter": "摄像机命令的事件编辑器。",
+      "ziel": "baum",
+      "fertig": "editor",
+      "voraus": "",
+      "einrichten": "editor",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**数值字段。** 数字、向量和文本直接输入到对应字段中。像位置这样的向量由三个以空格分隔的数字组成。",
+      "bild": "s_wert_felder",
+      "unter": "camera ( MOVE ) 的数值字段:一个位置和一个时间。",
+      "ziel": "knopfN:##v@###editor#0;knopfN:##v@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**固定选项字段。** 像 `SET_TYPES` 或 `true` / `false` 这样的字段是也可以输入的列表——开始输入即可筛选列表。不在列表中的值也允许(模组会带来自己的值),但会被标记为**未知**:请检查是否有拼写错误。",
+      "bild": "s_wert_liste",
+      "unter": "set ( SET_WALKING, true ) 的两个列表字段。",
+      "ziel": "knopfN:##combo@###editor#0;knopfN:##combo@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**文件。** 文件字段带有 **{{EditorBrowse}}**,用于选择游戏中的文件,还有 **{{EditorPlay}}**,用于播放声音或打开脚本。加载了地图时,名称字段旁的箭头可以从地图中选取名称。",
+      "bild": "s_wert_datei",
+      "unter": "声音命令:浏览和播放。",
+      "ziel": "knopf:EditorBrowse@###editor;knopf:EditorPlay@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**表达式。** 有些字段带有 **{{EditorHelper}}**:它会帮你构建表达式——**{{EditorGet}}** 读取变量(`get`),**{{EditorTag}}** 读取某个 `ref_tag` 的位置或角度(`tag`),**{{EditorRnd}}** 生成随机数(`random`)。",
+      "bild": "s_wert_helper",
+      "unter": "摄像机命令某个字段旁的“助手”。",
+      "ziel": "knopf:EditorHelper@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**自由文本。** 其他字段带有 **{{EditorExpr}}**:它把字段变为自由文本,用于列表没有提供的任何内容。**{{EditorRevert}}** 恢复为普通值。",
+      "bild": "s_wert_expr",
+      "unter": "affect 各字段旁的“表达式！”。",
+      "ziel": "knopf:EditorExpr@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**完成。** **{{EditorOk}}**(<kbd>Enter</kbd>)把值写入脚本,**{{EditorCancel}}**(<kbd>Esc</kbd>)保持一切不变。每个字段下方会显示它之前的值(**{{EditorWas}}**)。",
+      "bild": "s_wert_ok",
+      "unter": "确定和取消。",
+      "ziel": "knopf:EditorOk@###editor;knopf:EditorCancel@###editor",
+      "fertig": "editorzu",
+      "voraus": "",
+      "einrichten": "editorzu",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-zeilen-ordnen",
+   "gruppe": "tut_skript",
+   "titel": "移动、复制和注释掉行",
+   "kurz": "重新整理脚本:选中多行、拖动、复制,以及在不删除的情况下停用行。",
+   "seite": "k-zeilen-ordnen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**选择。** 单击树中的一行。<kbd>Ctrl</kbd>+单击可添加更多行,<kbd>Shift</kbd>+单击会选中两者之间的所有行。操作栏中的每个按钮都会同时作用于所有选中的行。",
+      "bild": "s_auswahl",
+      "unter": "两个选中的行。",
+      "ziel": "baum",
+      "fertig": "auswahl",
+      "voraus": "",
+      "einrichten": "waehle:*",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**移动。** 把选中内容拖到新位置——或按操作栏中的 **{{ActMoveUp}}** / **{{ActMoveDown}}**(<kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd>)将其移动一行。它会留在自己的块内。块会连同其中的所有内容一起移动。",
+      "bild": "s_verschieben",
+      "unter": "上移和下移。",
+      "ziel": "gruppe:ActMoveUp,ActMoveDown",
+      "fertig": "aenderung+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**复制一份。** **{{ActClone}}**(<kbd>Space</kbd>)在正下方插入选中内容的副本——这是做出第二个摄像机镜头或第二段行走最快的方法。",
+      "bild": "s_clone",
+      "unter": "克隆。",
+      "ziel": "knopf:ActClone",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**在脚本之间复制。** **{{ActCopy}}**(<kbd>Ctrl</kbd>+<kbd>C</kbd>)复制选中内容。切换到另一个标签页,选中一行并按 **{{ActPaste}}**(<kbd>Ctrl</kbd>+<kbd>V</kbd>):命令会插入到该行下方。",
+      "bild": "s_copy",
+      "unter": "复制和粘贴。",
+      "ziel": "knopf:ActCopy;knopf:ActPaste",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**停用而不删除。** **{{ActRem}}**(<kbd>Backspace</kbd>)把选中的行变成注释:它们仍留在脚本中,但游戏会跳过它们。再按一次(或 <kbd>Ctrl</kbd>+<kbd>Backspace</kbd>)即可重新启用。",
+      "bild": "s_rem",
+      "unter": "注释掉:这两行现在是注释。",
+      "ziel": "knopf:ActRem",
+      "fertig": "rem+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-uebersetzen",
+   "gruppe": "tut_skript",
+   "titel": "编译并修复错误",
+   "kurz": "把脚本转换成游戏运行的 .ibi,阅读消息并跳转到出错的行。",
+   "seite": "k-uebersetzen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**编译。** 按操作栏底部的 **{{Compile}}**。它会保存 `.txt`,并在旁边写出游戏运行的 `.ibi`。成功时按钮会闪烁绿色。",
+      "bild": "t1_6",
+      "unter": "编译按钮。",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**编译失败时。** 按钮闪烁红色,树中会选中第一条错误的行——这里是一个使用比较符 `~` 的 `if`,而 ICARUS 不认识这个比较符。",
+      "bild": "s_comp_fehler",
+      "unter": "编译失败:按钮和选中的错误行。",
+      "ziel": "knopf:Compile",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**阅读消息。** 单击底部状态栏中的计数:**{{MessagesTitle}}** 窗口会列出每条消息,以及它所在的行和错误原因。",
+      "bild": "s_comp_meldung",
+      "unter": "状态栏中的计数会打开“消息”窗口。",
+      "ziel": "meldungen",
+      "fertig": "fenster:messages",
+      "voraus": "",
+      "einrichten": "fenster:messages",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**修正后重新编译。** 双击错误的行,修正其值——这里是比较符:`=`、`<`、`>` 或 `!`——然后按 **{{EditorOk}}**,再按一次 **{{Compile}}**。",
+      "bild": "s_comp_editor",
+      "unter": "事件编辑器中的错误值。",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  }
+ ]
+}

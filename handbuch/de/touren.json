@@ -1,0 +1,358 @@
+{
+ "fassung": 1,
+ "sprache": "de",
+ "touren": [
+  {
+   "id": "k-neues-skript",
+   "gruppe": "tut_skript",
+   "titel": "Ein Skript von Grund auf schreiben",
+   "kurz": "Ein neues leeres Skript, ein affect-Block für eine Figur und ein erster Befehl darin.",
+   "seite": "k-neues-skript.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Öffne einen leeren Reiter.** Klick auf das **+** am Ende der Reiterleiste (oder **{{MenuFile}} → {{FileNew}}**). Ein neuer Reiter `unnamed.txt` mit einem leeren Skript öffnet sich. Die Modusleiste links muss auf **{{ViewEvents}}** stehen - dann ist links die Liste **{{GroupEvents}}** mit allen Befehlen.",
+      "bild": "s_neu_plus",
+      "unter": "Das + am Ende der Reiterleiste öffnet ein leeres Skript.",
+      "ziel": "reiter:+;menue:MenuFile>FileNew",
+      "fertig": "reiter+|leer",
+      "voraus": "",
+      "einrichten": "neuerReiter",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Such affect in der Liste.** Die Liste **{{GroupEvents}}** zeigt jeden Befehl des Spiels mit seinen Werten. `affect` steht weit oben. Fahr mit der Maus darüber, um zu lesen, was er tut.",
+      "bild": "s_neu_affect_liste",
+      "unter": "affect in der Ereignisliste.",
+      "ziel": "eintrag:affect",
+      "fertig": "schwebt|befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Doppelklicke darauf.** `affect` erscheint im Skriptbaum in der Mitte. Er ist schon aufgeklappt (das Kästchen davor zeigt ein Minus), denn ein Block enthält andere Befehle.",
+      "bild": "s_neu_affect_baum",
+      "unter": "Der neue affect-Block im Baum.",
+      "ziel": "eintrag:affect",
+      "fertig": "befehl:affect",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:affect",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Benenne die Figur.** Doppelklicke auf die neue Zeile (oder wähle sie und drück <kbd>Enter</kbd>). Der **{{EditorTitle}}** öffnet sich. Tippe den Namen der Figur ins erste Feld - ist eine Karte geladen, listet der kleine Pfeil daneben jeden Namen der Karte. Lass `FLUSH` im zweiten Feld stehen und drück **{{EditorOk}}**.",
+      "bild": "s_neu_editor",
+      "unter": "Der Ereignis-Editor für affect: das Namensfeld und Ok.",
+      "ziel": "knopfN:##v@###editor#0;knopf:EditorOk@###editor",
+      "fertig": "wert:affect#0:0",
+      "voraus": "editor:affect < zeile:affect#0",
+      "einrichten": "wert:affect#0:0=kyle",
+      "sicher": true,
+      "ueberspringen": "editorzu"
+     },
+     {
+      "text": "**Wähle den Block, dann den nächsten Befehl.** Klick einmal auf die Zeile `affect` (1). Doppelklicke dann in der Liste auf `wait` (2). Weil der gewählte Block aufgeklappt ist, kommt der Befehl an den Anfang des Blocks.",
+      "bild": "s_neu_wait_liste",
+      "unter": "1: der gewählte affect-Block. 2: wait in der Liste.",
+      "ziel": "zeile:affect#0;eintrag:wait",
+      "fertig": "kind:affect>wait",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;waehle:affect#0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Prüf das Ergebnis.** `wait` steht jetzt im Block, eingerückt unter `affect`. Befehle, die du danach einfügst, folgen ihm der Reihe nach im selben Block.",
+      "bild": "s_neu_ergebnis",
+      "unter": "wait im affect-Block.",
+      "ziel": "zeile:wait#0",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Speichere.** Drück **{{FileSave}}** in der Aktionsspalte rechts (oder <kbd>Strg</kbd>+<kbd>S</kbd>). Beim ersten Mal fragt behaved nach einem Namen - Skriptnamen sind klein geschrieben und ohne Leerzeichen, zum Beispiel `my_first.txt`.",
+      "bild": "s_neu_speichern",
+      "unter": "Speichern in der Aktionsspalte.",
+      "ziel": "knopf:FileSave",
+      "fertig": "gespeichert",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-befehl-einfuegen",
+   "gruppe": "tut_skript",
+   "titel": "Drei Wege, einen Befehl einzufügen",
+   "kurz": "Doppelklick, Ziehen und Ablegen oder die Einfg-Taste - und wie ein Befehl genau dort landet, wo du ihn haben willst.",
+   "seite": "k-befehl-einfuegen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Doppelklick.** Wähle die Zeile, nach der der Befehl kommen soll (1), und doppelklicke dann den Befehl in der Liste **{{GroupEvents}}** (2). Die neue Zeile erscheint direkt unter der gewählten - hier ein `wait` nach `camera ( MOVE )`. So hat es schon das Original-BehavEd gemacht.",
+      "bild": "s_ein_doppel",
+      "unter": "1: die gewählte Zeile. 2: der Befehl in der Liste.",
+      "ziel": "baum;eintrag:wait",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Einfg-Taste.** Klick einmal auf einen Befehl in der Liste - er bleibt markiert (1). Wähle eine Zeile im Baum (2) und drück <kbd>Einfg</kbd>. Praktisch, wenn du denselben Befehl mehrmals einfügst: wählen, <kbd>Einfg</kbd>, wählen, <kbd>Einfg</kbd> ...",
+      "bild": "s_ein_einfg",
+      "unter": "1: der Befehl bleibt in der Liste gewählt. 2: wohin er kommt.",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Ziehen.** Zieh einen Befehl aus der Liste (1) auf eine Zeile des Baums (2). Beim Ziehen zeigt eine Linie, wo er landet: über einer Zeile, darunter oder - auf der Mitte eines aufgeklappten Blocks - im Block.",
+      "bild": "s_ein_ziehen",
+      "unter": "Aus der Liste (1) in den Baum (2) ziehen.",
+      "ziel": "eintrag:wait;baum",
+      "fertig": "knoten+",
+      "voraus": "modus:0 < knopf:ViewEvents@modebar",
+      "einrichten": "modus:0;befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Rechtsklick.** Klick mit rechts auf eine Zeile im Baum: die Untermenüs **{{GroupEvents}}** und **Makros** listen jeden Befehl; der angeklickte wird nach dieser Zeile eingefügt - oder in den Block, wenn du mit rechts auf einen aufgeklappten Block geklickt hast.",
+      "bild": "s_ein_kontext",
+      "unter": "Das Kontextmenü einer Zeile mit dem Untermenü Ereignisse.",
+      "ziel": "baum",
+      "fertig": "knoten+",
+      "voraus": "",
+      "einrichten": "befehl:wait",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-werte-bearbeiten",
+   "gruppe": "tut_skript",
+   "titel": "Die Werte eines Befehls ändern",
+   "kurz": "Der Event-Editor: Listen, Zahlen, Dateifelder, Namen aus der Karte - und Ausdrücke wie get, tag und random.",
+   "seite": "k-werte-bearbeiten.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Öffne den Editor.** Doppelklicke eine Zeile im Baum oder wähle sie und drück <kbd>Enter</kbd>. Oben steht der Hilfetext des Befehls; darunter hat jeder Wert sein eigenes Feld.",
+      "bild": "h_editor",
+      "unter": "Der Event-Editor für einen Kamerabefehl.",
+      "ziel": "baum",
+      "fertig": "editor",
+      "voraus": "",
+      "einrichten": "editor",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Felder für Werte.** Zahlen, Vektoren und Text tippst du in ihre Felder. Ein Vektor wie ein Ort hat drei Zahlen, durch Leerzeichen getrennt.",
+      "bild": "s_wert_felder",
+      "unter": "Die Wertfelder von camera ( MOVE ): ein Ort und eine Zeit.",
+      "ziel": "knopfN:##v@###editor#0;knopfN:##v@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Felder mit fester Auswahl.** Felder wie `SET_TYPES` oder `true` / `false` sind Listen, in die du auch tippen kannst - fang an zu tippen, um die Liste zu filtern. Ein Wert, der nicht in der Liste steht, ist erlaubt (Mods bringen eigene mit), wird aber als **unbekannt** markiert: prüf ihn auf einen Tippfehler.",
+      "bild": "s_wert_liste",
+      "unter": "Die beiden Listenfelder von set ( SET_WALKING, true ).",
+      "ziel": "knopfN:##combo@###editor#0;knopfN:##combo@###editor#1",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Dateien.** Dateifelder haben **{{EditorBrowse}}**, um eine Datei des Spiels zu wählen, und **{{EditorPlay}}**, um einen Klang abzuspielen oder ein Skript zu öffnen. Ist eine Karte geladen, wählt ein Pfeil neben Namensfeldern einen Namen aus der Karte.",
+      "bild": "s_wert_datei",
+      "unter": "Ein Klangbefehl: suchen und abspielen.",
+      "ziel": "knopf:EditorBrowse@###editor;knopf:EditorPlay@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Ausdrücke.** Manche Felder haben **{{EditorHelper}}**: damit baust du einen Ausdruck - **{{EditorGet}}** liest eine Variable (`get`), **{{EditorTag}}** den Ort oder die Winkel eines `ref_tag` (`tag`), **{{EditorRnd}}** eine Zufallszahl (`random`).",
+      "bild": "s_wert_helper",
+      "unter": "Helfer neben einem Feld des Kamerabefehls.",
+      "ziel": "knopf:EditorHelper@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Freier Text.** Andere Felder haben **{{EditorExpr}}**: das macht das Feld zu freiem Text, für alles, was die Listen nicht anbieten. **{{EditorRevert}}** kehrt zu einem einfachen Wert zurück.",
+      "bild": "s_wert_expr",
+      "unter": "Ausdruck! neben den Feldern von affect.",
+      "ziel": "knopf:EditorExpr@###editor",
+      "fertig": "manuell",
+      "voraus": "editor < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Fertig.** **{{EditorOk}}** (<kbd>Enter</kbd>) schreibt die Werte ins Skript, **{{EditorCancel}}** (<kbd>Esc</kbd>) lässt alles, wie es war. Unter jedem Feld siehst du den Wert, den es vorher hatte (**{{EditorWas}}**).",
+      "bild": "s_wert_ok",
+      "unter": "Ok und Abbrechen.",
+      "ziel": "knopf:EditorOk@###editor;knopf:EditorCancel@###editor",
+      "fertig": "editorzu",
+      "voraus": "",
+      "einrichten": "editorzu",
+      "sicher": true,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-zeilen-ordnen",
+   "gruppe": "tut_skript",
+   "titel": "Zeilen verschieben, kopieren und auskommentieren",
+   "kurz": "Ein Skript umbauen: mehrere Zeilen wählen, ziehen, verdoppeln und Zeilen abschalten, ohne sie zu löschen.",
+   "seite": "k-zeilen-ordnen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Wählen.** Klick auf eine Zeile im Baum. <kbd>Strg</kbd>+Klick fügt weitere Zeilen hinzu, <kbd>Umschalt</kbd>+Klick wählt alles dazwischen. Jeder Knopf der Aktionsspalte wirkt auf alle gewählten Zeilen zugleich.",
+      "bild": "s_auswahl",
+      "unter": "Zwei gewählte Zeilen.",
+      "ziel": "baum",
+      "fertig": "auswahl",
+      "voraus": "",
+      "einrichten": "waehle:*",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Verschieben.** Zieh die Auswahl an eine neue Stelle - oder drück **{{ActMoveUp}}** / **{{ActMoveDown}}** in der Aktionsspalte (<kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd>), um sie um eine Zeile zu verschieben. Sie bleibt in ihrem Block. Ein Block wandert mit allem, was darin ist.",
+      "bild": "s_verschieben",
+      "unter": "Nach oben und Nach unten.",
+      "ziel": "gruppe:ActMoveUp,ActMoveDown",
+      "fertig": "aenderung+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Duplizieren.** **{{ActClone}}** (<kbd>Leertaste</kbd>) fügt direkt darunter eine Kopie der Auswahl ein - der schnellste Weg zu einer zweiten Kameraeinstellung oder einem zweiten Lauf.",
+      "bild": "s_clone",
+      "unter": "Klonen.",
+      "ziel": "knopf:ActClone",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Zwischen Skripten kopieren.** **{{ActCopy}}** (<kbd>Strg</kbd>+<kbd>C</kbd>) kopiert die Auswahl. Wechsle zu einem anderen Reiter, wähle eine Zeile und drück **{{ActPaste}}** (<kbd>Strg</kbd>+<kbd>V</kbd>): die Befehle werden unter dieser Zeile eingefügt.",
+      "bild": "s_copy",
+      "unter": "Kopieren und Einfügen.",
+      "ziel": "knopf:ActCopy;knopf:ActPaste",
+      "fertig": "knoten+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Abschalten ohne Löschen.** **{{ActRem}}** (<kbd>Rücktaste</kbd>) macht die gewählten Zeilen zu Kommentaren: sie bleiben im Skript, aber das Spiel überspringt sie. Drück es noch einmal (oder <kbd>Strg</kbd>+<kbd>Rücktaste</kbd>), um sie wieder einzuschalten.",
+      "bild": "s_rem",
+      "unter": "Auskommentieren: die beiden Zeilen sind jetzt Kommentare.",
+      "ziel": "knopf:ActRem",
+      "fertig": "rem+",
+      "voraus": "auswahl < baum",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  },
+  {
+   "id": "k-uebersetzen",
+   "gruppe": "tut_skript",
+   "titel": "Übersetzen und Fehler beheben",
+   "kurz": "Das Skript in die .ibi verwandeln, die das Spiel ausführt, die Meldungen lesen und zur falschen Zeile springen.",
+   "seite": "k-uebersetzen.html",
+   "ansichten": {
+    "classic": [
+     {
+      "text": "**Übersetze.** Drück **{{Compile}}** unten in der Aktionsspalte. Das speichert die `.txt` und schreibt daneben die `.ibi`, die das Spiel ausführt. Hat es geklappt, blinkt der Knopf grün.",
+      "bild": "t1_6",
+      "unter": "Der Übersetzen-Knopf.",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Wenn es scheitert.** Der Knopf blinkt rot, und die erste falsche Zeile ist im Baum gewählt - hier ein `if` mit dem Vergleich `~`, den ICARUS nicht kennt.",
+      "bild": "s_comp_fehler",
+      "unter": "Übersetzen gescheitert: der Knopf und die gewählte falsche Zeile.",
+      "ziel": "knopf:Compile",
+      "fertig": "manuell",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Lies die Meldungen.** Klick auf den Zähler in der Statuszeile unten: das Fenster **{{MessagesTitle}}** listet jede Meldung mit ihrer Zeile und dem, was falsch ist.",
+      "bild": "s_comp_meldung",
+      "unter": "Die Zähler in der Statuszeile öffnen das Fenster Meldungen.",
+      "ziel": "meldungen",
+      "fertig": "fenster:messages",
+      "voraus": "",
+      "einrichten": "fenster:messages",
+      "sicher": true,
+      "ueberspringen": ""
+     },
+     {
+      "text": "**Korrigiere und übersetze neu.** Doppelklicke die falsche Zeile, korrigiere den Wert - hier den Vergleich: `=`, `<`, `>` oder `!` - und drück **{{EditorOk}}** und noch einmal **{{Compile}}**.",
+      "bild": "s_comp_editor",
+      "unter": "Der falsche Wert im Ereignis-Editor.",
+      "ziel": "knopf:Compile",
+      "fertig": "uebersetzt+",
+      "voraus": "",
+      "einrichten": "",
+      "sicher": false,
+      "ueberspringen": ""
+     }
+    ]
+   }
+  }
+ ]
+}

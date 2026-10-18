@@ -9,6 +9,13 @@ Jede Seite: id k-..., gruppe tut_*, titel, kurz, meta (Bereich, Schritte),
 titelbild, bloecke (meist ein "steps" und ein "Gut zu wissen").
 """
 from inhalt_basis import T
+from inhalt_touren import TOUREN
+
+# rc601 (tour): die Tutorials, die auch im Programm laufen, sagen es.
+_IM_PROGRAMM = T("This tutorial also runs inside the program: **{{MenuHelp}} → {{TourMenu}}**.",
+                 "Dieses Tutorial läuft auch im Programm: **{{MenuHelp}} → {{TourMenu}}**.",
+                 "本教程也可以在程序中运行:**{{MenuHelp}} → {{TourMenu}}**。",
+                 "このチュートリアルはプログラムの中でも動きます:**{{MenuHelp}} → {{TourMenu}}**。")
 
 
 def tut(sid, gruppe, titel, kurz, meta, bild, schritte, tipps=None, weiter=None):
@@ -18,6 +25,8 @@ def tut(sid, gruppe, titel, kurz, meta, bild, schritte, tipps=None, weiter=None)
         bloecke.append(("list", tipps))
     if weiter:
         bloecke.append(("note", weiter))
+    if sid in TOUREN:
+        bloecke.append(("note", _IM_PROGRAMM))
     return {"id": sid, "gruppe": gruppe, "titel": titel, "kurz": kurz, "meta": meta,
             "titelbild": bild, "bloecke": bloecke}
 
@@ -108,7 +117,16 @@ SKRIPT = [
         [
             T("**Open all scripts.** For a mission, **{{LoadMission}}** opens every script in its own tab."),
             (T("**Open Find.** **{{ActFind}}** (<kbd>Ctrl</kbd>+<kbd>F</kbd>). The window stays open while you work."),
-             "k_suchen", T("The Find window.")),
+             "k_suchen", T("The Find window."),
+             [
+                 (T("**{{FindNamed}}**"), T("Finds commands by name, for example `camera`.")),
+                 (T("**{{FindContains}}**"), T("Finds a value in any field.")),
+                 (T("**{{FindReplaceWith}}**"), T("The new value for replacing.")),
+                 (T("**{{FindWhole}}** / **{{FindInSelection}}**"), T("Only whole values / only in the selected lines.")),
+                 (T("**{{FindNextBtn}}** / **{{FindPrevBtn}}**"), T("Step through the hits (<kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd>).")),
+                 (T("**{{FindReplaceBtn}}** / **{{FindReplaceAll}}**"), T("Replaces this hit / every hit in this script.")),
+                 (T("**{{FindReplaceAllDocs}}**"), T("Replaces in every open script - one undo step each.")),
+             ]),
             T("**Search a value.** Type the old name into **{{FindContains}}**. **{{FindNextBtn}}** (<kbd>F3</kbd>) and **{{FindPrevBtn}}** (<kbd>Shift</kbd>+<kbd>F3</kbd>) step through the hits. Tick **{{FindWhole}}** so that `kyle` does not also hit `kyle2`."),
             T("**Search a command.** **{{FindNamed}}** finds commands by name, for example every `camera`. Both fields together find only commands that match both."),
             T("**Replace.** Type the new name into **{{FindReplaceWith}}** and press **{{FindReplaceAllDocs}}**. Each script gets one undo step."),
@@ -166,8 +184,7 @@ SKRIPT = [
             T("**Where to wait.** In the script that should pause, insert `waitsignal` and type a name, for example `door_open`."),
             T("**Where to give the signal.** In the other script, at the moment it should go on, insert `signal ( \"door_open\" )`."),
             T("**Check the names.** Both must be spelled the same. Only one script can wait for a signal of a given name."),
-            (T("**See it in the timeline.** Expand the figure's group in the timeline: the row **{{TlKatAblauf}}** shows waits and signals as blocks."),
-             "h_zeitleiste", T("The timeline: expand a figure's group to see its rows.")),
+            T("**See it in the timeline.** Expand the figure's group in the timeline: the row **{{TlKatAblauf}}** shows waits and signals as blocks."),
         ],
         [T("The timeline cannot know how long a `waitsignal` waits in the game - everything after it is placed as if the signal came at once.")]),
 
@@ -281,11 +298,11 @@ FIGUREN = [
         T("Look at another figure while walking, turn towards a target, or face the walking direction again."),
         T("Figures · four steps"), "k_gangart",
         [
-            T("**While walking.** Right-click a walk target on the path → **{{BahnAnsehen}}** → pick a figure. The figure walks and keeps its head on the other one."),
+            (T("**While walking.** Right-click a walk target on the path → **{{BahnAnsehen}}** → pick a figure. The figure walks and keeps its head on the other one."),
+             "k_gangart", T("The menu of a walk target: Look at while walking lists the figures of the scene.")),
             T("**Standing.** Right-click the target entity in the entity list → **{{EntityAsWatch}}** (`SET_WATCHTARGET`) or **{{EntityAsLook}}** (`SET_LOOK_TARGET`). The command goes into the script after the selected line."),
             T("**Back to normal.** Right-click the walk target → **{{BahnBlickFrei}}**."),
-            (T("**Check it.** Play the timeline. The category **{{TlKatBlick}}** in the figure's group shows when it looks where."),
-             "k_gangart", T("Look at while walking lists the figures of the scene.")),
+            T("**Check it.** Play the timeline. The category **{{TlKatBlick}}** in the figure's group shows when it looks where."),
         ]),
 
     tut("k-blickrichtung", "tut_figur",
@@ -295,7 +312,7 @@ FIGUREN = [
         [
             T("**Go to the moment.** Move the playhead in the timeline to where the figure should face another way."),
             T("**Select the figure** on the map and switch the gizmo bar to **{{GizmoRotate}}**."),
-            (T("**Turn.** Drag the ring. When you let go, behaved writes the facing at this time into the script (a `SET_ANGLES`), and the status line says *Facing … degrees at … s*."),
+            (T("**Turn.** Drag the ring. When you let go, behaved writes the facing at this time into the script (`SET_DYAW` for an NPC, which then turns with its turn rate as in the game; `SET_ANGLES` for the player), and the status line says *Facing … degrees at … s*."),
              "h_gizmo_drehen", T("The rotate ring.")),
             T("**During a walk.** Turning while the figure walks sets the facing for when it arrives."),
         ],
@@ -362,7 +379,16 @@ KARTE = [
         [
             T("**Select the entity.** Click it in the view or in the list. The inspector under the list shows its class in colour; hover over it for a description from the game code."),
             (T("**General.** **{{EntName}}** is how scripts address it, **{{EntOrigin}}** and **{{EntAngle}}** where it stands and faces."),
-             "k_inspektor", T("The inspector.")),
+             "k_inspektor", T("The inspector."),
+             [
+                 (T("**{{EntityFlyTo}}**"), T("Flies the view to the entity.")),
+                 (T("**{{EntDropFloor}}**"), T("Puts it exactly on the floor below.")),
+                 (T("**{{EntDuplicate}}** / **{{EntDelete}}**"), T("Copies or removes it - every selected entity.")),
+                 (T("Undo / Redo"), T("The history of entity changes, separate from the script's.")),
+                 (T("**{{EntRaw}}**"), T("Shows every key as plain text.")),
+                 (T("Filter fields"), T("Shows only the keys whose name contains the text.")),
+                 (T("**...**"), T("Next to `NPC_type`: searches every character of the game.")),
+             ]),
             T("**Keys.** Under **{{EntSecFields}}**, change values or add one with **{{EntAddKey}}**. For a character, the **...** next to `NPC_type` searches every NPC of the game. Script keys have **{{EntOpenScript}}** to open the script."),
             T("**Everything as text.** **{{EntRaw}}** shows all keys as plain text, like Hammer without SmartEdit."),
         ],
@@ -443,7 +469,11 @@ MISSION = [
             T("**Open it again.** **{{MenuFile}} → {{RecentMissions}}**, or the list on the start page of the **{{ViewMap}}** tab, opens map, entities and every script with one click. **{{MissionOpenFolder}}** opens one from its folder."),
             T("**Work.** Change scripts and entities. A dot next to the mission name means unsaved changes."),
             (T("**Save mission.** **{{MissionSave}}** shows every file it will pack and checks the mission: errors in red (they must be fixed), warnings in orange."),
-             "h_mission_speichern", T("The Save mission window.")),
+             "h_mission_speichern", T("The Save mission window."),
+             [
+                 (T("**{{MissionTarget}}**"), T("Where the `.pk3` is written; **{{MissionChoose}}** picks another place.")),
+                 (T("**{{MissionSaveNow}}** / **{{MissionCancel}}**"), T("Saves, compiles and packs - or closes the window. Above them: every file of the package and the checks.")),
+             ]),
             T("**Pack.** Press **{{MissionSaveNow}}**: scripts are saved and compiled, the `.ent` written and the `.pk3` packed. Start the game with `devmap <name>`."),
         ]),
 
@@ -454,7 +484,13 @@ MISSION = [
         [
             T("**Open the window.** **{{WegTitel}}** on the map toolbar. **{{WegZeigen}}** shows the network: green by hand, blue automatic, orange jumps."),
             (T("**Create automatically.** Press **{{WegErzeugen}}**: waypoints are spread over the walkable floor and connected. The spacing slider sets how dense (the original levels use about 230)."),
-             "h_wegpunkte", T("The NPC waypoints window.")),
+             "h_wegpunkte", T("The NPC waypoints window."),
+             [
+                 (T("**{{WegZeigen}}**"), T("Shows the network on the map.")),
+                 (T("**{{WegSetzen}}** / **{{WegVerbinden}}**"), T("Place points by clicking the floor / connect two points.")),
+                 (T("**{{WegErzeugen}}** / **{{WegEntfernen}}**"), T("Spread a network over the walkable floor / remove what was created.")),
+                 (T("**{{WegPruefen}}**"), T("Finds what the game would reject; click a problem to fly there.")),
+             ]),
             T("**Check.** **{{WegPruefen}}** finds what the game would reject - click a problem to fly there."),
             T("**By hand.** **{{WegSetzen}}**: click the floor to place a path; **{{WegVerbinden}}** connects two points (<kbd>Ctrl</kbd>: a jump)."),
         ],

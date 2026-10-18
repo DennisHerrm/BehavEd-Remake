@@ -63,6 +63,73 @@ void rotateAboutAxis(const float v[3], const float axis[3], float degrees,
 void anglesFromBasis(const float forwardV[3], const float upV[3],
                      float outAngles[3]);
 
+// --- Das Spielfenster (Paket kamera, rc601) ----------------------------------
+//
+// Gemeldet vom Tester: "I think camera FOV is slightly off".
+//
+// Die Engine rechnet den Bildwinkel einer Kamera in JEDEM Bild ueber
+// CG_CalcFOVFromX (CGCam_Update, cg_camera.cpp:1163/1178/1182 in OpenJK,
+// 1116/1132/1136 in Movie Duels), und zwar fuer IHR Fenster
+// (cgs.glconfig.vidWidth / vidHeight, cg_view.cpp:1270 OpenJK, :1714 MD) und
+// mit refdef = das ganze Fenster (CG_CalcVrect, cg_view.cpp:297 OpenJK, :320
+// MD). behaved nahm dafuer bisher das Seitenverhaeltnis seiner eigenen
+// 3D-Ansicht - je nach Fensteraufteilung irgendetwas zwischen 1:1 und 3:1.
+// Dann stimmt zwar die Mitte, aber an den Raendern zeigt die Vorschau mehr
+// oder weniger als das Spiel. Ausserdem war cg_fovAspectAdjust fest an
+// (Movie Duels: "1", cg_main.cpp:555; OpenJK: "0", cg_main.cpp:355; das
+// Original von Raven kennt die Korrektur gar nicht).
+//
+// Deshalb hier das Spielfenster als eigene Angabe, und daraus:
+//   - der Bildwinkel genau wie CG_CalcFOVFromX ihn ausrechnet,
+//   - der Rahmen, in dem das Spielbild mittig in der Ansicht liegt (die
+//     Flaeche ausserhalb deckt die Oberflaeche ab),
+//   - der senkrechte Bildwinkel der Ansicht, mit dem der Rahmen genau das
+//     Spielbild zeigt.
+struct SpielFenster {
+    // cgs.glconfig.vidWidth / vidHeight. Movie Duels startet mit r_mode -2,
+    // der Desktopaufloesung (shared/sdl/sdl_window.cpp:779 und :398), OpenJK
+    // mit r_mode 4 = 800x600, also 4:3 (sdl_window.cpp:746 und :78).
+    float seiten = 16.0F / 9.0F;
+    // cg_fovAspectAdjust (Movie Duels "1", OpenJK "0", Raven: gibt es nicht).
+    bool fovAspectAdjust = true;
+};
+
+// Wo das Spielbild in der Ansicht liegt: mittig, als Anteil von Breite und
+// Hoehe der Ansicht. {1, 1} = die ganze Ansicht.
+struct SpielRahmen {
+    float breite = 1.0F;
+    float hoehe = 1.0F;
+};
+
+// cg.refdef.fov_x und cg.refdef.fov_y in Grad, wie CG_CalcFOVFromX sie fuer
+// den waagerechten Bildwinkel `fovX` (camera ZOOM, Vorgabe 90) setzt - ohne
+// das Wabern unter Wasser und ohne cg.wonkyTime.
+struct SpielSicht {
+    float fovX = 90.0F;
+    float fovY = 73.74F;
+};
+[[nodiscard]] SpielSicht spielSicht(float fovX, const SpielFenster& s);
+
+// tan(fov_x / 2) und tan(fov_y / 2) des Spielbilds - die halbe Breite und
+// Hoehe des Bildes im Abstand 1 (R_SetupProjection, tr_main.cpp:539/542).
+[[nodiscard]] float spielTanHalbX(float fovX, const SpielFenster& s);
+[[nodiscard]] float spielTanHalbY(float fovX, const SpielFenster& s);
+
+// Der Rahmen des Spielbilds in einer Ansicht mit dem Seitenverhaeltnis
+// `ansichtSeiten`: ist die Ansicht breiter, bleibt die Hoehe ganz und links
+// und rechts faellt etwas weg; ist sie schmaler, bleibt die Breite ganz.
+[[nodiscard]] SpielRahmen spielRahmenIn(float ansichtSeiten, float spielSeiten);
+
+// Den senkrechten Bildwinkel der Kamera so setzen, dass der Rahmen in der
+// Ansicht genau das Spielbild zeigt, und den Rahmen zurueckgeben.
+SpielRahmen setzeSpielFov(Camera& c, float fovX, float ansichtSeiten, const SpielFenster& s);
+
+// Die freie Ansicht behaelt ihren Bildwinkel. Der Rahmen zeigt dort, was
+// eine Kamera mit dem Bildwinkel `fovX` an derselben Stelle im Spiel saehe
+// (fuer "Kamera hier einfuegen": nach ENABLE gilt 90, cg_camera.cpp:91).
+[[nodiscard]] SpielRahmen spielRahmenFreieSicht(const Camera& c, float ansichtSeiten, const SpielFenster& s,
+                                                float fovX = 90.0F);
+
 // Bedienung wie im Ansichtsfenster von 3ds Max.
 //
 // Warum nicht nur Fliegen: zum SETZEN einer Kamera will man ein Ziel
@@ -456,6 +523,9 @@ struct AnbauDraw {
     const char* bolzen = "*r_hand";
     KlingenLage lage = KlingenLage::Einzeln;
     int klingen = 0;           // wie viele von klinge[] gelten
+    // rc601 saber: welches Schwert (ps.saber[n]) an diesem Griff haengt;
+    // -1: kein Lichtschwert (Waffe, Kinomodell, Griff ohne Klingen).
+    int saberFach = -1;
     std::array<KlingeDraw, kAnbauKlingen> klinge{};
 };
 

@@ -60,6 +60,15 @@ public:
     bool play(const std::vector<int16_t>& samples, float links, float rechts,
               std::uint64_t schluessel);
 
+    // rc601 ton: Stimmen mit Nummer, je Bild nachregelbar (siehe
+    // sound::Mixer::starte). Ein neuer Pegel wirkt ab dem naechsten noch
+    // nicht geschriebenen Block - bei kVorlauf Bloecken also bis zu rund
+    // 185 ms spaeter (siehe unten).
+    std::uint64_t starte(sound::Mixer::Daten daten, const sound::Mixer::Start& s);
+    bool setzePegel(std::uint64_t id, float links, float rechts);
+    void stoppe(std::uint64_t id);
+    [[nodiscard]] bool laeuft(std::uint64_t id) const;
+
     // Fertige Puffer freigeben. Muss regelmaessig gerufen werden, sonst
     // sammeln sie sich an.
     void update();

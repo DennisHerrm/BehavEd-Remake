@@ -5,11 +5,13 @@
 // ohne Beigaben laeuft.
 #include "bhed/sound.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -365,6 +367,219 @@ int main() {
         m2.add(s, 0.0F, 1.0F, 0);
         m2.mixInto(out, 10, 2);
         expect("Stereo: links 0, rechts voll", out[0] == 0 && out[1] == 1000);
+    }
+
+    // =====================================================================
+    // rc601 ton: Raumklang wie die Engine (S_Respatialize, S_AddLoopSounds)
+    // =====================================================================
+    //
+    // Gemeldet: "You can hear everything on the map, including all the
+    // invisible NPCs sabers". Die Formel von S_SpatializeOrigin stimmte schon
+    // (oben); falsch waren der Hoerer, das Einfrieren der Pegel beim Start,
+    // die Mischpegel und das Zusammenlegen gleicher Schleifen.
+
+    // --- Der Rechtsvektor mit Roll (AngleVectors, q_math.c:1314) ----------
+    {
+        using bhed::sound::Kanal;
+        float r[3];
+        const float gier90[3] = {0.0F, 90.0F, 0.0F};
+        bhed::sound::rechtsAusWinkeln(gier90, r);
+        expect("rechtsAusWinkeln: Gier 90 -> rechts ist +x",
+               near(r[0], 1.0F, 1e-5F) && near(r[1], 0.0F, 1e-5F) && near(r[2], 0.0F, 1e-5F));
+        const float gier0[3] = {0.0F, 0.0F, 0.0F};
+        bhed::sound::rechtsAusWinkeln(gier0, r);
+        expect("rechtsAusWinkeln: Gier 0 -> rechts ist -y",
+               near(r[0], 0.0F, 1e-5F) && near(r[1], -1.0F, 1e-5F) && near(r[2], 0.0F, 1e-5F));
+        // Nick 90 (Blick senkrecht nach unten) und Roll 90:
+        // (-sr*sp*cy + cr*sy, -sr*sp*sy - cr*cy, -sr*cp) = (-1, 0, 0)
+        const float schraeg[3] = {90.0F, 0.0F, 90.0F};
+        bhed::sound::rechtsAusWinkeln(schraeg, r);
+        expect("rechtsAusWinkeln: Nick 90 und Roll 90 nach AngleVectors",
+               near(r[0], -1.0F, 1e-5F) && near(r[1], 0.0F, 1e-5F) && near(r[2], 0.0F, 1e-5F));
+        // Roll 180 (Kamera auf dem Kopf) vertauscht die Ohren - mit dem
+        // alten Rechtsvektor nur aus der Gier blieb es gleich.
+        const float ohr[3] = {0.0F, 0.0F, 0.0F};
+        const float rechtsDa[3] = {0.0F, -100.0F, 0.0F};
+        float r0[3];
+        bhed::sound::rechtsAusWinkeln(gier0, r0);
+        const auto a = bhed::sound::raumlaut(rechtsDa, ohr, r0, Kanal::Auto);
+        const float kopf[3] = {0.0F, 0.0F, 180.0F};
+        float r180[3];
+        bhed::sound::rechtsAusWinkeln(kopf, r180);
+        const auto b = bhed::sound::raumlaut(rechtsDa, ohr, r180, Kanal::Auto);
+        expect("Roll 180 vertauscht links und rechts",
+               near(a.rechts, 1.0F, 1e-3F) && a.links < 1e-3F && near(b.links, 1.0F, 1e-3F) && b.rechts < 1e-3F);
+    }
+
+    // --- Wie weit ein Kanal traegt (raumlaut erreicht 0) ---------------------
+    {
+        using bhed::sound::Kanal;
+        expect("hoerweite CHAN_AUTO 1506 (256 + 1/0.0008)", near(bhed::sound::hoerweite(Kanal::Auto), 1506.0F, 0.01F));
+        expect("hoerweite CHAN_BODY wie CHAN_AUTO", near(bhed::sound::hoerweite(Kanal::Body), 1506.0F, 0.01F));
+        expect("hoerweite CHAN_VOICE 2018", near(bhed::sound::hoerweite(Kanal::Voice), 2018.0F, 0.01F));
+        expect("hoerweite CHAN_LESS_ATTEN 2530", near(bhed::sound::hoerweite(Kanal::LessAtten), 2530.0F, 0.01F));
+        expect("hoerweite CHAN_VOICE_ATTEN 595.6", near(bhed::sound::hoerweite(Kanal::VoiceAtten), 595.6F, 0.01F));
+        expect("hoerweite CHAN_VOICE_GLOBAL und CHAN_ANNOUNCER unbegrenzt",
+               std::isinf(bhed::sound::hoerweite(Kanal::VoiceGlobal)) &&
+                   std::isinf(bhed::sound::hoerweite(Kanal::Announcer)));
+        const float ohr[3] = {0.0F, 0.0F, 0.0F};
+        const float rr[3] = {0.0F, -1.0F, 0.0F};
+        bool passt = true;
+        for (const Kanal k : {Kanal::Auto, Kanal::Voice, Kanal::LessAtten, Kanal::VoiceAtten}) {
+            const float w = bhed::sound::hoerweite(k);
+            const float innen[3] = {w - 1.0F, 0.0F, 0.0F};
+            const float aussen[3] = {w + 1.0F, 0.0F, 0.0F};
+            const auto i = bhed::sound::raumlaut(innen, ohr, rr, k);
+            const auto o = bhed::sound::raumlaut(aussen, ohr, rr, k);
+            if (!(std::max(i.links, i.rechts) > 0.0F && std::max(o.links, o.rechts) == 0.0F)) { passt = false; }
+        }
+        expect("hoerweite: knapp davor noch hoerbar, knapp dahinter stumm (alle Kanaele)", passt);
+    }
+
+    // --- Mischpegel: s_volume, s_volumeVoice, SOUND_FMAXVOL -------------------
+    {
+        using bhed::sound::Kanal;
+        expect("kanalPegel: CHAN_AUTO mal s_volume 0.5", near(bhed::sound::kanalPegel(Kanal::Auto, false), 0.5F, 1e-6F));
+        expect("kanalPegel: CHAN_VOICE mal s_volumeVoice 1.0",
+               near(bhed::sound::kanalPegel(Kanal::Voice, false), 1.0F, 1e-6F));
+        expect("kanalPegel: CHAN_VOICE_ATTEN und CHAN_VOICE_GLOBAL sind Stimmen",
+               near(bhed::sound::kanalPegel(Kanal::VoiceAtten, false), 1.0F, 1e-6F) &&
+                   near(bhed::sound::kanalPegel(Kanal::VoiceGlobal, false), 1.0F, 1e-6F));
+        expect("kanalPegel: CHAN_BODY und CHAN_LESS_ATTEN wie CHAN_AUTO",
+               near(bhed::sound::kanalPegel(Kanal::Body, false), 0.5F, 1e-6F) &&
+                   near(bhed::sound::kanalPegel(Kanal::LessAtten, false), 0.5F, 1e-6F));
+        expect("kanalPegel: CHAN_AUTO am Hoerer 0.75 * 0.5", near(bhed::sound::kanalPegel(Kanal::Auto, true), 0.375F, 1e-6F));
+        expect("kanalPegel: CHAN_VOICE am Hoerer 0.75", near(bhed::sound::kanalPegel(Kanal::Voice, true), 0.75F, 1e-6F));
+        expect("kanalPegel: ab CHAN_AMBIENT ohne SOUND_FMAXVOL",
+               near(bhed::sound::kanalPegel(Kanal::Ambient, true), 0.5F, 1e-6F));
+        bhed::sound::Mischpegel p;
+        expect("Mischpegel: Vorgaben 0.5 / 1.0 / 0.25 (s_volume, s_volumeVoice, s_musicvolume)",
+               near(p.effekte, 0.5F, 1e-6F) && near(p.stimmen, 1.0F, 1e-6F) && near(p.musik, 0.25F, 1e-6F));
+        p.effekte = 0.8F;
+        p.stimmen = 0.6F;
+        expect("kanalPegel: eigene Regler wirken",
+               near(bhed::sound::kanalPegel(Kanal::Auto, false, p), 0.8F, 1e-6F) &&
+                   near(bhed::sound::kanalPegel(Kanal::Voice, false, p), 0.6F, 1e-6F));
+    }
+
+    // --- Gleiche Schleifen: je Ohr summiert, bei SOUND_MAXVOL gekappt ---------
+    {
+        using bhed::sound::Raumlaut;
+        const auto drei = bhed::sound::schleifenSumme({Raumlaut{0.5F, 0.5F}, Raumlaut{0.5F, 0.5F}, Raumlaut{0.5F, 0.5F}});
+        expect("schleifenSumme: dreimal 0.5 wird 1 (gekappt)", near(drei.links, 1.0F, 1e-6F) && near(drei.rechts, 1.0F, 1e-6F));
+        const auto zwei = bhed::sound::schleifenSumme({Raumlaut{0.2F, 0.1F}, Raumlaut{0.3F, 0.0F}});
+        expect("schleifenSumme: je Ohr fuer sich", near(zwei.links, 0.5F, 1e-6F) && near(zwei.rechts, 0.1F, 1e-6F));
+        const auto keine = bhed::sound::schleifenSumme({});
+        expect("schleifenSumme: ohne Quelle Stille", keine.links == 0.0F && keine.rechts == 0.0F);
+        // (int)(255 * 0.003) = 0 auf beiden Ohren -> stumm; 255 * 0.004 = 1 nicht.
+        expect("engineStumm: unter einer Stufe von 255 auf beiden Ohren",
+               bhed::sound::engineStumm(Raumlaut{0.003F, 0.003F}) && !bhed::sound::engineStumm(Raumlaut{0.004F, 0.0F}));
+        // Am Hoerer ist master_vol nur 255 * 0.75: 0.005 * 191.25 = 0.96 -> 0.
+        expect("engineStumm: am Hoerer mit master_vol 255 * 0.75",
+               bhed::sound::engineStumm(Raumlaut{0.005F, 0.0F}, true) &&
+                   !bhed::sound::engineStumm(Raumlaut{0.005F, 0.0F}, false));
+    }
+
+    // --- Der Mischer: Stimmen mit Nummer, je Bild nachregelbar ----------------
+    {
+        using Mixer = bhed::sound::Mixer;
+        auto d = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(1000, 1000));
+        Mixer m;
+        Mixer::Start st;
+        const std::uint64_t id = m.starte(d, st);
+        expect("starte liefert eine Nummer", id != 0U && m.laeuft(id));
+        expect("setzePegel trifft die laufende Stimme", m.setzePegel(id, 0.25F, 0.75F));
+        std::vector<int16_t> out;
+        m.mixInto(out, 10, 2);
+        expect("setzePegel wirkt sofort (Stereo 250/750)", out[0] == 250 && out[1] == 750);
+        (void)m.setzePegel(id, 0.0F, 0.0F);
+        m.mixInto(out, 10, 2);
+        expect("eine auf 0 geregelte Stimme bleibt laufen (still)", out[0] == 0 && m.laeuft(id) && m.active() == 1U);
+        m.stoppe(id);
+        expect("stoppe beendet genau diese Stimme", !m.laeuft(id) && m.active() == 0U);
+        expect("setzePegel auf eine fertige Nummer meldet false", !m.setzePegel(id, 1.0F, 1.0F));
+    }
+    {
+        using Mixer = bhed::sound::Mixer;
+        auto d = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(1000, 1000));
+        Mixer m;
+        Mixer::Start st;
+        st.links = 0.0F;
+        st.rechts = 0.0F;
+        expect("eine stumme Stimme ohne Erlaubnis startet nicht (wie add)", m.starte(d, st) == 0U && m.active() == 0U);
+        st.stummErlaubt = true;   // Stimmkanaele: S_Respatialize laesst sie laufen
+        const std::uint64_t id = m.starte(d, st);
+        expect("mit Erlaubnis laeuft sie still", id != 0U && m.active() == 1U);
+        (void)m.setzePegel(id, 1.0F, 1.0F);
+        std::vector<int16_t> out;
+        m.mixInto(out, 10, 2);
+        expect("... und wird hoerbar, sobald der Pegel steigt", out[0] == 1000 && out[1] == 1000);
+    }
+    {
+        // Schleifen laufen ueber das Ende hinaus - ohne den vorab auf
+        // 120 s ausgerollten Puffer (21 MB je Schleife).
+        using Mixer = bhed::sound::Mixer;
+        auto zehn = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(20, 1000));   // 10 Bilder
+        Mixer m;
+        Mixer::Start st;
+        st.schleife = true;
+        const std::uint64_t id = m.starte(zehn, st);
+        std::vector<int16_t> out;
+        m.mixInto(out, 25, 2);
+        expect("eine Schleife von 10 Bildern liefert nach 25 Bildern noch Klang",
+               out.size() == 50U && out[48] == 1000 && out[49] == 1000 && m.laeuft(id));
+        Mixer e;
+        (void)e.starte(zehn, Mixer::Start{});
+        e.mixInto(out, 25, 2);
+        expect("ein Einmalklang derselben Laenge ist danach fertig", out[48] == 0 && e.active() == 0U);
+    }
+    {
+        // Alle Schleifen laufen im selben Takt: S_PaintChannels nimmt
+        // ltime % iSoundLengthInSamples (snd_mix.cpp:332 MD).
+        using Mixer = bhed::sound::Mixer;
+        std::vector<int16_t> rampe(20);
+        for (std::size_t i = 0; i < rampe.size(); ++i) { rampe[i] = static_cast<int16_t>((i / 2U) * 100U); }
+        auto dRampe = std::make_shared<const std::vector<int16_t>>(rampe);
+        auto still = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(100, 0));
+        Mixer m;
+        (void)m.starte(still, Mixer::Start{});
+        std::vector<int16_t> out;
+        m.mixInto(out, 3, 2);
+        Mixer::Start st;
+        st.schleife = true;
+        (void)m.starte(dRampe, st);
+        m.mixInto(out, 1, 2);
+        expect("eine neue Schleife beginnt im gemeinsamen Takt (Bild 3 nach 3 gemischten)", out[0] == 300 && out[1] == 300);
+    }
+    {
+        // Channel-Stomp auch ueber starte: gleicher Schluessel ersetzt.
+        using Mixer = bhed::sound::Mixer;
+        auto d = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(1000, 1000));
+        Mixer m;
+        Mixer::Start st;
+        st.schluessel = 77;
+        const std::uint64_t a = m.starte(d, st);
+        const std::uint64_t b = m.starte(d, st);
+        expect("starte: gleicher Schluessel schneidet ab", !m.laeuft(a) && m.laeuft(b) && m.active() == 1U);
+    }
+    {
+        // Verdraengen wie S_PickChannel (snd_dma.cpp:1138 ff. MD): der
+        // AELTESTE weicht - aber keine Schleife und nichts am Hoerer.
+        using Mixer = bhed::sound::Mixer;
+        auto d = std::make_shared<const std::vector<int16_t>>(std::vector<int16_t>(1000, 1000));
+        Mixer m;
+        Mixer::Start hoerer;
+        hoerer.amHoerer = true;
+        Mixer::Start schleife;
+        schleife.schleife = true;
+        const std::uint64_t h = m.starte(d, hoerer);
+        const std::uint64_t s = m.starte(d, schleife);
+        std::vector<std::uint64_t> rest;
+        while (m.active() < Mixer::kMaxVoices) { rest.push_back(m.starte(d, Mixer::Start{})); }
+        const std::uint64_t neu = m.starte(d, Mixer::Start{});
+        expect("voller Mischer: der aelteste gewoehnliche Klang weicht",
+               neu != 0U && !rest.empty() && !m.laeuft(rest.front()) && m.laeuft(h) && m.laeuft(s) &&
+                   m.active() == Mixer::kMaxVoices);
     }
 
     std::printf("\n%s (%d Fehlschlaege)\n",

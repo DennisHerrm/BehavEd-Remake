@@ -6,6 +6,9 @@
 #include "bhed/gla.h"
 #include "bhed/ibi.h"
 #include "bhed/settings.h"
+#include "bhed/regelwerk.h"
+#include "bhed/saberkontakt.h"
+#include "bhed/navlauf.h"
 #include "bhed/bsp.h"
 #include "bhed/edit.h"
 #include "bhed/ibi.h"
@@ -935,6 +938,116 @@ int main(int argc, char** argv) {
         expect("Einstellungen: Nachfrage abschaltbar", !e.queryOnDiscard, true);
         expect("Einstellungen: letzter Ordner", e.lastDir == d.lastDir, true);
         expect("Einstellungen: Spaltenteilung", e.splitButtons > 0.21F, true);
+
+        // rc601 ton: die Mischpegel der Vorschau (s_volume, s_volumeVoice,
+        // s_musicvolume) - Vorgaben wie die Engine, eigene Werte bleiben,
+        // Unsinn (ausserhalb 0..1) wird nicht uebernommen.
+        {
+            bhed::Settings t;
+            expect("Einstellungen: Mischpegel ab Werk 0.5 / 1.0 / 0.25",
+                   t.tonEffekte == 0.5F && t.tonStimmen == 1.0F && t.tonMusik == 0.25F, true);
+            t.tonEffekte = 0.3F;
+            t.tonStimmen = 0.8F;
+            t.tonMusik = 0.1F;
+            bhed::Settings z;
+            (void)bhed::readSettings(bhed::writeSettings(t), z);
+            expect("Einstellungen: Mischpegel ueberstehen den Rundlauf",
+                   std::fabs(z.tonEffekte - 0.3F) < 1e-3F && std::fabs(z.tonStimmen - 0.8F) < 1e-3F &&
+                       std::fabs(z.tonMusik - 0.1F) < 1e-3F,
+                   true);
+            bhed::Settings u;
+            (void)bhed::readSettings("tonEffekte=7\ntonMusik=-1\n", u);
+            expect("Einstellungen: Mischpegel ausserhalb 0..1 bleiben auf Vorgabe",
+                   u.tonEffekte == 0.5F && u.tonMusik == 0.25F, true);
+        }
+        // rc601 (bewegung, Durchsicht 2): die Schwierigkeit (g_spskill 0-3).
+        // rc601 integ: -1 = nie gewaehlt, dann gilt die Vorgabe des
+        // Regelwerks (MD 2, OpenJK 0); Unsinn faellt auf -1 zurueck.
+        {
+            expect("Einstellungen: Schwierigkeit vorgegeben 'nie gewaehlt' (-1)", bhed::Settings{}.schwierigkeit == -1, true);
+            bool alle = true;
+            for (int n = -1; n <= 3; ++n) {
+                bhed::Settings sw;
+                sw.schwierigkeit = n;
+                bhed::Settings zurueck;
+                zurueck.schwierigkeit = 1;
+                (void)bhed::readSettings(bhed::writeSettings(sw), zurueck);
+                alle = alle && zurueck.schwierigkeit == n;
+            }
+            expect("Einstellungen: Schwierigkeit -1..3 uebersteht den Rundlauf", alle, true);
+            bhed::Settings unsinn;
+            unsinn.schwierigkeit = 0;
+            (void)bhed::readSettings("difficulty=7\n", unsinn);
+            bhed::Settings unsinn2;
+            unsinn2.schwierigkeit = 0;
+            (void)bhed::readSettings("difficulty=-2\n", unsinn2);
+            expect("Einstellungen: Schwierigkeit ausserhalb -1..3 wird -1 (Vorgabe des Regelwerks)",
+                   unsinn.schwierigkeit == -1 && unsinn2.schwierigkeit == -1, true);
+        }
+        // rc601 integ: das Regelwerk (bhed/regelwerk.h). Vorgabe automatisch,
+        // Rundlauf aller drei Werte, Unsinn bleibt automatisch.
+        {
+            expect("Regelwerk: Vorgabe automatisch", bhed::Settings{}.regelwerk == bhed::kRegelwerkAuto, true);
+            bool alle = true;
+            for (const int w : {bhed::kRegelwerkAuto, bhed::kRegelwerkOpenJK, bhed::kRegelwerkMovieDuels}) {
+                bhed::Settings ein;
+                ein.regelwerk = w;
+                const std::string text = bhed::writeSettings(ein);
+                bhed::Settings zurueck;
+                zurueck.regelwerk = (w + 1) % 3;
+                (void)bhed::readSettings(text, zurueck);
+                alle = alle && zurueck.regelwerk == w &&
+                       text.find(std::string("regelwerk=") + bhed::regelwerkSchluessel(w)) != std::string::npos;
+            }
+            expect("Regelwerk: auto/openjk/movieduels ueberstehen den Rundlauf (als Text)", alle, true);
+            bhed::Settings unsinn;
+            unsinn.regelwerk = bhed::kRegelwerkOpenJK;
+            (void)bhed::readSettings("regelwerk=quake3\n", unsinn);
+            expect("Regelwerk: unbekannter Wert wird automatisch", unsinn.regelwerk == bhed::kRegelwerkAuto, true);
+            // Aufloesen: automatisch folgt dem Spielordner, im Zweifel OpenJK;
+            // eine ausdrueckliche Wahl gilt immer.
+            expect("Regelwerk: automatisch + Movie-Duels-Ordner = Movie Duels",
+                   bhed::regelwerkAufloesen(bhed::kRegelwerkAuto, true), true);
+            expect("Regelwerk: automatisch ohne erkannten Ordner = OpenJK",
+                   bhed::regelwerkAufloesen(bhed::kRegelwerkAuto, false), false);
+            expect("Regelwerk: OpenJK gewaehlt gilt auch im Movie-Duels-Ordner",
+                   bhed::regelwerkAufloesen(bhed::kRegelwerkOpenJK, true), false);
+            expect("Regelwerk: Movie Duels gewaehlt gilt auch ohne Ordner",
+                   bhed::regelwerkAufloesen(bhed::kRegelwerkMovieDuels, false), true);
+            // Die Vorgaben je Regelwerk.
+            expect("Regelwerk: g_spskill nie gewaehlt -> MD 2, OpenJK 0",
+                   bhed::schwierigkeitWirksam(-1, true) == 2 && bhed::schwierigkeitWirksam(-1, false) == 0, true);
+            expect("Regelwerk: g_spskill gewaehlt bleibt (1 unter beiden)",
+                   bhed::schwierigkeitWirksam(1, true) == 1 && bhed::schwierigkeitWirksam(1, false) == 1 &&
+                       bhed::schwierigkeitWirksam(3, false) == 3, true);
+            expect("Regelwerk: cg_fovAspectAdjust automatisch -> MD 1, OpenJK 0; 0/1 bleiben",
+                   bhed::fovAspectAdjustWirksam(-1, true) && !bhed::fovAspectAdjustWirksam(-1, false) &&
+                       bhed::fovAspectAdjustWirksam(1, false) && !bhed::fovAspectAdjustWirksam(0, true), true);
+            expect("Regelwerk: Spielfenster 0 -> MD Bildschirm, OpenJK 4:3 (r_mode 4); gewaehlt bleibt",
+                   bhed::spielSeitenWirksam(0.0F, true, 2.37F) == 2.37F &&
+                       bhed::spielSeitenWirksam(0.0F, false, 2.37F) == 4.0F / 3.0F &&
+                       bhed::spielSeitenWirksam(1.6F, false, 2.37F) == 1.6F, true);
+            expect("Regelwerk: ROFF-Klang folgt nur unter OpenJK einer Nicht-Mover-Entity",
+                   bhed::roffKlangFolgtEntity(false, false) && !bhed::roffKlangFolgtEntity(false, true) &&
+                       !bhed::roffKlangFolgtEntity(true, false) && !bhed::roffKlangFolgtEntity(true, true), true);
+            // Anwenden setzt die Schalter aller Pakete und g_spskill.
+            bhed::regelwerkAnwenden(false, -1);
+            const bool ojk = !bhed::regelwerkMovieDuels() && !bhed::saberMovieDuelsRegeln() &&
+                             !bhed::navMovieDuelsRegeln() && bhed::regelwerkSpielstufe() == 0 &&
+                             bhed::saberSpielstufe() == 0 && bhed::saberRealistisch() == 0;
+            bhed::regelwerkAnwenden(false, 3);
+            const bool ojk3 = bhed::regelwerkSpielstufe() == 3 && bhed::saberSpielstufe() == 3;
+            bhed::regelwerkAnwenden(true, -1);
+            const bool md = bhed::regelwerkMovieDuels() && bhed::saberMovieDuelsRegeln() && bhed::navMovieDuelsRegeln() &&
+                            bhed::regelwerkSpielstufe() == 2 && bhed::saberSpielstufe() == 2 &&
+                            bhed::saberRealistisch() == 1;
+            bhed::regelwerkAnwenden(true, 0);
+            const bool md0 = bhed::saberSpielstufe() == 0;
+            bhed::regelwerkAnwenden(true, -1);
+            expect("Regelwerk: Anwenden setzt saber, bewegung und g_spskill (OpenJK)", ojk, true);
+            expect("Regelwerk: gewaehlte Schwierigkeit gilt auch fuer die Schwertrechnung", ojk3 && md0, true);
+            expect("Regelwerk: Anwenden setzt saber, bewegung und g_spskill (Movie Duels)", md, true);
+        }
 
         // --- Eigene Tastenbelegungen ------------------------------------
         //

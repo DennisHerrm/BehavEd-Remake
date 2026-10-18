@@ -13,6 +13,8 @@
 struct HWND__;
 using HWNDHandle = HWND__*;
 
+#include "imgui.h"   // rc601 saber review: ImDrawList, ImVec2 (zeichneAdditiv)
+
 namespace bhed::render {
 
 enum class Backend : std::uint8_t {
@@ -65,6 +67,16 @@ void updateTexture(void* handle, const unsigned char* rgba, int width, int heigh
 void updateTextureBereich(void* handle, const unsigned char* rgba, int width, int height,
                           int x0, int y0, int x1, int y1);
 void destroyTextures();
+
+// rc601 saber review: ein Bild mit additiver Mischung (blendFunc GL_ONE GL_ONE)
+// in eine ImGui-Zeichenliste - fuer den Klirrblitz, den das Spiel als 2D-Bild
+// NACH den Kinobalken zeichnet (CG_SaberClashFlare aus CG_Draw2D). farbe ist
+// die Eckfarbe (R_SetColor), RGBA wie IM_COL32.
+void zeichneAdditiv(ImDrawList* dl, void* textur, ImVec2 a, ImVec2 b, unsigned int farbe);
+// Zaehlt jedes destroyTextures (Geraeteverlust, Wechsel der Schnittstelle) -
+// wer eine Textur aus createTexture zwischenspeichert, legt sie neu an, wenn
+// sich der Stand aendert.
+[[nodiscard]] unsigned texturStand();
 
 Backend current();
 bool ready();

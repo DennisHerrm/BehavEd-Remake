@@ -5,7 +5,8 @@ shank: "vielleicht auch eine Erklaerung, was jeder Button kann und jeder
 Befehl". Die Befehle der Liste sind von Hand erklaert; Kamera, Makros und
 SET_-Felder liest der Bau aus data/base/behaved.bhc und Q3_Interface.h -
 derselben Quelle, aus der das Programm seine Befehle kennt. Deren Texte
-stammen von Raven und bleiben englisch, wie im Editor.
+stammen von Raven; der Editor zeigt sie englisch, das Handbuch (rc601)
+uebersetzt sie in uebersetzung/<sprache>/befehle.json.
 """
 import os
 import re
@@ -45,9 +46,13 @@ def _set_felder():
         if m:
             gruppe = m.group(1).strip()
             continue
-        m = re.match(r"(SET_\w+)\s*(?:=\s*\d+)?\s*,\s*//##\s*(.*?)#\s*(.*)$", z)
+        # Bis zum LETZTEN "#" (rc601): die Skript-Felder tragen eines im
+        # Dateifilter ("W:\gamease\scripts\!!#*.txt") - vorher stand
+        # '*.txt" # Script to run ...' in der Beschreibung. Ein "//"-Kommentar
+        # dahinter gehoert nicht dazu (SET_SPAWNSCRIPT).
+        m = re.match(r"(SET_\w+)\s*(?:=\s*\d+)?\s*,\s*//##\s*(.*)#\s*(.*)$", z)
         if m:
-            aus.append((gruppe, m.group(1), _wert(m.group(2)), m.group(3).strip()))
+            aus.append((gruppe, m.group(1), _wert(m.group(2)), m.group(3).split("//")[0].strip()))
     return aus
 
 
@@ -73,6 +78,17 @@ def _makros():
         n = len(re.findall(r"^\s*\w+\s*\(", m.group(3), re.M))
         aus.append((m.group(1), m.group(2).strip(), n))
     return aus
+
+
+_SEITE = {"flush": "cmd-flush", "if / else": "cmd-if", "loop": "cmd-loop", "affect": "cmd-affect", "run": "cmd-run", "wait": "cmd-wait",
+          "waitsignal": "cmd-waitsignal", "signal": "cmd-signal", "sound": "cmd-sound", "move": "cmd-move", "rotate": "cmd-rotate",
+          "use": "cmd-use", "kill": "cmd-kill", "remove": "cmd-remove", "print": "cmd-print", "rem": "cmd-rem", "declare / free": "cmd-declare",
+          "set": "cmd-set", "camera": "cmd-cam-move", "task": "cmd-task", "do": "cmd-do", "dowait": "cmd-dowait", "play": "cmd-play"}
+
+
+def _verlinkt(name):
+    """Der Befehlsname als Link auf seine eigene Seite (rc601)."""
+    return "[[%s|%s]]" % (_SEITE[name], name) if name in _SEITE else name
 
 
 def _zeile(*zellen):
@@ -113,7 +129,8 @@ SEITE = {
     "bloecke": [
         ("p", T("Commands are inserted from the **{{GroupEvents}}** list (double-click, drag or <kbd>Insert</kbd>) and changed in the **{{EditorTitle}}** (double-click the line). Hover over a command in the list to read the help text the game's designers wrote for it. How to put them together: [[skripte]].")),
         ("h2", "liste", T("The commands of the Events list")),
-        ("table", [T("Command"), T("What it does"), T("Example")], [_zeile(*b) for b in BEFEHLE]),
+        ("p", T("Each command has its own page with pictures of the editor and of all three views: [[cmd]].")),
+        ("table", [T("Command"), T("What it does"), T("Example")], [_zeile(_verlinkt(b[0]), *b[1:]) for b in BEFEHLE]),
         ("note", T("A command marked with `*` in its help text (for example `SET_NAVGOAL`) finishes its task only when the action is done - that is what lets `dowait` wait for it.")),
         ("h2", "kamera", T("camera ( ... ) - the camera commands")),
         ("p", T("The first value of `camera` chooses the command. behaved shows every one of them in the timeline under **{{TlKamera}}** and plays it in the view. Times are in milliseconds.")),

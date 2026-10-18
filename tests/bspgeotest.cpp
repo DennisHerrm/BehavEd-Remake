@@ -188,6 +188,69 @@ int main(int argc, char** argv) {
         expect("Zur Zeit: ls_1 'az' - bei 0 ms a (0), bei 60 ms z (1)", w0[1][0] == 0.0F && w2[1][0] == 1.0F);
     }
 
+    // --- rc601 ton: wer in den Snapshot kommt, ist zu hoeren ---------------
+    //
+    // Gemeldet: "You can hear everything on the map". Schleifen, Tueren,
+    // fx_runner und G_Sound kommen nur als Entity im Snapshot beim Client an,
+    // und der Server schickt nur, was ein Cluster des Betrachters sehen kann
+    // (SV_AddEntitiesVisibleFromPoint, sv_snapshot.cpp:373 ff. MD). Gezaehlt
+    // werden ALLE Cluster, die der Kasten der Entity beruehrt (SV_LinkEntity
+    // ueber CM_BoxLeafnums); einer ohne Cluster wird nie geschickt.
+    //
+    // Der Baum: Ebene x = 0 trennt Blatt 1 (x < 0, Cluster 2) vom Rest; dort
+    // trennt x = 1000 Blatt 0 (Cluster 0) vom Fels (Blatt 2, Cluster -1).
+    {
+        bhed::BspGeometry g;
+        g.planes.push_back(bhed::BspGeometry::Plane{{1.0F, 0.0F, 0.0F}, 0.0F});
+        g.planes.push_back(bhed::BspGeometry::Plane{{1.0F, 0.0F, 0.0F}, 1000.0F});
+        bhed::BspGeometry::Node n0;
+        n0.plane = 0;
+        n0.children[0] = 1;    // x >= 0: Knoten 1
+        n0.children[1] = -2;   // x < 0: Blatt 1
+        bhed::BspGeometry::Node n1;
+        n1.plane = 1;
+        n1.children[0] = -3;   // x >= 1000: Blatt 2 (Fels)
+        n1.children[1] = -1;   // sonst Blatt 0
+        g.nodes = {n0, n1};
+        bhed::BspGeometry::Leaf l0;
+        l0.cluster = 0;
+        bhed::BspGeometry::Leaf l1;
+        l1.cluster = 2;
+        bhed::BspGeometry::Leaf l2;
+        l2.cluster = -1;
+        g.leafs = {l0, l1, l2};
+        g.numClusters = 3;
+        g.clusterBytes = 1;
+        g.vis = {0x03, 0x02, 0x04};   // wie die Tabellenprobe weiter unten: 0 sieht 0 und 1, nicht 2
+
+        const float auge[3] = {100.0F, 0.0F, 0.0F};   // Blatt 0, Cluster 0
+        const float hinterMn[3] = {-116.0F, -16.0F, -16.0F};
+        const float hinterMx[3] = {-84.0F, 16.0F, 16.0F};
+        expect("Snapshot: eine Quelle in einem unsichtbaren Cluster kommt nicht an",
+               !bhed::kastenImSnapshot(g, auge, hinterMn, hinterMx));
+        const float ueberMn[3] = {-10.0F, -16.0F, -16.0F};
+        const float ueberMx[3] = {10.0F, 16.0F, 16.0F};
+        expect("Snapshot: ein Kasten ueber der Ebene beruehrt den sichtbaren Cluster",
+               bhed::kastenImSnapshot(g, auge, ueberMn, ueberMx));
+        std::vector<int> cl;
+        bhed::clusterImKasten(g, ueberMn, ueberMx, cl);
+        std::sort(cl.begin(), cl.end());
+        expect("clusterImKasten: beide Seiten der Ebene (CM_BoxLeafnums)", cl == std::vector<int>({0, 2}));
+        const float felsMn[3] = {1984.0F, -16.0F, -16.0F};
+        const float felsMx[3] = {2016.0F, 16.0F, 16.0F};
+        expect("Snapshot: ganz im Fels (kein Cluster) wird nie geschickt",
+               !bhed::kastenImSnapshot(g, auge, felsMn, felsMx));
+        const float augeFels[3] = {2000.0F, 0.0F, 0.0F};
+        expect("Snapshot: steht der Betrachter im Fels, gilt alles als sichtbar",
+               bhed::kastenImSnapshot(g, augeFels, hinterMn, hinterMx));
+        bhed::BspGeometry ohneTabelle = g;
+        ohneTabelle.vis.clear();
+        expect("Snapshot: ohne Sichtbarkeitstabelle ist alles sichtbar",
+               bhed::kastenImSnapshot(ohneTabelle, auge, hinterMn, hinterMx));
+        bhed::BspGeometry leer;
+        expect("Snapshot: ohne Karte ist alles sichtbar", bhed::kastenImSnapshot(leer, auge, hinterMn, hinterMx));
+    }
+
     if (argc < 2) {
         std::printf("  (keine .bsp angegeben - Test uebersprungen)\n");
         return fails != 0 ? 1 : 0;

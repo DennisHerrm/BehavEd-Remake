@@ -423,6 +423,9 @@ void drawCameraGizmos(MapImage& img) {
         bool hasPos = false;
         bool hasAng = false;
         Path path;
+        // Paket kamera, rc601: der Bildwinkel der Einstellung (ZOOM) fuer
+        // die Sichtpyramide - CAMERA_DEFAULT_FOV, wenn die Bahn nichts weiss.
+        float fovX = 90.0F;
     };
     std::vector<Shot> shots;
     for (const KameraSchluessel& ks : kameraSchluessel(g_app->doc.script())) {
@@ -434,8 +437,14 @@ void drawCameraGizmos(MapImage& img) {
         sh.hasPos = true;
         sh.hasAng = ks.hasAng;
         sh.path = ks.path;
+        if (g_app->camTrackValid) {
+            const double t = einstellungsZeit(g_app->camTrack, ks.path);
+            if (t >= 0.0) { sh.fovX = g_app->camTrack.at(t).fovX; }
+        }
         shots.push_back(sh);
     }
+    // Das Spielfenster fuer die Sichtpyramiden (Paket kamera, rc601).
+    const SpielFenster pyramidenSpiel = spielFensterJetzt();
 
     // Die Groesse haengt vom Abstand ab, sonst ist das Gizmo aus der Ferne
     // ein Punkt und aus der Naehe bildfuellend.
@@ -460,7 +469,7 @@ void drawCameraGizmos(MapImage& img) {
     // sie nur, wenn sie ueberhaupt eine Blickrichtung hat.
     auto zeichneKamera = [&](const float pos[3], const float ang[3],
                              std::uint8_t r, std::uint8_t g, std::uint8_t b,
-                             bool betont, bool mitAngaben) {
+                             bool betont, bool mitAngaben, float fovX) {
         Camera shot;
         for (int i = 0; i < 3; ++i) {
             shot.pos[i] = pos[i];
@@ -540,7 +549,14 @@ void drawCameraGizmos(MapImage& img) {
         line(project(t3), project(t4), r, g, b, betont);
 
         // --- Sichtkegel als Pyramide ------------------------------------
-        constexpr float kSpread = 0.36F;   // entspricht etwa 80 Grad
+        //
+        // Paket kamera, rc601: so weit offen wie das Spielbild dieser
+        // Einstellung - halbe Breite tan(fov_x/2), halbe Hoehe tan(fov_y/2)
+        // im Spielfenster (CG_CalcFOVFromX, R_SetupProjection). Vorher eine
+        // feste Pyramide (0,36 und 0,27, also 39,6 x 30,2 Grad, "etwa 80
+        // Grad" stand daneben), unabhaengig vom ZOOM.
+        const float halbX = spielTanHalbX(fovX, pyramidenSpiel);
+        const float halbY = spielTanHalbY(fovX, pyramidenSpiel);
         P2 corner[4];
         for (int q = 0; q < 4; ++q) {
             const float sxp = (q == 0 || q == 3) ? -1.0F : 1.0F;
@@ -548,8 +564,8 @@ void drawCameraGizmos(MapImage& img) {
             float pp[3];
             for (int i = 0; i < 3; ++i) {
                 pp[i] = pos[i] + f[i] * kConeDist +
-                        rr[i] * (sxp * kConeDist * kSpread) +
-                        uu[i] * (syp * kConeDist * kSpread * 0.75F);
+                        rr[i] * (sxp * kConeDist * halbX) +
+                        uu[i] * (syp * kConeDist * halbY);
             }
             corner[q] = project(pp);
             line(centre, corner[q], r, g, b, false);
@@ -1002,7 +1018,7 @@ void drawCameraGizmos(MapImage& img) {
                 // Betont (der vierte Wert), damit die Vorschau vor der weissen
                 // Kamera aus dem Skript steht - sie ist das, was man gerade
                 // einstellt.
-                zeichneKamera(neu, vang, 120, 255, 140, true, gz.hasAng);
+                zeichneKamera(neu, vang, 120, 255, 140, true, gz.hasAng, gz.fovX);
             }
 
             // --- Drehen: ein Ring je Achse ------------------------------
@@ -1062,7 +1078,7 @@ void drawCameraGizmos(MapImage& img) {
                 for (int k = 0; k < 3; ++k) {
                     vang2[k] = gz.ang[k] + g_app->gizmoAngles[k];
                 }
-                zeichneKamera(gz.pos, vang2, 120, 255, 140, true, true);
+                zeichneKamera(gz.pos, vang2, 120, 255, 140, true, true, gz.fovX);
             }
 
             if (ausgewaehlt) {
@@ -1331,6 +1347,7 @@ void drawCameraGizmos(MapImage& img) {
             }
             laufend.hasPos = true;
             laufend.hasAng = true;
+            laufend.fovX = st.fovX;   // Paket kamera, rc601: der laufende ZOOM
             zeigeLaufend = true;
         }
     }
@@ -1446,7 +1463,10 @@ void drawCameraGizmos(MapImage& img) {
         //
         // Der Durchblick nimmt die Vorschau weiter mit - dort gibt es kein
         // Paar, sondern nur das eine Bild, das man beurteilt.
-        zeichneKamera(sh.pos, sh.ang, r, g, b, selected, sh.hasAng);
+        zeichneKamera(sh.pos, sh.ang, r, g, b, selected, sh.hasAng, sh.fovX);
+        // Fuer den Selbsttest (Paket kamera, rc601): die Pyramide dieser Kamera.
+        g_app->kamPyramideTan[0] = spielTanHalbX(sh.fovX, pyramidenSpiel);
+        g_app->kamPyramideTan[1] = spielTanHalbY(sh.fovX, pyramidenSpiel);
 
         // --- Unterwegs: wohin die Kamera faehrt ---------------------------
         //
@@ -1463,7 +1483,7 @@ void drawCameraGizmos(MapImage& img) {
             const float dz = laufend.pos[2] - schluesselShot->pos[2];
             if (dx * dx + dy * dy + dz * dz > 4.0F) {
                 zeichneKamera(schluesselShot->pos, schluesselShot->ang, 200, 170, 60, false,
-                              schluesselShot->hasAng);
+                              schluesselShot->hasAng, schluesselShot->fovX);
                 constexpr int kStriche = 24;
                 for (int q = 0; q < kStriche; q += 2) {
                     float a1[3];
@@ -1864,7 +1884,9 @@ bool vorschauKamera(Camera& vc, float aspekt) {
             vc.pos[k] = shot.pos[k] + g_app->gizmoOffset[k];
             vc.angles[k] = (shot.haveAng ? shot.ang[k] : 0.0F) + g_app->gizmoAngles[k];
         }
-        vc.setFovX(shot.fovX, aspekt);
+        // Paket kamera, rc601: der Bildwinkel wie im Spielfenster (das Bild
+        // hat dessen Seitenverhaeltnis, der Rahmen ist also das ganze Bild).
+        (void)setzeSpielFov(vc, shot.fovX, aspekt, spielFensterJetzt());
         return true;
     }
     const CameraState st = camStateAt(g_app->playMs);
@@ -1872,7 +1894,11 @@ bool vorschauKamera(Camera& vc, float aspekt) {
         vc.pos[k] = st.pos[k];
         vc.angles[k] = st.angles[k];
     }
-    vc.setFovX(st.fovX, aspekt);
+    // Paket kamera, rc601 (Review): wie die grosse Ansicht an der Zeitmarke
+    // (drawMapView) - vor ENABLE und nach DISABLE der Spieler mit cg_fov 80
+    // (sichtFovX). Gemeldet: "The preview inset ignores the cg_fov 80 rule" -
+    // nach DISABLE zeigte sie den letzten ZOOM.
+    (void)setzeSpielFov(vc, sichtFovX(st), aspekt, spielFensterJetzt());
     return true;
 }
 
@@ -1885,6 +1911,7 @@ bool shotAtSelection(ShotView& out) {
     // anderen Block gehoert nicht zu dieser Einstellung.
     Path p = sel;
     bool any = false;
+    Path movePfad;   // Paket kamera, rc601: der MOVE dieser Einstellung
     for (;;) {
         const Node* n = nodeAt(g_app->doc.script(), p);
         if (n != nullptr && n->name == "camera" && !n->args.empty()) {
@@ -1897,6 +1924,7 @@ bool shotAtSelection(ShotView& out) {
             if (type == "MOVE" && !out.havePos) {
                 for (int k = 0; k < 3; ++k) { out.pos[k] = v[k]; }
                 out.havePos = true;
+                movePfad = p;
                 any = true;
             } else if (type == "PAN" && !out.haveAng) {
                 for (int k = 0; k < 3; ++k) { out.ang[k] = v[k]; }
@@ -1921,6 +1949,69 @@ bool shotAtSelection(ShotView& out) {
             break;
         }
         --p.back();
+    }
+    // --- Der Stand der Einstellung aus der Kamerabahn (Paket kamera, rc601) ---
+    //
+    // Gemeldet: "I think camera FOV is slightly off". Die Suche oben laeuft
+    // vom MOVE RUECKWAERTS - Ravens Reihenfolge ist aber MOVE; PAN; ZOOM
+    // (cin2_jedi: "Behind Barriss" mit ZOOM 30 und PAN -1 5 0). Wer eine
+    // Einstellung anwaehlte (die Auswahl ist ihr MOVE), sah ZOOM und PAN der
+    // VORIGEN: dort 60 Grad und 0 90 0, bei der ersten 90 Grad und 0 0 0.
+    // Dazu liess die Pruefung "fovX == 90" einen aelteren ZOOM einen
+    // naeheren ZOOM 90 ueberschreiben, ENABLE (setzt auf 90 zurueck,
+    // cg_camera.cpp:91) und Zoomdauern fehlten ganz, und ein MOVE auf eine
+    // Marke - tag( "cam1", ORIGIN ) - las hier 0 0 0.
+    //
+    // Jetzt kommt alles aus der Kamerabahn, die die Befehle in der
+    // Reihenfolge des Spiels abarbeitet (camStateAt, samt FOLLOW): Stand am
+    // Ende der Fahrt dieses MOVE - dieselbe Zeit, auf die das Anwaehlen des
+    // Schluessels die Zeitleiste stellt (kameraSchluesselWaehlen). Kennt die
+    // Bahn den MOVE nicht (noch nicht gebaut), bleibt es bei der Suche oben.
+    if (out.havePos && g_app->camTrackValid) {
+        const double t = einstellungsZeit(g_app->camTrack, movePfad);
+        if (t >= 0.0) {
+            const CameraState st = camStateAt(t);
+            for (int k = 0; k < 3; ++k) {
+                out.pos[k] = st.pos[k];
+                out.ang[k] = st.angles[k];
+            }
+            out.haveAng = true;
+            out.fovX = st.fovX;
+        }
+    }
+    // --- Paket kamera, rc601 (Review): Vorschau des Gizmos wie das Schreiben ---
+    //
+    // Gemeldet: "Gizmo preview and write-back use different starting angles".
+    // Durchblick und Vorschau zeigen den Stand von oben plus gizmoOffset/
+    // gizmoAngles; geschrieben wird aber "Schluessel + Zusatz"
+    // (gizmoWriteAngles: Winkel des PAN dieser Einstellung, gizmoWriteBack/
+    // markeOrt: Ort des MOVE). Bei einem PAN mit Dauer steht die Kamera am
+    // Ende des MOVE noch am ANFANG des Schwenks - die Vorschau zeigte beim
+    // Ziehen also nicht, was danach im Skript stand. "Geschrieben wird, WAS
+    // DIE VORSCHAU ZEIGT": solange am Gizmo etwas ungeschrieben ist, rechnet
+    // die Vorschau von denselben Werten aus wie das Schreiben (wie das
+    // Kameramodell am Gizmo, drawCameraGizmos). Nach dem Schreiben gilt
+    // wieder der Stand der Kamerabahn zur Zeit der Einstellung - bei einem
+    // PAN mit Dauer also wieder dessen Anfang, wie im Spiel.
+    if (out.havePos && g_app->cameraSelected) {
+        bool verschoben = false;
+        bool gedreht = false;
+        for (int k = 0; k < 3; ++k) {
+            verschoben = verschoben || g_app->gizmoOffset[k] != 0.0F;
+            gedreht = gedreht || g_app->gizmoAngles[k] != 0.0F;
+        }
+        if (verschoben || gedreht) {
+            const std::vector<KameraSchluessel> ks = kameraSchluessel(g_app->doc.script());
+            if (g_app->selectedKey >= 0 && static_cast<std::size_t>(g_app->selectedKey) < ks.size() &&
+                ks[static_cast<std::size_t>(g_app->selectedKey)].path == movePfad) {
+                const KameraSchluessel& k = ks[static_cast<std::size_t>(g_app->selectedKey)];
+                for (int a = 0; a < 3; ++a) {
+                    if (verschoben) { out.pos[a] = k.pos[a]; }
+                    if (gedreht) { out.ang[a] = k.hasAng ? k.ang[a] : 0.0F; }
+                }
+                if (gedreht) { out.haveAng = true; }
+            }
+        }
     }
     return any && out.havePos;
 }
@@ -3567,20 +3658,78 @@ std::string useSoundFor(const std::string& ziel, bool* istMusik) {
 
 // --- Klaenge am Ort, wie die Engine sie hoert ------------------------------
 //
-// Der Hoerer ist die Kamera (im Kameramodus setzt die Engine listener_origin
-// auf cg.refdef.vieworg). Rechts ist die Achse aus dem Gierwinkel - Quake
-// dreht mit +y nach links, also rechts = (sin gier, -cos gier, 0).
-namespace {
-void hoerer(float ort[3], float rechts[3]) {
-    for (int k = 0; k < 3; ++k) {
-        ort[k] = g_app->cam.pos[k];
+// rc601 ton: Der Hoerer ist die Kamera, die die Ansicht ZEIGT.
+//
+// Gemeldet: "You can hear everything on the map". Bis rc600 hoerte die
+// Vorschau von g_app->cam, der freien Editorkamera - auch waehrend des
+// Abspielens, wo die Ansicht die Skriptkamera zeigt (drawMapView, useCam).
+// Nach dem Laden einer Karte steht die freie Kamera am info_player_start;
+// jede Szene klang also von dort aus. Die Engine hoert von cg.refdef.vieworg
+// mit cg.refdef.viewaxis (cgi_S_Respatialize, cg_view.cpp:3307 MD, OpenJK :2243), im
+// Kameramodus also von der Skriptkamera (cg_camera.cpp, CGCam_RenderScene),
+// MIT Roll (AnglesToAxis) - vorher kam "rechts" nur aus der Gier.
+//
+// Dieselbe Wahl wie drawMapView: beim Abspielen mit Mitfahren die Bahn
+// (camStateAt, mit FOLLOW und Wackeln), sonst "Through camera" (die gewaehlte
+// Einstellung vor der Zeitmarke), sonst die freie Kamera.
+void tonHoerer(float ort[3], float rechts[3]) {
+    // camStateAt rechnet FOLLOW in 10-ms-Schritten nach - je Bild und
+    // Zeitpunkt nur einmal, nicht fuer jeden Klang.
+    struct Merk {
+        int bild = -1;
+        double ms = -1.0;
+        bool spielt = false;
+        bool durch = false;
+        float ort[3]{};
+        float rechts[3]{};
+    };
+    static Merk merk;
+    const bool bahn = g_app->camTrackValid && !g_app->camTrack.segments.empty();
+    const bool spielt = g_app->playing && g_app->followCam && bahn;
+    const int bild = ImGui::GetFrameCount();
+    if (merk.bild == bild && merk.ms == g_app->playMs && merk.spielt == spielt && merk.durch == g_app->throughCamera) {
+        for (int k = 0; k < 3; ++k) {
+            ort[k] = merk.ort[k];
+            rechts[k] = merk.rechts[k];
+        }
+        return;
     }
-    const float gier = g_app->cam.angles[1] * 3.14159265F / 180.0F;
-    rechts[0] = std::sin(gier);
-    rechts[1] = -std::cos(gier);
-    rechts[2] = 0.0F;
+    Camera c = g_app->cam;
+    bool amZeiger = false;
+    if (!spielt && g_app->throughCamera) {
+        ShotView shot;
+        if (shotAtSelection(shot)) {
+            const bool vorschau = g_app->cameraSelected;
+            for (int k = 0; k < 3; ++k) {
+                c.pos[k] = shot.pos[k] + (vorschau ? g_app->gizmoOffset[k] : 0.0F);
+                c.angles[k] = (shot.haveAng ? shot.ang[k] : 0.0F) + (vorschau ? g_app->gizmoAngles[k] : 0.0F);
+            }
+        } else {
+            amZeiger = bahn;
+        }
+    }
+    if (spielt || amZeiger) {
+        const CameraState st = camStateAt(g_app->playMs);
+        for (int k = 0; k < 3; ++k) {
+            c.pos[k] = st.pos[k];
+            c.angles[k] = st.angles[k];
+        }
+    }
+    for (int k = 0; k < 3; ++k) {
+        ort[k] = c.pos[k];
+    }
+    sound::rechtsAusWinkeln(c.angles, rechts);
+    merk.bild = bild;
+    merk.ms = g_app->playMs;
+    merk.spielt = spielt;
+    merk.durch = g_app->throughCamera;
+    for (int k = 0; k < 3; ++k) {
+        merk.ort[k] = ort[k];
+        merk.rechts[k] = rechts[k];
+    }
 }
 
+namespace {
 std::uint64_t kanalSchluessel(const std::string& wer, sound::Kanal k) {
     if (k == sound::Kanal::Auto || k == sound::Kanal::LessAtten) {
         return 0;   // CHAN_AUTO sucht sich einen freien Kanal
@@ -3598,62 +3747,31 @@ std::uint64_t kanalSchluessel(const std::string& wer, sound::Kanal k) {
 }
 }  // namespace
 
+// rc601 saber review: derselbe Stomp-Schluessel fuer cgame-Klaenge auf einer
+// Entity (cgi_S_StartSound( org, clientNum, CHAN_ITEM, ... ) des Wandtreffers).
+std::uint64_t tonKanalSchluessel(const std::string& wer, sound::Kanal k) { return kanalSchluessel(wer, k); }
+
 // Ein sound-Befehl aus dem Skript: auf der Entity `wer` (leer = der Traeger
 // des Skripts) im Kanal `kanal`.
 //
-// PlayIcarusSound (Q3_Interface.cpp:8435): Stimmkanaele gehen ueber
-// G_SoundOnEnt an den Ort der Entity; ein target_scriptrunner und
-// CHAN_ANNOUNCER senden "broadcast" - ueberall voll zu hoeren. Der Spieler
-// ist die Hoerer-Entity (listener_number) und damit auch immer voll.
+// rc601 ton: die Regeln von PlayIcarusSound stehen jetzt in tonSkriptKlang
+// (app_ton.cpp) - Stimmen folgen der Figur ohne PVS, CHAN_ANNOUNCER und ein
+// target_scriptrunner sind EV_GLOBAL_SOUND (am Hoerer, 0.75 * s_volume),
+// alles andere ein G_Sound am Ort, nur im Snapshot. Vorher: der Spieler und
+// jede Entity ohne bekannten Ort klangen voll und ohne Raum.
 void spieleSkriptKlang(const std::string& werSpur, const std::string& datei, const std::string& kanalName,
                        double ms) {
+    spieleSkriptKlang(werSpur, datei, kanalName, ms, 0.0);
+}
+
+void spieleSkriptKlang(const std::string& werSpur, const std::string& datei, const std::string& kanalName,
+                       double ms, double abMs) {
     if (datei.empty()) {
         return;
     }
     const sound::Kanal k = sound::kanalAusName(kanalName);
     const std::string wer = werSpur.empty() ? g_app->ablauf.traeger : werSpur;
-    const auto klein = [](std::string x) {
-        for (char& c : x) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
-        return x;
-    };
-    bool voll = (k == sound::Kanal::Announcer || k == sound::Kanal::VoiceGlobal || klein(wer) == "player");
-    float ort[3] = {0.0F, 0.0F, 0.0F};
-    bool ortDa = false;
-    if (!voll) {
-        if (const Actor* a = g_app->scene.find(wer); a != nullptr) {
-            const ActorState st = a->at(ms);
-            for (int i = 0; i < 3; ++i) { ort[i] = st.pos[i]; }
-            ortDa = true;
-        } else {
-            for (const MapEntity& e : g_app->map.entities) {
-                const std::string* st = e.find("script_targetname");
-                const bool trifft = (st != nullptr && klein(*st) == klein(wer)) || klein(e.targetname) == klein(wer);
-                if (!trifft) {
-                    continue;
-                }
-                if (e.classname == "target_scriptrunner") {
-                    voll = true;   // bBroadcast
-                } else if (!e.origin.empty()) {
-                    std::istringstream is(e.origin);
-                    is >> ort[0] >> ort[1] >> ort[2];
-                    ortDa = true;
-                }
-                break;
-            }
-        }
-        // Ohne bekannten Ort (Skript ohne Karte, Traeger unbekannt): voll.
-        if (!ortDa) {
-            voll = true;
-        }
-    }
-    sound::Raumlaut r;
-    if (!voll) {
-        float ohr[3];
-        float rechts[3];
-        hoerer(ohr, rechts);
-        r = sound::raumlaut(ort, ohr, rechts, k);
-    }
-    playSound(datei, 0.0, false, r.links, r.rechts, kanalSchluessel(wer, k));
+    tonSkriptKlang(wer, datei, k, kanalSchluessel(wer, k), ms, abMs);
 }
 
 std::string weltMusik() {
@@ -3666,34 +3784,50 @@ std::string weltMusik() {
     return {};
 }
 
-// Ein target_speaker, benutzt: am Ort des Lautsprechers, ausser mit
-// spawnflag 4 (GLOBAL, EV_GLOBAL_SOUND) - Use_Target_Speaker,
-// g_target.cpp:171.
+// Ein target_speaker, benutzt (Use_Target_Speaker, g_target.cpp:194 ff. MD).
+//
+// rc601 ton: das Abspielen nimmt die Einmalklaenge jetzt aus
+// MoverSim::lautsprecher (tonEreignisse) - dort stimmen soundSet,
+// spawnflags 3, wait, %d und der Ausloeser schon. Diese Funktion bleibt fuer
+// andere Aufrufer, mit denselben Regeln und OHNE den alten Ersatz "voll und
+// ohne Ort" (der traf jede Brush-Entity ohne origin, etwa ein func_breakable
+// mit demselben Namen): nur target_speaker dieses Namens, keiner mit
+// soundSet (SP_target_speaker kehrt dann zurueck), keine Schleife (die
+// schaltet nur s.loopSound um), spawnflags 4 am Hoerer (EV_GLOBAL_SOUND),
+// sonst am Lautsprecher, wenn er im Snapshot ist.
 void spieleLautsprecher(const std::string& name, const std::string& datei) {
+    const auto gleich = [](const std::string& a, const std::string& b) {
+        return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+                   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+               });
+    };
     for (const MapEntity& e : g_app->map.entities) {
-        if (e.targetname.size() != name.size() ||
-            !std::equal(e.targetname.begin(), e.targetname.end(), name.begin(), [](char x, char y) {
-                return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-            })) {
+        if (e.classname != "target_speaker" || !gleich(e.targetname, name)) {
+            continue;
+        }
+        if (const std::string* ss = e.find("soundSet"); ss != nullptr && !ss->empty()) {
             continue;
         }
         const std::string* sf = e.find("spawnflags");
         const int flags = (sf == nullptr) ? 0 : std::atoi(sf->c_str());
-        if ((flags & 4) != 0 || e.origin.empty()) {
-            playSound(datei);
-            return;
+        if ((flags & 3) != 0) {
+            continue;
         }
-        float ort[3] = {0.0F, 0.0F, 0.0F};
-        std::istringstream is(e.origin);
-        is >> ort[0] >> ort[1] >> ort[2];
-        float ohr[3];
-        float rechts[3];
-        hoerer(ohr, rechts);
-        const sound::Raumlaut r = sound::raumlaut(ort, ohr, rechts, sound::Kanal::Auto);
-        playSound(datei, 0.0, false, r.links, r.rechts, 0);
-        return;
+        KlangWunsch w;
+        w.datei = datei;
+        w.quelle = "target_speaker " + name;
+        if (!e.origin.empty()) {
+            std::istringstream is(e.origin);
+            is >> w.ort[0] >> w.ort[1] >> w.ort[2];
+        }
+        const float punkt[3] = {0.0F, 0.0F, 0.0F};
+        if ((flags & 4) != 0) {
+            w.amHoerer = true;
+        } else if (!tonImSnapshot(w.ort, punkt, punkt)) {
+            continue;
+        }
+        (void)tonStarte(w);
     }
-    playSound(datei);
 }
 
 // Das Modell eines Schwertgriffs, gepuffert.
@@ -4057,6 +4191,197 @@ const App::ActorAssets* hiltFor(const std::string& pfad) {
 //
 // Ohne bekannte Waffe (keine .npc zur Figur) bleibt die Hand leer - so war
 // es vorher auch: ohne .npc gab es keinen Griff.
+// --- rc601 saber: die Bilder einer Figur zu einem Zeitpunkt ---------------
+//
+// Aus der Figurenschleife von drawMapView herausgezogen, unveraendert bis auf
+// den Zeitpunkt `ms` statt g_app->playMs: die Schwertproben (app_saber.cpp)
+// brauchen die Lage der Haende zu beliebigen Takten - mit derselben Rechnung,
+// sonst laege die geprobte Klinge woanders als die gezeichnete.
+void figurBilderSetzen(const Actor& a, App::ActorAssets& assets, const ActorState& st, double ms, ActorDraw& d) {
+    // Welche NPC-Typen schon gemeldet wurden, dass ihnen die
+    // Schussanimation fehlt. Ohne das kaeme die Zeile in jedem Bild.
+    static std::set<std::string> schussFehlt;
+    if (assets.skeleton != nullptr) {
+        d.anim = &assets.skeleton->anim;
+        // --- Kennt dieses Skelett den Namen? ----------------
+        //
+        // Kennt es ihn nicht, laesst die Engine die Figur in
+        // der Animation, die sie schon hatte (siehe den Kopf
+        // von frameForAnimationIn). Genau das tun wir: erst
+        // die gewuenschte, dann die vorige, zuletzt der
+        // Grundzustand.
+        //
+        // Bleibt auch der unbekannt, ist das Skelett zu
+        // fremd - dann Bild 0, und die Meldung sagt warum.
+        // st.animSpeed: die Animation laeuft MIT dem Gehtempo,
+        // sonst rutschen die Fuesse - siehe kAnimSpeedWalk in
+        // scene.h.
+        d.frame = frameForAnimationIn(
+            assets.skeleton->sections, st.animation,
+            ms - st.animStartMs, st.holdAnim,
+            st.animSpeed, &d.frameFraction, &d.frameNext);
+        if (d.frame < 0) {
+            // EINMAL je Skelett und Name melden, nicht je Bild.
+            // Sonst stehen sechzig Zeilen je Sekunde im
+            // Protokoll und die Datei laeuft voll.
+            const std::string schluessel =
+                assets.model.animFile + "|" + st.animation;
+            if (g_app->unknownAnims.insert(schluessel).second) {
+                diag::detail(
+                    "Figur " + a.name + ": Animation \"" +
+                    st.animation + "\" steht nicht in der .cfg "
+                    "von \"" + assets.model.animFile +
+                    "\" - die Engine laesst die Figur in diesem "
+                    "Fall stehen, wo sie war.");
+            }
+            d.frame = frameForAnimationIn(
+                assets.skeleton->sections, st.prevAnimation,
+                st.prevAnimSinceMs, st.prevHoldAnim);
+        }
+        if (d.frame < 0) {
+            d.frame = frameForAnimationIn(
+                assets.skeleton->sections, "BOTH_STAND1", 0.0,
+                false);
+        }
+        if (d.frame < 0) {
+            d.frame = 0;
+        }
+        // --- Die Schussanimation --------------------------
+        //
+        // Sie liegt auf dem OBERKOERPER (SETANIM_TORSO) und
+        // faengt bei JEDEM Schuss neu an
+        // (SETANIM_FLAG_RESTART, bg_pmove.cpp:13810). Der
+        // Abstand kommt aus SET_SHOT_SPACING.
+        //
+        // Sie geht VOR einer Oberkoerperanimation aus dem
+        // Skript: die Engine setzt sie im Bewegungsschritt,
+        // also nach allem, was ICARUS gesetzt hat.
+        if (st.firing && assets.skeleton != nullptr) {
+            // Seit dem FEUERBEGINN, nicht seit dem
+            // Animationsbeginn - siehe firingSinceMs.
+            const double seit =
+                ms - st.firingSinceMs;
+            const double takt =
+                std::fmod(std::max(seit, 0.0),
+                          static_cast<double>(
+                              std::max(st.shotSpacingMs, 1.0F)));
+            const int bild = frameForAnimationIn(
+                assets.skeleton->sections, "BOTH_ATTACK3", takt,
+                false);
+            if (bild >= 0) {
+                d.torsoFrame = bild;
+            } else if (!schussFehlt.count(a.npcType)) {
+                // EINMAL je NPC-Typ melden, nicht je Bild.
+                schussFehlt.insert(a.npcType);
+                diag::detail(
+                    "Figur " + a.name + " schiesst, aber \"" +
+                    "BOTH_ATTACK3\" steht nicht in der .cfg " +
+                    "seines Skeletts (NPC-Typ " + a.npcType + ")");
+            }
+        }
+
+        // Der MUND, wenn die Figur gerade spricht.
+        const std::string mund =
+            faceAnimFor(a.name, ms);
+        if (!mund.empty()) {
+            d.faceFrame = frameForAnimationIn(
+                assets.skeleton->sections, mund, 0.0, false);
+        }
+        // Der OBERKOERPER, wenn er eine eigene Animation hat.
+        //
+        // Kennt das Skelett den Namen nicht, bleibt torsoFrame
+        // bei -1 und der Oberkoerper folgt dem Koerper - genau
+        // wie beim Koerper selbst: die Engine tut in dem Fall
+        // gar nichts.
+        //
+        // Schiesst die Figur, gewinnt der Schuss: die Engine
+        // setzt BOTH_ATTACK3 mit SETANIM_FLAG_OVERRIDE
+        // (bg_pmove.cpp:13810). Vorher ueberschrieb die
+        // Skriptanimation das Schussbild wieder.
+        if (!st.torsoAnimation.empty() && d.torsoFrame < 0) {
+            d.torsoFrame = frameForAnimationIn(
+                assets.skeleton->sections, st.torsoAnimation,
+                ms - st.torsoStartMs, st.torsoHold, 1.0F,
+                &d.torsoFraction, &d.torsoNext);
+            if (d.torsoFrame < 0) {
+                const std::string schluessel =
+                    assets.model.animFile + "|" + st.torsoAnimation;
+                if (g_app->unknownAnims.insert(schluessel).second) {
+                    diag::detail(
+                        "Figur " + a.name + ": Oberkoerperanimation \"" +
+                        st.torsoAnimation +
+                        "\" steht nicht in der .cfg von \"" +
+                        assets.model.animFile + "\".");
+                }
+            }
+        }
+        // Laeuft gerade ein Uebergang? Dann die EINGEFRORENE
+        // Frame der vorigen Animation dazu.
+        //
+        // prevAnimSinceMs steht fest - es ist der Stand vom
+        // Moment des Umschaltens, nicht "jetzt minus damals".
+        // Genau daran erkennt man, ob es richtig gebaut ist:
+        // die alte Seite darf sich waehrend des Uebergangs
+        // nicht bewegen.
+        // Der eigene Uebergang des Oberkoerpers.
+        const float lt = torsoBlendFraction(st, ms);
+        if (lt < 1.0F) {
+            d.torsoPrevFrame = frameForAnimationIn(
+                assets.skeleton->sections, st.torsoPrevAnimation,
+                st.torsoPrevSinceMs, false);
+            d.torsoBlendLerp = (d.torsoPrevFrame < 0) ? 1.0F : lt;
+        }
+        const float l = blendFraction(st, ms);
+        if (l < 1.0F) {
+            d.prevFrame =
+                frameForAnimationIn(assets.skeleton->sections,
+                                    st.prevAnimation,
+                                    st.prevAnimSinceMs,
+                                    st.prevHoldAnim);
+            // Kennt das Skelett die vorige nicht, gibt es
+            // nichts zu ueberblenden - dann lieber hart
+            // umschalten als gegen ein falsches Bild mischen.
+            d.blendLerp = (d.prevFrame < 0) ? 1.0F : l;
+        }
+    }
+}
+
+// rc601 saber: die Weltmatrix einer Figur samt der Groesse aus der .npc -
+// aus der Figurenschleife herausgezogen (dieselbe Rechnung fuer Zeichnung
+// und Schwertproben).
+void figurWeltMatrix(const ActorDraw& a, float fw[16]) {
+    gpu::baueFigurWelt(a.yaw + a.yawOffset, a.pos, fw);
+    if (a.skala[0] != 1.0F || a.skala[1] != 1.0F || a.skala[2] != 1.0F) {
+        const float spalte[3] = {a.skala[1], a.skala[0], a.skala[2]};
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) { fw[r * 4 + c] *= spalte[c]; }
+        }
+        if (a.skala[2] != 0.0F) {
+            fw[11] += 24.0F * (a.skala[2] - 1.0F);
+        }
+    }
+}
+
+// rc601 saber: der Kopfausschlag zum Blickziel - aus der Figurenschleife
+// herausgezogen (er dreht drei Knochen und damit auch die Arme mit).
+void figurKopfGier(const ActorState& st, ActorDraw& d) {
+    if (st.hasLookTarget && g_app->lookRotation) {
+        const float dx = st.lookAt[0] - st.pos[0];
+        const float dy = st.lookAt[1] - st.pos[1];
+        if (dx * dx + dy * dy > 1.0F) {
+            const float ziel =
+                std::atan2(dy, dx) * 180.0F / 3.14159265F;
+            // Der Ghoul2-Weg der Engine dreht den Oberkoerper
+            // NICHT dem Blick nach - siehe kHeadYawClampMin in
+            // scene.h. Es gibt nur den Kopfausschlag, und der
+            // verteilt sich im Zeichner auf drei Knochen.
+            d.headYaw = std::clamp(
+                shortestAngleDelta(st.angles[1], ziel),
+                kHeadYawClampMin, kHeadYawClampMax);
+        }
+    }
+}
+
 void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d) {
     static_assert(kAnbauKlingen == kMaxKlingen,
                   "mapview.h und scene.h muessen dieselbe Klingenzahl haben");
@@ -4113,6 +4438,7 @@ void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d)
                 continue;
             }
             an->lage = klingenLageFuer(art != nullptr ? art->typ : std::string());
+            an->saberFach = static_cast<int>(n);   // rc601 saber
             for (int b = 0; b < s.numBlades && b < kMaxKlingen; ++b) {
                 // noBlade / noBlade2, je nach bladeStyle2Start
                 // (ebenda:14562 ff.) - der Griff eines Elektrostabs hat
@@ -4124,7 +4450,12 @@ void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d)
                         continue;
                     }
                 }
-                const float laenge = klingenLaenge(st, static_cast<int>(n), b, ms);
+                // rc601 saber review: die Laenge, mit der CG_DoSaber zeichnet
+                // (L+8 beim Wachsen, Zuenden nach Kampfstil, an Waenden
+                // gekuerzt) - vorher galt hier die Szenenlaenge, und eine Klinge
+                // mit L < 0,5 fehlte, obwohl das Spiel L+8 zeichnet.
+                const float laenge =
+                    saberZeichenLaengeBei(d.figur, static_cast<int>(n), b, ms, klingenLaenge(st, static_cast<int>(n), b, ms));
                 // Unter MIN_SABERBLADE_DRAW_LENGTH (0.5, wp_saber.h:122)
                 // zeichnet die Engine gar nichts.
                 if (laenge < 0.5F) {
@@ -4372,6 +4703,8 @@ AblaufWelt ablaufWelt() {
         }
         return g_app->gamePaths.empty() ? -1.0 : kRoffFehlt;
     };
+    // rc601 (bewegung, Wege wie im Spiel): dieselbe Welt wie die Szene.
+    w.nav = navWeltVorschau();
     return w;
 }
 
@@ -4402,6 +4735,18 @@ void pfadeAufsSkript() {
     for (TimelineTrack& tr : g_app->timeline.tracks) {
         for (TimelineEvent& e : tr.events) {
             um(e.path, e.fremd);
+            // Ein wait traegt den Wert aus dem Skript, nicht die Dauer des
+            // Nachbaus - die ist einen Takt laenger (Selbsttest rc601: "wait
+            // ( 3050 )" auf dem Block fuer ein wait ( 3000 ) im Skript). Die
+            // Laenge des Blocks bleibt die nachgebaute.
+            if (e.kind == TimelineEvent::Kind::Wait && !e.path.empty()) {
+                const Node* n = nodeAt(g_app->doc.script(), e.path);
+                if (n != nullptr && n->kind == Node::Kind::Command) {
+                    std::string l = n->name + " (";
+                    for (std::size_t i = 0; i < n->args.size(); ++i) { l += (i == 0 ? " " : ", ") + n->args[i].text; }
+                    e.label = l + " )";
+                }
+            }
         }
     }
     for (Diag& d : g_app->timeline.notes) {
@@ -4524,6 +4869,22 @@ bool kameraMarkeOrt(const std::string& name, float* o, float* a) {
 void prepareScene() {
     BHED_MESS("Szene vorbereiten");
     diag::Step step("Ansicht vorbereiten");
+    // rc601 (bewegung, Durchsicht 2): was ein Neuaufbau kostet und wie viele
+    // Wege dabei neu gerechnet werden (navPlanZaehler) - die Zeile am Ende.
+    const auto uhrAb = std::chrono::steady_clock::now();
+    const NavPlanZaehler planAb = navPlanZaehler();
+    struct ZeitZeile {
+        std::chrono::steady_clock::time_point ab;
+        NavPlanZaehler vorher;
+        ~ZeitZeile() {
+            const NavPlanZaehler jetzt = navPlanZaehler();
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ab).count();
+            char z[200];
+            std::snprintf(z, sizeof(z), "Szene vorbereitet: %.1f ms, Wege %ld neu (%.1f ms) / %ld aus dem Zwischenspeicher", ms,
+                          jetzt.kalt - vorher.kalt, jetzt.msKalt - vorher.msKalt, jetzt.warm - vorher.warm);
+            diag::detail(z);
+        }
+    } zeitZeile{uhrAb, planAb};
     // Dieselbe Reihenfolge wie bisher im Zeichnen - sie ist begruendet:
     // die Szene braucht die Karte, die Effekte haengen an den Entities,
     // und die .md3-Modelle haengen ihre Texturen hinten an
@@ -4536,6 +4897,7 @@ void prepareScene() {
     // Kamerabahn, Zeitleiste und Szene entstehen - wie vorher, nur dass die
     // Zeiten jetzt die des Spiels sind.
     AblaufWelt welt = ablaufWelt();
+    bool moverStandNeu = false;   // rc601 (bewegung, teil 3)
     g_app->ablauf = simuliereAblauf(g_app->doc.script(), aktiverSkriptPfad(), welt);
     {
         const Ablauf& ab = g_app->ablauf;
@@ -4547,12 +4909,17 @@ void prepareScene() {
         }
     }
     const Script& flach = g_app->ablauf.flach;
-    g_app->camTrack = buildCameraTrack(flach, kameraMarkeOrt);
+    // Paket kamera, rc601: camera ( PATH, "datei" ) faehrt die ROFF-Datei -
+    // gesucht wie bei PLAY_ROFF (roffFuer: Marke im Skript, Archive, lose).
+    const RoffLookup kameraRoffs = [](const std::string& n) { return roffFuer(n); };
+    g_app->camTrack = buildCameraTrack(flach, kameraMarkeOrt, kameraRoffs);
     g_app->timeline = buildTimeline(flach, g_app->db);
     // Die ROFF-Bahnen schon im ersten Aufbau: eine Entity, die nur per
     // PLAY_ROFF fliegt, soll auch ohne zweiten Durchgang fliegen.
     SzenenHilfe nurRoff;
     nurRoff.roff = [](const std::string& n) { return roffFuer(n); };
+    nurRoff.nav = welt.nav;   // rc601 (bewegung, Wege)
+    nurRoff.schwierigkeit = schwierigkeitJetzt();   // rc601 (bewegung, Durchsicht 2; integ: -1 nach Regelwerk)
     g_app->scene = buildScene(flach, g_app->map, &nurRoff);
     g_app->camTrackValid = true;
     ++g_app->szeneBauten;
@@ -4599,6 +4966,10 @@ void prepareScene() {
         hilfe.sabers = &g_app->saberMap;
         hilfe.waffen = &g_app->weaponMap;
         hilfe.roff = [](const std::string& n) { return roffFuer(n); };
+        hilfe.nav = welt.nav;   // rc601 (bewegung, Wege)
+        hilfe.erscheint = &g_app->ablauf.erscheint;   // rc601 (bewegung, teil 3)
+        // rc601 (bewegung, Durchsicht 2): g_spskill aus den Einstellungen.
+        hilfe.schwierigkeit = schwierigkeitJetzt();   // rc601 integ: -1 nach Regelwerk
         hilfe.animDauer = [eintrag, lerpVon](const std::string& f, const std::string& a) {
             const AnimEntry* e = eintrag(f, a);
             return (e == nullptr) ? -1.0
@@ -4613,16 +4984,59 @@ void prepareScene() {
         // sich die Zeiten ALLER Spuren, auch die der Kamera.
         const Scene ersteSzene = buildScene(g_app->ablauf.flach, g_app->map, &hilfe);
         welt.animDauer = hilfe.animDauer;
-        welt.tempo = [ersteSzene](const std::string& figur, bool gehen) -> float {
+        // rc601 (bewegung): die .npc-Tempi beim Spawnen, nicht das letzte
+        // SET_WALKSPEED im Skript (scene.h, ablaufTempo).
+        welt.tempo = ablaufTempo(ersteSzene);
+        // rc601 (bewegung, Durchsicht 2): die Drehrate je Waffe in der Hand.
+        welt.drehrateNpc = ablaufDrehrate(ersteSzene);
+        welt.drehrateYaw = ablaufDrehrateYaw(ersteSzene);
+        welt.verhaltenTakt = ablaufVerhaltenTakt(ersteSzene, schwierigkeitJetzt());   // rc601 integ
+        // rc601 (bewegung, teil 3): Fallen und Vorlauf ab dem Spawn je Figur.
+        welt.vorlauf = ablaufVorlauf(ersteSzene);
+        // rc601 (bewegung, Wege): der Kasten je Figur wie in der Szene -
+        // STEER::Reached sieht die Ankunft am Kasten (absmin/absmax).
+        {
+            auto kaesten = std::make_shared<std::map<std::string, std::pair<float, float>>>();
+            for (const Actor& a : ersteSzene.actors) { (*kaesten)[a.name] = {a.halbBreite, a.hoeheOben}; }
+            // rc601 (bewegung, R5/R6): Drehrate und Stufe je Figur.
+            auto rest = std::make_shared<std::map<std::string, std::array<float, 3>>>();
             for (const Actor& a : ersteSzene.actors) {
-                if (a.name == figur) {
-                    return gehen ? a.gehTempo : a.laufTempo;
-                }
+                (*rest)[a.name] = {a.festeDrehrate > 0.0F ? a.festeDrehrate : a.startDrehrate,
+                                   a.festeDrehrate > 0.0F ? 1.0F : 0.0F, a.stufe};
             }
-            return -1.0F;
-        };
-        g_app->ablauf = simuliereAblauf(g_app->doc.script(), aktiverSkriptPfad(), welt);
-        g_app->camTrack = buildCameraTrack(g_app->ablauf.flach, kameraMarkeOrt);
+            welt.drehrate = [rest](const std::string& f) {
+                const auto it = rest->find(f);
+                return it == rest->end() ? -1.0F : it->second[0];
+            };
+            welt.drehrateFest = [rest](const std::string& f) {
+                const auto it = rest->find(f);
+                return it != rest->end() && it->second[1] > 0.5F;
+            };
+            welt.stufe = [rest](const std::string& f) {
+                const auto it = rest->find(f);
+                return it == rest->end() ? 18.0F : it->second[2];
+            };
+            welt.halbBreite = [kaesten](const std::string& f) {
+                const auto it = kaesten->find(f);
+                return it == kaesten->end() ? 16.0F : it->second.first;
+            };
+            welt.hoeheOben = [kaesten](const std::string& f) {
+                const auto it = kaesten->find(f);
+                return it == kaesten->end() ? 40.0F : it->second.second;
+            };
+        }
+        // rc601 (bewegung, teil 3): alle Figuren im selben Takt (andere Figuren
+        // sind Hindernisse) - Ablauf und Szene nehmen dieselben Plaene.
+        {
+            int durchgaenge = 1;
+            g_app->ablauf = simuliereAblaufMitKoerpern(g_app->doc.script(), aktiverSkriptPfad(), welt, &durchgaenge);
+            hilfe.koerperPlaene = welt.koerperPlaene;
+            if (durchgaenge > 1) {
+                diag::detail("Wege: andere Figuren im Weg - " + std::to_string(welt.koerperPlaene ? welt.koerperPlaene->size() : 0U) +
+                             " Plaene im gemeinsamen Takt, " + std::to_string(durchgaenge) + " Ablauf-Rechnungen");
+            }
+        }
+        g_app->camTrack = buildCameraTrack(g_app->ablauf.flach, kameraMarkeOrt, kameraRoffs);
         g_app->timeline = buildTimeline(g_app->ablauf.flach, g_app->db);
         g_app->scene = buildScene(g_app->ablauf.flach, g_app->map, &hilfe);
         ++g_app->szeneBauten;
@@ -4641,6 +5055,8 @@ void prepareScene() {
         da.startMs = it->second;
         da.endMs = it->second;
         ac.steps.insert(ac.steps.begin(), weg);
+        // rc601 (bewegung): ab hier faellt sie (NPC_Begin), vorher nicht.
+        ac.erscheintMs = it->second;
         ac.steps.push_back(da);
         std::stable_sort(ac.steps.begin(), ac.steps.end(),
                          [](const ActorStep& x, const ActorStep& y) { return x.startMs < y.startMs; });
@@ -4722,6 +5138,64 @@ void prepareScene() {
     // offenen Skripts, damit Anklicken, Kantenziehen und "write to script"
     // die richtige Zeile treffen.
     pfadeAufsSkript();
+    // --- Paket bewegung (rc601): Schwerkraft ---------------------------
+    //
+    // Gemeldet: "NPCs aren't affected by gravity." Erst jetzt, an der
+    // FERTIGEN Szene (alle Schritte, Spawnzeiten und Verstecke sind drin),
+    // und noch vor der Abtastung fuer die Tuerausloeser - die sollen die
+    // Figuren dort sehen, wo sie im Spiel stehen.
+    schwerkraftVorschau(false);
+    // --- Paket bewegung (rc601): Laufziele ohne Weg im Wegnetz ---------
+    //
+    // Gemeldet: "NPCs don't walk to waypoints correctly." Findet ein NPC
+    // keinen Weg (STEER darf nicht gerade hin, NAV::GoTo findet im Wegnetz
+    // nichts), bleibt er im Spiel stehen, und ein dowait auf den Lauf endet
+    // nie. rc601 (Wege): die Vorschau tut jetzt genau das (planeLauf) - der
+    // Hinweis sagt nur noch, warum.
+    {
+        // In die Statusliste nur, wenn sich die Meldungen geaendert haben -
+        // prepareScene laeuft nach jeder Aenderung am Skript.
+        static std::string letzteNavMeldungen;
+        std::string navMeldungen;
+        const WegNetz netz = baueWegNetz(g_app->map.entities);
+        const std::vector<NavOhneWeg> ohneWeg = navZieleOhneWeg(g_app->scene, netz);
+        for (const NavOhneWeg& w : ohneWeg) {
+            navMeldungen += g_app->scene.actors[w.figur].name + "|" + std::to_string(static_cast<int>(w.ziel[0])) + " " +
+                            std::to_string(static_cast<int>(w.ziel[1])) + "|" + std::to_string(static_cast<int>(w.ms)) + ";";
+        }
+        const bool insStatus = navMeldungen != letzteNavMeldungen;
+        letzteNavMeldungen = navMeldungen;
+        for (const NavOhneWeg& w : ohneWeg) {
+            std::string ziel;
+            // Der Name des Ziels: die Entity an diesem Ort (waypoint_navgoal,
+            // ref_tag ...) - auch ohne Netz, dann gibt es keinen Zielknoten.
+            for (const MapEntity& e : g_app->map.entities) {
+                float o[3];
+                if (!e.targetname.empty() && entityOrt(e, o) && std::fabs(o[0] - w.ziel[0]) < 1.0F &&
+                    std::fabs(o[1] - w.ziel[1]) < 1.0F && std::fabs(o[2] - w.ziel[2]) < 48.0F) {
+                    ziel = "\"" + e.targetname + "\"";
+                    break;
+                }
+            }
+            if (ziel.empty()) {
+                char t[96];
+                std::snprintf(t, sizeof(t), "(%.0f %.0f %.0f)", static_cast<double>(w.ziel[0]),
+                              static_cast<double>(w.ziel[1]), static_cast<double>(w.ziel[2]));
+                ziel = t;
+            }
+            diag::info("Figur " + g_app->scene.actors[w.figur].name + ": Laufziel " + ziel + " ist " +
+                       std::to_string(static_cast<int>(w.abstand)) + " Einheiten entfernt (ab " +
+                       std::to_string(static_cast<int>(w.ms)) +
+                       " ms) und findet keinen Weg - sie bleibt stehen wie im Spiel (STEER::Stop), "
+                       "ein dowait auf den Lauf endet nie.");
+            if (insStatus) {
+                char zeile[600];
+                std::snprintf(zeile, sizeof(zeile), tr(Str::BewNavOhneWeg), g_app->scene.actors[w.figur].name.c_str(),
+                              ziel.c_str(), static_cast<int>(w.abstand), w.ms / 1000.0);
+                addStatus(zeile);
+            }
+        }
+    }
     // --- Die Karte selbst: Tueren, func_wall, fx_runner auf use --------
     //
     // Aus jedem `use` der Zeitleiste und den Wegen der Figuren (fuer die
@@ -4784,6 +5258,22 @@ void prepareScene() {
             return false;
         };
         g_app->moverSim.baue(g_app->map, g_app->geo, std::move(uses), figur, ende);
+        // rc601 (bewegung): faehrt ein Aufzug oder dreht sich eine Plattform,
+        // traegt sie die Figuren jetzt mit - ein zweiter Durchgang mit der
+        // Mover-Simulation als Boden.
+        if (schwerkraftMitMovernNoetig()) {
+            schwerkraftVorschau(true);
+        }
+        // rc601 (bewegung, teil 3): "Doors and movers at their state at that
+        // time" - die Wege spuren gegen die Mover dort, wo diese Simulation
+        // sie zu jeder Zeit hat, und is_valid liest den moverState daraus.
+        // Die Engine rechnet beides im selben Bild; hier haengen die Tueren
+        // an den Figurenorten (Ausloesefelder) und die Wege an den Tueren.
+        // Darum: hat sich der Stand der Mover geaendert, noch ein Durchgang
+        // mit dem neuen Stand, bis er gleich bleibt. Weil ein Mover zur Zeit t
+        // nur an den Figuren VOR t haengt und die Figuren zur Zeit t nur an
+        // den Movern bis t, ist der Stand danach genau der des Spiels.
+        moverStandNeu = navMoverPlanAusSim(ende);
         for (const Bruch& b : g_app->moverSim.brueche()) {
             diag::detail(b.klasse + " #" + std::to_string(b.entity) + " zerbricht bei " +
                          std::to_string(static_cast<int>(b.ms)) + " ms (Material " +
@@ -4817,6 +5307,21 @@ void prepareScene() {
         if (!g_app->moverKlaenge.empty()) {
             diag::detail(std::to_string(g_app->moverKlaenge.size()) + " Moverklaenge, " +
                          std::to_string(g_app->bmodelSets.size()) + " bmodelSets bekannt");
+        }
+    }
+    // rc601 (bewegung, teil 3): siehe oben (navMoverPlanAusSim).
+    {
+        static int moverDurchgang = 0;
+        if (moverStandNeu) {
+            if (moverDurchgang < 8) {
+                ++moverDurchgang;
+                diag::detail("Wege: der Stand der Mover hat sich geaendert - Durchgang " +
+                             std::to_string(moverDurchgang + 1) + " mit den Movern zur Zeit");
+                prepareScene();
+                --moverDurchgang;
+                return;
+            }
+            diag::info("Wege: der Stand der Mover kommt nach 9 Durchgaengen nicht zur Ruhe");
         }
     }
     // Die LAENGE der Klaenge nachtragen.
@@ -8191,7 +8696,9 @@ void ansichtsMarkenTasten() {
         char t[96];
         if (ImGui::GetIO().KeyCtrl) {
             marken[static_cast<std::size_t>(k)].da = true;
-            marken[static_cast<std::size_t>(k)].cam = g_app->cam;
+            // Paket kamera, rc601 (Review): im Pilot ohne dessen engen
+            // Bildwinkel - sonst blieb die freie Kamera nach dem Sprung eng.
+            marken[static_cast<std::size_t>(k)].cam = freieKamera();
             std::snprintf(t, sizeof(t), tr(Str::ViewMarkSaved), k + 1, k + 1);
             meldung(t, "");
         } else if (marken[static_cast<std::size_t>(k)].da) {
@@ -8585,6 +9092,7 @@ void klaengeVorladen() {
             }
         }
     }
+    tonVorladen();   // rc601 ton: Schwerter, Lautsprecher, Tueren, Zerbrechen
     diag::info(std::to_string(anzahl) + " Klaenge bereit");
 }
 
@@ -8667,29 +9175,12 @@ void drawTimeline() {
         if (!g_app->playAudio) {
             return;
         }
-        // Je Art getrennt: eine Stimme uebertoent die andere, aber Musik
-        // und Stimme laufen NEBENeinander - sie haben seit rc257 eigene
-        // Geraete.
-        const TimelineEvent* stimme = nullptr;
-        for (const TimelineTrack& track : g_app->timeline.tracks) {
-            for (const TimelineEvent& e : track.events) {
-                if (e.startMs > g_app->playMs) {
-                    continue;
-                }
-                if (e.kind == TimelineEvent::Kind::Sound && !e.sound.empty()) {
-                    // Die Laenge steht in der Datei, nicht im Skript.
-                    const double ende =
-                        e.startMs + soundLengthMs(e.sound);
-                    if (ende > g_app->playMs &&
-                        (stimme == nullptr || e.startMs > stimme->startMs)) {
-                        stimme = &e;
-                    }
-                }
-            }
-        }
-        if (stimme != nullptr) {
-            playSound(stimme->sound, g_app->playMs - stimme->startMs);
-        }
+        // rc601 ton: JEDER noch laufende sound-Befehl steigt an seiner Stelle
+        // wieder ein - am Ort, im eigenen Kanal, mit PVS und Pegel wie beim
+        // Ausloesen (tonWiedereinstieg). Vorher nur der letzte, mit voller
+        // Lautstaerke und ohne Raum: ein ferner Satz klang wie neben einem.
+        // Musik und Stimme laufen weiter NEBENeinander (eigene Geraete).
+        tonWiedereinstieg();
         // Musik: das letzte target_play_music vor dem Zeiger (aus der
         // aufgeloesten use-Kette des Nachbaus), sonst die Levelmusik ab 0.
         // Musik laeuft endlos (Schleife) - also kein "schon zu Ende".
@@ -8738,6 +9229,7 @@ void drawTimeline() {
         g_app->audioUpTo = -1.0;
         g_app->audio.stopAll();
         g_app->laufendeSchleifen.clear();
+        tonZuruecksetzen();   // rc601 ton: auch der Raumklang
         g_app->musicAudio.stopAll();
         g_app->mapDirty = true;
     }
@@ -8748,6 +9240,7 @@ void drawTimeline() {
         if (!g_app->playing) {
             g_app->audio.stopAll();
             g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();   // rc601 ton: auch der Raumklang
             g_app->musicAudio.stopAll();
         } else {
             // Erst alle Klaenge laden, DANN die Uhr laufen lassen. Vorher
@@ -8826,6 +9319,7 @@ void drawTimeline() {
                     if (v != 1.0F) {
                         g_app->audio.stopAll();
                         g_app->laufendeSchleifen.clear();
+                        tonZuruecksetzen();   // rc601 ton: auch der Raumklang
                         g_app->musicAudio.stopAll();
                     }
                 }
@@ -8842,6 +9336,7 @@ void drawTimeline() {
         if (!g_app->playAudio) {
             g_app->audio.stopAll();
             g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();   // rc601 ton: auch der Raumklang
             g_app->musicAudio.stopAll();
         } else if (g_app->playing) {
             // Beim EINschalten dort einsteigen, wo die Einstellung steht.
@@ -8997,20 +9492,14 @@ void drawTimeline() {
                     if (e.kind == TimelineEvent::Kind::Sound &&
                         !e.sound.empty()) {
                         spieleSkriptKlang(track.entity, e.sound, e.kanal, e.startMs);
-                    } else if (e.kind == TimelineEvent::Kind::Saber) {
-                        // Die Klinge gehoert der Figur der SPUR - der
-                        // affect-Block sagt, wer gemeint ist. Am Ort der
-                        // Figur (cg_players.cpp: S_StartSound auf ihre
-                        // Entity, CHAN_AUTO).
-                        const Actor* fig =
-                            g_app->scene.find(track.entity);
-                        if (fig != nullptr) {
-                            const std::string klang = saberSoundFor(*fig, e.on, e.startMs);
-                            if (!klang.empty()) {
-                                spieleSkriptKlang(track.entity, klang, "CHAN_AUTO", e.startMs);
-                            }
-                        }
                     }
+                    // rc601 ton: Kind::Saber spielt hier nichts mehr.
+                    // Q3_SetSaberActive (Q3_Interface.cpp:6852 ff. MD) ruft
+                    // nur ps.SaberActivate()/SaberDeactivate() - es gibt KEIN
+                    // soundOff dafuer. soundOn spielt CG_Player, sobald eine
+                    // Klinge bei Laenge 0 anfaengt und die Figur gezeichnet
+                    // wird (tonBild): eine unsichtbare Figur zuendet nicht
+                    // hoerbar, ein zweites "true" ist still.
                 }
             }
             // --- Die Levelmusik (worldspawn "music") ab 0 ms --------------
@@ -9020,269 +9509,49 @@ void drawTimeline() {
                     spieleMusik(welt, g_app->playMs);
                 }
             }
-            // --- use: Musik und Lautsprecher ----------------------------
+            // --- use: Musik ---------------------------------------------
             //
             // Aus dem Nachbau, nicht aus der Zeitleiste: dort stehen nur die
             // use-Befehle des Skripts, hier auch alles, was ueber
             // target_relay, target_delay, target_counter und trigger_*
-            // weitergereicht wird. Ein Lautsprecher hinter einem Relay blieb
-            // vorher stumm.
+            // weitergereicht wird.
+            //
+            // rc601 ton: NUR noch die Musik. Die target_speaker kommen aus
+            // MoverSim::lautsprecher (tonEreignisse) - vorher spielte jedes
+            // use den "noise" der ERSTEN Entity mit dem Namen (auch eines
+            // func_breakable oder trigger_*), und ohne origin voll und ohne
+            // Ort; ein Schleifen-Lautsprecher klang dazu einmal extra.
             for (const Ablauf::Benutzung& b : g_app->ablauf.benutzt) {
                 if (b.ms <= g_app->audioUpTo || b.ms > g_app->playMs) {
                     continue;
                 }
                 bool musik = false;
                 const std::string datei = useSoundFor(b.name, &musik);
-                if (datei.empty()) {
-                    continue;
-                }
-                if (musik) {
+                if (musik && !datei.empty()) {
                     spieleMusik(datei, 0.0);
-                } else {
-                    spieleLautsprecher(b.name, datei);
                 }
             }
-            // --- Die Klaenge der MOVER ----------------------------------
+            // --- Die Kartenereignisse (rc601 ton) ------------------------
             //
-            // Tueren und Co. mit "soundSet": START bei der Abfahrt, die
-            // Schleife waehrend der Fahrt, END bei der Ankunft - am Ort der
-            // Tuer, gedaempft nach Entfernung wie die Effektklaenge
-            // (G_PlayDoorSound, g_mover.cpp:88).
-            for (const MoverKlang& mk : g_app->moverKlaenge) {
-                if (mk.ms > g_app->playMs) {
-                    break;   // nach Zeit geordnet
-                }
-                if (mk.ms <= g_app->audioUpTo) {
-                    continue;
-                }
-                std::string setName = mk.soundSet;
-                for (char& c : setName) {
-                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                }
-                const auto set = g_app->bmodelSets.find(setName);
-                if (set == g_app->bmodelSets.end() ||
-                    static_cast<std::size_t>(mk.stufe) >= set->second.size() ||
-                    set->second[static_cast<std::size_t>(mk.stufe)].empty()) {
-                    continue;   // wie AS_GetBModelSound: -1, kein Klang
-                }
-                const std::string& datei = set->second[static_cast<std::size_t>(mk.stufe)];
-                float ort[3];
-                g_app->moverSim.klangOrt(mk.modell, mk.ms, ort);
-                float ohr[3];
-                float rechts[3];
-                hoerer(ohr, rechts);
-                // Am Ort, mit Links/rechts wie S_SpatializeOrigin.
-                const sound::Raumlaut r = sound::raumlaut(ort, ohr, rechts, sound::Kanal::Auto);
-                if (mk.stufe == 1) {
-                    playSoundSchleife(datei, mk.bisMs - mk.ms, 0.5F * (r.links + r.rechts));
-                } else {
-                    playSound(datei, 0.0, false, r.links, r.rechts, 0);
-                }
-            }
-            // --- Die Klaenge aus ROFF-Notizen (rc592) -------------------
-            //
-            // "sound <datei>": cgi_S_StartSound am Ort der Entity auf
-            // CHAN_BODY (G_RoffNotetrackCallback) - gedaempft nach
-            // Entfernung wie die Moverklaenge.
-            for (const RoffEreignis& re : g_app->scene.roffEreignisse) {
-                if (re.ms > g_app->playMs) {
-                    break;   // nach Zeit geordnet (buildScene)
-                }
-                if (re.ms <= g_app->audioUpTo || re.befehl.art != RoffNotizBefehl::Art::Klang ||
-                    re.befehl.datei.empty()) {
-                    continue;
-                }
-                float ohr[3];
-                float rechts[3];
-                hoerer(ohr, rechts);
-                const sound::Raumlaut r = sound::raumlaut(re.ort, ohr, rechts, sound::Kanal::Auto);
-                playSound(re.befehl.datei, 0.0, false, r.links, r.rechts, 0);
-            }
-            // --- Die Klaenge beim ZERBRECHEN ---------------------------
-            //
-            // Material ("glasslcar", "crateBust1", "wall_smash" ...), der
-            // eigene "noise" eines func_breakable und cargoexplode
-            // (CG_Chunks, funcBBrushDieGo, misc_model_breakable_die) - am
-            // Ort des Bruchs, gedaempft wie die Moverklaenge.
-            //
-            // Die target_speaker (MoverSim::lautsprecher) spielen hier NICHT:
-            // ihre Einmalklaenge laufen schon ueber useSoundFor oben, die
-            // Schleifen und das Abspielen am Ort stehen noch aus.
-            for (const KartenKlang& bk : g_app->moverSim.bruchKlaenge()) {
-                if (bk.ms > g_app->playMs) {
-                    break;   // nach Zeit geordnet
-                }
-                if (bk.ms <= g_app->audioUpTo) {
-                    continue;
-                }
-                const float ohr[3] = {g_app->cam.pos[0], g_app->cam.pos[1], g_app->cam.pos[2]};
-                playSound(bk.datei, 0.0, false, sound::distanceVolume(bk.ort, ohr));
-            }
-            // --- Die Klaenge der EFFEKTE --------------------------------
-            //
-            // Ein Effekt kann Klang machen: `sound` ist ein Primitivtyp wie
-            // `particle` oder `line`, und der Block nennt eine Liste von
-            // Dateien:
-            //
-            //     sound
-            //     {
-            //         sounds
-            //         [
-            //             sound/weapons/detpack/fire.wav
-            //         ]
-            //     }
-            //
-            // Ueber die 376 .efx-Dateien aus assets1 gezaehlt: 156
-            // Klangprimitive - nach den Partikeln der zweithaeufigste Typ
-            // ueberhaupt. Bisher wurden sie gelesen und nie gespielt.
-            //
-            // Die Auslesestellen stehen laengst da: effectRunners kennt je
-            // Effekt den Startzeitpunkt, ob er sich wiederholt und in
-            // welchem Abstand. Nur das Abspielen fehlte.
-            if (g_app->playAudio) {
-                for (const EffectInstance& fx : g_app->effectRunners) {
-                    if (fx.effect == nullptr) {
-                        continue;
-                    }
-                    // Welche Wiederholungen fallen in dieses Fenster?
-                    //
-                    // Ueber das FENSTER, nicht ueber "steht der Zeiger
-                    // genau darauf" - derselbe Grund wie bei den Stimmen
-                    // weiter oben: bei sechzig Bildern je Sekunde faellt
-                    // sonst jeder zweite Klang durch.
-                    const double ab = std::max(g_app->audioUpTo, fx.startMs);
-                    if (fx.startMs > g_app->playMs) {
-                        continue;
-                    }
-                    int von = 0;
-                    int bis = 0;
-                    if (fx.loops && fx.intervalMs > 1.0F) {
-                        von = static_cast<int>(
-                            std::ceil((ab - fx.startMs) / fx.intervalMs));
-                        bis = static_cast<int>(
-                            std::floor((g_app->playMs - fx.startMs) /
-                                       fx.intervalMs));
-                        // Eine Obergrenze: springt man weit nach vorn, lagen
-                        // sonst hunderte Wiederholungen im Fenster, und
-                        // waveOut nimmt sie alle an.
-                        bis = std::min(bis, von + 2);
-                    } else if (fx.startMs <= g_app->audioUpTo) {
-                        continue;   // einmalig und schon gewesen
-                    }
-                    for (int n = von; n <= bis; ++n) {
-                        for (const efx::Primitive& pr :
-                             fx.effect->primitives) {
-                            if (pr.type != efx::PrimitiveType::Sound ||
-                                pr.sounds.empty()) {
-                                continue;
-                            }
-                            // Die Engine waehlt aus der Liste zufaellig.
-                            // Hier ueber Saat und Wiederholungsnummer,
-                            // damit dieselbe Stelle immer dasselbe spielt -
-                            // in einer Vorschau, die man zurueckspult, ist
-                            // echter Zufall Unruhe statt Wiedergabetreue.
-                            const std::size_t w =
-                                (fx.seed + static_cast<unsigned>(n)) %
-                                pr.sounds.size();
-                            // --- MIT der Entfernung -----------------
-                            //
-                            // Gemeldet: "die Effektsounds sind so
-                            // penetrant und spielen dauerhaft."
-                            //
-                            // Die Engine spielt sie AM ORT und daempft
-                            // nach Entfernung (snd_dma.cpp:1356 ff.).
-                            // behaved spielte jeden in voller Lautstaerke
-                            // - bei 28 fx_runnern in einer Karte ergibt
-                            // das genau diesen Dauerlaerm.
-                            //
-                            // Gehoert wird von der Kamera aus, denn die
-                            // ist hier der Zuhoerer.
-                            float ohr[3];
-                            float rechtsA[3];
-                            hoerer(ohr, rechtsA);
-                            const sound::Raumlaut rl =
-                                sound::raumlaut(fx.origin, ohr, rechtsA, sound::Kanal::Auto);
-                            const float laut = std::max(rl.links, rl.rechts);
-                            playSound(pr.sounds[w], 0.0, false, rl.links, rl.rechts, 0);
-                            // Ins Protokoll, damit sich nachvollziehen
-                            // laesst, WARUM ein Klang laut oder leise war.
-                            // Gemeldet wird nur, was auch zu hoeren ist.
-                            if (laut > 0.001F) {
-                                const float dx = fx.origin[0] - ohr[0];
-                                const float dy = fx.origin[1] - ohr[1];
-                                const float dz = fx.origin[2] - ohr[2];
-                                char kz[200];
-                                std::snprintf(
-                                    kz, sizeof(kz),
-                                    "Effektklang \"%s\": %.0f Einheiten "
-                                    "entfernt, Lautstaerke %.0f %%",
-                                    pr.sounds[w].c_str(),
-                                    std::sqrt(dx * dx + dy * dy + dz * dz),
-                                    static_cast<double>(laut) * 100.0);
-                                diag::detail(kz);
-                            }
-                        }
-                    }
-                }
-            }
+            // target_speaker, Tueren (START/END), ROFF-Notizen, Zerbrechen
+            // und fx_runner - jeder nach seinem Weg in der Engine: ueber den
+            // Snapshot (nur im PVS) oder direkt, am Ort oder an der Entity,
+            // im richtigen Kanal. Siehe tonEreignisse (app_ton.cpp).
+            tonEreignisse(g_app->audioUpTo, g_app->playMs);
+            // rc601 saber: saberhitwall, saberblock, hitwater im selben Fenster.
+            saberTonEreignisse(g_app->audioUpTo, g_app->playMs);
         }
-        // --- Dauerklaenge: Schwertsummen und Lautsprecherschleifen -------
+        // --- Jedes Bild: nachregeln und Dauerklaenge (rc601 ton) ---------
         //
-        // Wie die Loop-Sounds der Engine (cgi_S_AddLoopingSound, jedes Bild
-        // neu gemeldet): was jetzt laufen soll, laeuft; was nicht mehr soll,
-        // verstummt. Das Summen kommt aus der .sab (soundLoop, CG_AddSaberBlade),
-        // die Lautsprecher aus target_speaker mit spawnflags 1/2 (an/aus per
-        // use, MoverSim::lautsprecher). Am Ort, mit Panorama beim Start.
+        // Wie S_Respatialize (snd_dma.cpp:2571 ff. MD): jeder laufende Klang
+        // bekommt seinen Pegel neu (Hoerer und Quelle bewegen sich), ein
+        // stummer Nicht-Stimmkanal endet, Stimmen laufen still weiter; die
+        // Schleifen (Schwertsummen, Lautsprecher, Fahrgeraeusche) werden
+        // frisch gebaut und je Datei zusammengelegt (S_AddLoopSounds); dazu
+        // der Zuendklang wie CG_Player. Vorher: Pegel einmal beim Start,
+        // Schleifen auf 120 s ausgerollt und nie nachgeregelt.
         if (g_app->playAudio && g_app->abspielTempo == 1.0F) {
-            float ohr[3];
-            float rechtsV[3];
-            hoerer(ohr, rechtsV);
-            std::set<std::uint64_t> soll;
-            const auto schluessel = [](const std::string& s) {
-                std::uint64_t h = 1469598103934665603ULL;
-                for (const char c : s) { h = (h ^ static_cast<unsigned char>(c)) * 1099511628211ULL; }
-                return h | 1ULL;
-            };
-            for (const Actor& a : g_app->scene.actors) {
-                const ActorState st = a.at(g_app->playMs);
-                if (!st.visible || st.saberLoop.empty()) {
-                    continue;
-                }
-                const std::uint64_t k = schluessel("summen:" + a.name);
-                soll.insert(k);
-                if (g_app->laufendeSchleifen.count(k) == 0) {
-                    const sound::Raumlaut r = sound::raumlaut(st.pos, ohr, rechtsV, sound::Kanal::Auto);
-                    playSoundSchleife(st.saberLoop, 120000.0, r.links, r.rechts, k);
-                    g_app->laufendeSchleifen.insert(k);
-                }
-            }
-            for (const KartenKlang& kk : g_app->moverSim.lautsprecher()) {
-                if (!kk.schleife || kk.datei.empty() || kk.ms > g_app->playMs ||
-                    (kk.bisMs >= 0.0 && kk.bisMs <= g_app->playMs)) {
-                    continue;
-                }
-                const std::uint64_t k = schluessel("lautsprecher:" + std::to_string(kk.entity));
-                soll.insert(k);
-                if (g_app->laufendeSchleifen.count(k) == 0) {
-                    sound::Raumlaut r;
-                    if (!kk.global) {
-                        r = sound::raumlaut(kk.ort, ohr, rechtsV, sound::Kanal::Auto);
-                    }
-                    const double rest = (kk.bisMs >= 0.0) ? kk.bisMs - g_app->playMs : 120000.0;
-                    playSoundSchleife(kk.datei, rest, r.links, r.rechts, k);
-                    g_app->laufendeSchleifen.insert(k);
-                }
-            }
-            for (auto it = g_app->laufendeSchleifen.begin(); it != g_app->laufendeSchleifen.end();) {
-                if (soll.count(*it) == 0) {
-                    if (g_app->audio.ready()) {
-                        (void)g_app->audio.play({}, 0.0F, 0.0F, *it);   // abschneiden
-                    }
-                    it = g_app->laufendeSchleifen.erase(it);
-                } else {
-                    ++it;
-                }
-            }
+            tonBild();
         }
         g_app->audioUpTo = g_app->playMs;
         if (g_app->playMs >= t.durationMs) {
@@ -9292,6 +9561,7 @@ void drawTimeline() {
                 g_app->audioUpTo = -1.0;
                 g_app->audio.stopAll();
                 g_app->laufendeSchleifen.clear();
+                tonZuruecksetzen();   // rc601 ton: auch der Raumklang
                 g_app->musicAudio.stopAll();
             } else {
                 g_app->playMs = t.durationMs;
@@ -9488,6 +9758,7 @@ void drawTimeline() {
             g_app->audioUpTo = ms;
             g_app->audio.stopAll();
             g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();   // rc601 ton: auch der Raumklang
             g_app->musicAudio.stopAll();
             g_app->mapDirty = true;
         }
@@ -10271,13 +10542,43 @@ void drawTimeline() {
         if (figIdx >= 0 && static_cast<std::size_t>(figIdx) < g_app->scene.actors.size()) {
             const float hb = std::max(4.0F, rowH * 0.28F);
             const ImU32 tuerkis = IM_COL32(90, 220, 190, 255);
-            for (const ActorStep& st : g_app->scene.actors[static_cast<std::size_t>(figIdx)].steps) {
+            const std::vector<ActorStep>& schritte = g_app->scene.actors[static_cast<std::size_t>(figIdx)].steps;
+            for (std::size_t si = 0; si < schritte.size(); ++si) {
+                const ActorStep& st = schritte[si];
                 const bool lauf = st.kind == ActorStep::Kind::WalkTo;
                 // rc599: auch die ROFF-Bahnen (play ( "PLAY_ROFF", ... )).
                 const bool roff = st.kind == ActorStep::Kind::Roff;
                 if ((!lauf && !roff && st.kind != ActorStep::Kind::Glide) || !(st.endMs > st.startMs)) { continue; }
+                // rc601 (bewegung): ein Weg kann aus mehreren Stuecken
+                // bestehen (anderes Tempo unterwegs, scene.cpp) - EIN Band je
+                // SET_NAVGOAL, vom ersten Stueck bis zum letzten.
+                double bandEnde = st.endMs;
+                float weg = 0.0F;
+                {
+                    float w2 = 0.0F;
+                    for (int k = 0; k < 3; ++k) { w2 += (st.to[k] - st.from[k]) * (st.to[k] - st.from[k]); }
+                    weg = std::sqrt(w2);
+                }
+                if (lauf) {
+                    bool fortsetzung = false;
+                    for (std::size_t sj = 0; sj < si; ++sj) {
+                        const ActorStep& v = schritte[sj];
+                        fortsetzung = fortsetzung || (v.kind == ActorStep::Kind::WalkTo && v.teilweg &&
+                                                      v.path == st.path && std::fabs(v.endMs - st.startMs) < 1.0);
+                    }
+                    if (fortsetzung) { continue; }
+                    for (std::size_t sj = si + 1; sj < schritte.size(); ++sj) {
+                        const ActorStep& v = schritte[sj];
+                        if (v.kind == ActorStep::Kind::WalkTo && v.path == st.path && std::fabs(v.startMs - bandEnde) < 1.0) {
+                            bandEnde = v.endMs;
+                            float w2 = 0.0F;
+                            for (int k = 0; k < 3; ++k) { w2 += (v.to[k] - v.from[k]) * (v.to[k] - v.from[k]); }
+                            weg += std::sqrt(w2);
+                        }
+                    }
+                }
                 const ImVec2 a{xAt(st.startMs), p0.y + rowH - 2.0F - hb};
-                const ImVec2 b{std::max(xAt(st.endMs), a.x + 3.0F), p0.y + rowH - 2.0F};
+                const ImVec2 b{std::max(xAt(bandEnde), a.x + 3.0F), p0.y + rowH - 2.0F};
                 const bool ueber = ImGui::IsMouseHoveringRect(a, b);
                 const bool istZiel = !st.path.empty() && st.path == g_app->selectedPath;
                 ImU32 f = figAn ? IM_COL32(90, 220, 190, 235) : IM_COL32(90, 200, 170, 110);
@@ -10285,16 +10586,14 @@ void drawTimeline() {
                 tl->AddRectFilled(a, b, f, 2.0F);
                 g_app->tlBalken.push_back(App::TlBalken{st.path, a, b, lauf, figIdx});
                 if (ueber) {
-                    float weg = 0.0F;
-                    for (int k = 0; k < 3; ++k) { weg += (st.to[k] - st.from[k]) * (st.to[k] - st.from[k]); }
                     ImGui::BeginTooltip();
                     if (roff) {
                         ImGui::Text("ROFF  %s  -  %.2f s, %.0f", st.text.c_str(), (st.endMs - st.startMs) / 1000.0,
-                                    static_cast<double>(std::sqrt(weg)));
+                                    static_cast<double>(weg));
                     } else {
                         ImGui::Text(tr(Str::TlBewegung),
                                     tr(lauf ? (st.text == "BOTH_WALK1" ? Str::BahnGehtJetzt : Str::BahnRenntJetzt) : Str::TlFlug),
-                                    (st.endMs - st.startMs) / 1000.0, static_cast<double>(std::sqrt(weg)));
+                                    (bandEnde - st.startMs) / 1000.0, static_cast<double>(weg));
                     }
                     if (lauf) { ImGui::TextDisabled("%s", tr(Str::BahnZielMenue)); }
                     ImGui::EndTooltip();
@@ -10477,6 +10776,7 @@ void drawTimeline() {
         g_app->audioUpTo = k.startMs;
         g_app->audio.stopAll();
         g_app->laufendeSchleifen.clear();
+        tonZuruecksetzen();   // rc601 ton: auch der Raumklang
         g_app->musicAudio.stopAll();
         g_app->mapDirty = true;
         // Vielleicht wird daraus ein Verschieben: merken, wo es anfing.
@@ -10550,6 +10850,7 @@ void drawTimeline() {
             g_app->audioUpTo = ziel;
             g_app->audio.stopAll();
             g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();   // rc601 ton: auch der Raumklang
             g_app->musicAudio.stopAll();
             g_app->mapDirty = true;
         }
@@ -10660,10 +10961,17 @@ void blendeUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b, int bildHoehe) {
     }
     const float skal = (b.y - a.y) / static_cast<float>(bildHoehe);
     const float anteil = std::clamp(g_app->blendeBalken, 0.0F, 1.0F);
+    // Fuer den Selbsttest (Paket kamera, rc601): wo Balken und Blende liegen.
+    g_app->blendeFlaeche[0] = a.x;
+    g_app->blendeFlaeche[1] = a.y;
+    g_app->blendeFlaeche[2] = b.x;
+    g_app->blendeFlaeche[3] = b.y;
+    g_app->blendeBalkenPx = 0.0F;
     if (anteil > 0.0F) {
         const int bar = std::max(1, static_cast<int>(static_cast<float>(bildHoehe / 10) * anteil + 0.5F));
         const auto deck = static_cast<int>(std::lround(255.0F * anteil));
         const float hoch = static_cast<float>(bar) * skal;
+        g_app->blendeBalkenPx = hoch;
         dl->AddRectFilled(a, ImVec2{b.x, a.y + hoch}, IM_COL32(0, 0, 0, deck));
         dl->AddRectFilled(ImVec2{a.x, b.y - hoch}, b, IM_COL32(0, 0, 0, deck));
     }
@@ -10673,6 +10981,150 @@ void blendeUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b, int bildHoehe) {
         const auto kanal = [](float v) { return static_cast<int>(std::lround(255.0F * std::clamp(v, 0.0F, 1.0F))); };
         dl->AddRectFilled(a, b, IM_COL32(kanal(f[0]), kanal(f[1]), kanal(f[2]), kanal(al)));
     }
+}
+
+// --- Das Spielfenster in der Ansicht (Paket kamera, rc601) -------------------
+//
+// Gemeldet vom Tester: "I think camera FOV is slightly off". Das Spiel
+// rechnet den Bildwinkel fuer sein Fenster (CG_CalcFOVFromX), die Ansicht hat
+// ein beliebiges Seitenverhaeltnis. Also liegt das Spielbild als Rahmen mittig
+// in der Ansicht (SpielRahmen, bhed/mapview.h), und was draussen liegt, deckt
+// die Ueberlagerung ab: beim Blick durch die Kamera und beim Abspielen
+// schwarz - dort gibt es im Spiel nichts -, in der freien Ansicht und im
+// Pilot halbdurchsichtig mit einem duennen Rand als Hilfe.
+
+bool movieDuelsOrdner(const std::string& verzeichnis) {
+    // Dieselbe Erkennung wie standardZielPk3 (app_mission.cpp) und die
+    // Figurenvorgaben (app_animation.cpp): ein Ordner "...\md" oder einer
+    // mit "movie duels" im Namen.
+    std::string d = verzeichnis;
+    for (char& c : d) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    while (!d.empty() && (d.back() == '\\' || d.back() == '/')) { d.pop_back(); }
+    const bool mdOrdner = d.size() >= 3 && (d.compare(d.size() - 3, 3, "\\md") == 0 || d.compare(d.size() - 3, 3, "/md") == 0);
+    return mdOrdner || d.find("movie duels") != std::string::npos;
+}
+
+float spielFensterSeiten() {
+    const float s = g_app->settings.spielSeiten;
+    if (s > 0.0F && std::isfinite(s)) { return s; }
+    // 0: wie das Spiel ab Werk (rc601 integ, nach dem Regelwerk) - Movie
+    // Duels startet mit r_mode -2, der Desktopaufloesung von Bildschirm 0
+    // (sdl_window.cpp:779/398, :350 MD); OpenJK mit r_mode 4 = 800x600
+    // (sdl_window.cpp:746), also 4:3.
+    static float bildschirm = 0.0F;
+    if (bildschirm <= 0.0F) { bildschirm = platform::hauptBildschirmSeiten(); }
+    return spielSeitenWirksam(0.0F, regelwerkMovieDuels(), bildschirm);
+}
+
+bool spielFovAspectAdjust() {
+    // Automatisch: Movie Duels setzt "1" (cg_main.cpp:555), OpenJK "0"
+    // (cg_main.cpp:355), das Original von Raven kennt die Korrektur nicht.
+    // rc601 integ: "automatisch" folgt dem Regelwerk (bhed/regelwerk.h).
+    return fovAspectAdjustWirksam(g_app->settings.fovAspectAdjust, regelwerkMovieDuels());
+}
+
+SpielFenster spielFensterJetzt() {
+    SpielFenster s;
+    s.seiten = spielFensterSeiten();
+    s.fovAspectAdjust = spielFovAspectAdjust();
+    return s;
+}
+
+void spielRahmenRechteck(ImVec2 a, ImVec2 b, ImVec2& ra, ImVec2& rb) {
+    const float bb = (b.x - a.x) * std::clamp(g_app->spielRahmen.breite, 0.0F, 1.0F);
+    const float bh = (b.y - a.y) * std::clamp(g_app->spielRahmen.hoehe, 0.0F, 1.0F);
+    ra = ImVec2{a.x + ((b.x - a.x) - bb) * 0.5F, a.y + ((b.y - a.y) - bh) * 0.5F};
+    rb = ImVec2{ra.x + bb, ra.y + bh};
+}
+
+void spielRahmenUeberlagern(ImDrawList* dl, ImVec2 a, ImVec2 b) {
+    const int deck = std::clamp(g_app->spielRahmenDeckung, 0, 255);
+    if (dl == nullptr || deck <= 0 || b.x <= a.x || b.y <= a.y) { return; }
+    ImVec2 ra;
+    ImVec2 rb;
+    spielRahmenRechteck(a, b, ra, rb);
+    const ImU32 farbe = IM_COL32(0, 0, 0, deck);
+    // Vier Streifen um den Rahmen (oben, unten, links, rechts).
+    if (ra.y > a.y) { dl->AddRectFilled(a, ImVec2{b.x, ra.y}, farbe); }
+    if (rb.y < b.y) { dl->AddRectFilled(ImVec2{a.x, rb.y}, b, farbe); }
+    if (ra.x > a.x) { dl->AddRectFilled(ImVec2{a.x, ra.y}, ImVec2{ra.x, rb.y}, farbe); }
+    if (rb.x < b.x) { dl->AddRectFilled(ImVec2{rb.x, ra.y}, ImVec2{b.x, rb.y}, farbe); }
+    if (deck < 255 && (ra.x > a.x + 0.5F || ra.y > a.y + 0.5F || rb.x < b.x - 0.5F || rb.y < b.y - 0.5F)) {
+        // Hilfe in der freien Ansicht: ein duenner Rand ums Spielbild.
+        dl->AddRect(ra, rb, IM_COL32(255, 255, 255, 110), 0.0F, 0, 1.0F);
+    }
+}
+
+// Im Klappfenster "Ansicht einstellen": Seitenverhaeltnis des Spiels,
+// cg_fovAspectAdjust und der Rahmen in der freien Ansicht.
+void spielFensterEinstellungen() {
+    ImGui::SeparatorText(tr(Str::GameScreen));
+    const float feld = ImGui::GetFontSize() * 14.0F;
+    // Die Vorgaben: 4:3 (r_mode 4 in OpenJK und das Original), 16:10, 16:9
+    // und 21:9 - 2560x1080 ist 64:27. 0 = wie der Hauptbildschirm.
+    struct Wahl {
+        float seiten;
+        const char* name;
+    };
+    static const Wahl wahl[] = {
+        {4.0F / 3.0F, "4:3"}, {16.0F / 10.0F, "16:10"}, {16.0F / 9.0F, "16:9"}, {64.0F / 27.0F, "21:9 (2560x1080)"}};
+    char bildschirm[96];
+    if (regelwerkMovieDuels()) {
+        std::snprintf(bildschirm, sizeof(bildschirm), tr(Str::GameScreenMonitor),
+                      static_cast<double>(platform::hauptBildschirmSeiten() > 0.0F ? platform::hauptBildschirmSeiten()
+                                                                                   : 16.0F / 9.0F));
+    } else {
+        // rc601 integ: unter OpenJK heisst "wie ab Werk" r_mode 4 (800x600).
+        std::snprintf(bildschirm, sizeof(bildschirm), "%s", tr(Str::GameScreenAuto43));
+    }
+    float& seiten = g_app->settings.spielSeiten;
+    std::string jetzt = bildschirm;
+    for (const Wahl& w : wahl) {
+        if (std::fabs(seiten - w.seiten) < 0.001F) { jetzt = w.name; }
+    }
+    if (seiten > 0.0F && jetzt == bildschirm) {
+        char eigen[32];
+        std::snprintf(eigen, sizeof(eigen), "%.3f:1", static_cast<double>(seiten));
+        jetzt = eigen;
+    }
+    ImGui::SetNextItemWidth(feld);
+    if (ImGui::BeginCombo(tr(Str::GameScreenAspect), jetzt.c_str())) {
+        if (ImGui::Selectable(bildschirm, seiten <= 0.0F)) {
+            seiten = 0.0F;
+            g_app->mapDirty = true;
+        }
+        for (const Wahl& w : wahl) {
+            if (ImGui::Selectable(w.name, std::fabs(seiten - w.seiten) < 0.001F)) {
+                seiten = w.seiten;
+                g_app->mapDirty = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GameScreenAspectHint)); }
+    // cg_fovAspectAdjust: automatisch (nach den Spielordnern), aus, an.
+    int& adjust = g_app->settings.fovAspectAdjust;
+    const bool autoAn = regelwerkMovieDuels();   // rc601 integ: nach dem Regelwerk
+    const char* namen[3] = {tr(autoAn ? Str::GameFovAdjustAutoOn : Str::GameFovAdjustAutoOff), tr(Str::GameFovAdjustOff),
+                            tr(Str::GameFovAdjustOn)};
+    const int werte[3] = {-1, 0, 1};
+    int jetztNr = 0;
+    for (int i = 0; i < 3; ++i) {
+        if (adjust == werte[i]) { jetztNr = i; }
+    }
+    ImGui::SetNextItemWidth(feld);
+    if (ImGui::BeginCombo(tr(Str::GameFovAdjust), namen[jetztNr])) {
+        for (int i = 0; i < 3; ++i) {
+            if (ImGui::Selectable(namen[i], i == jetztNr)) {
+                adjust = werte[i];
+                g_app->mapDirty = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GameFovAdjustHint)); }
+    if (ImGui::Checkbox(tr(Str::GameFrameFree), &g_app->settings.spielRahmenFrei)) { g_app->mapDirty = true; }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::GameFrameFreeHint)); }
 }
 
 void drawMapView() {
@@ -10729,6 +11181,9 @@ void drawMapView() {
     // Alles andere steht rechts oder in der Zeitleiste.
     const int h = std::max(64, static_cast<int>(avail.y) -
                                static_cast<int>(ImGui::GetFrameHeightWithSpacing() * 1.4F));
+    // Paket kamera, rc601: das Spielfenster, und wie breit die Ansicht ist.
+    const SpielFenster spiel = spielFensterJetzt();
+    const float ansichtSeiten = static_cast<float>(w) / static_cast<float>(std::max(h, 1));
 
     // --- Umsehen und Fliegen ---------------------------------------------
     //
@@ -10819,6 +11274,29 @@ void drawMapView() {
         g_app->mapViewH = h;
         g_app->mapDirty = true;
     }
+    // --- Pilot: mit dem ZOOM der Einstellung (Paket kamera, rc601) ---------
+    //
+    // Bisher uebernahm "Steuern" nur Ort und Winkel des Schluessels; der
+    // Bildwinkel blieb der der freien Ansicht (73,7 senkrecht, FOV 90 bei
+    // 4:3) - bei ZOOM 30 sah man weit mehr als das Spiel. Jetzt der
+    // Bildwinkel der Einstellung im Spielfenster, in JEDEM Bild neu: die
+    // Ansicht kann sich waehrend des Steuerns in der Groesse aendern.
+    // Gesetzt wird g_app->cam selbst, damit Klicks und Ueberlagerungen mit
+    // derselben Projektion rechnen; kameraPilotBeenden stellt den Bildwinkel
+    // der freien Ansicht wieder her.
+    g_app->spielRahmen = SpielRahmen{};
+    g_app->spielRahmenDeckung = 0;
+    if (g_app->kameraPilot) {
+        float fov = 90.0F;   // CAMERA_DEFAULT_FOV
+        const std::vector<KameraSchluessel> ks = kameraSchluessel(g_app->doc.script());
+        if (g_app->camTrackValid && g_app->pilotSchluessel >= 0 &&
+            static_cast<std::size_t>(g_app->pilotSchluessel) < ks.size()) {
+            const double t = einstellungsZeit(g_app->camTrack, ks[static_cast<std::size_t>(g_app->pilotSchluessel)].path);
+            if (t >= 0.0) { fov = g_app->camTrack.at(t).fovX; }
+        }
+        g_app->spielRahmen = setzeSpielFov(g_app->cam, fov, ansichtSeiten, spiel);
+        g_app->spielRahmenDeckung = kSpielRahmenHalb;
+    }
     // Durch die gewaehlte Kamera schauen: Stellung und Blickwinkel kommen
     // dann aus dem Skript, nicht aus der freien Kamera.
     Camera useCam = g_app->cam;
@@ -10858,13 +11336,17 @@ void drawMapView() {
     if (playingNow || amZeiger) {
         // camStateAt statt camTrack.at: darin steckt FOLLOW.
         const CameraState st = camStateAt(g_app->playMs);
-        g_app->camViewFov = st.fovX;
+        // Paket kamera, rc601: vor ENABLE und nach DISABLE zeigt das Spiel
+        // den Spieler mit cg_fov 80 (sichtFovX, camtrack.h), und gerechnet
+        // wird im Spielfenster (CG_CalcFOVFromX), nicht in der Ansicht.
+        const float fov = sichtFovX(st);
+        g_app->camViewFov = fov;
         for (int k = 0; k < 3; ++k) {
             useCam.pos[k] = st.pos[k];
             useCam.angles[k] = st.angles[k];
         }
-        useCam.setFovX(st.fovX,
-                       static_cast<float>(w) / static_cast<float>(std::max(h, 1)));
+        g_app->spielRahmen = setzeSpielFov(useCam, fov, ansichtSeiten, spiel);
+        g_app->spielRahmenDeckung = 255;
         g_app->camViewLabel = tr(Str::MapCamAtPlayhead);
     } else if (through) {
         g_app->camViewLabel = shot.label;
@@ -10884,9 +11366,16 @@ void drawMapView() {
                 useCam.angles[k] += g_app->gizmoAngles[k];
             }
         }
-        useCam.setFovX(shot.fovX,
-                       static_cast<float>(w) / static_cast<float>(std::max(h, 1)));
+        // Paket kamera, rc601: im Spielfenster, mit Rahmen.
+        g_app->spielRahmen = setzeSpielFov(useCam, shot.fovX, ansichtSeiten, spiel);
+        g_app->spielRahmenDeckung = 255;
         g_app->mapDirty = true;   // haengt an der Auswahl, also jedes Bild pruefen
+    } else if (!g_app->kameraPilot && g_app->settings.spielRahmenFrei && !g_app->draufsicht) {
+        // Paket kamera, rc601: in der freien Ansicht halbdurchsichtig, was
+        // eine Kamera an dieser Stelle im Spiel zeigte (FOV 90 nach ENABLE) -
+        // "Kamera hier einfuegen" uebernimmt genau diesen Rahmen.
+        g_app->spielRahmen = spielRahmenFreieSicht(g_app->cam, ansichtSeiten, spiel);
+        g_app->spielRahmenDeckung = kSpielRahmenHalb;
     }
 
     // Hat sich die Kamera bewegt?
@@ -11037,19 +11526,18 @@ void drawMapView() {
         // drehe werden die effecte nicht mehr gerendert in der kamera rechts
         // unten". Jetzt baut jede Ansicht ihr eigenes - aus derselben Liste.
         const auto baueEffektNetz = [&](const std::vector<EffectInstance>& alle, const Camera& kam, int bw, int bh) {
-            const float p = kam.angles[0] * 3.14159265F / 180.0F;
-            const float y = kam.angles[1] * 3.14159265F / 180.0F;
-            const float fwd[3] = {std::cos(p) * std::cos(y),
-                                  std::cos(p) * std::sin(y), -std::sin(p)};
-            float rgt[3] = {fwd[1], -fwd[0], 0.0F};
-            const float rl = std::sqrt(rgt[0] * rgt[0] + rgt[1] * rgt[1]);
-            if (rl > 0.0001F) {
-                rgt[0] /= rl;
-                rgt[1] /= rl;
-            }
-            const float upv[3] = {rgt[1] * fwd[2] - rgt[2] * fwd[1],
-                                  rgt[2] * fwd[0] - rgt[0] * fwd[2],
-                                  rgt[0] * fwd[1] - rgt[1] * fwd[0]};
+            // Paket kamera, rc601: die Achsen aus Camera::forward/right/up -
+            // MIT Rollwinkel, wie cg.refdef.viewaxis (AnglesToAxis). Danach
+            // richtet der Renderer die Sprites aus (RB_SurfaceSprite,
+            // tr_surface.cpp:161-189: viewParms.ori.axis[1] und [2]). Vorher
+            // eine eigene Rechnung ohne Roll: bei camera ROLL lagen die
+            // Vierecke sonst schraeg zum Bild.
+            float fwd[3];
+            float rgt[3];
+            float upv[3];
+            kam.forward(fwd);
+            kam.right(rgt);
+            kam.up(upv);
             EffectCull auge;
             for (int k = 0; k < 3; ++k) {
                 auge.viewer[k] = kam.pos[k];
@@ -11101,16 +11589,32 @@ void drawMapView() {
                     effectScreenFlashesAt(alle, g_app->playMs, kam.pos, fwd);
                 appendScreenFlashes(netz, blitze, kam.pos, fwd,
                                     rgt, upv, fovX, &g_app->effectShaders);
+                // rc601 saber review: die Brandspuren (CG_AddMarks).
+                saberSpurenAnhaengen(netz, g_app->playMs);
             }
             return netz;
         };
-        if (g_app->showEffects && !g_app->effectRunners.empty()) {
+        // rc601 saber review: die Schwerttakte bis zu diesem Bild rechnen - auch
+        // mit ausgeschalteten Effekten, denn die Zeichnung der Klingen (Laenge,
+        // Kuerzen an Waenden) liest sie weiter unten. Vorher geschah das nur
+        // ueber saberEffekteBei, also nur mit sichtbaren Effekten.
+        saberRechneBis(g_app->playMs);
+        // rc601 saber review 2c: die Kamera dieses Bildes fuer den Klirrblitz,
+        // der als 2D-Bild ueber den Kinobalken kommt (blendeUeberlagern).
+        saberBlitzAnsicht(0, &useCam, w, h, g_app->playMs);
+        // rc601 saber: Funken, Kochen und Klirren der Lichtschwerter - auch in
+        // Karten ohne fx_runner (die Bedingung darunter liess sie sonst weg).
+        const std::vector<EffectInstance> schwertFx =
+            g_app->showEffects ? saberEffekteBei(g_app->playMs) : std::vector<EffectInstance>{};
+        if (g_app->showEffects &&
+            (!g_app->effectRunners.empty() || !schwertFx.empty() || saberSpurenDa(g_app->playMs))) {
             // Die Schuesse kommen dazu - dieselbe Liste, derselbe
             // Zeichenweg. Ein eigener waere ein zweiter Rasterisierer.
             std::vector<EffectInstance> alle = g_app->effectRunners;
             const std::vector<EffectInstance> schuesse =
                 shotEffectsAt(g_app->playMs);
             alle.insert(alle.end(), schuesse.begin(), schuesse.end());
+            alle.insert(alle.end(), schwertFx.begin(), schwertFx.end());   // rc601 saber
 
             // --- Und was daraus entsteht - ueber ALLE Stufen ------------
             //
@@ -11621,9 +12125,6 @@ void drawMapView() {
         }
         // Die Figuren NACH der Karte: sie benutzen deren Tiefenpuffer und
         // verschwinden dadurch hinter Waenden.
-        // Welche NPC-Typen schon gemeldet wurden, dass ihnen die
-        // Schussanimation fehlt. Ohne das kaeme die Zeile in jedem Bild.
-        static std::set<std::string> schussFehlt;
         const auto tS0 = std::chrono::steady_clock::now();
         // Die Lichter, die Effekte gerade werfen - EINMAL fuer alle
         // Figuren, nicht je Figur neu. In md_ga_jedi laufen 28 fx_runner;
@@ -11694,149 +12195,9 @@ void drawMapView() {
                 // war es leer, und jede Figur blieb in Ruhelage stehen.
                 // Der Pfad der .gla steht im Kopf des Modells; skeletonFor()
                 // holt sie und die animation.cfg dazu.
-                if (assets.skeleton != nullptr) {
-                    d.anim = &assets.skeleton->anim;
-                    // --- Kennt dieses Skelett den Namen? ----------------
-                    //
-                    // Kennt es ihn nicht, laesst die Engine die Figur in
-                    // der Animation, die sie schon hatte (siehe den Kopf
-                    // von frameForAnimationIn). Genau das tun wir: erst
-                    // die gewuenschte, dann die vorige, zuletzt der
-                    // Grundzustand.
-                    //
-                    // Bleibt auch der unbekannt, ist das Skelett zu
-                    // fremd - dann Bild 0, und die Meldung sagt warum.
-                    // st.animSpeed: die Animation laeuft MIT dem Gehtempo,
-                    // sonst rutschen die Fuesse - siehe kAnimSpeedWalk in
-                    // scene.h.
-                    d.frame = frameForAnimationIn(
-                        assets.skeleton->sections, st.animation,
-                        g_app->playMs - st.animStartMs, st.holdAnim,
-                        st.animSpeed, &d.frameFraction, &d.frameNext);
-                    if (d.frame < 0) {
-                        // EINMAL je Skelett und Name melden, nicht je Bild.
-                        // Sonst stehen sechzig Zeilen je Sekunde im
-                        // Protokoll und die Datei laeuft voll.
-                        const std::string schluessel =
-                            assets.model.animFile + "|" + st.animation;
-                        if (g_app->unknownAnims.insert(schluessel).second) {
-                            diag::detail(
-                                "Figur " + a.name + ": Animation \"" +
-                                st.animation + "\" steht nicht in der .cfg "
-                                "von \"" + assets.model.animFile +
-                                "\" - die Engine laesst die Figur in diesem "
-                                "Fall stehen, wo sie war.");
-                        }
-                        d.frame = frameForAnimationIn(
-                            assets.skeleton->sections, st.prevAnimation,
-                            st.prevAnimSinceMs, st.prevHoldAnim);
-                    }
-                    if (d.frame < 0) {
-                        d.frame = frameForAnimationIn(
-                            assets.skeleton->sections, "BOTH_STAND1", 0.0,
-                            false);
-                    }
-                    if (d.frame < 0) {
-                        d.frame = 0;
-                    }
-                    // --- Die Schussanimation --------------------------
-                    //
-                    // Sie liegt auf dem OBERKOERPER (SETANIM_TORSO) und
-                    // faengt bei JEDEM Schuss neu an
-                    // (SETANIM_FLAG_RESTART, bg_pmove.cpp:13810). Der
-                    // Abstand kommt aus SET_SHOT_SPACING.
-                    //
-                    // Sie geht VOR einer Oberkoerperanimation aus dem
-                    // Skript: die Engine setzt sie im Bewegungsschritt,
-                    // also nach allem, was ICARUS gesetzt hat.
-                    if (st.firing && assets.skeleton != nullptr) {
-                        // Seit dem FEUERBEGINN, nicht seit dem
-                        // Animationsbeginn - siehe firingSinceMs.
-                        const double seit =
-                            g_app->playMs - st.firingSinceMs;
-                        const double takt =
-                            std::fmod(std::max(seit, 0.0),
-                                      static_cast<double>(
-                                          std::max(st.shotSpacingMs, 1.0F)));
-                        const int bild = frameForAnimationIn(
-                            assets.skeleton->sections, "BOTH_ATTACK3", takt,
-                            false);
-                        if (bild >= 0) {
-                            d.torsoFrame = bild;
-                        } else if (!schussFehlt.count(a.npcType)) {
-                            // EINMAL je NPC-Typ melden, nicht je Bild.
-                            schussFehlt.insert(a.npcType);
-                            diag::detail(
-                                "Figur " + a.name + " schiesst, aber \"" +
-                                "BOTH_ATTACK3\" steht nicht in der .cfg " +
-                                "seines Skeletts (NPC-Typ " + a.npcType + ")");
-                        }
-                    }
-
-                    // Der MUND, wenn die Figur gerade spricht.
-                    const std::string mund =
-                        faceAnimFor(a.name, g_app->playMs);
-                    if (!mund.empty()) {
-                        d.faceFrame = frameForAnimationIn(
-                            assets.skeleton->sections, mund, 0.0, false);
-                    }
-                    // Der OBERKOERPER, wenn er eine eigene Animation hat.
-                    //
-                    // Kennt das Skelett den Namen nicht, bleibt torsoFrame
-                    // bei -1 und der Oberkoerper folgt dem Koerper - genau
-                    // wie beim Koerper selbst: die Engine tut in dem Fall
-                    // gar nichts.
-                    //
-                    // Schiesst die Figur, gewinnt der Schuss: die Engine
-                    // setzt BOTH_ATTACK3 mit SETANIM_FLAG_OVERRIDE
-                    // (bg_pmove.cpp:13810). Vorher ueberschrieb die
-                    // Skriptanimation das Schussbild wieder.
-                    if (!st.torsoAnimation.empty() && d.torsoFrame < 0) {
-                        d.torsoFrame = frameForAnimationIn(
-                            assets.skeleton->sections, st.torsoAnimation,
-                            g_app->playMs - st.torsoStartMs, st.torsoHold, 1.0F,
-                            &d.torsoFraction, &d.torsoNext);
-                        if (d.torsoFrame < 0) {
-                            const std::string schluessel =
-                                assets.model.animFile + "|" + st.torsoAnimation;
-                            if (g_app->unknownAnims.insert(schluessel).second) {
-                                diag::detail(
-                                    "Figur " + a.name + ": Oberkoerperanimation \"" +
-                                    st.torsoAnimation +
-                                    "\" steht nicht in der .cfg von \"" +
-                                    assets.model.animFile + "\".");
-                            }
-                        }
-                    }
-                    // Laeuft gerade ein Uebergang? Dann die EINGEFRORENE
-                    // Frame der vorigen Animation dazu.
-                    //
-                    // prevAnimSinceMs steht fest - es ist der Stand vom
-                    // Moment des Umschaltens, nicht "jetzt minus damals".
-                    // Genau daran erkennt man, ob es richtig gebaut ist:
-                    // die alte Seite darf sich waehrend des Uebergangs
-                    // nicht bewegen.
-                    // Der eigene Uebergang des Oberkoerpers.
-                    const float lt = torsoBlendFraction(st, g_app->playMs);
-                    if (lt < 1.0F) {
-                        d.torsoPrevFrame = frameForAnimationIn(
-                            assets.skeleton->sections, st.torsoPrevAnimation,
-                            st.torsoPrevSinceMs, false);
-                        d.torsoBlendLerp = (d.torsoPrevFrame < 0) ? 1.0F : lt;
-                    }
-                    const float l = blendFraction(st, g_app->playMs);
-                    if (l < 1.0F) {
-                        d.prevFrame =
-                            frameForAnimationIn(assets.skeleton->sections,
-                                                st.prevAnimation,
-                                                st.prevAnimSinceMs,
-                                                st.prevHoldAnim);
-                        // Kennt das Skelett die vorige nicht, gibt es
-                        // nichts zu ueberblenden - dann lieber hart
-                        // umschalten als gegen ein falsches Bild mischen.
-                        d.blendLerp = (d.prevFrame < 0) ? 1.0F : l;
-                    }
-                }
+                // rc601 saber: herausgezogen (figurBilderSetzen), damit die
+                // Schwertproben (app_saber.cpp) dieselben Bilder rechnen.
+                figurBilderSetzen(a, assets, st, g_app->playMs, d);
                 for (int k = 0; k < 3; ++k) {
                     d.pos[k] = st.pos[k];
                 }
@@ -11886,21 +12247,7 @@ void drawMapView() {
                 // Koerper, nicht gegen die Welt. Beschnitten auf die 64
                 // Grad, die die Engine zulaesst; wer weiter schauen soll,
                 // braucht ein SET_WATCHTARGET.
-                if (st.hasLookTarget && g_app->lookRotation) {
-                    const float dx = st.lookAt[0] - st.pos[0];
-                    const float dy = st.lookAt[1] - st.pos[1];
-                    if (dx * dx + dy * dy > 1.0F) {
-                        const float ziel =
-                            std::atan2(dy, dx) * 180.0F / 3.14159265F;
-                        // Der Ghoul2-Weg der Engine dreht den Oberkoerper
-                        // NICHT dem Blick nach - siehe kHeadYawClampMin in
-                        // scene.h. Es gibt nur den Kopfausschlag, und der
-                        // verteilt sich im Zeichner auf drei Knochen.
-                        d.headYaw = std::clamp(
-                            shortestAngleDelta(st.angles[1], ziel),
-                            kHeadYawClampMin, kHeadYawClampMax);
-                    }
-                }
+                figurKopfGier(st, d);   // rc601 saber: herausgezogen
                 d.yawOffset = static_cast<float>(g_app->actorYaw);
                 draws.push_back(d);
             }
@@ -12361,7 +12708,6 @@ void drawMapView() {
                             }
                         }
                         float fw[16];
-                        gpu::baueFigurWelt(a.yaw + a.yawOffset, a.pos, fw);
                         // --- Die Groesse aus der .npc ----------------------
                         //
                         // CG_Player (cg_players.cpp der Mod): die Achsen der
@@ -12371,15 +12717,7 @@ void drawMapView() {
                         // Wegen des 90-Grad-Zuschlags in baueFigurWelt ist
                         // die Spalte 1 die Vorwaertsachse (modelScale[0]) und
                         // Spalte 0 die seitliche (modelScale[1]).
-                        if (a.skala[0] != 1.0F || a.skala[1] != 1.0F || a.skala[2] != 1.0F) {
-                            const float spalte[3] = {a.skala[1], a.skala[0], a.skala[2]};
-                            for (int r = 0; r < 3; ++r) {
-                                for (int c = 0; c < 3; ++c) { fw[r * 4 + c] *= spalte[c]; }
-                            }
-                            if (a.skala[2] != 0.0F) {
-                                fw[11] += 24.0F * (a.skala[2] - 1.0F);
-                            }
-                        }
+                        figurWeltMatrix(a, fw);   // rc601 saber: herausgezogen
                         // Das Licht an ihrem Standort (Gitter + Effekt-
                         // lichter), mal Helligkeit und auf 0..1 - wie im
                         // Rasterer (renderActors).
@@ -12557,6 +12895,12 @@ void drawMapView() {
                                     float wB[3];
                                     nachWelt(wl, wA);
                                     nachWelt(tl, wB);
+                                    // rc601 saber: die Laenge dieses Clientbildes
+                                    // (an Waenden gekuerzt, CG_AddSaberBladeGo);
+                                    // eine Klinge mit Laenge 0 steht nicht.
+                                    if (!saberKlingeZeichnen(a.figur, an.saberFach, kd.nummer, wA, wB, kd.laenge)) {
+                                        continue;
+                                    }
                                     if (lSpitzen.empty()) {
                                         for (int k = 0; k < 3; ++k) {
                                             lMitte[k] = 0.5F * (wA[k] + wB[k]);
@@ -12957,15 +13301,26 @@ void drawMapView() {
                 gpu::setzeSpiegelBild(-1);
                 // --- Bild-im-Bild der gewaehlten Kamera (rc592) --------------
                 //
-                // Ein Drittel der Breite, Seitenverhaeltnis der Ansicht, in
-                // Zielsatz 1 - mit eigenem Himmelsportal aus ihrer Sicht.
+                // Ein Drittel der Breite, in Zielsatz 1 - mit eigenem
+                // Himmelsportal aus ihrer Sicht. Paket kamera, rc601: im
+                // Seitenverhaeltnis des SPIELFENSTERS, nicht der Ansicht - es
+                // zeigt genau das Spielbild.
                 g_app->vorschauGezeigt = false;
+                saberBlitzAnsicht(1, nullptr, 0, 0, 0.0);   // rc601 saber review 2c
                 Camera vorschau;
-                const float aspekt = static_cast<float>(gw) / static_cast<float>(std::max(gh, 1));
+                const float aspekt = spiel.seiten;
                 if (vorschauKamera(vorschau, aspekt)) {
-                    const int pw = std::clamp(gw / 3, 160, 640);
-                    const int ph = std::max(90, static_cast<int>(static_cast<float>(pw) / aspekt));
+                    g_app->vorschauFovY = vorschau.fovY;   // Selbsttest (Paket kamera, rc601)
+                    int pw = std::clamp(gw / 3, 160, 640);
+                    int ph = static_cast<int>(static_cast<float>(pw) / aspekt);
+                    if (ph < 90) {
+                        // Mindesthoehe - dann breiter, damit das Bild das
+                        // Seitenverhaeltnis des Spiels behaelt (rc601).
+                        ph = 90;
+                        pw = static_cast<int>(std::lround(90.0F * aspekt));
+                    }
                     if (portalFuer(vorschau, pw, ph)) { gpu::setzeHimmelPortal(2); }
+                    saberBlitzAnsicht(1, &vorschau, pw, ph, g_app->playMs);   // rc601 saber review 2c
                     if (g_app->showEffects && !alleEffekte.empty()) {
                         effektNetzVorschau = baueEffektNetz(alleEffekte, vorschau, pw, ph);
                         effektNetzBild = &effektNetzVorschau;
@@ -13187,9 +13542,21 @@ void drawMapView() {
                                                  ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         }
         if (g_app->blendeZeigen) {
-            blendeUeberlagern(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-                              g_app->mapImage.height);
+            // Paket kamera, rc601: Balken und Blende im RAHMEN des Spielbilds
+            // - CGCam_DrawWideScreen fuellt in 640x480 virtuellen Punkten, also
+            // ueber das ganze Spielfenster (cg_camera.cpp:1328/1329/1336
+            // OpenJK, :1293/1294/1303 Movie Duels). Ein Balken ist ein Zehntel
+            // der Hoehe DES SPIELBILDS (bar_height_dest = 480/10, :86).
+            ImVec2 ra;
+            ImVec2 rb;
+            spielRahmenRechteck(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ra, rb);
+            blendeUeberlagern(ImGui::GetWindowDrawList(), ra, rb,
+                              std::max(1, static_cast<int>(std::lround(static_cast<float>(g_app->mapImage.height) *
+                                                                       g_app->spielRahmen.hoehe))));
         }
+        // rc601 saber review 2c: der Klirrblitz NACH den Balken, wie CG_Draw2D.
+        saberBlitzZeichnen2D(0, ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                             g_app->blendeZeigen && g_app->blendeBalken > 0.0F);
         {
             const ImVec2 a = ImGui::GetItemRectMin();
             const ImVec2 b = ImGui::GetItemRectMax();
@@ -14047,6 +14414,10 @@ g_app->gizmoAxis = g_app->gizmoHover;
                 ImGui::EndTooltip();
             }
         }
+        // Paket kamera, rc601: was ausserhalb des Spielbilds liegt, zuletzt
+        // abdecken - auch ueber Namen und Marken, die dort stuenden.
+        spielRahmenUeberlagern(ImGui::GetWindowDrawList(), ImVec2{g_app->kartenAnsicht[0], g_app->kartenAnsicht[1]},
+                               ImVec2{g_app->kartenAnsicht[2], g_app->kartenAnsicht[3]});
     }
 
     // --- Die Kamera: Hervorheben, Schild, Leiste (rc588) ------------------
@@ -14175,6 +14546,8 @@ void ansichtEinstellungen() {
         }
     }
     ImGui::EndDisabled();
+    // Paket kamera, rc601: das Spielfenster (auch ohne Karte einstellbar).
+    spielFensterEinstellungen();
 }
 
 // Die Umschalter der Ansicht (rechts in der Kopfzeile). Mit nurMessen nur die

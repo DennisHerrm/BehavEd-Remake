@@ -32,10 +32,12 @@
 #define BHED_ABLAUF_H
 
 #include "bhed/bsp.h"
+#include "bhed/navlauf.h"
 #include "bhed/script.h"
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -62,7 +64,9 @@ struct AblaufWelt {
     // Laenge einer Animation fuer diese Figur in ms (< 0: unbekannt).
     std::function<double(const std::string& figur, const std::string& anim)> animDauer;
     // Geh-/Lauftempo einer Figur aus ihrer .npc, Einheiten je Sekunde
-    // (<= 0: die Vorgaben der Engine, 90 und 300).
+    // (< 0: die Vorgaben der Engine, 90 und 300). rc601 (bewegung): 0 ist
+    // gueltig - die Figur steht (NPC_ParseParms verwirft nur n < 0). Die
+    // Oberflaeche nimmt ablaufTempo() aus bhed/scene.h.
     std::function<float(const std::string& figur, bool gehen)> tempo;
     // Wie lange eine ROFF-Bahn laeuft, bis G_Roff ihre Aufgabe erledigt
     // (roffLaufzeitMs aus bhed/roff.h), fuer den Namen aus
@@ -72,6 +76,38 @@ struct AblaufWelt {
     std::function<double(const std::string& name)> roffDauer;
     // Takt der Spiellogik. 0 schaltet ihn ab (nur fuer Proben).
     double bildMs = 50.0;
+    // rc601 (bewegung, Wege wie im Spiel): Wegnetz und Spuren der Karte fuer
+    // NAV/STEER (bhed/navlauf.h) - dieselbe Welt wie SzenenHilfe::nav, sonst
+    // endet dowait anders, als die Szene ankommt. Leer: das Netz aus den
+    // Entities der Karte ohne Spuren (navWeltAusEntities). Dazu der Kasten
+    // je Figur (halbe Breite, maxs[2]) wie in der Szene; leer: 16 und 40.
+    std::shared_ptr<const NavWelt> nav;
+    std::function<float(const std::string& figur)> halbBreite;
+    std::function<float(const std::string& figur)> hoeheOben;
+    // rc601 (bewegung, R5/R6): die Drehrate beim Spawnen (Grad/s, < 0
+    // unbekannt), ob sie fest ist (Rocket Trooper, WP_EMPLACED_GUN -
+    // SET_YAWSPEED wirkt dann nicht), und die Stufe je Klasse.
+    std::function<float(const std::string& figur)> drehrate;
+    std::function<bool(const std::string& figur)> drehrateFest;
+    std::function<float(const std::string& figur)> stufe;
+    // rc601 (bewegung, Durchsicht 2): die Drehrate je Denkbild nach der Waffe
+    // in der Hand (SET_WEAPON, NPC_utils.cpp:274-290 MD) - ablaufDrehrate und
+    // ablaufDrehrateYaw aus bhed/scene.h. Gesetzt, ersetzen sie drehrate/
+    // drehrateFest.
+    std::function<float(const std::string& figur, const std::string& waffe, float yawRate)> drehrateNpc;
+    std::function<float(const std::string& figur)> drehrateYaw;
+    // rc601 integ: der Takt des Verhaltens je Figur und Waffe in der Hand
+    // (ablaufVerhaltenTakt, bhed/scene.h; LaufWerte::verhaltenTaktMs). Ohne:
+    // Movie Duels 50, OpenJK 100 (ohne die Jedi-Ausnahme).
+    std::function<int(const std::string& figur, const std::string& waffe)> verhaltenTakt;
+    // rc601 (bewegung, teil 3): Fallen und Vorlauf je Figur wie in der Szene
+    // (ablaufVorlauf in bhed/scene.h): -2 faellt nicht (Flieger, Fahrzeug),
+    // -1 faellt, aber kein Vorlauf ab dem Spawn (Spieler, haengt), 0 Vorlauf
+    // ohne G_CheckInSolid (SFB_STARTINSOLID), 1 mit. Leer: NPCs 1, sonst -1.
+    std::function<int(const std::string& figur)> vorlauf;
+    // rc601 (bewegung, teil 3): Plaene aus dem gemeinsamen Takt aller Figuren
+    // (navKoerperLauf), nach navKoerperSchluessel. Fehlt einer: planeLauf.
+    std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>> koerperPlaene;
     // Spaetestens hier ist Schluss - loop ( -1 ) laeuft sonst ewig.
     double grenzeMs = 600000.0;
     // Nach dem Ende des Startskripts noch so lange weiterlaufen lassen
@@ -121,12 +157,33 @@ struct Ablauf {
     int befehle = 0;        // ausgefuehrte Befehle, fuer das Protokoll
 
     [[nodiscard]] const AblaufHerkunft* woher(const Path& p) const;
+
+    // rc601 (bewegung, teil 3): jeder Plan dieser Rechnung (planeLauf ohne die
+    // anderen Figuren) mit Schluessel (navKoerperSchluessel) und die Figuren
+    // als Kaesten - fuer den gemeinsamen Takt (navKoerperLauf).
+    std::vector<NavAbschnitt> laufAbschnitte;
+    std::vector<std::uint64_t> laufSchluessel;
+    std::vector<NavFigurKoerper> laufFiguren;
+    std::vector<std::string> laufFigurNamen;
 };
 
 // Das Startskript `start` (dessen Pfad `startPfad` ist, z.B.
 // "md_ga/grievous_jedi"; leer, wenn unbekannt) ausfuehren.
 [[nodiscard]] Ablauf simuliereAblauf(const Script& start, const std::string& startPfad,
                                      const AblaufWelt& welt);
+// rc601 (bewegung, teil 3): dasselbe mit allen Figuren im selben Takt -
+// navKoerperLauf ueber die Plaene der Rechnung, dann noch einmal mit dessen
+// Plaenen (welt.koerperPlaene), bis sie gleich bleiben (hoechstens 7 Rechnungen;
+// ein Plan zur Zeit t haengt nur an dem, was vor t geschah - jeder Durchgang
+// macht mindestens das naechste Ereignis richtig). welt.koerperPlaene ist danach
+// das, was auch die Szene nehmen muss (SzenenHilfe::koerperPlaene).
+[[nodiscard]] Ablauf simuliereAblaufMitKoerpern(const Script& start, const std::string& startPfad, AblaufWelt& welt,
+                                                int* durchgaenge = nullptr);
+// rc601 integ: die Abkuerzung in simuliereAblaufMitKoerpern (bekommt eine
+// Rechnung des gemeinsamen Takts Bit fuer Bit dieselben Eingaben wie die
+// vorige, endet die Schleife ohne sie) - an (Vorgabe) oder aus, nur fuer die
+// Probe P4b, die beide Wege Bit fuer Bit vergleicht.
+void ablaufKoerperAbkuerzungAn(bool an);
 
 // Wer fuehrt dieses Skript in der Karte aus? targetname der Entity, die
 // es als usescript/spawnscript/... traegt (bei NPC-Spawnern der

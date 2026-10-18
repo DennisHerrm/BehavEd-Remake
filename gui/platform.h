@@ -92,5 +92,24 @@ std::pair<int, int> hauptfensterGroesse(int breite, int hoehe);
 [[nodiscard]] bool renderDocDa();
 void renderDocAufnehmen();
 
+// --- rc601 release: ein anderes Programm starten (Selbsttest) -----------
+//
+// Fuer den Selbsttest "eigenstaendig": eine KOPIE dieser exe (in einem
+// Ordner ohne data\base) mit `argumente` starten, wie es ein Anwender mit der
+// heruntergeladenen .exe tut. Die Umgebung ist die eigene ohne
+// BHED_EDITORTEST; jede "NAME=wert"-Zeile aus `setzen` ersetzt oder ergaenzt
+// eine Variable. Rueckgabe wie bei starteZweiteInstanz: Griff auf den
+// Prozess, 0 = nicht gestartet. Stand und Ende ueber zweiteInstanzStand und
+// zweiteInstanzSchliessen.
+std::uintptr_t starteProgramm(const std::string& exe, const std::string& argumente,
+                              const std::vector<std::string>& setzen);
+
+// --- Paket kamera, rc601 -------------------------------------------------
+//
+// Breite durch Hoehe des Hauptbildschirms in Bildpunkten, 0 wenn unbekannt.
+// Movie Duels startet mit r_mode -2 und uebernimmt dessen Aufloesung - das
+// Seitenverhaeltnis, mit dem es den Bildwinkel einer Kamera rechnet.
+[[nodiscard]] float hauptBildschirmSeiten();
+
 }  // namespace bhed::platform
 #endif

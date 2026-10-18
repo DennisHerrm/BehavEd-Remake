@@ -433,6 +433,12 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
         s.fog = i32(b, at + 4);                // fogNum, -1 = keiner
         s.patchWidth = i32(b, at + 140);
         s.patchHeight = i32(b, at + 144);
+        if (s.type == BspSurface::Type::Planar) {
+            // rc601 saber: lightmapVecs[2] (ParseFace, tr_bsp.cpp:435 OJ).
+            for (int k = 0; k < 3; ++k) {
+                s.ebenenNormale[k] = f32(b, at + 128 + static_cast<std::size_t>(k) * 4);
+            }
+        }
         if (s.type == BspSurface::Type::Flare) {
             for (int k = 0; k < 3; ++k) {
                 s.flareOrt[k] = f32(b, at + 92 + static_cast<std::size_t>(k) * 4);
@@ -2612,6 +2618,87 @@ TraceTreffer traceRay(const BspGeometry& geo, const float start[3],
         }
     }
     return out;
+}
+
+// --- rc601 ton: wer in den Snapshot kommt, ist zu hoeren ---------------------
+
+void clusterImKasten(const BspGeometry& g, const float mins[3], const float maxs[3], std::vector<int>& aus) {
+    aus.clear();
+    if (g.nodes.empty() || g.leafs.empty() || g.planes.empty()) {
+        return;
+    }
+    // CM_BoxLeafnums_r (cm_test.cpp:211 ff. MD) mit eigenem Stapel statt
+    // Rekursion; die Seite der Ebene wie BoxOnPlaneSide: ganz vorn (>= dist)
+    // -> Kind 0, ganz hinten (< dist) -> Kind 1, sonst beide.
+    std::vector<int> stapel{0};
+    int schutz = 0;
+    while (!stapel.empty() && ++schutz < 1 << 20) {
+        int at = stapel.back();
+        stapel.pop_back();
+        while (true) {
+            if (at < 0) {
+                const int blatt = -(at + 1);
+                if (blatt >= 0 && static_cast<std::size_t>(blatt) < g.leafs.size()) {
+                    const int c = g.leafs[static_cast<std::size_t>(blatt)].cluster;
+                    if (c != -1 && std::find(aus.begin(), aus.end(), c) == aus.end()) {
+                        aus.push_back(c);
+                    }
+                }
+                break;
+            }
+            if (static_cast<std::size_t>(at) >= g.nodes.size()) {
+                break;
+            }
+            const BspGeometry::Node& n = g.nodes[static_cast<std::size_t>(at)];
+            if (n.plane < 0 || static_cast<std::size_t>(n.plane) >= g.planes.size()) {
+                break;
+            }
+            const BspGeometry::Plane& p = g.planes[static_cast<std::size_t>(n.plane)];
+            // Die naechste und die fernste Ecke des Kastens zur Ebene.
+            float nah = 0.0F;
+            float fern = 0.0F;
+            for (int k = 0; k < 3; ++k) {
+                if (p.normal[k] >= 0.0F) {
+                    fern += p.normal[k] * maxs[k];
+                    nah += p.normal[k] * mins[k];
+                } else {
+                    fern += p.normal[k] * mins[k];
+                    nah += p.normal[k] * maxs[k];
+                }
+            }
+            const bool vorn = fern >= p.dist;   // BoxOnPlaneSide: dist1 >= p->dist
+            const bool hinten = nah < p.dist;   //                 dist2 <  p->dist
+            if (vorn && !hinten) {
+                at = n.children[0];
+            } else if (hinten && !vorn) {
+                at = n.children[1];
+            } else {
+                stapel.push_back(n.children[0]);
+                at = n.children[1];
+            }
+        }
+    }
+}
+
+bool kastenImSnapshot(const BspGeometry& g, const float auge[3], const float mins[3], const float maxs[3]) {
+    if (g.vis.empty() || g.clusterBytes <= 0 || g.nodes.empty() || g.leafs.empty()) {
+        return true;
+    }
+    const int blatt = g.leafAt(auge);
+    const int von = (blatt >= 0) ? g.leafs[static_cast<std::size_t>(blatt)].cluster : -1;
+    if (von < 0 || von >= g.numClusters) {
+        return true;   // Auge im Fels: siehe Kopf
+    }
+    std::vector<int> cl;
+    clusterImKasten(g, mins, maxs, cl);
+    // "if (!svEnt->numClusters) continue;" - eine Entity ganz im Fels oder
+    // ausserhalb der Karte geht nie hinaus.
+    for (const int c : cl) {
+        if (g.clusterVisible(von, c)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace bhed

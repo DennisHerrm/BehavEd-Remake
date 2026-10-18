@@ -16,8 +16,9 @@
 // Die Haken der ImGui-Testumgebung: jedes Element meldet Kennung,
 // Beschriftung und Rechteck. Damit klickt der Selbsttest (gui/selbsttest.cpp)
 // Knoepfe dort, wo sie gezeichnet wurden. ImGui ruft die Haken nur, solange
-// `TestEngineHookItems` gesetzt ist - und das setzt allein der Selbsttest.
-// Im normalen Betrieb kostet es eine Abfrage je Element.
+// `TestEngineHookItems` gesetzt ist - das setzt gui/elemente.cpp (rc601): im
+// Selbsttest fuer alles, waehrend einer Tutorial-Tour nur fuer deren
+// Beschriftungen. Sonst kostet es eine Abfrage je Element.
 #define IMGUI_ENABLE_TEST_ENGINE
 
 namespace bhed::gui {

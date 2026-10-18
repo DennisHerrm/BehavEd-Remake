@@ -34,17 +34,20 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -222,6 +225,60 @@ struct Wesen {
     // G_FreeEntity: ein misc_model_breakable mit "no dmodel" nach dem Bruch.
     // G_Find findet es nicht mehr, ein use geht ins Leere.
     bool entfernt = false;
+    // --- Paket bewegung (rc601): das Laufziel, wie in scene.cpp ----------
+    //
+    // NPCInfo->goalEntity mit dem Weg dorthin. Der Weg wird wie in der
+    // Szene gerechnet (planeLauf je Denkbild, bhed/navlauf.h, auch BS_NOCLIP)
+    // - sonst endete dowait zu einer anderen Zeit, als die Figur ankommt.
+    bool zielGesetzt = false;
+    bool zielMarke = true;      // TAG: die Aufgabe des SET_NAVGOAL haelt (TID_MOVE_NAV)
+    float zielOrt[3]{};
+    double zielRadius = 12.0;
+    bool wegLaeuft = false;     // von wegVon nach zielOrt in [wegAb, wegBis]
+    float wegVon[3]{};
+    double wegAb = 0.0;
+    double wegBis = 0.0;
+    bool wegInFahrt = false;
+    double fahrtBis = -1.0;     // bis hierhin lief ein abgeschnittener Weg
+    int wegId = -1;             // die Aufgabe dieses Ziels im Fach kWeg
+    // rc601 (bewegung, Wege wie im Spiel): der laufende Plan (planeLauf) und
+    // der Zustand der Figur fuer NAV/STEER/Pmove (bhed/navlauf.h).
+    std::shared_ptr<const LaufPlan> plan;
+    LaufZustand lauf;
+    bool gierAusPlan = false;
+    // --- Paket bewegung (rc601): Verhalten und Drehen ----------------------
+    // SET_BEHAVIOR_STATE, gross ("" = BS_DEFAULT). spawnflags 32 am
+    // NPC_spawner: BS_CINEMATIC (NPC_SetMiscDefaultData, NPC_spawn.cpp:315).
+    std::string verhaltenZustand;
+    // Der Spieler selbst ist kein NPC (kein Spawner, Name "player").
+    bool echterSpieler = false;
+    // Sicher ein client (NPC aus einem Spawner, oder der Spieler) - nicht nur
+    // ohne Karte als Figur angenommen. Lerp2Pos/Lerp2Angles lehnen nur
+    // clients ab.
+    bool istClient = false;
+    // Der Gierwinkel, so weit TID_ANGLE_FACE davon abhaengt (SET_DYAW,
+    // SET_VIEWTARGET): wie GierLauf in der Szene.
+    GierLauf gier;
+    // rc601 (bewegung, Durchsicht 2): stats.yawSpeed als Grad/s und die Waffe
+    // in der Hand ("" = die beim Spawnen) - fuer AblaufWelt::drehrateNpc.
+    float yawRate = -1.0F;
+    std::string waffe;
+    bool watchAn = false;
+    bool watchSelbst = false;
+    float watchOrt[3]{};
+    // rc601 (bewegung, teil 3): SET_GRAVITY (< 0: g_gravity der Karte) und ob
+    // der Vorlauf ab dem Spawn schon eingetragen ist (wie scene.cpp beim
+    // ersten Plan).
+    float schwerkraft = -1.0F;
+    bool laufBereit = false;
+    // rc601 (bewegung, teil 3): fuer den gemeinsamen Takt aller Figuren
+    // (navKoerperLauf) - ihre Plaene (Ablauf::laufAbschnitte), wann sie
+    // verschwindet (remove/kill) und wohin SET_ORIGIN sie setzte.
+    int koerperNr = -1;            // Index in Ablauf::laufFiguren
+    int abschnitt = -1;          // ihr letzter Abschnitt
+    double schnitt = -1.0e300;   // dort endete er (wegAnhalten)
+    double totMs = 1.0e300;
+    std::vector<std::pair<double, NavVec>> orteLog;
 };
 
 struct Geplant {
@@ -248,6 +305,8 @@ public:
 private:
     const AblaufWelt& welt_;
     Ablauf& aus_;
+    // rc601 (bewegung, Wege): Wegnetz und Spuren, beim ersten Laufziel geholt.
+    mutable std::shared_ptr<const NavWelt> nav_;
     // Figuren, die schon vor dem Ablauf im Spiel stehen (zweiter Lauf).
     std::set<std::string> vorhanden_;
     std::vector<std::unique_ptr<Wesen>> wesen_;
@@ -383,16 +442,52 @@ private:
         w->reihe = reiheVon(&e);
         w->gibt = !ic.empty();   // nur mit ICARUS-Namen hat sie einen Ablauf
         bereite(*w, e);
+        drehrateVorgabe(*w);
         const int i = static_cast<int>(wesen_.size());
         wesen_.push_back(std::move(w));
         wesenVonEnt_[&e] = i;
         return i;
     }
 
+    // rc601 (bewegung, R5): die Drehrate beim Spawnen wie in der Szene (.npc
+    // yawSpeed, feste Rate des Rocket Troopers / WP_EMPLACED_GUN).
+    void drehrateVorgabe(Wesen& w) const {
+        if (welt_.drehrateNpc && welt_.drehrateYaw) {
+            // rc601 (bewegung, Durchsicht 2): je Waffe (npcDrehrate).
+            const float y = welt_.drehrateYaw(w.name);
+            if (y > 0.0F) {
+                w.yawRate = y;
+                w.gier.rate = welt_.drehrateNpc(w.name, w.waffe, y);
+            }
+            return;
+        }
+        if (welt_.drehrate) {
+            const float r = welt_.drehrate(w.name);
+            if (r > 0.0F) { w.gier.rate = r; }
+        }
+    }
+
     // Schluessel der Karte in die Buchfuehrung uebernehmen.
     static void bereite(Wesen& w, const MapEntity& e) {
         if (!e.origin.empty()) {
             w.ortBekannt = leseVek(e.origin, w.ort);
+        }
+        // rc601 (bewegung): Startwinkel ("angles" oder "angle", der spaetere
+        // gewinnt - G_ParseField) und der Verhaltenszustand beim Spawnen.
+        if (istNpcSpawner(e)) {
+            for (const auto& [k, v] : e.keys) {
+                const std::string kk = klein(k);
+                float a[3] = {0.0F, 0.0F, 0.0F};
+                if (kk == "angles" && leseVek(v, a)) {
+                    w.gier.setzen(0.0, a[1]);
+                } else if (kk == "angle") {
+                    w.gier.setzen(0.0, static_cast<float>(zahl(v)));
+                }
+            }
+            const std::string sf = wertVon(e, "spawnflags");
+            if (!sf.empty() && (std::atoi(sf.c_str()) & 32) != 0) {
+                w.verhaltenZustand = "BS_CINEMATIC";
+            }
         }
         for (const char* key : {"spawnscript", "usescript", "deathscript", "painscript", "awakescript",
                                 "angerscript", "fleescript", "lostenemyscript", "victoryscript",
@@ -443,6 +538,8 @@ private:
             w->figur = true;
             w->reihe = 0;
             w->gibt = true;
+            w->echterSpieler = (e == nullptr);   // rc601 (bewegung): kein NPC_Player-Spawner
+            w->istClient = true;
         } else if (e == nullptr) {
             // Unbekannt: im Spiel liefe affect ins Leere. Wir legen sie
             // trotzdem an (sonst kann man ein neues Skript ohne Karte gar
@@ -451,6 +548,7 @@ private:
             w->figur = w->gibt;
         } else if (spawner) {
             w->figur = true;
+            w->istClient = true;   // rc601 (bewegung)
             // Ein Spawner OHNE targetname erzeugt die Figur beim Laden der
             // Karte (SP_NPC_spawner, NPC_spawn.cpp:3032). Mit targetname
             // erst, wenn er benutzt wird - es sei denn, das geschah schon
@@ -459,6 +557,7 @@ private:
         }
         if (e != nullptr) {
             bereite(*w, *e);
+            drehrateVorgabe(*w);
         }
         const int i = static_cast<int>(wesen_.size());
         wesen_.push_back(std::move(w));
@@ -511,9 +610,375 @@ private:
             }
             // Animation: BEIDE erst, wenn oben und unten fertig sind
             // (bg_panimate.cpp:5922 ff.). Bei uns enden beide zugleich.
+            //
+            // rc601 (bewegung): ist es der Weg zum Ziel, ist die Figur
+            // angekommen - NPC_ReachedGoal loescht das Ziel (NPC_goal.cpp:
+            // 141-164).
+            if (f == static_cast<std::size_t>(kWeg) && a.id == w.wegId) {
+                angekommen(w);
+            }
             erledige(a.id);
             a = Aufgabe{};
         }
+    }
+
+    // --- Paket bewegung (rc601): der Weg zum Ziel --------------------------
+    //
+    // rc601 (bewegung, Wege wie im Spiel): wie in scene.cpp mit planeLauf
+    // (bhed/navlauf.h) - DIESELBE Rechnung Denkbild fuer Denkbild, damit
+    // dowait genau in dem Denkbild endet, in dem die Figur der Szene ankommt
+    // (UpdateGoal -> NPC_ReachedGoal -> TID_MOVE_NAV). Findet die Figur keinen
+    // Weg, bleibt die Aufgabe offen - im Spiel haengt ein dowait dann ewig.
+    static constexpr double kGleichzeitig = 0.5;   // ms: dasselbe Bild
+
+    static void angekommen(Wesen& w) {
+        w.zielGesetzt = false;
+        w.wegLaeuft = false;
+        w.wegId = -1;
+    }
+
+    // Wo die Figur zur Zeit t ist: aus dem laufenden Plan, sonst w.ort.
+    static void ortJetzt(const Wesen& w, double t, float o[3]) {
+        if (!w.plan) {
+            for (int a = 0; a < 3; ++a) { o[a] = w.ort[a]; }
+            return;
+        }
+        const NavVec p = ortBei(*w.plan, t);
+        for (int a = 0; a < 3; ++a) { o[a] = p[static_cast<std::size_t>(a)]; }
+    }
+
+    // rc601 (bewegung, Durchsicht 2): der Dreh-Regler (w.gier) aus dem Plan.
+    // Waehrend eines Plans dreht NPC_UpdateAngles nach dem desiredYaw, das
+    // STEER je Denkbild setzt - der Plan rechnet es (LaufZustand::gier,
+    // wunschGier). Vorher nahm der Ablauf die Gerade vom Start zum Ziel an:
+    // nach einem Lauf ueber Eck endete ein dowait auf SET_DYAW zu frueh.
+    // Uebernommen wird der Zustand nach dem letzten Denkbild bis t.
+    static void planGierSync(Wesen& w, double t) {
+        if (!w.plan) {
+            return;
+        }
+        const LaufPlan& p = *w.plan;
+        double ts = p.abMs;
+        const LaufZustand* z = &p.anfang;
+        for (std::size_t i = 0; i < p.takte.size(); ++i) {
+            if (p.takte[i].t > t + kGleichzeitig) { break; }
+            ts = p.takte[i].t;
+            z = &p.zustaende[i];
+        }
+        w.gier.setzen(ts, z->gier);
+        w.gier.zielAb(ts, z->wunschGier);
+    }
+
+    // Den laufenden Plan zur Zeit t anhalten; w.ort und w.lauf sind danach
+    // der Ort und der Zustand jetzt. Die Rueckgabe ist ohne Bedeutung.
+    static bool wegAnhalten(Wesen& w, double tBefehl) {
+        if (!w.plan) {
+            return false;
+        }
+        // rc601 (bewegung, Durchsicht 2): im Denkbild des Befehls, wie scene.cpp.
+        const double t = navDenkbildAb(tBefehl);
+        w.schnitt = t;   // rc601 (bewegung, teil 3)
+        planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2)
+        const std::shared_ptr<const LaufPlan> plan = w.plan;
+        w.plan.reset();
+        if (t <= plan->abMs + kGleichzeitig) {
+            w.lauf = plan->anfang;   // im selben Bild: noch kein Denkbild
+        } else {
+            w.lauf = zustandBei(*plan, t);
+            w.lauf.ort = ortBei(*plan, t);
+            w.gierAusPlan = true;
+        }
+        for (int a = 0; a < 3; ++a) { w.ort[a] = w.lauf.ort[static_cast<std::size_t>(a)]; }
+        if (w.zielGesetzt && plan->ankunftMs >= 0.0 && t >= plan->ankunftMs - kGleichzeitig) {
+            angekommen(w);
+        }
+        w.wegLaeuft = false;
+        return false;
+    }
+
+    // Ab w.ort zur Zeit t planen (STEER::Activate: mMaxSpeed aus Gangart und
+    // Tempo, g_navigator.cpp:3983-3997). Tempo 0: die Figur steht, das Ziel
+    // bleibt. Schon im Radius: im ersten Denkbild angekommen.
+    // rc601 (bewegung, teil 3): einen Plan fuer den gemeinsamen Takt merken.
+    void abschnittMerken(Wesen& w, double ab, double grenze, const LaufZustand& z, const LaufWerte& werte, bool sprung,
+                         const std::shared_ptr<const LaufPlan>& allein, std::uint64_t schluessel) const {
+        if (w.koerperNr < 0) {
+            w.koerperNr = static_cast<int>(aus_.laufFiguren.size());
+            aus_.laufFiguren.emplace_back();
+            aus_.laufFigurNamen.push_back(w.name);
+        }
+        if (w.abschnitt >= 0) {
+            NavAbschnitt& vor = aus_.laufAbschnitte[static_cast<std::size_t>(w.abschnitt)];
+            vor.schnittMs = std::min(vor.schnittMs, std::max(w.schnitt, ab));
+        }
+        NavAbschnitt a;
+        a.figur = w.koerperNr;
+        a.abMs = ab;
+        a.grenzeMs = grenze;
+        a.start = z;
+        a.werte = werte;
+        a.sprung = sprung;
+        a.allein = allein;
+        w.abschnitt = static_cast<int>(aus_.laufAbschnitte.size());
+        w.schnitt = 1.0e300;
+        aus_.laufAbschnitte.push_back(std::move(a));
+        aus_.laufSchluessel.push_back(schluessel);
+    }
+    // Am Ende: die Kaesten, die Zeiten und Orte jeder Figur.
+    void koerperAbschliessen() {
+        for (const auto& wp : wesen_) {
+            Wesen& w = *wp;
+            if (w.koerperNr < 0) { continue; }
+            if (w.abschnitt >= 0 && w.schnitt < 1.0e299) {
+                NavAbschnitt& vor = aus_.laufAbschnitte[static_cast<std::size_t>(w.abschnitt)];
+                vor.schnittMs = std::min(vor.schnittMs, std::max(w.schnitt, vor.abMs));
+            }
+            NavFigurKoerper& f = aus_.laufFiguren[static_cast<std::size_t>(w.koerperNr)];
+            f.reihe = w.reihe;
+            f.halbBreite = welt_.halbBreite ? welt_.halbBreite(w.name) : 16.0F;
+            f.hoeheOben = welt_.hoeheOben ? welt_.hoeheOben(w.name) : 40.0F;
+            const auto it = aus_.erscheint.find(w.name);
+            f.daAbMs = it != aus_.erscheint.end() ? it->second : -1.0e300;
+            f.daBisMs = w.totMs;
+            f.orte = w.orteLog;
+            // Vor dem ersten Plan steht sie, wo dieser beginnt.
+            for (const NavAbschnitt& a : aus_.laufAbschnitte) {
+                if (a.figur == w.koerperNr) {
+                    f.orte.insert(f.orte.begin(), {-1.0e299, a.start.ort});
+                    break;
+                }
+            }
+        }
+        // Figuren ohne Plan stehen den anderen auch im Weg: ihr Ort.
+        for (const auto& wp : wesen_) {
+            Wesen& w = *wp;
+            if (w.koerperNr >= 0 || !w.istClient || !w.ortBekannt || !w.gibt) { continue; }
+            NavFigurKoerper f;
+            f.reihe = w.reihe;
+            f.halbBreite = welt_.halbBreite ? welt_.halbBreite(w.name) : 16.0F;
+            f.hoeheOben = welt_.hoeheOben ? welt_.hoeheOben(w.name) : 40.0F;
+            const auto it = aus_.erscheint.find(w.name);
+            f.daAbMs = it != aus_.erscheint.end() ? it->second : -1.0e300;
+            f.daBisMs = w.totMs;
+            f.orte = w.orteLog;
+            f.orte.insert(f.orte.begin(), {-1.0e299, NavVec{w.ort[0], w.ort[1], w.ort[2]}});
+            w.koerperNr = static_cast<int>(aus_.laufFiguren.size());
+            aus_.laufFiguren.push_back(std::move(f));
+            aus_.laufFigurNamen.push_back(w.name);
+        }
+    }
+    // rc601 (bewegung, teil 3): Fallen/Vorlauf dieser Figur (AblaufWelt::vorlauf).
+    int vorlaufArt(const Wesen& w) const {
+        if (welt_.vorlauf) { return welt_.vorlauf(w.name); }
+        return (w.istClient && !w.echterSpieler) ? 1 : -1;
+    }
+    // Wie scene.cpp beim ersten Plan: der Vorlauf beginnt bei NPC_Begin.
+    void laufBereiten(Wesen& w) const {
+        if (w.laufBereit) { return; }
+        w.laufBereit = true;
+        const int art = vorlaufArt(w);
+        if (art < 0) { return; }
+        const auto it = aus_.erscheint.find(w.name);
+        w.lauf.gesetztMs = it != aus_.erscheint.end() ? it->second : kNavKartenSpawnMs;
+        w.lauf.gesetztSpawn = true;
+        w.lauf.denkNullMs = w.lauf.gesetztMs + 150.0;   // rc601 integ: erstes NPC_Think
+        w.lauf.gesetztImFesten = art == 1;
+    }
+    void wegPlanen(Wesen& w, double tBefehl, bool fahrt) const {
+        // rc601 (bewegung, Durchsicht 2): der Plan beginnt im Denkbild des
+        // Befehls, wie scene.cpp.
+        const double t = navDenkbildAb(tBefehl);
+        (void)fahrt;
+        w.wegLaeuft = false;
+        if (!w.ortBekannt) {
+            // Ohne Ort laesst sich keine Strecke rechnen: wie bisher sofort da.
+            if (w.zielGesetzt) {
+                for (int a = 0; a < 3; ++a) { w.ort[a] = w.zielOrt[a]; }
+                w.ortBekannt = true;
+                w.zielGesetzt = false;
+            }
+            return;
+        }
+        laufBereiten(w);   // rc601 (bewegung, teil 3)
+        LaufZustand z = w.lauf;
+        const NavVec von{w.ort[0], w.ort[1], w.ort[2]};
+        // G_SetOrigin: Pfad weg, Tempo bleibt. rc601 (bewegung, teil 3): eine
+        // andere Hoehe allein ist kein Sprung - die kommt aus dem Fallen im
+        // Plan (ein SET_ORIGIN traegt gesetztMs).
+        if (z.ort[0] != von[0] || z.ort[1] != von[1] || (z.ort[2] != von[2] && z.hatVorlauf())) { z.springen(von); }
+        if (!w.gierAusPlan) {
+            planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2)
+            z.gier = w.gier.bei(t);
+            z.wunschGier = z.gier;
+        }
+        w.gierAusPlan = false;
+        const bool bewegtSich = z.tempoVek[0] != 0.0F || z.tempoVek[1] != 0.0F || z.tempoVek[2] != 0.0F;
+        if (!w.zielGesetzt && !bewegtSich) {
+            w.lauf = z;
+            return;
+        }
+        LaufWerte werte;
+        werte.zielGesetzt = w.zielGesetzt;
+        for (int a = 0; a < 3; ++a) { werte.ziel[static_cast<std::size_t>(a)] = w.zielOrt[a]; }
+        werte.zielRadius = static_cast<float>(w.zielRadius);
+        werte.maxTempo = tempo(w, gehtLangsam(w));
+        werte.gehTempo = tempo(w, true);
+        werte.drehRate = w.gier.rate;
+        werte.halbBreite = welt_.halbBreite ? welt_.halbBreite(w.name) : 16.0F;
+        werte.hoeheOben = welt_.hoeheOben ? welt_.hoeheOben(w.name) : 40.0F;
+        werte.stufe = welt_.stufe ? welt_.stufe(w.name) : 18.0F;
+        werte.gangSchalter = w.rennend ? 2 : (w.gehend ? 1 : 0);
+        werte.ohneKoerper = w.verhaltenZustand == "BS_NOCLIP";   // NPC_BSNoClip + PM_NoclipMove
+        if (kino(w) && w.watchAn) {
+            const bool selbst = w.watchSelbst;
+            const NavVec ziel{w.watchOrt[0], w.watchOrt[1], w.watchOrt[2]};
+            werte.fremdGier = [selbst, ziel](double, const NavVec& ich, float& g) {
+                const float dx = ziel[0] - ich[0];
+                const float dy = ziel[1] - ich[1];
+                g = (selbst || (dx == 0.0F && dy == 0.0F)) ? 0.0F : std::atan2(dy, dx) * 180.0F / 3.14159265F;
+                return true;
+            };
+        }
+        if (!nav_) {
+            nav_ = welt_.nav ? welt_.nav
+                             : navWeltAusEntities(welt_.karte != nullptr ? welt_.karte->entities : std::vector<MapEntity>{});
+        }
+        const double grenze = std::min(welt_.grenzeMs, t + 120000.0);
+        // rc601 (bewegung, teil 3): Schwerkraft und Vorlauf wie scene.cpp.
+        werte.fallen = vorlaufArt(w) != -2;
+        werte.schwerkraft = 800.0F;
+        if (welt_.karte != nullptr && !welt_.karte->entities.empty()) {
+            if (const std::string* g = welt_.karte->entities.front().find("gravity")) {
+                werte.schwerkraft = static_cast<float>(std::atof(g->c_str()));
+            }
+        }
+        if (w.schwerkraft >= 0.0F) { werte.schwerkraft = w.schwerkraft; }
+        // rc601 integ: Takt des Verhaltens (OpenJK 100 ms, Movie Duels 50).
+        werte.verhaltenTaktMs = welt_.verhaltenTakt ? welt_.verhaltenTakt(w.name, w.waffe)
+                                                    : (navMovieDuelsRegeln() ? 50 : 100);
+        double planAb = t;
+        if (z.hatVorlauf() && z.gesetztMs < t - kGleichzeitig && !werte.ohneKoerper) {
+            planAb = z.gesetztMs;
+            werte.zielAbMs = t;
+            werte.spawnVorlauf = z.gesetztSpawn;
+            werte.spawnImFesten = z.gesetztImFesten;
+        }
+        const std::shared_ptr<const LaufPlan> allein = std::make_shared<const LaufPlan>(planeLauf(*nav_, z, werte, planAb, grenze));
+        w.plan = allein;
+        // rc601 (bewegung, teil 3): der Plan aus dem gemeinsamen Takt aller
+        // Figuren (navKoerperLauf), wenn es fuer genau diese Eingaben einen gibt.
+        const std::uint64_t koerperSchluessel = navKoerperSchluessel(w.name, navPlanSchluessel(*nav_, z, werte, planAb, grenze));
+        if (welt_.koerperPlaene) {
+            const auto it = welt_.koerperPlaene->find(koerperSchluessel);
+            if (it != welt_.koerperPlaene->end()) { w.plan = it->second; }
+        }
+        abschnittMerken(w, planAb, grenze, z, werte, z.ort != w.lauf.ort || planAb < t - kGleichzeitig || w.abschnitt < 0, allein,
+                        koerperSchluessel);
+        w.lauf = w.plan->takte.empty() ? z : w.plan->zustaende.back();
+        if (w.zielGesetzt && w.plan->ankunftMs >= 0.0) {
+            w.wegLaeuft = true;
+            w.wegBis = w.plan->ankunftMs;
+        }
+        // STEER setzt desiredYaw auf die Laufrichtung - ausser ein
+        // Watchtarget in BS_CINEMATIC ueberschreibt es. rc601 (bewegung,
+        // Durchsicht 2): die Gier rechnet jetzt der Plan je Denkbild, w.gier
+        // holt sie bei Bedarf (planGierSync).
+        planGierSync(w, t);
+    }
+
+    // --- rc601 (bewegung): Verhalten und Drehen ------------------------------
+    static bool kino(const Wesen& w) { return w.verhaltenZustand == "BS_CINEMATIC"; }
+
+    // Mit walkSpeed? SCF_RUNNING geht vor; sonst SCF_WALKING - oder ohne
+    // Schalter das Verhalten: NPC_BSDefault setzt BUTTON_WALKING vor
+    // NPC_MoveToGoal (AI_Default.cpp:1066-1081), NPC_BSCinematic nicht
+    // (STEER::Activate, g_navigator.cpp:3990-3997).
+    static bool gehtLangsam(const Wesen& w) {
+        if (w.rennend) {
+            return false;
+        }
+        return kino(w) ? w.gehend : true;
+    }
+
+    static float laufGier(const Wesen& w) {
+        const NavVec von = w.plan ? w.plan->anfang.ort : NavVec{w.ort[0], w.ort[1], w.ort[2]};
+        return std::atan2(w.zielOrt[1] - von[1], w.zielOrt[0] - von[0]) * 180.0F / 3.14159265F;
+    }
+
+    static bool laeuftBei(const Wesen& w, double t) { return w.wegLaeuft && t < w.wegBis; }
+
+    static float watchGier(const Wesen& w, double t) {
+        if (w.watchSelbst) {
+            return 0.0F;   // auf sich selbst: vectoangles eines Nullvektors
+        }
+        float ich[3];
+        ortJetzt(w, t, ich);
+        const float dx = w.watchOrt[0] - ich[0];
+        const float dy = w.watchOrt[1] - ich[1];
+        return (dx == 0.0F && dy == 0.0F) ? 0.0F : std::atan2(dy, dx) * 180.0F / 3.14159265F;
+    }
+
+    // Was desiredYaw im naechsten Denkbild wirklich ist.
+    static float wirktGier(const Wesen& w, double t, float sonst) {
+        if (kino(w) && w.watchAn) {
+            return watchGier(w, t);
+        }
+        if (laeuftBei(w, t)) {
+            return laufGier(w);
+        }
+        return sonst;
+    }
+
+    // Die Aufgabe des Ziels nach einer neuen Planung stellen - DIESELBE
+    // Aufgabe, kein setzeFach (das wuerde sie erledigen). Hat inzwischen ein
+    // move oder PLAY_ROFF das Fach uebernommen (TID_MOVE_NAV ist geteilt),
+    // bleibt dessen Zeit.
+    void wegAufgabeStellen(Wesen& w, double t) {
+        Aufgabe& a = w.fach[static_cast<std::size_t>(kWeg)];
+        if (w.wegId < 0 || a.id != w.wegId) {
+            return;
+        }
+        if (w.wegLaeuft) {
+            a.fertig = w.wegBis;
+            a.nie = false;
+        } else if (w.zielGesetzt) {
+            a.fertig = 0.0;
+            a.nie = true;   // Tempo 0: haelt, bis sich etwas aendert
+        } else {
+            a.fertig = t;   // gleich angekommen: im naechsten Bild fertig
+            a.nie = false;
+            w.wegId = -1;
+        }
+    }
+
+    // ps.speed setzen (SET_WALKSPEED/SET_RUNSPEED): mit Ziel den Plan zur
+    // Zeit t schneiden, setzen, neu planen; sonst gilt es ab dem Zustand,
+    // in dem die Figur zur Ruhe kommt (ohne Ziel liest Pmove ps.speed nicht).
+    void psTempoSetzen(Wesen& w, double t, int wert) {
+        if (!w.zielGesetzt) {
+            w.lauf.tempo = wert;
+            return;
+        }
+        const bool fahrt = wegAnhalten(w, t);
+        w.lauf.tempo = wert;
+        if (!w.zielGesetzt) {
+            return;   // schon angekommen
+        }
+        wegPlanen(w, t, fahrt);
+        wegAufgabeStellen(w, t);
+    }
+
+    // Gangart, Tempo oder Ort haben sich geaendert: den Rest neu planen.
+    void wegNeuPlanen(Wesen& w, double t) {
+        if (!w.zielGesetzt) {
+            return;
+        }
+        const bool fahrt = wegAnhalten(w, t);
+        if (!w.zielGesetzt) {
+            return;   // schon angekommen
+        }
+        wegPlanen(w, t, fahrt);
+        wegAufgabeStellen(w, t);
     }
 
     // --- Laden eines Blocks auf eine Entity -------------------------------
@@ -916,45 +1381,20 @@ private:
             return eigen;
         }
         if (welt_.tempo) {
+            // rc601 (bewegung): 0 ist ein gueltiges Tempo aus der .npc
+            // (NPC_ParseParms verwirft nur n < 0) - nur negativ heisst
+            // unbekannt.
             const float t = welt_.tempo(w.name, gehen);
-            if (t > 0.0F) {
+            if (t >= 0.0F) {
                 return t;
             }
         }
         return gehen ? 90.0F : 300.0F;   // NPC_stats.cpp
     }
 
-    // Der Radius einer waypoint_navgoal (Schluessel "radius", Vorgabe 12,
-    // SP_waypoint_navgoal, g_nav.cpp:262).
-    double markenRadius(const std::string& name) const {
-        if (welt_.karte != nullptr) {
-            for (const MapEntity& e : welt_.karte->entities) {
-                if (gleich(e.targetname, name)) {
-                    const std::string r = wertVon(e, "radius");
-                    if (!r.empty() && zahl(r) > 0.0) {
-                        return zahl(r);
-                    }
-                    break;
-                }
-            }
-        }
-        return 12.0;
-    }
-
-    // Eine Marke im Sinne von TAG_Add: ref_tag (g_ref.cpp) und
-    // waypoint_navgoal (g_nav.cpp, RTF_NAVGOAL). Ohne Gross/klein.
-    bool istMarke(const std::string& name) const {
-        if (welt_.karte == nullptr) {
-            return true;   // ohne Karte: wie bisher als Weg rechnen
-        }
-        for (const MapEntity& e : welt_.karte->entities) {
-            if (gleich(e.targetname, name) &&
-                (e.classname == "ref_tag" || e.classname.rfind("waypoint_navgoal", 0) == 0)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    // rc601 (bewegung): markenRadius und istMarke sind in navZielAufloesen
+    // (scene.cpp) aufgegangen - dieselbe Aufloesung fuer Szene und Ablauf,
+    // mit ref_tag 16 und ohne Gross/klein (TAG_Find).
 
     bool ortVon(const std::string& name, float out[3]) const {
         if (welt_.karte == nullptr) {
@@ -964,7 +1404,8 @@ private:
             // Der Spieler: wo er gerade steht, sonst am Startpunkt.
             const auto it = wesenNach_.find("player");
             if (it != wesenNach_.end() && wesen_[static_cast<std::size_t>(it->second)]->ortBekannt) {
-                for (int a = 0; a < 3; ++a) { out[a] = wesen_[static_cast<std::size_t>(it->second)]->ort[a]; }
+                // rc601 (bewegung): auch mitten auf einem Weg.
+                ortJetzt(*wesen_[static_cast<std::size_t>(it->second)], jetzt_, out);
                 return true;
             }
             for (const MapEntity& e : welt_.karte->entities) {
@@ -1036,6 +1477,15 @@ private:
                     fertig = false;
                 }
             }
+        } else if ((c == "move" || c == "rotate") && w.istClient) {
+            // rc601 (bewegung): Lerp2Pos/Lerp2Angles lehnen jeden client ab
+            // ("NOT a mover", Q3_Interface.cpp:8571, 8686) und kehren VOR
+            // Q3_TaskIDSet zurueck; CTaskManager::Move/Rotate melden selbst
+            // nichts (TaskManager.cpp:1206, 1425). Die Aufgabe wird nie fertig
+            // - ein dowait darauf haengt im Spiel. Die Faecher bleiben, wie sie
+            // waren.
+            hinweis(w.name + ": " + c + " auf einer Figur - tut im Spiel nichts, die Aufgabe wird nie fertig");
+            fertig = false;
         } else if (c == "move" || c == "rotate") {
             // Lerp2Pos / Lerp2Angles: fertig nach der Dauer.
             const double d = n.args.empty() ? 0.0 : readMs(n.args.back().kind == Arg::Kind::Expr
@@ -1079,6 +1529,7 @@ private:
                 const int zi = wesen(ziel, false);
                 if (zi >= 0) {
                     Wesen& z = *wesen_[static_cast<std::size_t>(zi)];
+                    z.totMs = std::min(z.totMs, jetzt_);   // rc601 (bewegung, teil 3): kein CONTENTS_BODY mehr
                     if (c == "remove") {
                         z.gibt = false;
                         z.stapel.clear();
@@ -1114,46 +1565,63 @@ private:
             return true;
         }
         if (k == "set_navgoal") {
-            if (!w.figur || wert.empty() || gleich(wert, "NULL")) {
+            if (!w.figur || w.echterSpieler) {
+                return true;   // rc601 (bewegung): "tried to set a navgoal on a non-NPC"
+            }
+            // rc601 (bewegung): Q3_SetNavGoal wie in scene.cpp
+            // (Q3_Interface.cpp:2106 ff.).
+            //
+            //   "null"/"NULL": goalEntity = NULL und Q3_TaskIDComplete(
+            //       TID_MOVE_NAV) - die Figur haelt an, und was in dem Fach
+            //       liegt, ist erledigt. Bis rc600 uebergangen: dowait lief
+            //       bis zur alten Ankunft weiter.
+            //   unbekannt: "can't find NAVGOAL", das ALTE Ziel bleibt.
+            //   TAG (ref_tag, waypoint_navgoal): Q3_TaskIDSet(TID_MOVE_NAV),
+            //       die Aufgabe haelt bis zur Ankunft.
+            //   ein anderes Entity (G_Find): goalEntity, aber Q3_SetNavGoal
+            //       gibt qfalse - dowait wartet NICHT auf die Ankunft.
+            //
+            // Die Strecke gilt ab dem AKTUELLEN Ort (bis rc600 ab dem vorigen
+            // Ziel, auch wenn die Figur dort nie ankam).
+            if (gleich(wert, "NULL")) {
+                (void)wegAnhalten(w, t);
+                w.zielGesetzt = false;
+                wegPlanen(w, t, false);   // rc601 (bewegung, Wege): sie rollt aus
+                if (w.fach[static_cast<std::size_t>(kWeg)].id >= 0) {
+                    erledige(w.fach[static_cast<std::size_t>(kWeg)].id);
+                    leereFach(w, kWeg);
+                }
+                w.wegId = -1;
                 return true;
             }
-            float ziel[3];
-            if (!ortVon(wert, ziel)) {
+            if (welt_.karte == nullptr) {
                 hinweis("Wegpunkt \"" + wert + "\" fehlt in der Karte");
                 return true;
             }
-            // Nur eine MARKE (ref_tag, waypoint_navgoal - TAG_GetOrigin2)
-            // haelt die Aufgabe offen. Ein gewoehnliches Entity als Ziel
-            // (etwa "player") setzt goalEntity und gibt qfalse zurueck
-            // (Q3_SetNavGoal, Q3_Interface.cpp:2142 ff.): die Figur geht
-            // los, aber dowait wartet NICHT auf ihr Ankommen.
-            if (!istMarke(wert)) {
-                for (int a = 0; a < 3; ++a) { w.ort[a] = ziel[a]; }
-                w.ortBekannt = true;
+            const NavZiel z = navZielAufloesen(*welt_.karte, wert);
+            if (!z.gefunden) {
+                hinweis("Wegpunkt \"" + wert + "\" fehlt in der Karte");
                 return true;
             }
-            const bool geh = w.gehend && !w.rennend;
-            const float v = tempo(w, geh);
-            if (!(v > 0.0F)) {
-                // Tempo 0: die Figur bleibt stehen, die Aufgabe offen.
-                setzeFach(w, kWeg, id, 0.0, true);
-                return false;
+            const bool fahrt = wegAnhalten(w, t);
+            w.zielGesetzt = true;
+            w.zielMarke = z.marke;
+            for (int a = 0; a < 3; ++a) { w.zielOrt[a] = z.ort[a]; }
+            w.zielRadius = z.radius;
+            w.lauf.neuesZiel();   // rc601 (bewegung, Wege): NPC_SetMoveGoal, tempGoal->waypoint = NONE
+            wegPlanen(w, t, fahrt);
+            if (!z.marke) {
+                w.wegId = -1;
+                return true;
             }
-            double d = 0.0;
-            if (w.ortBekannt) {
-                float s = 0.0F;
-                for (int a = 0; a < 3; ++a) {
-                    const float q = ziel[a] - w.ort[a];
-                    s += q * q;
-                }
-                const double weg = std::sqrt(static_cast<double>(s));
-                const double ux = (weg > 0.0) ? (ziel[0] - w.ort[0]) / weg : 1.0;
-                const double uy = (weg > 0.0) ? (ziel[1] - w.ort[1]) / weg : 0.0;
-                d = gehDauerMs(weg, v, ux, uy, markenRadius(wert));
+            if (w.wegLaeuft) {
+                setzeFach(w, kWeg, id, w.wegBis, false);
+            } else if (w.zielGesetzt) {
+                setzeFach(w, kWeg, id, 0.0, true);   // Tempo 0: steht, die Aufgabe bleibt offen
+            } else {
+                setzeFach(w, kWeg, id, t, false);    // schon da: im naechsten Bild fertig
             }
-            for (int a = 0; a < 3; ++a) { w.ort[a] = ziel[a]; }
-            w.ortBekannt = true;
-            setzeFach(w, kWeg, id, t + d, false);
+            w.wegId = w.zielGesetzt ? id : -1;
             return false;
         }
         if (k == "set_anim_both" || k == "set_anim_upper" || k == "set_anim_lower") {
@@ -1196,11 +1664,29 @@ private:
             }
             return false;
         }
+        if (k == "set_gravity") {
+            // rc601 (bewegung, teil 3): Q3_SetGravity (Q3_Interface.cpp:3788-3807 MD)
+            w.schwerkraft = static_cast<float>(std::atof(wert.c_str()));
+        }
         if (k == "set_origin" || k == "set_teleport_dest") {
+            // rc601 (bewegung): G_SetOrigin laesst goalEntity und die
+            // Geschwindigkeit stehen (g_utils.cpp:1585) - ein laufender Weg
+            // geht vom neuen Ort aus weiter, ohne neuen Anlauf.
+            // rc601 (bewegung, Wege): auch ohne Ziel, wenn sie noch ausrollt.
+            const bool hatte = static_cast<bool>(w.plan);
+            const bool fahrt = hatte && wegAnhalten(w, t);
             float o[3];
+            // rc601 (bewegung, teil 3): G_SetOrigin am Ende dieses Denkbilds -
+            // der naechste Plan beginnt hier (wie scene.cpp).
+            laufBereiten(w);
+            if (vorlaufArt(w) != -2 && !w.echterSpieler) {
+                w.lauf.gesetztMs = navDenkbildAb(t);
+                w.lauf.gesetztSpawn = false;
+            }
             if (leseVek(wert, o)) {
                 for (int a = 0; a < 3; ++a) { w.ort[a] = o[a]; }
                 w.ortBekannt = true;
+                w.orteLog.push_back({navDenkbildAb(t), NavVec{o[0], o[1], o[2]}});   // rc601 (bewegung, teil 3)
             } else if (n.args[1].kind == Arg::Kind::Expr) {
                 // $tag( "name", ORIGIN )$
                 const std::string& x = n.args[1].text;
@@ -1211,20 +1697,241 @@ private:
                     w.ortBekannt = true;
                 }
             }
-            return true;
-        }
-        if (k == "set_copy_origin") {
-            const int zi = wesen(wert, false);
-            if (zi >= 0 && wesen_[static_cast<std::size_t>(zi)]->ortBekannt) {
-                for (int a = 0; a < 3; ++a) { w.ort[a] = wesen_[static_cast<std::size_t>(zi)]->ort[a]; }
-                w.ortBekannt = true;
+            if (w.zielGesetzt || hatte) {
+                wegPlanen(w, t, fahrt);
+                wegAufgabeStellen(w, t);
             }
             return true;
         }
-        if (k == "set_walking") { w.gehend = gleich(wert, "true"); if (w.gehend) { w.rennend = false; } return true; }
-        if (k == "set_running") { w.rennend = gleich(wert, "true"); if (w.rennend) { w.gehend = false; } return true; }
-        if (k == "set_walkspeed") { w.gehTempo = static_cast<float>(zahl(wert)); return true; }
-        if (k == "set_runspeed") { w.laufTempo = static_cast<float>(zahl(wert)); return true; }
+        if (k == "set_copy_origin") {
+            // Q3_SetCopyOrigin -> Q3_SetOrigin (Q3_Interface.cpp:1413, 1309):
+            // hier wird die Geschwindigkeit geloescht - ein Weg beginnt neu.
+            if (w.plan) {
+                (void)wegAnhalten(w, t);
+            }
+            w.lauf.tempoVek = {0.0F, 0.0F, 0.0F};   // rc601 (bewegung, Wege): Q3_SetOrigin loescht ps.velocity
+            const int zi = wesen(wert, false);
+            if (zi >= 0 && wesen_[static_cast<std::size_t>(zi)]->ortBekannt) {
+                ortJetzt(*wesen_[static_cast<std::size_t>(zi)], t, w.ort);
+                w.ortBekannt = true;
+            }
+            if (w.zielGesetzt) {
+                wegPlanen(w, t, false);
+                wegAufgabeStellen(w, t);
+            }
+            return true;
+        }
+        // rc601 (bewegung): SCF_WALKING und SCF_RUNNING sind zwei eigene
+        // Schalter (Q3_SetWalking/Q3_SetRunning, Q3_Interface.cpp:5183,
+        // 5216) - bis rc600 loeschte hier der eine den anderen. RUNNING geht
+        // vor (STEER::Activate). Das Tempo ist atoi (Q3_Interface.cpp:9070).
+        // Jede Aenderung gilt fuer einen laufenden Weg sofort.
+        // --- rc601 (bewegung): Verhalten, Watchtarget, Drehen -----------------
+        //
+        // Wie in scene.cpp: SET_BEHAVIOR_STATE (Q3_SetBState) nur fuer NPCs;
+        // die Gangart haengt daran. Ein Weg geht im naechsten Denkbild anders
+        // weiter.
+        if (k == "set_behavior_state") {
+            if (!w.figur || w.echterSpieler) {
+                return true;
+            }
+            planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2)
+            std::string bs = wert;
+            for (char& ch : bs) { ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch))); }
+            const bool vorher = kino(w);
+            w.verhaltenZustand = bs;
+            if (!vorher && kino(w) && w.watchAn) {
+                w.gier.zielAb(t, watchGier(w, t));
+            }
+            wegNeuPlanen(w, t);
+            return true;
+        }
+        // Q3_SetWatchTarget (Q3_Interface.cpp:3264-3296): NULL/NONE loescht
+        // den Zeiger (desiredYaw bleibt), sonst G_Find - findet es nichts,
+        // bleibt das alte Ziel; der eigene Name findet sich selbst.
+        if (k == "set_watchtarget") {
+            if (!w.figur || w.echterSpieler) {
+                return true;
+            }
+            planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2)
+            if (gleich(wert, "NULL") || gleich(wert, "NONE")) {
+                const bool war = kino(w) && w.watchAn;
+                w.watchAn = false;
+                w.watchSelbst = false;
+                if (war && laeuftBei(w, t)) {
+                    w.gier.zielAb(t, laufGier(w));
+                }
+                return true;
+            }
+            float o[3];
+            if (gleich(wert, w.name)) {
+                w.watchAn = true;
+                w.watchSelbst = true;
+            } else if (welt_.karte != nullptr && engineFindet(*welt_.karte, wert, o)) {
+                w.watchAn = true;
+                w.watchSelbst = false;
+                for (int a = 0; a < 3; ++a) { w.watchOrt[a] = o[a]; }
+            } else {
+                return true;   // "can't find WatchTarget": das alte bleibt
+            }
+            if (kino(w)) {
+                w.gier.zielAb(t, watchGier(w, t));
+            }
+            wegNeuPlanen(w, t);   // rc601 (bewegung, Wege): wie scene.cpp
+            return true;
+        }
+        // Q3_SetYawSpeed: atof, ungeprueft (Q3_Interface.cpp:9085, 3669).
+        if (k == "set_yawspeed" && welt_.drehrateNpc && w.figur && !w.echterSpieler) {
+            // rc601 (bewegung, Durchsicht 2): stats.yawSpeed aendert sich; ob
+            // es wirkt, sagt die Waffe in der Hand (npcDrehrate).
+            planGierSync(w, t);
+            w.yawRate = turnRateFor(static_cast<float>(std::atof(wert.c_str())));
+            w.gier.rateAb(t, welt_.drehrateNpc(w.name, w.waffe, w.yawRate));
+            wegNeuPlanen(w, t);
+            return true;
+        }
+        if (k == "set_weapon" && welt_.drehrateNpc && w.figur && !w.echterSpieler) {
+            // rc601 (bewegung, Durchsicht 2): NPC_UpdateAngles liest
+            // NPC->s.weapon je Denkbild (NPC_utils.cpp:274-290 MD). Der Befehl
+            // bleibt sonst ohne Wirkung auf den Ablauf.
+            std::string wa = wert;
+            for (char& ch : wa) { ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch))); }
+            if (wa == "DROP") { wa = "drop"; }
+            if (wa != "drop" && wa.compare(0, 3, "WP_") != 0) { return true; }
+            w.waffe = wa;
+            const float y = w.yawRate > 0.0F ? w.yawRate : w.gier.rate;
+            const float neu = welt_.drehrateNpc(w.name, w.waffe, y);
+            if (neu != w.gier.rate) {   // sonst bleibt der Plan derselbe
+                planGierSync(w, t);
+                w.gier.rateAb(t, neu);
+                wegNeuPlanen(w, t);
+            }
+            return true;
+        }
+        if (k == "set_yawspeed") {
+            if (w.figur && !w.echterSpieler && !(welt_.drehrateFest && welt_.drehrateFest(w.name))) {
+                planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2)
+                w.gier.rateAb(t, turnRateFor(static_cast<float>(std::atof(wert.c_str()))));
+                wegNeuPlanen(w, t);   // rc601 (bewegung, Wege): wie scene.cpp
+            }
+            return true;
+        }
+        // SET_ANGLES: SetClientViewAngle (ein Sprung) und Q3_SetDYaw.
+        if (k == "set_angles") {
+            float a[3];
+            if (w.figur && !w.echterSpieler && leseVek(wert, a)) {
+                w.gier.setzen(t, a[1]);
+                const float wirkt = wirktGier(w, t, a[1]);
+                if (wirkt != a[1]) {
+                    w.gier.zielAb(t, wirkt);
+                }
+                // rc601 (bewegung, Wege): wie scene.cpp - mit der neuen Gier
+                // weiter (die Gier der Rechnung springt mit).
+                if (w.zielGesetzt && w.plan) {
+                    (void)wegAnhalten(w, t);
+                    w.gierAusPlan = false;
+                    if (w.zielGesetzt) {
+                        wegPlanen(w, t, false);
+                        wegAufgabeStellen(w, t);
+                    }
+                }
+            }
+            return true;
+        }
+        // SET_DYAW, SET_VIEWTARGET, SET_DPITCH halten TID_ANGLE_FACE, bis
+        // NPC_UpdateAngles den Winkel "exact" meldet (Set, Q3_Interface.cpp:
+        // 9023-9043; NPC_utils.cpp:388). Auf etwas anderem als einem NPC
+        // meldet das niemand - die Aufgabe wird nie fertig.
+        if (k == "set_dyaw" || k == "set_viewtarget" || k == "set_dpitch") {
+            if (!w.figur || w.echterSpieler) {
+                setzeFach(w, kBlick, id, 0.0, true);
+                return false;
+            }
+            planGierSync(w, t);   // rc601 (bewegung, Durchsicht 2): desiredYaw jetzt
+            float wunsch = w.gier.ziel;
+            float nick = 0.0F;
+            if (k == "set_dyaw") {
+                wunsch = static_cast<float>(std::atof(wert.c_str()));
+            } else if (k == "set_dpitch") {
+                nick = static_cast<float>(std::atof(wert.c_str()));
+            } else {
+                // Q3_SetViewTarget: vom Auge (viewheight 36) zum Ziel - einer
+                // Figur ins Auge, sonst zum Ursprung. Ohne Ziel bleibt desiredYaw.
+                float o[3];
+                bool zielFigur = false;
+                if (welt_.karte != nullptr && engineFindet(*welt_.karte, wert, o, &zielFigur)) {
+                    float ich[3];
+                    ortJetzt(w, t, ich);
+                    const float dx = o[0] - ich[0];
+                    const float dy = o[1] - ich[1];
+                    const float dz = (o[2] + (zielFigur ? 36.0F : 0.0F)) - (ich[2] + 36.0F);
+                    wunsch = std::atan2(dy, dx) * 180.0F / 3.14159265F;
+                    nick = -std::atan2(dz, std::sqrt(dx * dx + dy * dy)) * 180.0F / 3.14159265F;
+                }
+            }
+            // rc601 (bewegung, Durchsicht 2): laeuft oder rollt die Figur noch,
+            // gilt das neue desiredYaw im Plan (wie scene.cpp) - STEER
+            // ueberschreibt es, solange das Ziel steht; TID_ANGLE_FACE endet im
+            // ersten Denkbild mit "exact" (planGenauAb), sonst vom letzten
+            // Zustand des Plans aus.
+            if (k != "set_dpitch" && w.plan && !w.plan->takte.empty() && w.plan->takte.back().t > t + kGleichzeitig) {
+                (void)wegAnhalten(w, t);
+                w.lauf.wunschGier = wunsch;
+                const bool rollt = w.lauf.tempoVek[0] != 0.0F || w.lauf.tempoVek[1] != 0.0F || w.lauf.tempoVek[2] != 0.0F;
+                if (w.zielGesetzt || rollt) {
+                    w.gierAusPlan = true;
+                    wegPlanen(w, t, false);
+                    wegAufgabeStellen(w, t);
+                }
+                if (w.plan) {
+                    const LaufPlan& np = *w.plan;
+                    double ende = planGenauAb(np, t);
+                    if (ende < 0.0 && !np.takte.empty()) {
+                        const LaufZustand& zl = np.zustaende.back();
+                        const double h = drehHalteMs(zl.gier, zl.wunschGier, w.gier.rate);
+                        ende = h < 0.0 ? -1.0 : np.takte.back().t + h;
+                    }
+                    if (ende >= 0.0) {
+                        setzeFach(w, kBlick, id, ende, false);
+                    } else {
+                        setzeFach(w, kBlick, id, 0.0, true);
+                    }
+                    return false;
+                }
+                // Ohne neuen Plan steht die Figur: der Regler von hier.
+                w.gier.setzen(t, w.lauf.gier);
+            }
+            const float wirkt = (k == "set_dpitch") ? w.gier.ziel : wirktGier(w, t, wunsch);
+            // rc601 (bewegung, teil 3): die Gier Denkbild fuer Denkbild mit
+            // ANGLE2SHORT (wie scene.cpp), der Nick wie bisher.
+            const double haltGier = (k == "set_dpitch") ? drehHalteMs(0.0F, w.gier.rate)
+                                                        : drehHalteMs(w.gier.bei(t), wirkt, w.gier.rate);
+            const double haltNick = drehHalteMs(std::fabs(winkel180(nick)), w.gier.rate);
+            const double halt = (haltGier < 0.0 || haltNick < 0.0) ? -1.0 : std::max(haltGier, haltNick);
+            if (k != "set_dpitch" && !(kino(w) && w.watchAn) && !laeuftBei(w, t)) {
+                w.gier.zielAb(t, wunsch);
+            }
+            if (halt < 0.0) {
+                setzeFach(w, kBlick, id, 0.0, true);
+            } else {
+                setzeFach(w, kBlick, id, t + halt, false);
+            }
+            return false;
+        }
+        if (k == "set_walking") { w.gehend = gleich(wert, "true"); wegNeuPlanen(w, t); return true; }
+        if (k == "set_running") { w.rennend = gleich(wert, "true"); wegNeuPlanen(w, t); return true; }
+        // ... und beide setzen ps.speed (Q3_Interface.cpp:3621-3657 MD) - das
+        // Tempo in BS_NOCLIP (PM_CmdScale).
+        if (k == "set_walkspeed") {
+            w.gehTempo = static_cast<float>(std::atoi(wert.c_str()));
+            psTempoSetzen(w, t, std::atoi(wert.c_str()));
+            return true;
+        }
+        if (k == "set_runspeed") {
+            w.laufTempo = static_cast<float>(std::atoi(wert.c_str()));
+            psTempoSetzen(w, t, std::atoi(wert.c_str()));
+            return true;
+        }
         if (k == "set_inactive") { w.inaktiv = gleich(wert, "true"); return true; }
         // SET_SPAWNSCRIPT, SET_DEATHSCRIPT, SET_USESCRIPT ...
         if (k.size() > 10 && k.compare(k.size() - 6, 6, "script") == 0 && k.rfind("set_", 0) == 0 &&
@@ -1580,6 +2287,7 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
         w->ent = traeger.empty() ? nullptr : findeKarte(traeger, &sp);
         w->reihe = reiheVon(w->ent);
         w->figur = figur;
+        w->istClient = figur;   // rc601 (bewegung): ein NPC_spawner als Traeger
         w->gibt = true;
         if (w->ent != nullptr && !w->ent->origin.empty()) {
             w->ortBekannt = leseVek(w->ent->origin, w->ort);
@@ -1713,6 +2421,7 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
     }
     aus_.endeMs = (ende >= 0.0) ? ende : t;
     aus_.laufMs = t;
+    koerperAbschliessen();   // rc601 (bewegung, teil 3)
     flachen();
 }
 
@@ -1932,6 +2641,167 @@ Ablauf simuliereAblauf(const Script& start, const std::string& startPfad, const 
     Nachbau n2(welt, b, vorher);
     n2.lauf(start, startPfad);
     return b;
+}
+
+// --- rc601 (bewegung, teil 3): alle Figuren im selben Takt ---------------------
+namespace {
+bool gleichePlaene(const std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>>& a,
+                   const std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>>& b) {
+    const std::size_t na = a ? a->size() : 0U;
+    const std::size_t nb = b ? b->size() : 0U;
+    if (na != nb) { return false; }
+    if (na == 0U) { return true; }
+    for (const auto& [k, p] : *a) {
+        const auto it = b->find(k);
+        if (it == b->end()) { return false; }
+        const LaufPlan& x = *p;
+        const LaufPlan& y = *it->second;
+        if (x.takte.size() != y.takte.size() || x.ankunftMs != y.ankunftMs || x.ruheMs != y.ruheMs) { return false; }
+        for (std::size_t i = 0; i < x.takte.size(); ++i) {
+            if (x.takte[i].t != y.takte[i].t || x.takte[i].ort != y.takte[i].ort) { return false; }
+        }
+    }
+    return true;
+}
+
+// --- rc601 integ: dieselben Eingaben fuer navKoerperLauf -----------------------
+//
+// Gemessen (Probe P4, bewegungtest): die sechste Rechnung des gemeinsamen
+// Takts bekam Bit fuer Bit dieselben Abschnitte wie die fuenfte - und
+// navKoerperLauf ist eine reine Funktion seiner Eingaben (dieselbe NavWelt in
+// allen Durchgaengen). Dann kaemen dieselben Plaene heraus, gleichePlaene
+// waere wahr und die Schleife endete; das Ergebnis ist also ohne diese
+// Rechnung dasselbe (~23 ms von ~155 ms in P4). Verglichen wird Bit fuer Bit
+// (memcmp je Feld: -0.0 ist nicht 0.0, NaN gleich nur bei gleichen Bits),
+// der Pfad im Startzustand nach Inhalt, und ein gesetztes fremdGier
+// (std::function, nicht vergleichbar) gilt immer als verschieden - im Zweifel
+// wird gerechnet. Den Plan ohne die anderen (NavAbschnitt::allein) legt jede
+// Ablauf-Rechnung neu an (anderer Zeiger); er ist planeLauf(nav, start, werte,
+// abMs, grenzeMs) mit genau den hier verglichenen Eingaben und derselben
+// NavWelt (abschnittMerken in Nachbau), also ebenfalls gleich.
+std::atomic<bool> gKoerperAbkuerzung{true};
+
+template <class T>
+bool gleichBits(const T& a, const T& b) {
+    static_assert(std::is_floating_point_v<T> || std::is_same_v<T, NavVec>, "nur float/double/NavVec");
+    return std::memcmp(&a, &b, sizeof(T)) == 0;
+}
+// Der Pfad (NAV::GoTo) haengt als shared_ptr am Zustand; jede Ablauf-Rechnung
+// legt ihn neu an - also den Inhalt vergleichen (lauter 4-Byte-Felder ohne
+// Luecken, static_assert unten).
+bool gleicherPfad(const std::shared_ptr<const std::vector<NavPfadPunkt>>& a,
+                  const std::shared_ptr<const std::vector<NavPfadPunkt>>& b) {
+    if (a == b) { return true; }
+    if (!a || !b || a->size() != b->size()) { return false; }
+    return a->empty() || std::memcmp(a->data(), b->data(), a->size() * sizeof(NavPfadPunkt)) == 0;
+}
+bool gleicherZustand(const LaufZustand& a, const LaufZustand& b) {
+    // Neue Felder in LaufZustand gehoeren hier hinein (static_assert unten).
+    return gleichBits(a.ort, b.ort) && gleichBits(a.tempoVek, b.tempoVek) && a.tempo == b.tempo &&
+           gleichBits(a.gier, b.gier) && gleichBits(a.wunschGier, b.wunschGier) && gleichBits(a.pfadGier, b.pfadGier) &&
+           a.seiteAusweichen == b.seiteAusweichen && a.letzteSeite == b.letzteSeite && a.seiteBis == b.seiteBis &&
+           a.safeCheckBis == b.safeCheckBis && a.safeDauerBis == b.safeDauerBis && a.wegpunkt == b.wegpunkt &&
+           a.letzterWegpunkt == b.letzterWegpunkt && a.wegpunktBis == b.wegpunktBis && a.zielWegpunkt == b.zielWegpunkt &&
+           a.zielLetzterWegpunkt == b.zielLetzterWegpunkt && a.zielWegpunktBis == b.zielWegpunktBis &&
+           a.pfadDa == b.pfadDa && a.pfadEnde == b.pfadEnde && a.pfadErfolg == b.pfadErfolg &&
+           a.pfadAStarBis == b.pfadAStarBis && gleicherPfad(a.pfad, b.pfad) && a.pfadGroesse == b.pfadGroesse &&
+           a.amBoden == b.amBoden && a.pmZeit == b.pmZeit && gleichBits(a.gesetztMs, b.gesetztMs) &&
+           a.gesetztSpawn == b.gesetztSpawn && a.gesetztImFesten == b.gesetztImFesten &&
+           gleichBits(a.denkNullMs, b.denkNullMs) && gleichBits(a.letzteBewegung, b.letzteBewegung) &&   // rc601 integ
+           a.letzterVor == b.letzterVor && a.letzterSeit == b.letzterSeit && a.letzteGehTaste == b.letzteGehTaste;
+}
+bool gleicheWerte(const LaufWerte& a, const LaufWerte& b) {
+    // Neue Felder in LaufWerte gehoeren hier hinein (static_assert unten).
+    if (a.fremdGier || b.fremdGier) { return false; }
+    return a.zielGesetzt == b.zielGesetzt && gleichBits(a.ziel, b.ziel) && gleichBits(a.zielRadius, b.zielRadius) &&
+           gleichBits(a.maxTempo, b.maxTempo) && gleichBits(a.gehTempo, b.gehTempo) && gleichBits(a.drehRate, b.drehRate) &&
+           gleichBits(a.halbBreite, b.halbBreite) && gleichBits(a.hoeheOben, b.hoeheOben) &&
+           a.gangSchalter == b.gangSchalter && gleichBits(a.stufe, b.stufe) && a.ohneKoerper == b.ohneKoerper &&
+           gleichBits(a.schwerkraft, b.schwerkraft) && a.fallen == b.fallen && gleichBits(a.zielAbMs, b.zielAbMs) &&
+           a.spawnVorlauf == b.spawnVorlauf && a.spawnImFesten == b.spawnImFesten &&
+           a.verhaltenTaktMs == b.verhaltenTaktMs;   // rc601 integ
+}
+#if defined(_MSC_VER) && defined(_M_X64)
+// Waechst eine dieser Strukturen, fehlt das neue Feld oben im Vergleich.
+static_assert(sizeof(NavPfadPunkt) == 9U * 4U, "NavPfadPunkt mit Luecken oder neuem Feld: gleicherPfad pruefen");
+static_assert(sizeof(LaufZustand) == 176U, "neues Feld in LaufZustand: gleicherZustand ergaenzen");
+static_assert(sizeof(LaufWerte) == 144U, "neues Feld in LaufWerte: gleicheWerte ergaenzen");
+static_assert(sizeof(NavAbschnitt) == 376U, "neues Feld in NavAbschnitt: gleicheEingaben ergaenzen");
+static_assert(sizeof(NavFigurKoerper) == 56U, "neues Feld in NavFigurKoerper: gleicheEingaben ergaenzen");
+#endif
+bool gleicheEingaben(const Ablauf& a, const std::vector<NavAbschnitt>& abschnitte, const std::vector<NavFigurKoerper>& figuren,
+                     const std::vector<std::uint64_t>& schluessel) {
+    if (a.laufAbschnitte.size() != abschnitte.size() || a.laufFiguren.size() != figuren.size() ||
+        a.laufSchluessel != schluessel) {
+        return false;
+    }
+    for (std::size_t i = 0; i < abschnitte.size(); ++i) {
+        const NavAbschnitt& x = a.laufAbschnitte[i];
+        const NavAbschnitt& y = abschnitte[i];
+        if (x.figur != y.figur || !gleichBits(x.abMs, y.abMs) || !gleichBits(x.grenzeMs, y.grenzeMs) ||
+            !gleichBits(x.schnittMs, y.schnittMs) || x.sprung != y.sprung ||
+            !gleicherZustand(x.start, y.start) || !gleicheWerte(x.werte, y.werte)) {
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i < figuren.size(); ++i) {
+        const NavFigurKoerper& x = a.laufFiguren[i];
+        const NavFigurKoerper& y = figuren[i];
+        if (x.reihe != y.reihe || !gleichBits(x.halbBreite, y.halbBreite) || !gleichBits(x.hoeheOben, y.hoeheOben) ||
+            !gleichBits(x.daAbMs, y.daAbMs) || !gleichBits(x.daBisMs, y.daBisMs) || x.orte.size() != y.orte.size()) {
+            return false;
+        }
+        for (std::size_t j = 0; j < x.orte.size(); ++j) {
+            if (!gleichBits(x.orte[j].first, y.orte[j].first) || !gleichBits(x.orte[j].second, y.orte[j].second)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+}  // namespace
+
+void ablaufKoerperAbkuerzungAn(bool an) { gKoerperAbkuerzung.store(an, std::memory_order_relaxed); }
+
+Ablauf simuliereAblaufMitKoerpern(const Script& start, const std::string& startPfad, AblaufWelt& welt, int* durchgaenge) {
+    // Der gemeinsame Takt haengt an ALLEN Figuren - nichts aus einer frueheren
+    // Rechnung uebernehmen.
+    welt.koerperPlaene.reset();
+    Ablauf a = simuliereAblauf(start, startPfad, welt);
+    int n = 1;
+    std::shared_ptr<const NavWelt> eigene;
+    // rc601 integ: die Eingaben der letzten Rechnung (gleicheEingaben).
+    const bool abkuerzen = gKoerperAbkuerzung.load(std::memory_order_relaxed);
+    bool vorDa = false;
+    std::vector<NavAbschnitt> vorAbschnitte;
+    std::vector<NavFigurKoerper> vorFiguren;
+    std::vector<std::uint64_t> vorSchluessel;
+    for (int i = 0; i < 6; ++i) {
+        if (a.laufFiguren.size() < 2) { break; }
+        if (abkuerzen && vorDa && gleicheEingaben(a, vorAbschnitte, vorFiguren, vorSchluessel)) { break; }
+        if (!welt.nav && !eigene) {
+            eigene = navWeltAusEntities(welt.karte != nullptr ? welt.karte->entities : std::vector<MapEntity>{});
+        }
+        const NavWelt& nw = welt.nav ? *welt.nav : *eigene;
+        const NavKoerperErgebnis e = navKoerperLauf(nw, a.laufFiguren, a.laufAbschnitte);
+        auto karte = std::make_shared<std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>>();
+        for (std::size_t j = 0; j < e.plaene.size() && j < a.laufSchluessel.size(); ++j) {
+            if (e.plaene[j] != a.laufAbschnitte[j].allein) { (*karte)[a.laufSchluessel[j]] = e.plaene[j]; }
+        }
+        const std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>> neu = karte;
+        if (gleichePlaene(neu, welt.koerperPlaene)) { break; }
+        welt.koerperPlaene = neu;
+        if (abkuerzen) {
+            vorAbschnitte = a.laufAbschnitte;
+            vorFiguren = a.laufFiguren;
+            vorSchluessel = a.laufSchluessel;
+            vorDa = true;
+        }
+        a = simuliereAblauf(start, startPfad, welt);
+        ++n;
+    }
+    if (durchgaenge != nullptr) { *durchgaenge = n; }
+    return a;
 }
 
 }  // namespace bhed

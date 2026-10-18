@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
+#include <functional>
+#include <limits>
+#include <memory>
 #include <numbers>
 #include <cstddef>
 #include <sstream>
@@ -191,7 +195,7 @@ float shortestAngleDelta(float from, float to) noexcept {
     return (std::fabs(d1) < std::fabs(d2)) ? d1 : d2;
 }
 
-CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
+CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags, const RoffLookup& roffs) {
     const SignalTimes signals = collectSignals(s);
     CameraTrack out;
 
@@ -226,19 +230,297 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
     Laufend fahrt;      // CAMERA_MOVING: ziel = origin2
     Laufend schwenk;    // CAMERA_PANNING: ziel = angles2 (die DELTAS)
     Laufend zoom;       // CAMERA_ZOOMING: ziel[0] = FOV2
+    // --- camera ( PATH ) (Paket kamera, rc601) -------------------------------
+    //
+    // Der Zustand von CGCam_StartRoff/CGCam_Roff: CAMERA_ROFFING, roff_frame,
+    // next_roff_time und CAMERA_CUT. Die Bilder werden der Reihe nach
+    // angewandt, sobald ihre Zeit erreicht ist - vor jedem Kamerabefehl die,
+    // deren Zeit davor liegt, am Ende alle uebrigen. So wirken MOVE, PAN und
+    // ENABLE mitten in einer Fahrt wie in der Engine auf client_camera.
+    struct RoffLauf {
+        std::shared_ptr<const Roff> datei;
+        bool an = false;          // CAMERA_ROFFING
+        std::size_t bild = 0;     // roff_frame
+        double naechste = 0.0;    // next_roff_time
+        Path path;                // die PATH-Zeile
+        bool schnitt = false;     // CAMERA_CUT
+    };
+    RoffLauf roffLauf;
+    // CGCam_Update - und damit CGCam_Roff - laeuft nur mit in_camera
+    // (CG_DrawActiveFrame, cg_view.cpp:2103), also zwischen ENABLE und DISABLE.
+    bool inKamera = false;
+    double inKameraSeit = 0.0;
+    bool folgt = false;   // CAMERA_FOLLOWING: dann laesst CGCam_Roff die Winkel in Ruhe
+    // CAMERA_PANNING als eigener Merker (Paket kamera, rc601, Review).
+    // `schwenk.an` heisst hier "angles2 laeuft"; CGCam_Roff setzt das in jedem
+    // Bild, das Flag selbst aber NIE. Gesetzt von CGCam_StartRoff (:1806 MD,
+    // :1821 OpenJK) und von PAN/ROLL mit Dauer (:330/:362 MD, :306/:338
+    // OpenJK), geloescht von PAN ohne Dauer (:263 MD, :242 OpenJK), FOLLOW
+    // (:522 MD, :494 OpenJK) und am Ende eines Schwenks (:1180 MD, :1224
+    // OpenJK). Es entscheidet, ob nach CGCam_StopRoff der letzte
+    // Winkelversatz noch laeuft.
+    bool panningFlag = false;
+    // CAMERA_ACCEL aus einer "fovaccel"-Notiz.
+    struct Beschleunigt {
+        bool an = false;
+        double start = 0.0;
+        double ende = 0.0;
+        float von = 0.0F;
+        float tempo = 0.0F;
+        float beschl = 0.0F;
+    };
+    Beschleunigt fovBeschl;
+    // CGCam_Update, CAMERA_ACCEL (cg_camera.cpp:1101-1164 OpenJK, 1053-1117 MD):
+    //     t = (cg.time - FOV_time) * 0.001;  x = FOV2 + vel*t + 0.5*acc*t*t;  1..180
+    // Nach dem Ende bleibt client_camera.FOV beim zuletzt gerechneten Wert.
+    const auto beschlWert = [&](double jetzt) {
+        const auto t = static_cast<float>((std::min(jetzt, fovBeschl.ende) - fovBeschl.start) * 0.001);
+        const float x = fovBeschl.von + fovBeschl.tempo * t + static_cast<float>(0.5 * fovBeschl.beschl * t * t);
+        return std::clamp(x, 1.0F, 180.0F);
+    };
     const auto uebernehmen = [&](double jetzt) {
-        if (fahrt.an && jetzt >= fahrt.ende) {
+        // Waehrend CAMERA_ROFFING bringt jedes ROFF-Bild selbst Ort und
+        // Winkel weiter (origin = origin2, angles += angles2); das naechste
+        // Bild kommt genau dann, wenn das vorige endet, und CGCam_Update
+        // prueft "move_time + move_duration < cg.time" - echt kleiner.
+        if (fahrt.an && jetzt >= fahrt.ende && !roffLauf.an) {
             for (int k = 0; k < 3; ++k) { pos[k] = fahrt.ziel[k]; }
             fahrt.an = false;
         }
-        if (schwenk.an && jetzt >= schwenk.ende) {
+        if (schwenk.an && jetzt >= schwenk.ende && !roffLauf.an) {
             for (int k = 0; k < 3; ++k) { ang[k] = normalise360(ang[k] + schwenk.ziel[k]); }
             schwenk.an = false;
+            panningFlag = false;   // "finished panning" (Review)
         }
         if (zoom.an && jetzt >= zoom.ende) {
             fov = zoom.ziel[0];
             zoom.an = false;
         }
+        if (fovBeschl.an && jetzt >= fovBeschl.ende) {
+            fov = beschlWert(jetzt);
+            fovBeschl.an = false;
+        }
+    };
+    // CGCam_SetFOV (cg_camera.cpp:353): nur FOV - ein laufender Zoom geht
+    // vom neuen Wert aus weiter zu seinem Ziel (wie ZOOM mit Dauer 0 unten).
+    const auto fovSetzen = [&](double jetzt, float wert, const Path& p) {
+        uebernehmen(jetzt);
+        CamSegment z;
+        z.kind = CamSegment::Kind::Zoom;
+        z.startMs = jetzt;
+        z.endMs = jetzt;
+        z.path = p;
+        fov = wert;
+        z.from[0] = wert;
+        z.to[0] = wert;
+        if (zoom.an && jetzt < zoom.ende) {
+            z.to[0] = zoom.ziel[0];
+            z.endMs = zoom.ende;
+            z.lerpStartMs = zoom.start;
+        }
+        out.segments.push_back(z);
+    };
+    // Eine Notiz eines ROFF-Bilds, zerlegt wie CG_RoffNotetrackCallback
+    // (cg_camera.cpp:1700-1797) und CGCam_NotetrackProcessFov/-FovZoom/
+    // -FovAccel (:1456/:1495/:1594): Typ bis zum ersten Leerzeichen, Zahlen
+    // bis zum naechsten Leerraum (atof), dazwischen werden nur Leerzeichen
+    // ueberlesen.
+    const auto feld = [](const std::string& text, std::size_t& a) {
+        std::string t;
+        while (a < text.size() && std::isspace(static_cast<unsigned char>(text[a])) == 0 && t.size() < 64U) {
+            t += text[a++];
+        }
+        return t;
+    };
+    const auto leer = [](const std::string& text, std::size_t& a) {
+        while (a < text.size() && text[a] == ' ') { ++a; }
+    };
+    const auto ziffer = [](const std::string& t) {
+        return !t.empty() && std::isdigit(static_cast<unsigned char>(t[0])) != 0;
+    };
+    std::function<void(const std::string&, double)> roffNotiz = [&](const std::string& notiz, double jetzt) {
+        std::size_t i = 0;
+        std::string typ;
+        while (i < notiz.size() && notiz[i] != ' ') { typ += notiz[i++]; }
+        const bool weitere = i < notiz.size() && notiz[i] == ' ';
+        const std::string rest = weitere ? notiz.substr(i + 1) : std::string();
+        if (typ == "cut") {
+            roffLauf.schnitt = true;
+            // "this is just a really hacky way of getting a cut and a fov
+            // command on the same frame"
+            if (weitere) { roffNotiz(rest, jetzt); }
+        } else if (typ == "fov") {
+            // "fov <new fov>": nur mit einer Ziffer vorn; atof auf den Rest.
+            if (weitere && ziffer(rest)) {
+                fovSetzen(jetzt, static_cast<float>(std::atof(rest.substr(0, 64).c_str())), roffLauf.path);
+            }
+        } else if (typ == "fovzoom" && weitere && !rest.empty()) {
+            // "fovzoom <begin fov> <end fov> <time>"; keine Zahl vorn heisst:
+            // vom jetzigen client_camera.FOV.
+            uebernehmen(jetzt);
+            std::size_t a = 0;
+            const std::string t1 = feld(rest, a);
+            const float von = ziffer(t1) ? static_cast<float>(std::atof(t1.c_str()))
+                                         : (fovBeschl.an ? beschlWert(jetzt) : fov);
+            leer(rest, a);
+            if (a >= rest.size()) { return; }   // "missing 'end fov' argument"
+            const auto bis = static_cast<float>(std::atof(feld(rest, a).c_str()));
+            leer(rest, a);
+            if (a >= rest.size()) { return; }   // "missing 'time' argument"
+            const double dauer = std::atof(feld(rest, a).c_str());
+            // CGCam_Zoom2 (:379): ohne Dauer nur CGCam_SetFOV( FOV2 ).
+            if (dauer == 0.0) {
+                fovSetzen(jetzt, bis, roffLauf.path);
+                return;
+            }
+            fovBeschl.an = false;
+            fov = von;
+            zoom.an = true;
+            zoom.start = jetzt;
+            zoom.ende = jetzt + dauer;
+            zoom.ziel[0] = bis;
+            CamSegment z;
+            z.kind = CamSegment::Kind::Zoom;
+            z.startMs = jetzt;
+            z.endMs = zoom.ende;
+            z.path = roffLauf.path;
+            z.from[0] = von;
+            z.to[0] = bis;
+            out.segments.push_back(z);
+        } else if (typ == "fovaccel" && weitere && !rest.empty()) {
+            // "fovaccel <begin fov> <fov delta> <fov delta2> <time>":
+            // Anfang, Tempo, Beschleunigung, Dauer.
+            uebernehmen(jetzt);
+            std::size_t a = 0;
+            const std::string t1 = feld(rest, a);
+            const float von = ziffer(t1) ? static_cast<float>(std::atof(t1.c_str()))
+                                         : (fovBeschl.an ? beschlWert(jetzt) : fov);
+            leer(rest, a);
+            if (a >= rest.size()) { return; }
+            const auto tempo = static_cast<float>(std::atof(feld(rest, a).c_str()));
+            leer(rest, a);
+            if (a >= rest.size()) { return; }
+            const auto beschl = static_cast<float>(std::atof(feld(rest, a).c_str()));
+            leer(rest, a);
+            if (a >= rest.size()) { return; }
+            const double dauer = std::atof(feld(rest, a).c_str());
+            if (dauer == 0.0) { return; }   // CGCam_ZoomAccel (:395): "if ( !duration ) return;"
+            fovBeschl = {true, jetzt, jetzt + dauer, von, tempo, beschl};
+            CamSegment z;
+            z.kind = CamSegment::Kind::Zoom;
+            z.startMs = jetzt;
+            z.endMs = fovBeschl.ende;
+            z.path = roffLauf.path;
+            z.beschleunigt = true;
+            z.from[0] = von;
+            z.to[0] = beschlWert(fovBeschl.ende);
+            z.zoomTempo = tempo;
+            z.zoomBeschl = beschl;
+            out.segments.push_back(z);
+        }
+    };
+    // Ein ROFF-Bild, genau wie CGCam_Roff (cg_camera.cpp:1864-1946 OpenJK,
+    // 1849-1931 Movie Duels), zur Zeit `jetzt` (cg.time).
+    const auto roffBild = [&](double jetzt) {
+        const Roff& r = *roffLauf.datei;
+        const double dauer = static_cast<double>(r.bildMs);   // roff->mFrameTime
+        const RoffBild& b = r.bilder[roffLauf.bild];
+        float o[3] = {b.ort[0], b.ort[1], b.ort[2]};
+        float w[3] = {b.winkel[0], b.winkel[1], b.winkel[2]};
+        if (r.fassung == kRoffFassung2) {
+            // "since we just hit a new frame, clear our CUT flag"
+            roffLauf.schnitt = false;
+            // Nur die ERSTE Notiz des Bildes (mNoteTrackIndexes[mStartNote]);
+            // zeigt mStartNote ins Leere, liest die Engine fremden Speicher -
+            // hier faellt die Notiz weg.
+            if (b.ersteNotiz != -1 || b.notizen != 0) {
+                if (b.ersteNotiz >= 0 && static_cast<std::size_t>(b.ersteNotiz) < r.notizen.size()) {
+                    roffNotiz(r.notizen[static_cast<std::size_t>(b.ersteNotiz)], jetzt);
+                }
+            }
+        }
+        // "Yeah, um, I guess this just has to be negated?" - ang[ROLL] = -ang[ROLL];
+        w[2] = -w[2];
+        if (roffLauf.bild > 0) {
+            if (!folgt) {
+                for (int k = 0; k < 3; ++k) { ang[k] += schwenk.ziel[k]; }   // VectorAdd( angles, angles2, angles )
+            }
+            for (int k = 0; k < 3; ++k) { pos[k] = fahrt.ziel[k]; }           // VectorCopy( origin2, origin )
+        }
+        if (!folgt) {
+            for (int k = 0; k < 3; ++k) { schwenk.ziel[k] = w[k]; }
+            schwenk.an = true;
+            schwenk.start = jetzt;
+            schwenk.ende = jetzt + dauer;
+        }
+        for (int k = 0; k < 3; ++k) { fahrt.ziel[k] = pos[k] + o[k]; }       // VectorAdd( origin, org, origin2 )
+        fahrt.an = true;
+        fahrt.start = jetzt;
+        fahrt.ende = jetzt + dauer;
+        const bool letztes = roffLauf.bild + 1 >= r.bilder.size();
+        CamSegment seg;
+        seg.kind = CamSegment::Kind::Pfad;
+        seg.startMs = jetzt;
+        seg.endMs = jetzt + dauer;
+        seg.path = roffLauf.path;
+        // Beim letzten Bild loescht CGCam_StopRoff CAMERA_MOVING - der Ort
+        // steht ab jetzt auf origin (vieworg = origin), der letzte Versatz
+        // wird nie sichtbar. Darum steht dieses Bild still - das zaehlt, wenn
+        // mehrere Bilder in EINEM Durchlauf kommen (nach ENABLE).
+        seg.pfadWinkel = !folgt;
+        seg.schnitt = roffLauf.schnitt;
+        // Paket kamera, rc601 (Review): nach CGCam_StopRoff zeigt CGCam_Update
+        // den Winkelversatz nur noch im Zweig CAMERA_PANNING; ist das Flag weg
+        // (PAN ohne Dauer mitten in der Bahn), gilt sofort refdefViewAngles =
+        // angles (:1235-1243 MD, :1276-1283 OpenJK) - der letzte Versatz wird
+        // nie angewandt.
+        const bool letzterLaeuft = !letztes || panningFlag;
+        for (int k = 0; k < 3; ++k) {
+            seg.from[k] = pos[k];
+            seg.to[k] = letztes ? pos[k] : fahrt.ziel[k];
+            seg.vonWinkel[k] = ang[k];
+            seg.zuWinkel[k] = letzterLaeuft ? ang[k] + schwenk.ziel[k] : ang[k];
+        }
+        out.segments.push_back(seg);
+        if (letztes) {
+            // CGCam_StopRoff: CAMERA_ROFFING und CAMERA_MOVING weg;
+            // CAMERA_PANNING bleibt und bringt den letzten Winkelversatz zu
+            // Ende - wenn es noch gesetzt ist (Review).
+            roffLauf.an = false;
+            fahrt.an = false;
+            if (!folgt && !panningFlag) { schwenk.an = false; }
+            return;
+        }
+        ++roffLauf.bild;
+        roffLauf.naechste += dauer;   // next_roff_time += roff->mFrameTime
+    };
+    // Alle Bilder, deren Zeit vor `bis` liegt (am Ende: auch genau dann).
+    // Ein Kamerabefehl derselben Zeit kommt zuerst - ICARUS laeuft im
+    // Spielbild, CGCam_Update erst beim Zeichnen danach. Faellige Bilder, die
+    // auf in_camera warten mussten, kommen alle zur Zeit von ENABLE.
+    const auto roffBis = [&](double bis, bool mitGleich) {
+        while (roffLauf.an && inKamera && roffLauf.datei &&
+               (mitGleich ? roffLauf.naechste <= bis : roffLauf.naechste < bis)) {
+            roffBild(std::max(roffLauf.naechste, inKameraSeit));
+        }
+    };
+    // Laeuft gerade ein ROFF-Bild, zeigt CGCam_Update die Winkel als
+    // angles + angles2 / pan_duration * (cg.time - pan_time) (:1186-1203) -
+    // auch nachdem PAN oder ROLL ohne Dauer die Basis verschoben haben.
+    const auto roffWinkelWeiter = [&](double jetzt, const Path& p) {
+        if (!roffLauf.an || folgt || jetzt < schwenk.start || jetzt >= schwenk.ende) { return; }
+        const auto anteil = static_cast<float>((jetzt - schwenk.start) / (schwenk.ende - schwenk.start));
+        CamSegment w;
+        w.kind = CamSegment::Kind::Pfad;
+        w.startMs = jetzt;
+        w.endMs = schwenk.ende;
+        w.path = p;
+        w.pfadOrt = false;
+        for (int k = 0; k < 3; ++k) {
+            w.vonWinkel[k] = ang[k] + schwenk.ziel[k] * anteil;
+            w.zuWinkel[k] = ang[k] + schwenk.ziel[k];
+        }
+        out.segments.push_back(w);
     };
 
     for (std::size_t i = 0; i < s.nodes.size(); ++i) {
@@ -260,6 +542,7 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
         if (n.name != "camera" || n.args.empty()) {
             continue;
         }
+        roffBis(now, false);   // Paket kamera, rc601: faellige ROFF-Bilder zuerst
         uebernehmen(now);
 
         const std::string& type = n.args[0].text;
@@ -268,7 +551,38 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
         seg.endMs = now;
         seg.path = Path{i};
 
+        // --- camera ( PATH, "datei" ) (Paket kamera, rc601) -----------------
+        //
+        // CGCam_StartRoff (cg_camera.cpp:1813): FOLLOW und TRACK aus, die
+        // Datei laden, roff_frame = 0, next_roff_time = cg.time. Scheitert
+        // G_LoadRoff, bewegt sich nichts ("ROFF camera playback failed").
+        if (type == "PATH" && n.args.size() >= 2) {
+            if (folgt) {
+                CamSegment f = seg;
+                f.kind = CamSegment::Kind::Follow;   // CGCam_FollowDisable
+                out.segments.push_back(f);
+            }
+            folgt = false;
+            std::shared_ptr<const Roff> datei = roffs ? roffs(n.args[1].text) : nullptr;
+            if (!datei || datei->bilder.empty()) {
+                continue;
+            }
+            roffLauf.datei = std::move(datei);
+            roffLauf.an = true;
+            panningFlag = true;   // CGCam_StartRoff: CAMERA_PANNING (Review)
+            roffLauf.bild = 0;
+            roffLauf.naechste = now;
+            roffLauf.path = Path{i};
+            roffLauf.schnitt = false;
+            continue;
+        }
+
         if (type == "ENABLE") {
+            // Paket kamera, rc601: in_camera an, next_roff_time = 0 (:94/:96) -
+            // eine Bahn, die vorher begonnen hat, holt ihre Bilder auf einmal nach.
+            inKamera = true;
+            inKameraSeit = now;
+            roffLauf.naechste = 0.0;
             seg.kind = CamSegment::Kind::Enable;
             out.segments.push_back(seg);
             // CGCam_Enable setzt FOV und FOV2 auf CAMERA_DEFAULT_FOV. Ein
@@ -283,6 +597,7 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             continue;
         }
         if (type == "DISABLE") {
+            inKamera = false;   // Paket kamera, rc601: ohne in_camera kein CGCam_Roff
             seg.kind = CamSegment::Kind::Disable;
             out.segments.push_back(seg);
             continue;
@@ -297,6 +612,10 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             if (!readVecOrTag(n.args[1].text, tags, false, dest)) {
                 continue;   // Marke fehlt: der Befehl scheitert im Spiel ganz
             }
+            // Paket kamera, rc601: CGCam_Move beendet eine laufende
+            // camera ( PATH )-Fahrt ("info_state &= ~CAMERA_ROFFING",
+            // cg_camera.cpp:191).
+            roffLauf.an = false;
             const double dur = (n.args.size() >= 3) ? readMs(n.args.back().text) : 0.0;
             if (dur <= 0.0) {
                 // CGCam_Move ohne Dauer: CAMERA_MOVING weg, sofort dorthin.
@@ -329,6 +648,7 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             if (!readVecOrTag(n.args[1].text, tags, true, dest)) {
                 continue;   // Marke fehlt: der Befehl scheitert im Spiel ganz
             }
+            folgt = false;   // Paket kamera, rc601: CGCam_Pan ruft CGCam_FollowDisable
             // camera ( PAN, <ziel>, <richtung>, <dauer> ): die Richtung je
             // Achse, 0 = der kuerzere Weg (CGCam_Pan). Vorher wurde sie nie
             // gelesen - ein Schwenk "andersherum" drehte in der Vorschau den
@@ -342,6 +662,7 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             if (dur <= 0.0) {
                 // CGCam_SetAngles: sofort, CAMERA_PANNING weg.
                 schwenk.an = false;
+                panningFlag = false;   // Paket kamera, rc601 (Review)
                 for (int k = 0; k < 3; ++k) {
                     ang[k] = dest[k];
                     seg.from[k] = dest[k];
@@ -359,13 +680,27 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
                 schwenk.start = now;
                 schwenk.ende = now + dur;
                 seg.endMs = schwenk.ende;
+                panningFlag = true;   // Paket kamera, rc601 (Review)
             }
             out.segments.push_back(seg);
+            if (dur <= 0.0) {
+                // Paket kamera, rc601: mitten in einem ROFF-Bild laeuft dessen
+                // Winkelversatz von der neuen Basis aus weiter.
+                roffWinkelWeiter(now, seg.path);
+            }
             continue;
         }
 
         if (type == "ZOOM" && n.args.size() >= 2) {
             seg.kind = CamSegment::Kind::Zoom;
+            // Paket kamera, rc601: ein ZOOM beendet hier ein "fovaccel" einer
+            // camera ( PATH )-Notiz und rechnet von dessen jetzigem Wert aus.
+            // (In der Engine hat CAMERA_ACCEL Vorrang und rechnet mit dem
+            // ueberschriebenen FOV_time/FOV2 weiter - nicht nachgebaut.)
+            if (fovBeschl.an) {
+                fov = beschlWert(now);
+                fovBeschl.an = false;
+            }
             const float ziel = readNum(n.args[1].text, fov);
             const double dur = (n.args.size() >= 3) ? readMs(n.args.back().text) : 0.0;
             if (dur <= 0.0) {
@@ -431,8 +766,12 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
                 schwenk.start = now;
                 schwenk.ende = now + dur;
                 seg.endMs = schwenk.ende;
+                panningFlag = true;   // Paket kamera, rc601 (Review)
             }
             out.segments.push_back(seg);
+            if (dur <= 0.0) {
+                roffWinkelWeiter(now, seg.path);   // Paket kamera, rc601 (siehe PAN)
+            }
             continue;
         }
 
@@ -470,7 +809,9 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             seg.group = g;
             if (!g.empty()) {
                 schwenk.an = false;
+                panningFlag = false;   // Paket kamera, rc601 (Review)
             }
+            folgt = !g.empty();   // Paket kamera, rc601: CAMERA_FOLLOWING
             const float tempo = (n.args.size() >= 3) ? readNum(n.args[2].text, 0.0F) : 0.0F;
             seg.speed = (tempo != 0.0F) ? tempo : 100.0F;
             seg.initLerp = (n.args.size() >= 4) && readNum(n.args[3].text, 0.0F) != 0.0F;
@@ -496,6 +837,9 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
             continue;
         }
     }
+    // Paket kamera, rc601: was von einer camera ( PATH )-Fahrt noch aussteht,
+    // laeuft bis zu ihrem Ende - solange die Kamera an ist.
+    roffBis(std::numeric_limits<double>::infinity(), true);
 
     for (const CamSegment& seg : out.segments) {
         out.durationMs = std::max(out.durationMs, seg.endMs);
@@ -512,6 +856,7 @@ CameraState CameraTrack::at(double ms) const {
     const CamSegment* zittern = nullptr;
     double balkenSeit = -1.0;
     bool balkenAn = false;
+    bool geschaltet = false;   // Paket kamera, rc601 (Review): ENABLE/DISABLE schon gelaufen
     for (const CamSegment& seg : segments) {
         if (seg.startMs > ms) {
             break;   // die Abschnitte stehen in Reihenfolge
@@ -554,19 +899,51 @@ CameraState CameraTrack::at(double ms) const {
                 }
                 break;
             case CamSegment::Kind::Zoom:
+                if (seg.beschleunigt) {
+                    // Paket kamera, rc601: "fovaccel" (CAMERA_ACCEL,
+                    // CGCam_Update): x = x0 + v t + 0.5 a t^2, t in Sekunden,
+                    // auf 1..180 begrenzt; danach bleibt der letzte Wert.
+                    const auto ts = static_cast<float>((std::min(ms, seg.endMs) - seg.startMs) * 0.001);
+                    const float x = seg.from[0] + seg.zoomTempo * ts + static_cast<float>(0.5 * seg.zoomBeschl * ts * ts);
+                    st.fovX = std::clamp(x, 1.0F, 180.0F);
+                    fovVon = seg.from[0];
+                    fovZu = st.fovX;
+                    break;
+                }
                 st.fovX = seg.from[0] + (seg.to[0] - seg.from[0]) * f;
                 fovVon = seg.from[0];
                 fovZu = seg.to[0];
                 break;
+            case CamSegment::Kind::Pfad: {
+                // Paket kamera, rc601: ein Bild einer camera ( PATH )-Fahrt.
+                // CGCam_Update: Ort origin + (origin2 - origin) / move_duration *
+                // (cg.time - move_time), Winkel angles + angles2 / pan_duration *
+                // (cg.time - pan_time); mit CAMERA_CUT sofort das Ziel.
+                const float g = seg.schnitt ? 1.0F : f;
+                if (seg.pfadOrt) {
+                    for (int k = 0; k < 3; ++k) {
+                        st.pos[k] = seg.from[k] + (seg.to[k] - seg.from[k]) * g;
+                    }
+                }
+                if (seg.pfadWinkel) {
+                    for (int k = 0; k < 3; ++k) {
+                        st.angles[k] = seg.vonWinkel[k] + (seg.zuWinkel[k] - seg.vonWinkel[k]) * g;
+                    }
+                    st.panning = laeuft && !seg.schnitt;
+                }
+                break;
+            }
             case CamSegment::Kind::Enable:
                 st.enabled = true;
                 balkenAn = true;
                 balkenSeit = seg.startMs;
+                geschaltet = true;
                 break;
             case CamSegment::Kind::Disable:
                 st.enabled = false;
                 balkenAn = false;
                 balkenSeit = seg.startMs;
+                geschaltet = true;
                 break;
             case CamSegment::Kind::Fade:
                 for (int k = 0; k < 4; ++k) {
@@ -590,6 +967,25 @@ CameraState CameraTrack::at(double ms) const {
                 // Nur das LETZTE zaehlt - CGCam_Shake ueberschreibt.
                 zittern = laeuft ? &seg : nullptr;
                 break;
+        }
+    }
+    // --- Wessen Blick zeigt das Spiel? (Paket kamera, rc601, Review) --------
+    //
+    // Gemeldet: "Scripts with no ENABLE at all lose every ZOOM" - sichtFovX
+    // gab ohne st.enabled immer cg_fov 80, also auch fuer einen Skriptteil,
+    // dessen Kamera ein ANDERES Skript einschaltet (dort kommt kein ENABLE
+    // vor). Entscheidung: die 80 gelten nur, wenn die Bahn selbst schaltet -
+    // nach DISABLE, und vor dem ersten ENABLE. Steht als erstes ein DISABLE,
+    // lief die Kamera davor (ein anderes Skript hat sie eingeschaltet).
+    if (geschaltet) {
+        st.spielerBlick = !st.enabled;
+    } else {
+        for (const CamSegment& seg : segments) {
+            if (seg.kind == CamSegment::Kind::Enable) {
+                st.spielerBlick = true;
+                break;
+            }
+            if (seg.kind == CamSegment::Kind::Disable) { break; }
         }
     }
     // --- Die Balken (CGCam_UpdateBarFade, BAR_DURATION 1000 ms) -----------
@@ -684,6 +1080,34 @@ const CamSegment* CameraTrack::activeAt(double ms) const {
 
 bool kameraMarke(const std::string& text, std::string& name, bool& angles) {
     return istMarke(text, name, angles);
+}
+
+// --- Paket kamera, rc601 ------------------------------------------------------
+
+float sichtFovX(const CameraState& st) noexcept {
+    // in_camera: CGCam_RenderScene -> CGCam_Update -> CG_CalcFOVFromX( FOV )
+    // mit dem Bildwinkel der Kamera. Sonst CG_CalcViewValues -> CG_CalcFov
+    // -> fov_x = cg_fov.value (siehe kSpielerFovX). Ob die Kamera an ist,
+    // sagt st.enabled (ENABLE setzt in_camera, CGCam_Enable cg_camera.cpp:94;
+    // DISABLE loescht es, CGCam_Disable :138).
+    //
+    // Paket kamera, rc601 (Review): st.spielerBlick statt !st.enabled - ein
+    // Skriptteil ohne ENABLE/DISABLE zeigt seinen ZOOM (CameraTrack::at).
+    return st.spielerBlick ? kSpielerFovX : st.fovX;
+}
+
+CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags) {
+    // Ohne Auskunft ueber ROFF-Dateien: camera ( PATH ) bewegt nichts.
+    return buildCameraTrack(s, tags, RoffLookup{});
+}
+
+double einstellungsZeit(const CameraTrack& t, const Path& movePfad) {
+    for (const CamSegment& c : t.segments) {
+        if (c.kind == CamSegment::Kind::Move && c.fremd.empty() && c.path == movePfad) {
+            return c.endMs;
+        }
+    }
+    return -1.0;
 }
 
 }  // namespace bhed

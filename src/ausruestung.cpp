@@ -460,6 +460,7 @@ int saberArtIndex(Actor& a, const std::string& name, int fach,
             art.handgelenk = d.boltToWrist;
             art.ohneKlinge = d.noBlade;
             art.ohneKlinge2 = d.noBlade2;
+            art.kontakt = d.kontakt;   // rc601 saber
             art.stilGelernt = d.stylesLearned;
             art.stilVerboten = d.stylesForbidden;
             art.stilEineKlinge = d.singleBladeStyle;

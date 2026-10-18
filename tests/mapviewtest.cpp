@@ -5,6 +5,8 @@
 // Genau daran scheitern solche Steuerungen sonst - man dreht sich, und das
 // Ziel wandert langsam aus dem Bild.
 #include "bhed/mapview.h"
+#include "bhed/gpucam.h"
+#include "bhed/settings.h"
 
 #include <algorithm>
 #include <array>
@@ -32,6 +34,368 @@ float dist(const float a[3], const float b[3]) {
     float s = 0.0F;
     for (int k = 0; k < 3; ++k) { s += (a[k] - b[k]) * (a[k] - b[k]); }
     return std::sqrt(s);
+}
+
+// --- Paket kamera, rc601: das Spielfenster ------------------------------------
+//
+// Gemeldet vom Tester: "I think camera FOV is slightly off". Die Vorschau nahm
+// das Seitenverhaeltnis ihrer eigenen Ansicht, das Spiel das seines Fensters,
+// und cg_fovAspectAdjust war fest an.
+//
+// Die Vergleichswerte rechnet diese Probe SELBST, mit der Formel aus
+// CG_CalcFOVFromX (cg_view.cpp:1260-1278 in OpenJK, :1705-1722 in Movie
+// Duels), in double - nicht mit den Funktionen, die geprueft werden.
+constexpr double kPiD = 3.14159265358979323846;
+struct Erwartet {
+    double fovX = 0.0;   // cg.refdef.fov_x
+    double fovY = 0.0;   // cg.refdef.fov_y
+};
+Erwartet calcFovFromX(double fovX, double seiten, bool adjust) {
+    double fx = fovX;
+    if (adjust) {
+        // fov_x = atan( tan( desiredFov*M_PI / 360.0f ) * baseAspect*aspect )*360.0f / M_PI;
+        fx = std::atan(std::tan(fovX * kPiD / 360.0) * 0.75 * seiten) * 360.0 / kPiD;
+    }
+    // x = cg.refdef.width / tan( fov_x / 360 * M_PI ); fov_y = atan2( cg.refdef.height, x );
+    const double x = seiten / std::tan(fx / 360.0 * kPiD);
+    return {fx, std::atan2(1.0, x) * 360.0 / kPiD};
+}
+double tanHalb(double grad) { return std::tan(grad * kPiD / 360.0); }
+
+void spielfensterProben() {
+    std::printf("\n--- Spielfenster (Paket kamera) ---\n");
+    const bhed::SpielFenster md169{16.0F / 9.0F, true};
+    const bhed::SpielFenster ojk169{16.0F / 9.0F, false};
+    const bhed::SpielFenster ojk43{4.0F / 3.0F, false};
+
+    // Die bekannten Zahlen (Spiel bei 1920x1080).
+    struct Fall {
+        const char* name;
+        bhed::SpielFenster s;
+        float fov;
+        double fx;
+        double fy;
+    };
+    const Fall faelle[] = {
+        {"Movie Duels 16:9, FOV 90", md169, 90.0F, 106.2602, 73.7398},
+        {"Movie Duels 16:9, FOV 50", md169, 50.0F, 63.7420, 38.5526},
+        {"Movie Duels 16:9, FOV 110", md169, 110.0F, 124.5871, 93.9329},
+        {"OpenJK 16:9, FOV 90", ojk169, 90.0F, 90.0, 58.7155},
+        {"OpenJK 16:9, FOV 50", ojk169, 50.0F, 50.0, 29.3950},
+        {"OpenJK 16:9, FOV 110", ojk169, 110.0F, 110.0, 77.5521},
+        {"OpenJK 4:3, FOV 90 (r_mode 4)", ojk43, 90.0F, 90.0, 73.7398},
+        {"Movie Duels 21:9, FOV 90", bhed::SpielFenster{64.0F / 27.0F, true}, 90.0F, 121.2845, 73.7398},
+        {"Movie Duels 16:10, FOV 40", bhed::SpielFenster{16.0F / 10.0F, true}, 40.0F, 47.1880, 30.5369},
+    };
+    for (const Fall& f : faelle) {
+        const bhed::SpielSicht s = bhed::spielSicht(f.fov, f.s);
+        const Erwartet e = calcFovFromX(f.fov, f.s.seiten, f.s.fovAspectAdjust);
+        char t[200];
+        std::snprintf(t, sizeof(t), "%s: %.2f x %.2f (Spiel %.2f x %.2f)", f.name, (double)s.fovX, (double)s.fovY,
+                      f.fx, f.fy);
+        expect(t, near(s.fovX, static_cast<float>(f.fx), 0.02F) && near(s.fovY, static_cast<float>(f.fy), 0.02F) &&
+                      near(s.fovX, static_cast<float>(e.fovX), 0.02F) && near(s.fovY, static_cast<float>(e.fovY), 0.02F));
+        expect("  tan(fov/2) passt dazu",
+               near(bhed::spielTanHalbX(f.fov, f.s), static_cast<float>(tanHalb(f.fx)), 0.0005F) &&
+                   near(bhed::spielTanHalbY(f.fov, f.s), static_cast<float>(tanHalb(f.fy)), 0.0005F));
+    }
+
+    // --- Der Rahmen in der Ansicht --------------------------------------
+    //
+    // Die Ansicht aus dem Handbuchbild h_fenster.webp: 945 x 335 (2,82:1).
+    const float p = 945.0F / 335.0F;
+    {
+        const bhed::SpielRahmen r = bhed::spielRahmenIn(p, 16.0F / 9.0F);
+        std::printf("     Rahmen 16:9 in 945x335: %.1f x %.1f Bildpunkte\n", (double)(r.breite * 945.0F),
+                    (double)(r.hoehe * 335.0F));
+        expect("16:9 in einer breiten Ansicht: volle Hoehe, 595,6 Bildpunkte breit",
+               near(r.breite * 945.0F, 595.6F, 1.0F) && near(r.hoehe, 1.0F, 0.0001F));
+        const bhed::SpielRahmen r2 = bhed::spielRahmenIn(4.0F / 3.0F, 16.0F / 9.0F);
+        expect("16:9 in einer 4:3-Ansicht: volle Breite, drei Viertel Hoehe",
+               near(r2.breite, 1.0F, 0.0001F) && near(r2.hoehe, 0.75F, 0.0001F));
+        const bhed::SpielRahmen r3 = bhed::spielRahmenIn(16.0F / 9.0F, 16.0F / 9.0F);
+        expect("gleiches Seitenverhaeltnis: die ganze Ansicht", near(r3.breite, 1.0F, 0.0001F) && near(r3.hoehe, 1.0F, 0.0001F));
+    }
+
+    // --- Der Bildwinkel der Ansicht --------------------------------------
+    //
+    // Mit dem gesetzten fovY zeigt der Rahmen genau das Spielbild: am Rand
+    // des Rahmens tan(fov_x/2) des Spiels, oben und unten tan(fov_y/2).
+    // (Die Ansicht rechnet waagerecht tan(fovY/2) * Breite/Hoehe, siehe
+    // gpucam.h.)
+    struct Ansicht {
+        const char* name;
+        float seiten;
+        bhed::SpielFenster s;
+        float fov;
+    };
+    const Ansicht ansichten[] = {
+        {"Movie Duels 16:9 in 945x335, FOV 90", p, md169, 90.0F},
+        {"OpenJK 16:9 in 945x335, FOV 90", p, ojk169, 90.0F},
+        {"Movie Duels 16:9 in 4:3, FOV 90", 4.0F / 3.0F, md169, 90.0F},
+        {"OpenJK 16:9 in 4:3, FOV 30", 4.0F / 3.0F, ojk169, 30.0F},
+        {"Movie Duels 21:9 in 16:9, FOV 40", 16.0F / 9.0F, bhed::SpielFenster{64.0F / 27.0F, true}, 40.0F},
+        {"Movie Duels 16:9 genau 16:9, FOV 90", 16.0F / 9.0F, md169, 90.0F},
+    };
+    for (const Ansicht& a : ansichten) {
+        bhed::Camera c;
+        const bhed::SpielRahmen r = bhed::setzeSpielFov(c, a.fov, a.seiten, a.s);
+        const Erwartet e = calcFovFromX(a.fov, a.s.seiten, a.s.fovAspectAdjust);
+        const double tV = tanHalb(static_cast<double>(c.fovY));
+        const double randX = tV * a.seiten * r.breite;   // tan am linken/rechten Rand des Rahmens
+        const double randY = tV * r.hoehe;               // tan oben/unten im Rahmen
+        char t[220];
+        std::snprintf(t, sizeof(t), "%s: Rahmen %.3f x %.3f, im Rahmen %.2f x %.2f Grad (Spiel %.2f x %.2f)", a.name,
+                      (double)r.breite, (double)r.hoehe, std::atan(randX) * 360.0 / kPiD, std::atan(randY) * 360.0 / kPiD,
+                      e.fovX, e.fovY);
+        expect(t, std::fabs(randX - tanHalb(e.fovX)) < 0.001 && std::fabs(randY - tanHalb(e.fovY)) < 0.001 &&
+                      (r.breite >= 0.9999F || r.hoehe >= 0.9999F));
+    }
+    {
+        bhed::Camera c;
+        const bhed::SpielRahmen r = bhed::setzeSpielFov(c, 90.0F, 4.0F / 3.0F, md169);
+        std::printf("     16:9 in 4:3: senkrecht %.2f Grad in der Ansicht\n", (double)c.fovY);
+        expect("16:9 in 4:3: die Ansicht oeffnet senkrecht 90 Grad, der Rahmen nur 73,74",
+               near(c.fovY, 90.0F, 0.02F) && near(r.hoehe, 0.75F, 0.0001F));
+    }
+    // Unsinnige Werte duerfen nichts kaputtmachen.
+    {
+        bool ok = true;
+        for (const float fov : {0.0F, -5.0F, 1000.0F, 6.291F}) {
+            for (const float ans : {0.0F, 0.5F, 3.0F}) {
+                for (const float sei : {0.0F, 4.0F / 3.0F, 5.0F}) {
+                    for (const bool adj : {false, true}) {
+                        bhed::Camera c;
+                        const bhed::SpielRahmen r = bhed::setzeSpielFov(c, fov, ans, bhed::SpielFenster{sei, adj});
+                        const bhed::SpielSicht s = bhed::spielSicht(fov, bhed::SpielFenster{sei, adj});
+                        ok = ok && std::isfinite(c.fovY) && c.fovY >= 1.0F && c.fovY <= 179.0F && std::isfinite(r.breite) &&
+                             std::isfinite(r.hoehe) && r.breite > 0.0F && r.breite <= 1.0F && r.hoehe > 0.0F &&
+                             r.hoehe <= 1.0F && std::isfinite(s.fovX) && std::isfinite(s.fovY);
+                    }
+                }
+            }
+        }
+        expect("Bildwinkel 0, -5, 1000 und Seitenverhaeltnis 0 bleiben endlich und in 1..179", ok);
+    }
+
+    // --- Die freie Ansicht -------------------------------------------------
+    //
+    // Sie behaelt ihren Bildwinkel (73,7 senkrecht). Der Rahmen zeigt, was
+    // eine Kamera mit FOV 90 dort im Spiel saehe.
+    {
+        bhed::Camera frei;   // fovY 73,7
+        const double tV = tanHalb(static_cast<double>(frei.fovY));
+        for (const bhed::SpielFenster& s : {md169, ojk169}) {
+            const bhed::SpielRahmen r = bhed::spielRahmenFreieSicht(frei, p, s);
+            const Erwartet e = calcFovFromX(90.0, s.seiten, s.fovAspectAdjust);
+            const double b = std::min(1.0, tanHalb(e.fovX) / (tV * p));
+            const double h = std::min(1.0, tanHalb(e.fovY) / tV);
+            char t[200];
+            std::snprintf(t, sizeof(t), "freie Ansicht, %s: Rahmen %.3f x %.3f (soll %.3f x %.3f)",
+                          s.fovAspectAdjust ? "Movie Duels" : "OpenJK", (double)r.breite, (double)r.hoehe, b, h);
+            expect(t, std::fabs(r.breite - b) < 0.002 && std::fabs(r.hoehe - h) < 0.002);
+        }
+        // Die freie Kamera selbst bleibt unangetastet.
+        expect("die freie Kamera behaelt ihren Bildwinkel", near(frei.fovY, 73.7F, 0.0001F));
+    }
+}
+
+// --- Paket kamera, rc601: Rollen wie AnglesToAxis -----------------------------
+//
+// CGCam_Update endet mit AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis )
+// (cg_camera.cpp:1307 OpenJK, :1267 MD) - samt Rollwinkel. Camera::right()/up()
+// bauten die Basis ohne ihn; ROLL und der Rollanteil eines PAN waren im Bild
+// nie zu sehen. Die Vergleichswerte: AngleVectors aus q_math.c:1314 (OpenJK),
+// hier abgeschrieben.
+void angleVectors(const float ang[3], float vorn[3], float rechts[3], float oben[3]) {
+    const double y = ang[1] * (kPiD * 2.0 / 360.0);
+    const double p = ang[0] * (kPiD * 2.0 / 360.0);
+    const double r = ang[2] * (kPiD * 2.0 / 360.0);
+    const double sy = std::sin(y), cy = std::cos(y);
+    const double sp = std::sin(p), cp = std::cos(p);
+    const double sr = std::sin(r), cr = std::cos(r);
+    vorn[0] = static_cast<float>(cp * cy);
+    vorn[1] = static_cast<float>(cp * sy);
+    vorn[2] = static_cast<float>(-sp);
+    rechts[0] = static_cast<float>(-1 * sr * sp * cy + -1 * cr * -sy);
+    rechts[1] = static_cast<float>(-1 * sr * sp * sy + -1 * cr * cy);
+    rechts[2] = static_cast<float>(-1 * sr * cp);
+    oben[0] = static_cast<float>(cr * sp * cy + -sr * -sy);
+    oben[1] = static_cast<float>(cr * sp * sy + -sr * cy);
+    oben[2] = static_cast<float>(cr * cp);
+}
+bool gleich3(const float a[3], const float b[3], float tol = 0.0005F) {
+    return near(a[0], b[0], tol) && near(a[1], b[1], tol) && near(a[2], b[2], tol);
+}
+
+void rollProben() {
+    std::printf("\n--- Rollen (Paket kamera) ---\n");
+    const float proben[][3] = {{10.0F, 30.0F, 25.0F}, {-20.0F, 135.0F, -40.0F}, {0.0F, 90.0F, 30.0F},
+                               {45.0F, -60.0F, 90.0F}, {5.0F, 200.0F, 0.0F}};
+    for (const auto& w : proben) {
+        bhed::Camera c;
+        for (int k = 0; k < 3; ++k) { c.angles[k] = w[k]; }
+        float f[3];
+        float r[3];
+        float u[3];
+        c.forward(f);
+        c.right(r);
+        c.up(u);
+        float ef[3];
+        float er[3];
+        float eu[3];
+        angleVectors(w, ef, er, eu);
+        char t[160];
+        std::snprintf(t, sizeof(t), "Winkel %.0f %.0f %.0f: Basis wie AngleVectors (oben %.3f %.3f %.3f, soll %.3f %.3f %.3f)",
+                      (double)w[0], (double)w[1], (double)w[2], (double)u[0], (double)u[1], (double)u[2], (double)eu[0],
+                      (double)eu[1], (double)eu[2]);
+        expect(t, gleich3(f, ef) && gleich3(r, er) && gleich3(u, eu));
+        float zurueck[3];
+        bhed::anglesFromBasis(f, u, zurueck);
+        const float d = std::fmod(zurueck[2] - w[2] + 540.0F, 360.0F) - 180.0F;
+        expect("  und der Rollwinkel kommt aus der Basis zurueck", std::fabs(d) < 0.05F);
+    }
+    // Ohne Roll bleibt alles, wie es war - die freie Kamera hat keinen.
+    {
+        bhed::Camera c;
+        c.angles[0] = 20.0F;
+        c.angles[1] = 90.0F;
+        float f[3];
+        float r[3];
+        float u[3];
+        c.forward(f);
+        c.right(r);
+        c.up(u);
+        // Die alte Rechnung: rechts = normalise(vorn x Z), oben = rechts x vorn.
+        float ar[3] = {f[1], -f[0], 0.0F};
+        const float l = std::sqrt(ar[0] * ar[0] + ar[1] * ar[1]);
+        ar[0] /= l;
+        ar[1] /= l;
+        const float au[3] = {ar[1] * f[2] - ar[2] * f[1], ar[2] * f[0] - ar[0] * f[2], ar[0] * f[1] - ar[1] * f[0]};
+        expect("ohne Roll: dieselbe Basis wie bisher (freie Kamera unveraendert)", gleich3(r, ar) && gleich3(u, au));
+    }
+    // Senkrecht nach unten (pitch 90): die alte Rechnung teilte durch null
+    // und lieferte eine leere Basis; AngleVectors bleibt bestimmt.
+    {
+        bhed::Camera c;
+        c.angles[0] = 90.0F;
+        c.angles[1] = 30.0F;
+        float r[3];
+        float u[3];
+        c.right(r);
+        c.up(u);
+        float ef[3];
+        float er[3];
+        float eu[3];
+        angleVectors(c.angles, ef, er, eu);
+        expect("pitch 90: rechts und oben wie AngleVectors, nicht null", gleich3(r, er) && gleich3(u, eu));
+    }
+    // Und die Kameramatrix des GPU-Wegs nimmt den Roll mit: Zeile 1 (y) ist
+    // oben * Fokus (gpucam.cpp).
+    {
+        bhed::Camera c;
+        c.angles[0] = 0.0F;
+        c.angles[1] = 90.0F;
+        c.angles[2] = 30.0F;
+        c.fovY = 60.0F;
+        float m[16];
+        bhed::gpu::baueViewProj(c, 800, 600, 4.0F, 8192.0F, m);
+        const float l = std::sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
+        const float zeile[3] = {m[4] / l, m[5] / l, m[6] / l};
+        float ef[3];
+        float er[3];
+        float eu[3];
+        angleVectors(c.angles, ef, er, eu);
+        std::printf("     Kameramatrix bei Roll 30: oben %.3f %.3f %.3f (soll %.3f %.3f %.3f)\n", (double)zeile[0],
+                    (double)zeile[1], (double)zeile[2], (double)eu[0], (double)eu[1], (double)eu[2]);
+        expect("die Kameramatrix rollt wie das Spiel (ROLL 30)", gleich3(zeile, eu, 0.001F));
+    }
+}
+
+// --- Paket kamera, rc601 (Review): die freie Kamera fliegt waagerecht ----------
+//
+// Seit right()/up() rollen (AngleVectors), schob Camera::move (WASD) und
+// Orbit::pan (mittlere Maustaste) eine gerollte freie Kamera schraeg - nach
+// "Zur Einstellung fliegen" auf einer Einstellung mit ROLL stieg sie beim
+// Seitwaertsfliegen. Entscheidung: das Bild zeigt den Roll weiter (wie
+// AngleVectors), die BEWEGUNG bleibt waagerecht - mit der rollfreien Basis
+// (die alte Rechnung: rechts = normalise(vorn x Z), oben = rechts x vorn).
+void bewegenProben() {
+    std::printf("\n--- Bewegen ohne Rollwinkel (Paket kamera, Review) ---\n");
+    bhed::Camera gerollt;
+    gerollt.pos[0] = 100.0F;
+    gerollt.pos[1] = 200.0F;
+    gerollt.pos[2] = 300.0F;
+    gerollt.angles[0] = 10.0F;
+    gerollt.angles[1] = 30.0F;
+    gerollt.angles[2] = 45.0F;
+    bhed::Camera flach = gerollt;
+    flach.angles[2] = 0.0F;
+    {
+        bhed::Camera c = gerollt;
+        c.move(0.0F, 100.0F, 0.0F);
+        bhed::Camera d = flach;
+        d.move(0.0F, 100.0F, 0.0F);
+        std::printf("     seitwaerts 100 mit Roll 45: %.2f %.2f %.2f (ohne Roll %.2f %.2f %.2f)\n", (double)c.pos[0],
+                    (double)c.pos[1], (double)c.pos[2], (double)d.pos[0], (double)d.pos[1], (double)d.pos[2]);
+        expect("gerollte Kamera: seitwaerts (D) bleibt auf derselben Hoehe", near(c.pos[2], 300.0F, 0.001F));
+        expect("gerollte Kamera: seitwaerts genau wie ohne Roll", gleich3(c.pos, d.pos, 0.001F));
+    }
+    {
+        bhed::Camera c = gerollt;
+        c.move(50.0F, -30.0F, 20.0F);
+        bhed::Camera d = flach;
+        d.move(50.0F, -30.0F, 20.0F);
+        expect("gerollte Kamera: vor, seitwaerts und hoch zusammen wie ohne Roll", gleich3(c.pos, d.pos, 0.001F));
+    }
+    {
+        bhed::Orbit o;
+        o.distance = 400.0F;
+        bhed::Camera c = gerollt;
+        o.pan(c, 80.0F, 0.0F);
+        bhed::Camera d = flach;
+        o.pan(d, 80.0F, 0.0F);
+        std::printf("     Orbit seitwaerts mit Roll 45: z %.3f (ohne Roll %.3f)\n", (double)c.pos[2], (double)d.pos[2]);
+        expect("Umkreisen-Schieben waagerecht (mittlere Maustaste): Hoehe bleibt", near(c.pos[2], 300.0F, 0.001F));
+        bhed::Camera e = gerollt;
+        o.pan(e, 25.0F, -60.0F);
+        bhed::Camera g = flach;
+        o.pan(g, 25.0F, -60.0F);
+        expect("Umkreisen-Schieben mit Roll genau wie ohne Roll", gleich3(c.pos, d.pos, 0.001F) && gleich3(e.pos, g.pos, 0.001F));
+    }
+    {
+        // Das Bild rollt weiter: right()/up() bleiben AngleVectors.
+        float r[3];
+        float er[3];
+        float ef[3];
+        float eu[3];
+        gerollt.right(r);
+        angleVectors(gerollt.angles, ef, er, eu);
+        expect("das Bild rollt weiter (right() wie AngleVectors)", gleich3(r, er));
+    }
+}
+
+// --- Paket kamera, rc601: die Einstellungen des Spielfensters ------------------
+void einstellungsProben() {
+    std::printf("\n--- Einstellungen des Spielfensters (Paket kamera) ---\n");
+    const bhed::Settings vorgabe;
+    expect("Vorgabe: Seitenverhaeltnis wie der Bildschirm (0), cg_fovAspectAdjust automatisch, Rahmen an",
+           vorgabe.spielSeiten == 0.0F && vorgabe.fovAspectAdjust == -1 && vorgabe.spielRahmenFrei);
+    bhed::Settings a;
+    a.spielSeiten = 16.0F / 10.0F;
+    a.fovAspectAdjust = 0;
+    a.spielRahmenFrei = false;
+    bhed::Settings b;
+    (void)bhed::readSettings(bhed::writeSettings(a), b);
+    std::printf("     zurueckgelesen: %.4f, %d, %d\n", (double)b.spielSeiten, b.fovAspectAdjust, b.spielRahmenFrei ? 1 : 0);
+    expect("Seitenverhaeltnis, cg_fovAspectAdjust und Rahmen ueberstehen das Speichern",
+           near(b.spielSeiten, 1.6F, 0.0005F) && b.fovAspectAdjust == 0 && !b.spielRahmenFrei);
+    a.fovAspectAdjust = 1;
+    (void)bhed::readSettings(bhed::writeSettings(a), b);
+    expect("cg_fovAspectAdjust 1 ebenso", b.fovAspectAdjust == 1);
+    bhed::Settings c;
+    (void)bhed::readSettings("spielSeiten=99\nfovAspectAdjust=7\n", c);
+    expect("unsinnige Werte werden verworfen", c.spielSeiten == 0.0F && c.fovAspectAdjust == -1);
 }
 }  // namespace
 
@@ -444,6 +808,10 @@ int main() {
                gross / klein > 2000.0F);
     }
 
+    spielfensterProben();
+    rollProben();
+    bewegenProben();
+    einstellungsProben();
 
     std::printf("\n%s (%d Fehlschlaege)\n",
                 fails != 0 ? "FEHLGESCHLAGEN" : "alle Ansichtsproben bestanden", fails);

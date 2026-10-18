@@ -352,6 +352,38 @@ int main(int argc, char** argv) {
             }
         }
         expect("keine zwei Knoten uebereinander", !ueberlappt);
+        // Grosse Karten (taspir1: hunderte Wegpunkte in target-Ketten): die
+        // Ketten fuellten alle 400 Plaetze, bevor die Skripte drankamen - das
+        // Intro fehlte im Graphen (Handbuch-Fotolauf rc601, "400 nodes
+        // (shortened)"). Was zur Mission gehoert, muss immer drin sein.
+        {
+            std::string text = "{\n\"classname\" \"worldspawn\"\n}\n"
+                               "{\n\"classname\" \"info_player_start\"\n\"target\" \"intro\"\n}\n"
+                               "{\n\"classname\" \"target_scriptrunner\"\n\"targetname\" \"intro\"\n\"usescript\" \"md/intro\"\n}\n"
+                               "{\n\"classname\" \"func_door\"\n\"targetname\" \"tuer\"\n}\n";
+            for (int i = 0; i < 900; ++i) {
+                text += "{\n\"classname\" \"waypoint\"\n\"targetname\" \"wp" + std::to_string(i) + "\"\n\"target\" \"wp" +
+                        std::to_string(i + 1) + "\"\n}\n";
+            }
+            std::vector<bhed::MapEntity> gross;
+            bhed::parseEntities(text, gross);
+            bhed::Script tuerSkript;
+            (void)bhed::readScript("use ( \"tuer\" );\n", tuerSkript, d);
+            const bhed::MissionsGraph gg = bhed::baueMissionsGraph(gross, [&](const std::string& p) -> const bhed::Script* {
+                return p == "md/intro" ? &tuerSkript : nullptr;
+            }, "md/intro");
+            int wegpunkte = 0;
+            bool introDa = false;
+            bool tuerDa = false;
+            for (const auto& k : gg.knoten) {
+                if (k.unter == "waypoint") { ++wegpunkte; }
+                if (k.skript == "md/intro") { introDa = true; }
+                if (k.titel == "tuer") { tuerDa = true; }
+            }
+            std::printf("  grosse Karte: %zu Knoten, %d Wegpunkte\n", gg.knoten.size(), wegpunkte);
+            expect("grosse Karte: das Intro und die benutzte Tuer sind im Graphen", introDa && tuerDa);
+            expect("grosse Karte: Wegpunktketten ohne Bezug zur Mission fuellen den Graphen nicht", wegpunkte == 0 && !gg.gekuerzt);
+        }
         const bhed::MissionsGraph leer = bhed::baueMissionsGraph({}, nullptr);
         expect("ohne Entities: leer", leer.knoten.empty() && leer.kanten.empty());
     }

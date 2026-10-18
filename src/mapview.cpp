@@ -37,7 +37,9 @@ Vec3 cross(const Vec3& a, const Vec3& b) {
     return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
 
-Vec3 normalise(const Vec3& a) {
+// Seit rc601 (Paket kamera) rechnen right()/up() wie AngleVectors und
+// brauchen sie nicht mehr.
+[[maybe_unused]] Vec3 normalise(const Vec3& a) {
     const float l = std::sqrt(dot(a, a));
     return l > 0.0F ? Vec3{a.x / l, a.y / l, a.z / l} : a;
 }
@@ -72,24 +74,50 @@ void Camera::forward(float out[3]) const {
     out[2] = -std::sin(p);
 }
 
+// --- Rechts und oben MIT Rollwinkel (Paket kamera, rc601) --------------------
+//
+// Die Engine legt die Blickachsen mit AnglesToAxis fest - CGCam_Update endet
+// mit AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis )
+// (cg_camera.cpp:1307 OpenJK, :1267 Movie Duels), der Spielerblick ebenso
+// (cg_view.cpp:1745). AnglesToAxis ruft AngleVectors (q_math.c:1010/1314
+// OpenJK, :997/1291 Movie Duels) und nimmt den Rollwinkel mit; der Renderer
+// legt bildrechts auf -axis[1] = right und bildoben auf axis[2] = up
+// (s_flipMatrix, tr_main.cpp:37).
+//
+// Vorher bauten right()/up() die Basis aus Blickrichtung und Welt-Z - ohne
+// Rollwinkel. camera ( ROLL, ... ) und der Rollanteil eines PAN waren dadurch
+// nie im Bild, und bei pitch 90 (senkrecht nach unten) gab es gar keine
+// Basis (Kreuzprodukt null). Ohne Rollwinkel und fuer |pitch| < 90 kommt
+// genau dasselbe heraus wie bisher - die freie Kamera, die keinen Rollwinkel
+// hat, merkt davon nichts.
+namespace {
+struct Winkelsinus {
+    float sy, cy, sp, cp, sr, cr;
+};
+Winkelsinus winkelsinus(const float angles[3]) {
+    // AngleVectors: angle = angles[YAW] * (M_PI*2 / 360); sy = sinf(angle); ...
+    constexpr double kGradZuRad = 3.14159265358979323846 * 2.0 / 360.0;
+    const auto gier = static_cast<float>(angles[1] * kGradZuRad);
+    const auto nick = static_cast<float>(angles[0] * kGradZuRad);
+    const auto roll = static_cast<float>(angles[2] * kGradZuRad);
+    return {std::sin(gier), std::cos(gier), std::sin(nick), std::cos(nick), std::sin(roll), std::cos(roll)};
+}
+}  // namespace
+
 void Camera::right(float out[3]) const {
-    float f[3];
-    forward(f);
-    const Vec3 r = normalise(cross(Vec3{f[0], f[1], f[2]}, Vec3{0, 0, 1}));
-    out[0] = r.x;
-    out[1] = r.y;
-    out[2] = r.z;
+    const Winkelsinus w = winkelsinus(angles);
+    // right[0] = (-1*sr*sp*cy+-1*cr*-sy); right[1] = (-1*sr*sp*sy+-1*cr*cy); right[2] = -1*sr*cp;
+    out[0] = (-1.0F * w.sr * w.sp * w.cy + -1.0F * w.cr * -w.sy);
+    out[1] = (-1.0F * w.sr * w.sp * w.sy + -1.0F * w.cr * w.cy);
+    out[2] = -1.0F * w.sr * w.cp;
 }
 
 void Camera::up(float out[3]) const {
-    float f[3];
-    float r[3];
-    forward(f);
-    right(r);
-    const Vec3 u = cross(Vec3{r[0], r[1], r[2]}, Vec3{f[0], f[1], f[2]});
-    out[0] = u.x;
-    out[1] = u.y;
-    out[2] = u.z;
+    const Winkelsinus w = winkelsinus(angles);
+    // up[0] = (cr*sp*cy+-sr*-sy); up[1] = (cr*sp*sy+-sr*cy); up[2] = cr*cp;
+    out[0] = (w.cr * w.sp * w.cy + -w.sr * -w.sy);
+    out[1] = (w.cr * w.sp * w.sy + -w.sr * w.cy);
+    out[2] = w.cr * w.cp;
 }
 
 void rotateAboutAxis(const float v[3], const float axis[3], float degrees,
@@ -151,11 +179,123 @@ void anglesFromBasis(const float forwardV[3], const float upV[3],
     outAngles[2] = roll;
 }
 
+// --- Das Spielfenster (Paket kamera, rc601) ----------------------------------
+namespace {
+// M_PI aus q_shared.h - die Engine rechnet die Winkel in double und legt das
+// Ergebnis in float ab; hier genauso.
+constexpr double kPiEngine = 3.14159265358979323846;
+
+// Ein Seitenverhaeltnis, mit dem sich rechnen laesst. 0, negativ oder
+// unendlich gibt es im Spiel nicht (vidWidth/vidHeight sind Bildpunkte).
+float brauchbareSeiten(float seiten) {
+    return std::isfinite(seiten) ? std::clamp(seiten, 0.01F, 100.0F) : 16.0F / 9.0F;
+}
+}  // namespace
+
+SpielSicht spielSicht(float fovX, const SpielFenster& s) {
+    // Die Engine selbst begrenzt den Bildwinkel einer Kamera nicht -
+    // camera ( ZOOM, 0 ) ergaebe tan(0) und eine Teilung durch null. Ravens
+    // 461 ZOOM-Befehle liegen zwischen 6,3 und 110 Grad; wie setFovX bleibt
+    // es hier bei 1 bis 179.
+    const float desiredFov = std::clamp(std::isfinite(fovX) ? fovX : 90.0F, 1.0F, 179.0F);
+    const float aspect = brauchbareSeiten(s.seiten);
+    float fx = desiredFov;
+    if (s.fovAspectAdjust) {
+        // cg_view.cpp:1266-1274 (OpenJK), :1709-1717 (Movie Duels):
+        //     const float baseAspect = 0.75f; // 3/4
+        //     const float aspect = (float)cgs.glconfig.vidWidth/(float)cgs.glconfig.vidHeight;
+        //     fov_x = atan( tan( desiredFov*M_PI / 360.0f ) * baseAspect*aspect )*360.0f / M_PI;
+        constexpr float baseAspect = 0.75F;
+        fx = static_cast<float>(std::atan(std::tan(desiredFov * kPiEngine / 360.0F) * baseAspect * aspect) * 360.0F /
+                                kPiEngine);
+    }
+    // cg_view.cpp:1276-1278 (OpenJK), :1720-1722 (Movie Duels):
+    //     x = cg.refdef.width / tan( fov_x / 360 * M_PI );
+    //     fov_y = atan2( cg.refdef.height, x );
+    //     fov_y = fov_y * 360 / M_PI;
+    // refdef ist das ganze Fenster (CG_CalcVrect, size = 100) - Breite zu
+    // Hoehe also genau das Seitenverhaeltnis.
+    const auto x = static_cast<float>(static_cast<double>(aspect) / std::tan(fx / 360.0F * kPiEngine));
+    auto fy = static_cast<float>(std::atan2(1.0, static_cast<double>(x)));
+    fy = static_cast<float>(fy * 360.0F / kPiEngine);
+    SpielSicht r;
+    r.fovX = std::clamp(fx, 1.0F, 179.0F);
+    r.fovY = std::clamp(fy, 1.0F, 179.0F);
+    return r;
+}
+
+float spielTanHalbX(float fovX, const SpielFenster& s) {
+    // R_SetupProjection (tr_main.cpp:542): xmax = zNear * tan( fov_x * M_PI / 360.0f )
+    return static_cast<float>(std::tan(spielSicht(fovX, s).fovX * kPiEngine / 360.0F));
+}
+
+float spielTanHalbY(float fovX, const SpielFenster& s) {
+    // R_SetupProjection (tr_main.cpp:539): ymax = zNear * tan( fov_y * M_PI / 360.0f )
+    return static_cast<float>(std::tan(spielSicht(fovX, s).fovY * kPiEngine / 360.0F));
+}
+
+SpielRahmen spielRahmenIn(float ansichtSeiten, float spielSeiten) {
+    const float p = brauchbareSeiten(ansichtSeiten);
+    const float a = brauchbareSeiten(spielSeiten);
+    SpielRahmen r;
+    if (p >= a) {
+        r.breite = a / p;   // Ansicht breiter: links und rechts faellt etwas weg
+    } else {
+        r.hoehe = p / a;    // Ansicht schmaler: oben und unten
+    }
+    return r;
+}
+
+SpielRahmen setzeSpielFov(Camera& c, float fovX, float ansichtSeiten, const SpielFenster& s) {
+    const SpielRahmen r = spielRahmenIn(ansichtSeiten, s.seiten);
+    // Im Rahmen soll senkrecht tan(fov_y/2) des Spiels stehen. Die Ansicht
+    // ist 1/hoehe mal so hoch wie der Rahmen, also oeffnet sie entsprechend
+    // weiter. Waagerecht passt es dann von selbst: die Ansicht rechnet
+    // tan(fovY/2) * Breite/Hoehe (gpucam.h), am Rahmenrand ergibt das
+    // tan(fov_y/2) * vidWidth/vidHeight = tan(fov_x/2) - genau wie
+    // CG_CalcFOVFromX fov_y aus fov_x macht.
+    const float tY = spielTanHalbY(fovX, s);
+    const float tV = tY / std::max(r.hoehe, 1.0e-4F);
+    c.fovY = std::clamp(2.0F * std::atan(tV) * 180.0F / kPi, 1.0F, 179.0F);
+    return r;
+}
+
+SpielRahmen spielRahmenFreieSicht(const Camera& c, float ansichtSeiten, const SpielFenster& s, float fovX) {
+    const float p = brauchbareSeiten(ansichtSeiten);
+    const float tV = std::tan(rad(std::clamp(c.fovY, 1.0F, 179.0F)) * 0.5F);
+    SpielRahmen r;
+    // Was das Spiel zeigt, in Anteilen dessen, was die Ansicht zeigt. Sieht
+    // das Spiel in einer Richtung mehr, steht der Rahmen dort am Rand.
+    r.breite = std::clamp(spielTanHalbX(fovX, s) / (tV * p), 1.0e-4F, 1.0F);
+    r.hoehe = std::clamp(spielTanHalbY(fovX, s) / tV, 1.0e-4F, 1.0F);
+    return r;
+}
+
+// --- Paket kamera, rc601 (Review): bewegt wird ohne Rollwinkel ----------------
+//
+// Seit right()/up() wie AngleVectors rollen, schob WASD (move) und die
+// mittlere Maustaste (Orbit::pan) eine gerollte freie Kamera schraeg - nach
+// "Zur Einstellung fliegen" auf einer Einstellung mit ROLL stieg sie beim
+// Seitwaertsfliegen ("hoch und runter immer senkrecht" galt nicht mehr).
+// Entscheidung: das Bild zeigt den Roll weiter (right()/up() bleiben wie
+// AngleVectors), die BEWEGUNG bleibt waagerecht - mit der rollfreien Basis.
+// Fuer |pitch| < 90 ist das genau die alte Rechnung (rechts = normalise(vorn
+// x Z), oben = rechts x vorn).
+namespace {
+void rollfreiRechtsOben(const Camera& c, float r[3], float u[3]) {
+    Camera ohneRoll = c;
+    ohneRoll.angles[2] = 0.0F;
+    ohneRoll.right(r);
+    ohneRoll.up(u);
+}
+}  // namespace
+
 void Camera::move(float forwardAmount, float rightAmount, float upAmount) {
     float f[3];
     float r[3];
+    float u[3];
     forward(f);
-    right(r);
+    rollfreiRechtsOben(*this, r, u);   // Paket kamera, rc601 (Review)
     for (int k = 0; k < 3; ++k) {
         pos[k] += f[k] * forwardAmount + r[k] * rightAmount;
     }
@@ -186,8 +326,7 @@ void Orbit::turn(Camera& cam, float deltaYawDeg, float deltaPitchDeg) {
 void Orbit::pan(Camera& cam, float dx, float dy) {
     float r[3];
     float u[3];
-    cam.right(r);
-    cam.up(u);
+    rollfreiRechtsOben(cam, r, u);   // Paket kamera, rc601 (Review): ohne Rollwinkel
     // Der Betrag richtet sich nach dem Abstand: aus der Ferne schiebt man
     // weiter, aus der Naehe feiner.
     const float k = distance * 0.0015F;

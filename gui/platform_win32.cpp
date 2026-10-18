@@ -13,6 +13,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 
+#include <algorithm>
 #include <cwchar>
 #include <string>
 #include <vector>
@@ -254,6 +255,13 @@ bool startBehavedWith(const std::string& datei) {
 }
 
 std::string settingsDirectory() {
+    // Selbsttests, die gleichzeitig laufen, bekommen je einen eigenen Ordner
+    // (rc601): sonst schreiben sie sich gegenseitig - und dem Anwender - die
+    // behaved.cfg ueber.
+    if (const wchar_t* eigen = _wgetenv(L"BHED_EINSTELLUNGEN"); eigen != nullptr && eigen[0] != L'\0') {
+        CreateDirectoryW(eigen, nullptr);
+        return toUtf8(eigen);
+    }
     wchar_t* appdata = nullptr;
     std::string dir;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appdata))) {
@@ -364,6 +372,66 @@ void zweiteInstanzSchliessen(std::uintptr_t griff, bool beenden) {
     CloseHandle(h);
 }
 
+// --- rc601 release: ein anderes Programm starten (Selbsttest) -----------
+//
+// Wie starteZweiteInstanz, aber fuer eine andere Datei (die Kopie der exe im
+// Ordner ohne data\base) und mit eigenen Variablen - der Selbsttest gibt der
+// Kopie einen eigenen Einstellungsordner (BHED_EINSTELLUNGEN), damit sie
+// weder den des Laufs noch %APPDATA%\behaved anfasst.
+std::uintptr_t starteProgramm(const std::string& exe, const std::string& argumente,
+                              const std::vector<std::string>& setzen) {
+    const std::wstring pfad = toWide(exe);
+    std::wstring zeile = L"\"" + pfad + L"\"";
+    if (!argumente.empty()) {
+        zeile += L" " + toWide(argumente);
+    }
+    std::vector<std::wstring> neu;
+    for (const std::string& v : setzen) {
+        neu.push_back(toWide(v));
+    }
+    // Die eigene Umgebung ohne BHED_EDITORTEST und ohne die Namen aus
+    // `setzen`; danach die neuen Werte. Sortiert (ohne Ruecksicht auf
+    // Gross-/Kleinschreibung), so wie Windows einen Umgebungsblock erwartet.
+    std::vector<std::wstring> alle;
+    if (wchar_t* block = GetEnvironmentStringsW()) {
+        for (const wchar_t* e = block; *e != L'\0'; e += std::wcslen(e) + 1) {
+            bool weg = std::wcsncmp(e, L"BHED_EDITORTEST=", 16) == 0;
+            for (const std::wstring& n : neu) {
+                const std::size_t gleich = n.find(L'=');
+                if (gleich != std::wstring::npos && _wcsnicmp(e, n.c_str(), gleich + 1) == 0) {
+                    weg = true;
+                }
+            }
+            if (!weg) {
+                alle.emplace_back(e);
+            }
+        }
+        FreeEnvironmentStringsW(block);
+    }
+    for (const std::wstring& n : neu) {
+        alle.push_back(n);
+    }
+    std::sort(alle.begin(), alle.end(),
+              [](const std::wstring& a, const std::wstring& b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+    std::wstring umgebung;
+    for (const std::wstring& e : alle) {
+        umgebung.append(e);
+        umgebung.push_back(L'\0');
+    }
+    umgebung.push_back(L'\0');
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOWMINNOACTIVE;   // kein Fokusdiebstahl
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(pfad.c_str(), zeile.data(), nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT,
+                       umgebung.data(), nullptr, &si, &pi) == 0) {
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    return reinterpret_cast<std::uintptr_t>(pi.hProcess);
+}
+
 std::string executableDirectory() {
     // GetModuleFileNameW mit wachsendem Puffer: der Pfad kann laenger als
     // MAX_PATH sein, und die Funktion sagt das nur durch Abschneiden.
@@ -464,6 +532,18 @@ void renderDocAufnehmen() {
     if (api != nullptr && api->TriggerCapture != nullptr) {
         api->TriggerCapture();
     }
+}
+
+// --- Paket kamera, rc601 -------------------------------------------------
+//
+// SM_CXSCREEN/SM_CYSCREEN: Breite und Hoehe des HAUPTbildschirms - der, den
+// SDL als Bildschirm 0 meldet und dessen Desktopaufloesung Movie Duels bei
+// r_mode -2 nimmt. Ohne DPI-Bewusstsein liefert Windows skalierte Werte, das
+// Seitenverhaeltnis bleibt dabei dasselbe.
+float hauptBildschirmSeiten() {
+    const int b = GetSystemMetrics(SM_CXSCREEN);
+    const int h = GetSystemMetrics(SM_CYSCREEN);
+    return (b > 0 && h > 0) ? static_cast<float>(b) / static_cast<float>(h) : 0.0F;
 }
 
 }  // namespace bhed::platform

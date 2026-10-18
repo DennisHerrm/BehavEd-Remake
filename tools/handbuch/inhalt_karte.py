@@ -35,16 +35,16 @@ KARTE = {
         ]),
         ("h2", "anzeige", T("What is shown", "Was gezeigt wird", "显示内容", "表示内容")),
         ("p", T(
-            "The buttons on the right of the toolbar switch parts of the picture on and off: entities, names, the figures of the script, effects, glow, dynamic light, fog and sky. **{{MapTopView}}** looks straight down like a map and cuts away everything above the cut height - drag the height box to look at another floor. **{{MapViewSettings}}** (gear) holds brightness, ambient light, detail, character shadows and **{{MapScriptFocus}}**, which dims every entity the active script does not use.",
-            "Die Knöpfe rechts in der Leiste schalten Teile des Bildes an und aus: Entities, Namen, die Figuren des Skripts, Effekte, Glühen, dynamisches Licht, Nebel und Himmel. **{{MapTopView}}** schaut wie eine Landkarte senkrecht hinunter und schneidet alles über der Schnitthöhe weg - die Höhe ziehen zeigt ein anderes Stockwerk. **{{MapViewSettings}}** (Zahnrad) enthält Helligkeit, Umgebungslicht, Detail, Figurenschatten und **{{MapScriptFocus}}**, das alle Entities abblendet, die das aktive Skript nicht benutzt.",
-            "工具栏右侧的按钮用于开关画面中的各部分:实体、名称、脚本角色、特效、辉光、动态光、雾和天空。**{{MapTopView}}** 像地图一样垂直向下看,并剖去剖切高度以上的一切——拖动高度框可查看其他楼层。**{{MapViewSettings}}**(齿轮)包含亮度、环境光、细节、角色阴影以及 **{{MapScriptFocus}}**,后者会淡化当前脚本未使用的所有实体。",
-            "ツールバー右のボタンで画面の要素を切り替えます。エンティティ、名前、スクリプトのキャラクター、エフェクト、グロー、動的ライト、霧、空。**{{MapTopView}}** は地図のように真上から見下ろし、切断高さより上を取り除きます。高さの欄をドラッグすると別の階を見られます。**{{MapViewSettings}}**(歯車)には明るさ、環境光、詳細度、キャラクターの影、そしてアクティブなスクリプトが使わないエンティティを暗くする **{{MapScriptFocus}}** があります。")),
+            "The buttons on the right of the toolbar switch parts of the picture on and off: entities, names, the figures of the script, effects, glow, dynamic light, fog and sky. **{{MapTopView}}** looks straight down like a map and cuts away everything above the cut height - drag the height box to look at another floor. **{{MapViewSettings}}** (gear) holds brightness, ambient light, detail, character shadows, **{{MapScriptFocus}}**, which dims every entity the active script does not use, and **{{GameScreen}}**: the game's aspect ratio and cg_fovAspectAdjust, which decide how wide every camera sees ([[kamera#vorschau]]).",
+            "Die Knöpfe rechts in der Leiste schalten Teile des Bildes an und aus: Entities, Namen, die Figuren des Skripts, Effekte, Glühen, dynamisches Licht, Nebel und Himmel. **{{MapTopView}}** schaut wie eine Landkarte senkrecht hinunter und schneidet alles über der Schnitthöhe weg - die Höhe ziehen zeigt ein anderes Stockwerk. **{{MapViewSettings}}** (Zahnrad) enthält Helligkeit, Umgebungslicht, Detail, Figurenschatten, **{{MapScriptFocus}}**, das alle Entities abblendet, die das aktive Skript nicht benutzt, und **{{GameScreen}}**: Seitenverhältnis und cg_fovAspectAdjust des Spiels, die bestimmen, wie weit jede Kamera sieht ([[kamera#vorschau]]).",
+            "工具栏右侧的按钮用于开关画面中的各部分:实体、名称、脚本角色、特效、辉光、动态光、雾和天空。**{{MapTopView}}** 像地图一样垂直向下看,并剖去剖切高度以上的一切——拖动高度框可查看其他楼层。**{{MapViewSettings}}**(齿轮)包含亮度、环境光、细节、角色阴影、**{{MapScriptFocus}}**(淡化当前脚本未使用的所有实体)以及 **{{GameScreen}}**:游戏的宽高比和 cg_fovAspectAdjust,它们决定每台摄像机能看多宽([[kamera#vorschau]])。",
+            "ツールバー右のボタンで画面の要素を切り替えます。エンティティ、名前、スクリプトのキャラクター、エフェクト、グロー、動的ライト、霧、空。**{{MapTopView}}** は地図のように真上から見下ろし、切断高さより上を取り除きます。高さの欄をドラッグすると別の階を見られます。**{{MapViewSettings}}**(歯車)には明るさ、環境光、詳細度、キャラクターの影、アクティブなスクリプトが使わないエンティティを暗くする **{{MapScriptFocus}}**、そして **{{GameScreen}}**(各カメラがどれだけ広く映すかを決める、ゲームのアスペクト比と cg_fovAspectAdjust)があります([[kamera#vorschau]])。")),
         ("img", "h_ansicht_einst", T("{{MapViewSettings}}.", "{{MapViewSettings}}.", "{{MapViewSettings}}。", "{{MapViewSettings}}。")),
         ("note", T(
-            "The picture is meant to look like the game: shaders, lightmaps, glow (like `r_DynamicGlow`), fog (`r_drawfog`), dynamic lights, lens flares, weather and saber trails. **{{MapStats}}** shows frame rate, textures and graphics card values when something looks wrong.",
-            "Das Bild soll aussehen wie im Spiel: Shader, Lightmaps, Glühen (wie `r_DynamicGlow`), Nebel (`r_drawfog`), dynamische Lichter, Lens-Flares, Wetter und Klingenspuren. **{{MapStats}}** zeigt Bildrate, Texturen und Werte der Grafikkarte, wenn etwas falsch aussieht.",
-            "画面力求与游戏一致:着色器、光照贴图、辉光(如 `r_DynamicGlow`)、雾(`r_drawfog`)、动态光、镜头光晕、天气和光剑轨迹。画面异常时,**{{MapStats}}** 会显示帧率、纹理和显卡参数。",
-            "画面はゲームと同じに見えるように作られています。シェーダー、ライトマップ、グロー(`r_DynamicGlow` 相当)、霧(`r_drawfog`)、動的ライト、レンズフレア、天候、セイバーの軌跡。おかしく見えるときは **{{MapStats}}** でフレームレート、テクスチャ、グラフィックカードの値を確認できます。")),
+            "The picture is meant to look like the game: shaders, lightmaps, glow (like `r_DynamicGlow`), fog (`r_drawfog`), dynamic lights, lens flares, weather and saber trails, sparks and burn marks ([[figuren#schwerter]]). **{{MapStats}}** shows frame rate, textures and graphics card values when something looks wrong.",
+            "Das Bild soll aussehen wie im Spiel: Shader, Lightmaps, Glühen (wie `r_DynamicGlow`), Nebel (`r_drawfog`), dynamische Lichter, Lens-Flares, Wetter und Klingenspuren, Funken und Brandspuren ([[figuren#schwerter]]). **{{MapStats}}** zeigt Bildrate, Texturen und Werte der Grafikkarte, wenn etwas falsch aussieht.",
+            "画面力求与游戏一致:着色器、光照贴图、辉光(如 `r_DynamicGlow`)、雾(`r_drawfog`)、动态光、镜头光晕、天气以及光剑轨迹、火花和灼痕([[figuren#schwerter]])。画面异常时,**{{MapStats}}** 会显示帧率、纹理和显卡参数。",
+            "画面はゲームと同じに見えるように作られています。シェーダー、ライトマップ、グロー(`r_DynamicGlow` 相当)、霧(`r_drawfog`)、動的ライト、レンズフレア、天候、セイバーの軌跡・火花・焼け跡([[figuren#schwerter]])。おかしく見えるときは **{{MapStats}}** でフレームレート、テクスチャ、グラフィックカードの値を確認できます。")),
     ],
 }
 
@@ -106,16 +106,22 @@ WEGPUNKTE = {
     "gruppe": "karte",
     "titel": T("NPC waypoints", "NPC-Wegpunkte", "NPC 路径点", "NPC ウェイポイント"),
     "kurz": T(
-        "The network NPCs walk on when they chase or flee. Place it by hand or let the program build it, then check it.",
-        "Das Netz, auf dem NPCs laufen, wenn sie verfolgen oder fliehen. Von Hand setzen oder vom Programm bauen lassen, dann prüfen.",
-        "NPC 追击或逃跑时行走的路网。可以手动放置,也可以让程序自动生成,然后进行检查。",
-        "NPC が追いかけたり逃げたりするときに歩くネットワーク。手で置くか自動で作り、確認します。"),
+        "The network NPCs walk on - to far walk targets in cutscenes, and when they chase or flee. Place it by hand or let the program build it, then check it.",
+        "Das Netz, auf dem NPCs laufen - zu fernen Laufzielen in Zwischensequenzen und wenn sie verfolgen oder fliehen. Von Hand setzen oder vom Programm bauen lassen, dann prüfen.",
+        "NPC 行走所用的路网——在过场中前往远处的行走目标,以及追击或逃跑时。可以手动放置,也可以让程序自动生成,然后进行检查。",
+        "NPC が歩くネットワーク。カットシーンで遠い目標へ歩くときや、追いかけたり逃げたりするときに使います。手で置くか自動で作り、確認します。"),
     "bloecke": [
         ("img", "h_wegpunkte", T(
             "The {{WegTitel}} window and the network on the map.",
             "Das Fenster {{WegTitel}} und das Netz auf der Karte.",
             "{{WegTitel}} 窗口及地图上的路网。",
             "{{WegTitel}} ウィンドウとマップ上のネットワーク。"), "breit"),
+        ("legende", [
+            (T("**{{WegZeigen}}**"), T("Shows the network on the map.")),
+            (T("**{{WegSetzen}}** / **{{WegVerbinden}}**"), T("Place points by clicking the floor / connect two points.")),
+            (T("**{{WegErzeugen}}** / **{{WegEntfernen}}**"), T("Spread a network over the walkable floor / remove what was created.")),
+            (T("**{{WegPruefen}}**"), T("Finds what the game would reject; click a problem to fly there.")),
+        ]),
         ("p", T(
             "Open it with **{{WegTitel}}** in the map toolbar. **{{WegZeigen}}** draws the paths: green set by hand (`target`), blue automatic (nav goals and combat points), orange jumps (`targetJump`).",
             "Geöffnet wird es mit **{{WegTitel}}** in der Kartenleiste. **{{WegZeigen}}** zeichnet die Wege: grün von Hand gesetzt (`target`), blau automatisch (Navgoals und Kampfpunkte), orange Sprünge (`targetJump`).",
@@ -139,6 +145,11 @@ WEGPUNKTE = {
               "**{{WegPruefen}}** 找出游戏会拒绝或 NPC 无法使用的部分;单击某个问题即可飞过去。",
               "**{{WegPruefen}}** はゲームが拒否するものや NPC が使えないものを見つけます。問題をクリックするとそこへ移動します。"),
         ]),
+        ("note", T(
+            "The cutscene preview uses this network for walks exactly like the game: far targets need a path here, otherwise the figure stands still ([[figuren#wieimspiel]]). A network needs at least four waypoints. Doors on the network count while they are open; a closed door counts only if it opens by itself for NPCs.",
+            "Die Szenenvorschau nutzt dieses Netz für Läufe genau wie das Spiel: ferne Ziele brauchen hier einen Weg, sonst bleibt die Figur stehen ([[figuren#wieimspiel]]). Für ein Netz braucht es mindestens vier Wegpunkte. Türen im Netz zählen, solange sie offen sind; eine geschlossene nur, wenn sie für NPCs von selbst aufgeht.",
+            "过场预览会像游戏一样使用此网络来行走:远处的目标需要在这里有路径,否则角色会站着不动([[figuren#wieimspiel]])。一个网络至少需要四个路径点。网络上的门在打开时才算数;关闭的门只有在会为 NPC 自动打开时才算。",
+            "カットシーンのプレビューは、ゲームとまったく同じようにこのネットワークを歩行に使います。遠い目標にはここに経路が必要で、なければキャラクターは立ち止まります([[figuren#wieimspiel]])。ネットワークには最低 4 つのウェイポイントが必要です。ネットワーク上のドアは開いている間だけ通れます。閉じたドアは、NPC のために自動で開く場合だけ通れます。")),
     ],
 }
 

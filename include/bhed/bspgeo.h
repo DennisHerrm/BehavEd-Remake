@@ -63,6 +63,10 @@ struct BspSurface {
     float flareOrt[3]{};
     float flareFarbe[3]{};
     float flareNormale[3]{};
+    // rc601 saber: bei ebenen Flaechen die Ebene aus lightmapVecs[2] - so
+    // nimmt sie ParseFace (tr_bsp.cpp:435 OJ) fuer srfSurfaceFace_t::plane,
+    // die R_MarkFragments (Brandspuren) prueft.
+    float ebenenNormale[3]{};
     // --- Lightmap-Stile (rc592) ------------------------------------------
     //
     // dsurface_t traegt vier Lichtstufen: lightmapStyles[4],
@@ -662,6 +666,39 @@ struct MapEntity;
 // Lightmapnummer. Rueckgabe: wie viele Lightmaps geladen wurden.
 int ladeExterneLightmaps(BspGeometry& geo, const std::string& kartenOrdner,
                          const std::function<bool(const std::string&, std::string&)>& lies);
+
+// --- rc601 ton: wer in den Snapshot kommt, ist zu hoeren ---------------------
+//
+// Gemeldet (Tester, Movie Duels): "You can hear everything on the map". Was
+// eine Entity klingen laesst - ihre Schleife (s.loopSound), ein Tuerklang
+// (EV_BMODEL_SOUND), ein fx_runner (EV_PLAY_EFFECT), ein G_Sound (Temp-Entity
+// mit EV_GENERAL_SOUND) -, kommt nur ueber den Snapshot beim Client an, und
+// der Server schickt nur, was der Betrachter sehen KOENNTE:
+// SV_AddEntitiesVisibleFromPoint (Movie Duels code/server/sv_snapshot.cpp:373
+// ff.), im Kameramodus vom Ort der Skriptkamera aus (CG_CAMERA_POS, :607).
+//
+// Die Cluster aller Blaetter, die der Kasten beruehrt (CM_BoxLeafnums_r,
+// code/qcommon/cm_test.cpp:211 ff.: liegt der Kasten auf beiden Seiten einer
+// Ebene, geht es in beide Kinder). Cluster -1 (fester Raum) zaehlt nicht -
+// genau so speichert SV_LinkEntity sie (sv_world.cpp:346 ff.).
+void clusterImKasten(const BspGeometry& g, const float mins[3], const float maxs[3], std::vector<int>& aus);
+
+// Kaeme eine Entity mit diesem Kasten (absmin/absmax, also SCHON um eine
+// Einheit erweitert wie in SV_LinkEntity, sv_world.cpp:296 ff.) in den
+// Snapshot eines Betrachters bei `auge`?
+//   - ohne Karte oder Sichtbarkeitstabelle: ja (CM_ClusterPVS gibt dann
+//     lauter Einsen, cm_load.cpp:525 f.)
+//   - beruehrt der Kasten keinen Cluster: nein ("if (!svEnt->numClusters)
+//     continue;", sv_snapshot.cpp:501 ff. MD)
+//   - sonst: sieht der Cluster des Auges einen davon
+// Abweichungen, mit Absicht: steht das Auge im Fels (Cluster -1), gilt alles
+// als sichtbar - die Engine nimmt dann die Zeile von Cluster 0
+// (CM_ClusterPVS, cm_test.cpp:480 ff.), was im Editor (freie Kamera ausserhalb
+// der Karte) beliebig wirkt; so haelt es auch clusterVisible. Und Bereiche
+// mit Areaportalen (CM_AreasConnected, geschlossene Tueren) kennt behaved
+// nicht - die Blaetter tragen hier keine Area.
+[[nodiscard]] bool kastenImSnapshot(const BspGeometry& g, const float auge[3], const float mins[3],
+                                    const float maxs[3]);
 
 }  // namespace bhed
 #endif

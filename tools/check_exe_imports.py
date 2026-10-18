@@ -19,10 +19,22 @@ ERLAUBT = {'kernel32.dll', 'user32.dll', 'gdi32.dll', 'shell32.dll',
            'advapi32.dll', 'ole32.dll', 'oleaut32.dll', 'opengl32.dll',
            'msvcrt.dll', 'imm32.dll', 'dwmapi.dll', 'comdlg32.dll',
            'version.dll', 'winmm.dll', 'ws2_32.dll', 'shlwapi.dll'}
+# rc601 release: winhttp.dll gehoert seit Windows XP SP1 zum System und ist
+# der Weg des Updaters zu GitHub (gui/update_win32.cpp). Sie fehlte hier,
+# deshalb meldete die Pruefung am veroeffentlichten rc600 neben der
+# VC-Laufzeit auch WINHTTP.dll als "unbekannt". Seit dieser Fassung laeuft
+# die Pruefung als ctest (exe_importe) - mit Fehlalarm waere sie dort
+# unbrauchbar.
+ERLAUBT |= {'winhttp.dll'}
 
 
 def imports(path):
-    d = open(path, 'rb').read()
+    return imports_aus_daten(open(path, 'rb').read())
+
+
+# rc601 release: dieselbe Lesung fuer eine .exe, die nur im Speicher liegt -
+# tools/release_paket.py prueft die behaved.exe IM Zip, ohne sie auszupacken.
+def imports_aus_daten(d):
     pe = struct.unpack_from('<I', d, 0x3C)[0]
     assert d[pe:pe+4] == b'PE\0\0', 'keine PE-Datei'
     nsec, = struct.unpack_from('<H', d, pe + 6)
@@ -80,4 +92,8 @@ def main():
     return 1 if bad else 0
 
 
-sys.exit(main())
+# rc601 release: nur als Programm ausfuehren. tools/release_paket.py laedt
+# diese Datei als Modul (ERLAUBT, VERBOTEN, imports_aus_daten); vorher
+# beendete schon das Laden den Aufrufer.
+if __name__ == "__main__":
+    sys.exit(main())

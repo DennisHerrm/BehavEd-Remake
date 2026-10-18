@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -526,8 +527,103 @@ void graphAblegen(ImVec2 o, float s) {
     ImGui::EndDragDropTarget();
 }
 
+// Die Befehle des gewaehlten Skript-Knotens (rc601) - in den Details rechts.
+//
+// shank: "das jedes Tutorial in jedem Modus erstellt werden kann". Ein Knoten
+// waechst dafuer nicht im Graphen (die Leitungen laufen durch feste Gassen),
+// seine Befehle stehen in den Details: Klick waehlt, Doppelklick oeffnet den
+// Editor, Rechtsklick das Menue der Classic-Zeile, ein Befehl aus der
+// Ereignisliste auf eine Zeile fallen gelassen kommt dahinter. Bearbeiten
+// laesst sich das offene Skript; ein anderes oeffnet der Knopf.
+// Die Befehle des offenen Skripts als Liste - fuer Graph und Spuren. Auch
+// das, was keine Zeit hat (affect, task, declare, ein leeres Skript), laesst
+// sich hier waehlen, bearbeiten und befuellen. `rest`: Hoehe, die unter der
+// Liste frei bleibt.
+void befehlsListe(Path& editorFuer, float rest) {
+    const std::vector<Node>& wurzel = g_app->doc.script().nodes;
+    if (wurzel.empty()) {
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextDisabled("%s", tr(Str::GraphCommandsEmpty));
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::BeginChild("##befehlsliste", ImVec2{-1.0F, std::max(ImGui::GetFontSize() * 6.0F, ImGui::GetContentRegionAvail().y - rest)},
+                      ImGuiChildFlags_None);
+    bool geaendert = false;
+    Path weg;
+    const std::function<void(const std::vector<Node>&, int)> zeilen = [&](const std::vector<Node>& ns, int tiefe) {
+        for (std::size_t i = 0; i < ns.size() && !geaendert; ++i) {
+            const Node& n = ns[i];
+            if (n.kind == Node::Kind::Blank) { continue; }
+            weg.push_back(i);
+            std::string text;
+            if (n.kind == Node::Kind::LineComment) {
+                text = "// " + n.raw;
+            } else if (n.kind == Node::Kind::Macro) {
+                text = "$ " + n.name;
+            } else {
+                text = n.name + " (";
+                for (std::size_t a = 0; a < n.args.size(); ++a) { text += (a == 0 ? " " : ", ") + n.args[a].text; }
+                text += " )";
+            }
+            ImGui::PushID(static_cast<int>(i));
+            // Indent(0) nimmt den Standardabstand - die oberste Ebene stand
+            // sonst weiter rechts als der Inhalt eines Blocks.
+            const float einzug = ImGui::GetFontSize() * 0.9F * static_cast<float>(tiefe);
+            if (tiefe > 0) { ImGui::Indent(einzug); }
+            const bool gewaehlt = weg == g_app->selectedPath;
+            if (ImGui::Selectable(text.c_str(), gewaehlt, ImGuiSelectableFlags_AllowDoubleClick)) {
+                selectByPath(weg);
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) { editorFuer = weg; }
+            }
+            if (ImGui::BeginPopupContextItem("##befehlsmenue")) {
+                bool ed = false;
+                geaendert = befehlsMenue(weg, ed);
+                if (ed) { editorFuer = g_app->selectedPath; }
+                ImGui::EndPopup();
+            }
+            if (!geaendert && ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("bhed_new")) { geaendert = neuAblegenAn(pl, weg, false); }
+                ImGui::EndDragDropTarget();
+            }
+            if (tiefe > 0) { ImGui::Unindent(einzug); }
+            ImGui::PopID();
+            if (!geaendert && n.hasBlock) {
+                ImGui::PushID(static_cast<int>(i) + 100000);
+                zeilen(n.children, tiefe + 1);
+                ImGui::PopID();
+            }
+            weg.pop_back();
+        }
+    };
+    zeilen(wurzel, 0);
+    // Die freie Flaeche unter den Zeilen nimmt einen Befehl fuers Ende an.
+    const ImVec2 frei = ImGui::GetContentRegionAvail();
+    if (frei.y > 4.0F && frei.x > 4.0F) {
+        ImGui::InvisibleButton("##listenende", frei);
+        if (!geaendert && ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("bhed_new")) { (void)neuAblegenAn(pl, Path{}, false); }
+            ImGui::EndDragDropTarget();
+        }
+    }
+    ImGui::EndChild();
+}
+
+void graphBefehle(const std::string& skript, Path& editorFuer) {
+    ImGui::Separator();
+    ImGui::TextUnformatted(tr(Str::GraphCommands));
+    if (klein(skript) != klein(aktiverSkriptRef())) {
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextDisabled("%s", tr(Str::GraphCommandsOpen));
+        ImGui::PopTextWrapPos();
+        if (iconTextKnopf(tr(Str::GraphEditHere), UiIcon::Skript, nullptr)) { skriptOeffnen(skript, false); }
+        return;
+    }
+    befehlsListe(editorFuer, ImGui::GetFontSize() * 2.6F);
+}
+
 void drawGraphAnsicht() {
     App::GraphZustand& z = g_app->graph();
+    Path editorFuer;
     const std::string sig = graphSignatur();
     if (sig != z.signatur) {
         z.signatur = sig;
@@ -543,7 +639,9 @@ void drawGraphAnsicht() {
     // (in der Kartenansicht ist die Spalte schmal).
     const bool detailsRechts = voll.x > fs * 42.0F;
     const float detailB = detailsRechts ? fs * 16.0F : 0.0F;
-    const float detailUntenH = detailsRechts ? 0.0F : fs * 7.0F;
+    const int vorwahl = knotenIndex(z.auswahl);
+    const bool skriptGewaehlt = vorwahl >= 0 && !z.g.knoten[static_cast<std::size_t>(vorwahl)].skript.empty();
+    const float detailUntenH = detailsRechts ? 0.0F : fs * (skriptGewaehlt ? 14.0F : 7.0F);
     const bool einpassen = iconTextKnopf(tr(Str::GraphFit), UiIcon::Hinfliegen, nullptr);
     ImGui::SameLine();
     if (iconTextKnopf(tr(Str::GraphRelayout), UiIcon::Verschieben, nullptr)) {
@@ -953,6 +1051,7 @@ void drawGraphAnsicht() {
         } else if (!k.skript.empty()) {
             ImGui::TextDisabled("%s", k.skript.c_str());
             if (iconTextKnopf(tr(Str::EntOpenScript), UiIcon::Skript, nullptr)) { skriptOeffnen(k.skript, true); }
+            graphBefehle(k.skript, editorFuer);
         }
         ImGui::Separator();
         ImGui::TextUnformatted(tr(Str::GraphLinks));
@@ -966,6 +1065,7 @@ void drawGraphAnsicht() {
         }
     }
     ImGui::EndChild();
+    if (!editorFuer.empty()) { openEditorForNode(editorFuer); }
 }
 
 // ============================================================================
@@ -1012,6 +1112,18 @@ std::vector<Spur> spurenBauen() {
         }
         aus.push_back(std::move(k));
     }
+    // rc601: Wie lange eine Figur an einem Befehl ist (ein Lauf bis zum Ziel,
+    // eine Animation), weiss die Szene - der Zeitleisten-Eintrag selbst hat
+    // keine Dauer, und ein Lauf war in den Spuren nur ein Strich.
+    std::map<Path, double> szenenEnde;
+    for (const Actor& ac : g_app->scene.actors) {
+        for (const ActorStep& st : ac.steps) {
+            if (!st.path.empty() && st.endMs > st.startMs + 1.0) {
+                double& e = szenenEnde[st.path];
+                e = std::max(e, st.endMs);
+            }
+        }
+    }
     Spur dialog{tr(Str::TracksDialog), UiIcon::Liste, {}};
     std::map<std::string, Spur> figuren;
     Spur skript{tr(Str::TracksScript), UiIcon::Skript, {}};
@@ -1035,6 +1147,9 @@ std::vector<Spur> spurenBauen() {
             if (tr0.entity.empty()) {
                 skript.bloecke.push_back(b);
             } else {
+                if (const auto it = szenenEnde.find(b.pfad); !b.pfad.empty() && it != szenenEnde.end()) {
+                    b.ende = std::max(b.ende, it->second);
+                }
                 Spur& f = figuren[tr0.entity];
                 f.name = tr0.entity;
                 f.icon = UiIcon::Figur;
@@ -1061,6 +1176,8 @@ std::string zeitText(double ms) {
 }  // namespace
 
 void drawSpurenAnsicht() {
+    Path editorFuer;
+    bool geaendert = false;
     // Die Zeitleiste stammt aus dem ICARUS-Nachbau (prepareScene) - dieselbe
     // wie unter der Karte.
     if (!g_app->camTrackValid) {
@@ -1096,13 +1213,37 @@ void drawSpurenAnsicht() {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(fs * 7.0F);
     ImGui::SliderFloat("##spurenzoom", &g_app->spurenZoom, 0.5F, 6.0F, tr(Str::TracksZoom));
+    ImGui::SameLine();
+    ImGui::Checkbox(tr(Str::TracksList), &g_app->spurenListe);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) { ImGui::SetTooltip("%s", tr(Str::TracksListHint)); }
+
+    // rc601: rechts die Befehle des Skripts als Liste - die Spuren zeigen nur,
+    // was Zeit braucht; affect, task, declare oder ein leeres Skript stehen
+    // nur in der Liste. So laesst sich auch in den Spuren alles bauen.
+    const ImVec2 platz = ImGui::GetContentRegionAvail();
+    const ImVec2 oben = ImGui::GetCursorScreenPos();
+    const bool mitListe = g_app->spurenListe && platz.x > fs * 34.0F;
+    const float listeB = mitListe ? std::min(fs * 17.0F, platz.x * 0.36F) : 0.0F;
+    const float linksB = platz.x - (mitListe ? listeB + st.ItemSpacing.x : 0.0F);
+    const auto liste = [&] {
+        if (!mitListe) { return; }
+        ImGui::SetCursorScreenPos(ImVec2{oben.x + linksB + st.ItemSpacing.x, oben.y});
+        ImGui::BeginChild("##spurenliste", ImVec2{listeB, platz.y}, ImGuiChildFlags_Borders);
+        ImGui::TextUnformatted(tr(Str::GraphCommands));
+        befehlsListe(editorFuer, 0.0F);
+        ImGui::EndChild();
+    };
 
     const std::vector<Spur> spuren = spurenBauen();
     bool leer = true;
     for (const Spur& sp : spuren) { leer = leer && sp.bloecke.empty(); }
     if (leer) {
         ImGui::Spacing();
+        ImGui::PushTextWrapPos(oben.x - ImGui::GetWindowPos().x + linksB);
         ImGui::TextDisabled("%s", tr(Str::TracksEmpty));
+        ImGui::PopTextWrapPos();
+        liste();
+        if (!editorFuer.empty()) { openEditorForNode(editorFuer); }
         return;
     }
 
@@ -1125,7 +1266,7 @@ void drawSpurenAnsicht() {
     }
     ImGui::EndChild();
     ImGui::SameLine(0.0F, 0.0F);
-    const float sichtB = ImGui::GetContentRegionAvail().x;
+    const float sichtB = std::max(fs * 4.0F, linksB - namenB);
     const double msJePx = std::max(0.5, laenge / std::max(1.0, static_cast<double>(sichtB - fs)) / g_app->spurenZoom);
     const float inhaltB = static_cast<float>(laenge / msJePx) + fs * 2.0F;
     ImGui::BeginChild("##spurenzeit", ImVec2{sichtB, hoehe}, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
@@ -1191,19 +1332,66 @@ void drawSpurenAnsicht() {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !g_app->tlDragging) {
                 ImGui::SetTooltip(tr(Str::TracksBlockTip), b.text.c_str(), zeitText(b.start).c_str(), zeitText(b.ende).c_str());
             }
+            if (geaendert) { continue; }   // die Wege der Bloecke gelten erst im naechsten Bild wieder
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !g_app->tlGriffKandidat.da) {
                 if (!b.pfad.empty()) { selectByPath(b.pfad); }
                 g_app->playing = false;
                 g_app->playMs = b.start;
                 g_app->mapDirty = true;
             }
-            if (!b.pfad.empty()) {
+            // rc601: Doppelklick oeffnet den Editor, Rechtsklick das Menue der
+            // Classic-Zeile - so geht in den Spuren alles, was in Classic geht.
+            if (!b.pfad.empty() && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                selectByPath(b.pfad);
+                editorFuer = b.pfad;
+            }
+            if (!b.pfad.empty() && ImGui::BeginPopupContextItem((std::string(id) + "m").c_str())) {
+                bool ed = false;
+                geaendert = befehlsMenue(b.pfad, ed);
+                if (ed) { editorFuer = g_app->selectedPath; }
+                ImGui::EndPopup();
+            }
+            if (!b.pfad.empty() && !geaendert) {
                 (void)kantenGriff(b.pfad, b.start, b.ende, a, e, msJePx);
             }
         }
         ImGui::SetCursorScreenPos(ImVec2{zeileA.x, zeileA.y + zeileH});
     }
     ImGui::Dummy(ImVec2{inhaltB, 1.0F});
+    // rc601: einen Befehl aus der Ereignisliste in eine Spur ziehen - er kommt
+    // hinter den letzten Block dieser Spur, der vor der Abwurfstelle beginnt
+    // (in einer Figurenspur also in ihren affect-Block). Liegt nichts davor,
+    // vor den ersten Block der Spur; eine Spur ohne Bloecke: ans Ende.
+    if (!geaendert && !spuren.empty()) {
+        const ImRect flaeche{ImVec2{o.x, o.y + linealH}, ImVec2{o.x + inhaltB, o.y + linealH + zeileH * static_cast<float>(spuren.size())}};
+        if (ImGui::BeginDragDropTargetCustom(flaeche, ImGui::GetID("##spurenablage"))) {
+            const ImVec2 mp = ImGui::GetIO().MousePos;
+            const std::size_t zeile = std::min(spuren.size() - 1,
+                                               static_cast<std::size_t>(std::max(0.0F, (mp.y - flaeche.Min.y) / zeileH)));
+            const double t = std::max(0.0, static_cast<double>(mp.x - o.x) * msJePx);
+            const SpurBlock* vor = nullptr;
+            const SpurBlock* erster = nullptr;
+            for (const SpurBlock& b : spuren[zeile].bloecke) {
+                if (b.pfad.empty()) { continue; }
+                if (erster == nullptr || b.start < erster->start) { erster = &b; }
+                if (b.start <= t && (vor == nullptr || b.start >= vor->start)) { vor = &b; }
+            }
+            const float y0 = flaeche.Min.y + zeileH * static_cast<float>(zeile);
+            dl->AddLine(ImVec2{mp.x, y0 + 2.0F}, ImVec2{mp.x, y0 + zeileH - 2.0F}, IM_COL32(255, 214, 64, 255), 3.0F);
+            dl->AddRect(ImVec2{flaeche.Min.x, y0 + 1.0F}, ImVec2{flaeche.Max.x, y0 + zeileH - 1.0F}, IM_COL32(255, 214, 64, 160), 4.0F);
+            if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("bhed_new", ImGuiDragDropFlags_AcceptNoDrawDefaultRect)) {
+                if (vor != nullptr) {
+                    geaendert = neuAblegenAn(pl, vor->pfad, false);
+                } else if (erster != nullptr) {
+                    geaendert = neuAblegenAn(pl, erster->pfad, true);
+                } else {
+                    geaendert = neuAblegenAn(pl, Path{}, false);
+                }
+                g_app->playMs = t;
+            }
+            ImGui::EndDragDropTarget();
+        }
+    }
     // Eine gepackte Kante beginnt jetzt zu ziehen (wie in drawTimeline).
     if (g_app->tlGriffKandidat.da && !g_app->tlDragging) {
         const App::TlKandidat k = g_app->tlGriffKandidat;
@@ -1223,7 +1411,8 @@ void drawSpurenAnsicht() {
     ImGui::EndChild();
 
     // --- Die gewaehlte Zeile --------------------------------------------------------
-    ImGui::BeginChild("##spurendetail", ImVec2{-1.0F, -1.0F}, ImGuiChildFlags_Borders);
+    ImGui::BeginChild("##spurendetail", ImVec2{linksB, std::max(fs * 2.0F, oben.y + platz.y - ImGui::GetCursorScreenPos().y)},
+                      ImGuiChildFlags_Borders);
     const Node* n = g_app->selectedPath.empty() ? nullptr : nodeAt(g_app->doc.script(), g_app->selectedPath);
     if (n == nullptr || n->kind != Node::Kind::Command) {
         ImGui::PushTextWrapPos(0.0F);
@@ -1242,6 +1431,8 @@ void drawSpurenAnsicht() {
     }
     (void)st;
     ImGui::EndChild();
+    liste();
+    if (!editorFuer.empty()) { openEditorForNode(editorFuer); }
 }
 
 // --- Rahmen: Kopfzeile + gewaehlte Ansicht --------------------------------------

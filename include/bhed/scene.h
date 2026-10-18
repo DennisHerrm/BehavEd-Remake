@@ -21,8 +21,10 @@
 //     Wegpunkten um Hindernisse herum; hier geht es geradeaus zum Ziel.
 //     Bei Zwischensequenzen stimmt das meistens, weil die Wegpunkte dicht
 //     genug stehen - aber es ist eine Naeherung, keine Nachbildung.
-//   * Keine Kollision. Eine Figur laeuft durch eine Wand, wenn der Wegpunkt
-//     dahinterliegt.
+//   * Keine Kollision mit Waenden. Eine Figur laeuft durch eine Wand, wenn
+//     der Wegpunkt dahinterliegt. Senkrecht dagegen rechnet behaved seit
+//     rc601 (Paket bewegung) wie Pmove: fallen, Stufen bis 18, am Boden
+//     stehen - siehe schwerkraftEinrechnen unten.
 //   * Die Animation beim Gehen waehlt im Spiel die Engine nach dem
 //     Bewegungszustand. Hier wird sie aus SET_WALKING abgeleitet:
 //     BOTH_WALK1 oder BOTH_RUN1, im Stehen BOTH_STAND1.
@@ -34,7 +36,9 @@
 #define BHED_SCENE_H
 
 #include "bhed/bsp.h"
+#include "bhed/navlauf.h"
 #include "bhed/roff.h"
+#include "bhed/saberkontakt.h"   // rc601 saber: SaberKontaktWerte
 #include "bhed/script.h"
 
 #include <array>
@@ -119,6 +123,9 @@ inline constexpr float kNpcTurnDegPerSec = 60.0F + 90.0F * 3.0F;
 // Probe mit Tempo 55, 100, 200 ueber 40/80/150 Einheiten plus obi1 aus der
 // Intro, g_ICARUSDebug-Zeiten). Eine Naeherung - aber naeher am Spiel als
 // d / v, das im Mittel um den Faktor 1.8 zu frueh ankam.
+// rc601 (bewegung): nicht mehr benutzt - Laufen rechnet planeLauf
+// (bhed/navlauf.h) Denkbild fuer Denkbild wie die Engine, auch in BS_NOCLIP.
+// Bleibt nur fuer andere Pakete stehen.
 [[nodiscard]] double gehDauerMs(double dist, double v, double ux, double uy, double zielRadius = 12.0);
 
 // Dieselbe Rechnung fuer einen abweichenden yawSpeed, wie SET_YAWSPEED ihn
@@ -389,6 +396,16 @@ struct ActorState {
     // Die geltende Drehrate in Grad je Sekunde. Vorgabe, bis ein
     // SET_YAWSPEED etwas anderes sagt.
     float turnDegPerSec = kNpcTurnDegPerSec;
+    // rc601 (bewegung, gemeinsam mit saber): der Verhaltenszustand aus
+    // SET_BEHAVIOR_STATE, gross geschrieben ("BS_CINEMATIC"). Leer heisst
+    // BS_DEFAULT. Ein NPC_spawner mit spawnflags 32 (SFB_CINEMATIC) beginnt in
+    // BS_CINEMATIC (NPC_SetMiscDefaultData, NPC_spawn.cpp:315-319).
+    std::string verhalten;
+    // rc601 (saber): client->saberCollisions aus SET_SABERCOLLISIONS - nur
+    // Movie Duels (Q3_Interface.cpp:10307-10325 MD). Zusammen mit
+    // BS_CINEMATIC laesst es die Klingen klirren (G_InCinematicSaberAnim,
+    // wp_saber.cpp:5325 MD). OpenJK kennt den Befehl nicht.
+    bool saberKollisionen = false;
 };
 
 // Welchen Koerperteil ein Animations- oder Haltebefehl trifft.
@@ -485,6 +502,19 @@ struct ActorStep {
         // rechts / 1 links, index das Modell) und SET_REMOVE*HANDBOLT_MODEL
         // (value 0). Q3_AddRHandModel & Co., Q3_Interface.cpp:6321 ff.
         HandModell,
+        // rc601 (bewegung, gemeinsam mit saber): SET_BEHAVIOR_STATE - text
+        // ist der BS_-Name, gross geschrieben. Q3_SetBState,
+        // Q3_Interface.cpp:2608 ff.
+        Verhalten,
+        // rc601 (saber): SET_SABERCOLLISIONS - value 1 bei "true", sonst 0
+        // (Q_stricmp("true", data), Q3_Interface.cpp:10307 MD).
+        SaberKollision,
+        // rc601 (bewegung): SET_DYAW und SET_VIEWTARGET - der Wunschwinkel
+        // (NPCInfo->desiredYaw), zu dem sich die Figur mit ihrer Drehrate
+        // dreht (Q3_SetDYaw, Q3_Interface.cpp:2832). value ist der Winkel,
+        // endMs das Ende von TID_ANGLE_FACE (NPC_UpdateAngles meldet es,
+        // sobald der Winkel steht). Bei SET_VIEWTARGET traegt text das Ziel.
+        Wunschgier,
     };
 
     Kind kind = Kind::Teleport;
@@ -530,7 +560,37 @@ struct ActorStep {
     std::vector<std::array<float, 3>> spur;
     double spurSchrittMs = 50.0;
     std::string fremd;       // aus einem anderen Skript (dann path leer)
+    // --- Paket bewegung (rc601) -------------------------------------------
+    // WalkTo: dieses Stueck wurde unterwegs abgeschnitten (ein neues Ziel,
+    // SET_NAVGOAL "NULL", ein anderes Tempo, SET_ORIGIN, kill). `to` ist dann
+    // der Ort beim Schnitt, nicht das Laufziel. Ein Stueck mit demselben
+    // `path` kann darauf folgen - die Engine steuert jedes Denkbild neu
+    // (STEER::Activate, g_navigator.cpp:3942), ein Weg ist kein fester Plan.
+    bool teilweg = false;
+    // WalkTo: das Laufziel (NPCInfo->goalEntity), auch wenn `to` nach einem
+    // Schnitt woanders liegt (Teil 4, navZieleOhneWeg).
+    float laufZiel[3]{};
+    // Teleport: ein SET_ORIGIN aus dem Skript. Die Schwerkraft nimmt dann
+    // seine Hoehe (G_SetOrigin setzt den Ort genau). Eingefuegte Spruenge
+    // (der Halt beim kill, Vorschauen der Missions-Ansicht) aendern nur X/Y.
+    bool echterSprung = false;
+    // --- Paket bewegung (rc601, Wege wie im Spiel) -------------------------
+    // WalkTo: die Bahn Denkbild fuer Denkbild aus planeLauf (bhed/navlauf.h).
+    // Der Ort kommt dann aus ihr (wegOrtBei), from/to sind nur Anfang und
+    // Ende dieses Stuecks. Leer: linear von from nach to - so rechnen die
+    // Vorschauen des Missions-Tabs, die from/to verschieben.
+    std::shared_ptr<const LaufPlan> lauf;
+    // WalkTo: in diesem Stueck sieht UpdateGoal die Ankunft (NPC_ReachedGoal,
+    // TID_MOVE_NAV erledigt), sonst -1.
+    double ankunftMs = -1.0;
 };
+
+// rc601 (bewegung, Wege): wo ein WalkTo-Stueck zur Zeit t die Figur hat -
+// aus seiner Bahn, sonst linear. Vor startMs der Anfang, nach endMs das Ende.
+void wegOrtBei(const ActorStep& st, double t, float out[3]);
+// ... und bewegt sie sich dann (ucmd.forwardmove/rightmove, also die
+// Laufanimation)? Ohne Bahn: zwischen startMs und endMs.
+[[nodiscard]] bool wegBewegtBei(const ActorStep& st, double t);
 
 // Die Vorgabe fuer die Blendzeit, in Millisekunden.
 //
@@ -597,6 +657,9 @@ struct SaberArt {
     int stilEineKlinge = 0;
     // Laenge, Radius und Farbe je Klinge; `an` bleibt hier immer aus.
     std::array<KlingenZustand, kMaxKlingen> klinge{};
+    // rc601 (saber): was die .sab zum Beruehren sagt (blockSound, blockEffect,
+    // noWallMarks, noIdleEffect, noClashFlare ...) - siehe bhed/saberkontakt.h.
+    SaberKontaktWerte kontakt;
 };
 
 // Der Griff, den die Engine nimmt, wenn keiner genannt ist
@@ -652,6 +715,9 @@ struct Actor {    std::string name;        // der Name aus dem affect
     // Die Ausstattung beim Spawnen (NPC_ParseParms und NPC_Begin). Ohne
     // .npc bleibt startWaffe leer - siehe ActorState::waffe.
     std::string startWaffe;
+    // rc601 integ: "rank" der .npc (klein wie gelesen) - fuer den Takt des
+    // Verhaltens unter OpenJK (npcVerhaltenTaktMs, bhed/navlauf.h).
+    std::string rang;
     bool startHatSaber = false;
     bool startDual = false;
     std::array<SaberZustand, 2> startSaber{};
@@ -666,6 +732,101 @@ struct Actor {    std::string name;        // der Name aus dem affect
     // (CG_Player, cg_players.cpp:15602: "if (in_camera && clientNum == 0)
     // return;"). [von, bis), bis < 0 heisst: bis zum Ende.
     std::vector<std::pair<double, double>> kameraVerborgen;
+
+    // --- Paket bewegung (rc601): das Laufziel, nur fuer den Aufbau --------
+    //
+    // Die Tempi aus der .npc BEIM SPAWNEN (NPC_ParseParms). gehTempo und
+    // laufTempo oben aendert jedes SET_WALKSPEED/SET_RUNSPEED; der Ablauf
+    // (bhed/ablauf.h) braucht aber den Stand vor dem Skript - siehe
+    // ablaufTempo().
+    float spawnGehTempo = 90.0F;
+    float spawnLaufTempo = 300.0F;
+    // NPCInfo->goalEntity: ein Laufziel ist gesetzt. Es bleibt ueber
+    // affect-Bloecke hinweg, bis die Figur ankommt (NPC_ReachedGoal) oder
+    // SET_NAVGOAL "NULL" es loescht (Q3_SetNavGoal, Q3_Interface.cpp:2140).
+    bool zielGesetzt = false;
+    float zielOrt[3]{};
+    double zielRadius = 12.0;
+    Path zielPfad;              // die Zeile des SET_NAVGOAL
+    int wegIndex = -1;          // der laufende WalkTo in steps, -1 keiner
+    bool wegInFahrt = false;    // er begann aus voller Fahrt (ohne Anlauf)
+    double fahrtBis = -1.0;     // bis hierhin lief ein abgeschnittenes Stueck
+
+    // --- Paket bewegung (rc601): Drehen -----------------------------------
+    //
+    // Die Drehrate beim Spawnen in Grad je Sekunde, aus yawSpeed der .npc
+    // (turnRateFor). Ohne Angabe die Vorgabe der Engine (yawSpeed 90).
+    float startDrehrate = kNpcTurnDegPerSec;
+    // Der Spieler selbst (kein Spawner, Name "player"): er ist KEIN NPC.
+    // SET_NAVGOAL, SET_WATCHTARGET, SET_DYAW, SET_YAWSPEED melden in der
+    // Engine "is not an NPC" und tun nichts; SET_ANGLES setzt nur die
+    // Blickrichtung (Q3_SetAngles: Q3_SetDYaw nur "if ( ent->NPC )").
+    // Eine Figur aus NPC_Player oder NPC_type "player" ist dagegen ein NPC.
+    bool echterSpieler = false;
+
+    // --- Paket bewegung (rc601): Schwerkraft ------------------------------
+    //
+    // Der Ursprung in Z je 50-ms-Takt ab 0, wie Pmove ihn fuehrt (siehe
+    // schwerkraftEinrechnen). Leer: Z kommt aus den Schritten wie bisher.
+    std::vector<float> hoehe;
+    int spawnflags = 0;
+    float halbBreite = 16.0F;       // mins/maxs[0] (NPC_ParseParms "width", Vorgabe 16)
+    bool ohneSchwerkraft = false;   // Flieger (MT_FLYSWIM), Fahrzeuge
+    bool haengtAnfangs = false;     // JSF_AMBUSH: noclip ("hang") bis SET_BEHAVIOR_STATE
+    // Spawnt erst waehrend des Ablaufs, ab hier (setzt die Oberflaeche aus
+    // Ablauf::erscheint). < 0: es gibt sie schon vor dem Skript - beim
+    // Laden der Karte gespawnt und laengst gelandet.
+    double erscheintMs = -1.0;
+    // JSF_AMBUSH haengt bis zum ersten SET_BEHAVIOR_STATE, das nicht
+    // BS_NOCLIP ist (Q3_SetBState setzt client->noclip = false,
+    // Q3_Interface.cpp:2667-2674). < 0: nie.
+    double haengtBisMs = -1.0;
+    // rc601 (bewegung, Review): set ( SET_GRAVITY ) - Zeit und Wert. Ab dort
+    // gilt fuer diese Figur ihre eigene Schwerkraft statt g_gravity
+    // (Q3_SetGravity setzt SVF_CUSTOM_GRAVITY und ps.gravity = atof,
+    // Q3_Interface.cpp:3788-3807 und 9105-9107 MD; ClientThink_real
+    // ueberschreibt ps.gravity dann nicht mehr, g_active.cpp:10115-10147).
+    std::vector<std::pair<double, float>> eigeneSchwerkraft;
+
+    // --- Paket bewegung (rc601, Wege wie im Spiel) ---------------------------
+    // maxs[2]: NPC_ParseParms "height" n setzt maxs[2] = n + DEFAULT_MINS_2
+    // (NPC_stats.cpp:3645-3672), Vorgabe DEFAULT_MAXS_2 40.
+    float hoeheOben = 40.0F;
+    // rc601 (bewegung, R5): NPC_UpdateAngles (NPC_utils.cpp:274-290 MD) dreht
+    // einen Rocket Trooper ohne Feind mit yawSpeed 1, eine Figur mit
+    // WP_EMPLACED_GUN mit 20 - unabhaengig von .npc und SET_YAWSPEED. In Grad
+    // je Sekunde (turnRateFor); < 0: keine feste Drehrate.
+    float festeDrehrate = -1.0F;
+    // rc601 (bewegung, Durchsicht 2): CLASS_ROCKETTROOPER (R5: yawSpeed 1,
+    // solange kein Feind - behaved bildet SET_ENEMY nicht nach). Die Waffe
+    // zaehlt dagegen je Denkbild (NPC->s.weapon), auch nach SET_WEAPON -
+    // siehe npcDrehrate.
+    bool raketenTruppler = false;
+    // rc601 (bewegung, R6): PM_StepSlideMove (bg_slidemove.cpp:368-416 MD) -
+    // ATST 70, Rancor 48 (Mutant 64), maxs[2] <= 0 nur 4, sonst STEPSIZE 18.
+    float stufe = 18.0F;
+    // Nur fuer den Aufbau: der laufende Plan (planeLauf), die Indizes seiner
+    // Stuecke in steps und der Zustand der Figur fuer NAV/STEER/Pmove, der
+    // ueber die Plaene hinweg bleibt (Timer, Wegpunkte, Geschwindigkeit).
+    std::shared_ptr<const LaufPlan> laufPlan;
+    std::vector<std::size_t> laufStuecke;
+    LaufZustand laufZustand;
+    bool laufZustandDa = false;
+    // rc601 (bewegung, teil 3): Plaene mit Vorlauf ab dem Spawn oder einem
+    // SET_ORIGIN (LaufZustand::gesetztMs) - bis zum zweiten Wert (der Zeit des
+    // Befehls) zaehlt fuer die Hoehe der Vorlauf, danach die Stuecke.
+    std::vector<std::pair<std::shared_ptr<const LaufPlan>, double>> vorlaeufe;
+    // Laeufe, bei denen die Figur nie ankommt: sie steht mit Ziel und Tempo
+    // (kein Weg im Wegnetz - STEER::Stop in jedem Denkbild). Fuer den
+    // Hinweis der Oberflaeche (navZieleOhneWeg).
+    struct StehtOhneWeg {
+        Path pfad;                  // die Zeile des SET_NAVGOAL
+        double ms = 0.0;            // das SET_NAVGOAL
+        float abstand = 0.0F;
+        std::array<float, 3> von{};
+        std::array<float, 3> ziel{};
+    };
+    std::vector<StehtOhneWeg> stehtOhneWeg;
 
     [[nodiscard]] ActorState at(double ms) const;
 };
@@ -695,6 +856,14 @@ struct Scene {
     double durationMs = 0.0;
     // Alle ausgeloesten ROFF-Notizen, nach Zeit.
     std::vector<RoffEreignis> roffEreignisse;
+    // rc601 (bewegung, Review): g_gravity der Karte - SP_worldspawn setzt es
+    // aus dem Schluessel "gravity" der worldspawn, Vorgabe "800"
+    // (G_SpawnString + cvar_set, g_spawn.cpp:1698-1704 MD, OpenJK
+    // g_spawn.cpp:1491-1495). Die Schwerkraft der Figuren rechnet damit.
+    float schwerkraft = 800.0F;
+    // rc601 (bewegung, R8): spaetere Werte von g_gravity (target_gravity_change
+    // GLOBAL): ab der Zeit gilt der Wert fuer alle ohne eigene Schwerkraft.
+    std::vector<std::pair<double, float>> schwerkraftAb;
 
     [[nodiscard]] const Actor* find(const std::string& name) const;
 };
@@ -713,8 +882,15 @@ struct Scene {
 // roff: die gelesene ROFF-Datei zu einem Namen aus play ( "PLAY_ROFF", ... )
 // - der Name so, wie er im Skript steht (roffPfad() macht den Archivpfad
 // daraus). nullptr, wenn es sie nicht gibt; dann steht die Entity still.
+// rc601 (bewegung, Durchsicht 2): die Schwierigkeit der Vorschau, g_spskill
+// 0 Padawan, 1 Jedi, 2 Jedi Knight, 3 Jedi Master. Movie Duels setzt sie vor
+// auf "2" (g_main.cpp:752 MD; OpenJK g_main.cpp:631: "0").
+inline constexpr int kSchwierigkeitVorgabe = 2;
 struct SzenenHilfe {
     const std::map<std::string, struct NpcDef>* npcs = nullptr;
+    // rc601 (bewegung, Durchsicht 2): g_spskill fuer die Werte, die NPC_Begin
+    // und NPC_SetMiscDefaultData danach richten (npcWerteBeimSpawnen).
+    int schwierigkeit = kSchwierigkeitVorgabe;
     // Fuer Waffen und Schwerter: die .sab-Eintraege und weapons.dat. Fehlen
     // sie, bleibt es bei Vorgaben (Standardschwert, keine Waffenmodelle).
     const std::map<std::string, struct SaberDef>* sabers = nullptr;
@@ -722,6 +898,17 @@ struct SzenenHilfe {
     std::function<double(const std::string& figur, const std::string& anim)> animDauer;
     std::function<double(const std::string& figur, const std::string& anim)> bildDauer;
     std::function<std::shared_ptr<const Roff>(const std::string& name)> roff;
+    // rc601 (bewegung, Wege): das Wegnetz und die Spuren der Karte fuer
+    // NAV/STEER (bhed/navlauf.h). Leer: das Netz aus den Entities der Karte,
+    // ohne Spuren (navWeltAusEntities).
+    std::shared_ptr<const NavWelt> nav;
+    // rc601 (bewegung, teil 3): wann eine Figur im Ablauf erscheint (NPC_Begin,
+    // Ablauf::erscheint) - der erste Plan beginnt dort. Fehlt sie: beim Laden
+    // der Karte gespawnt (kNavKartenSpawnMs).
+    const std::map<std::string, double>* erscheint = nullptr;
+    // rc601 (bewegung, teil 3): Plaene aus dem gemeinsamen Takt aller Figuren
+    // (AblaufWelt::koerperPlaene, navKoerperSchluessel).
+    std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>> koerperPlaene;
 };
 
 [[nodiscard]] Scene buildScene(const Script& s, const MapData& map,
@@ -791,10 +978,25 @@ struct NpcDef {
     // und rot, reborn_new in blau und rot. Wer den Modellpuffer nur nach
     // dem Modellnamen schluesselt, zeigt dem zweiten den Skin des ersten.
     std::string customSkin = "default";
-    // walkSpeed/runSpeed aus der .npc (NPC_ParseParms, dl_NPC_stats.cpp:
-    // 3293 ff.). 0 heisst: nicht angegeben, es gelten 90/300.
-    float walkSpeed = 0.0F;
-    float runSpeed = 0.0F;
+    // walkSpeed/runSpeed aus der .npc (NPC_ParseParms, NPC_stats.cpp:3720
+    // ff. in Movie Duels). NEGATIV heisst: nicht angegeben, es gelten 90/300.
+    // rc601 (bewegung): 0 ist ein gueltiger Wert - die Engine verwirft nur
+    // n < 0, und eine Figur mit 0 bewegt sich nicht (sarlacc.npc). Bis rc600
+    // galt 0 als "nicht angegeben".
+    float walkSpeed = -1.0F;
+    float runSpeed = -1.0F;
+    // rc601 (bewegung): yawSpeed aus der .npc (NPC_stats.cpp:3700-3716, MD):
+    // COM_ParseInt, n <= 0 wird verworfen ("bad yawSpeed"). 0 heisst hier:
+    // nicht angegeben - es gilt die Vorgabe 90 (NPC_stats.cpp:2324).
+    float yawSpeed = 0.0F;
+    // rc601 (bewegung): "width" (mins/maxs[0], NPC_stats.cpp:3633) und
+    // "movetype flyswim" (MT_FLYSWIM, NPC_stats.cpp:3688) - fuer die
+    // Schwerkraft. breite < 0: nicht angegeben, es gilt 16 (playerMaxs).
+    float breite = -1.0F;
+    bool fliegt = false;
+    // rc601 (bewegung, Wege): "height" (NPC_stats.cpp:3645-3672), < 0: nicht
+    // angegeben - maxs[2] bleibt DEFAULT_MAXS_2 40.
+    float hoehe = -1.0F;
     // --- Fuer Waffe und Schwerter (NPC_ParseParms, NPC_stats.cpp) --------
     //
     // saber2 - das zweite Schwert (ebenda:4094). Leer heisst keines.
@@ -896,6 +1098,8 @@ struct SaberDef {
     std::array<std::string, kMaxKlingen> bladeColor{};
     std::array<float, kMaxKlingen> bladeLength{};
     std::array<float, kMaxKlingen> bladeRadius{};
+    // rc601 (saber): blockSound1..3, blockEffect, noWallMarks ... (WP_SaberParseParms).
+    SaberKontaktWerte kontakt;
 };
 
 using SaberMap = std::map<std::string, SaberDef>;
@@ -1106,6 +1310,331 @@ inline constexpr float kAnimSpeedMin = 0.01F;
 
 inline constexpr float kWalkSpeed = 90.0F;
 inline constexpr float kRunSpeed = 300.0F;
+
+// =====================================================================
+// Paket bewegung (rc601): Laufen wie im Spiel
+// =====================================================================
+//
+// Gemeldet: "NPCs don't walk to waypoints correctly. Looks like they ignore
+// WALK_SPEED and RUN_SPEED."
+//
+// Ein Laufziel, so wie Q3_SetNavGoal es aufloest (MovieDuels-SJE-SP
+// code/game/Q3_Interface.cpp:2106 ff., gleich in OpenJK):
+//
+//     if ( TAG_GetOrigin2( NULL, name, goalPos ) == false ) {
+//         targ = G_Find( NULL, FOFS(targetname), name );   // ... radius
+//         if ( !targ ) { "can't find NAVGOAL"; return qfalse; }  // altes Ziel bleibt
+//     } else {
+//         goalRadius = TAG_GetRadius( NULL, name );
+//         NPC_SetMoveGoal( ent, goalPos, goalRadius, qtrue );
+//         return qtrue;                                      // TID_MOVE_NAV haelt
+//     }
+struct NavZiel {
+    bool gefunden = false;   // false: die Engine findet nichts, das alte Ziel bleibt
+    bool marke = false;      // ein TAG (ref_tag, waypoint_navgoal): die Aufgabe haelt
+    float ort[3]{};
+    double radius = 12.0;    // NPCInfo->goalRadius
+};
+[[nodiscard]] NavZiel navZielAufloesen(const MapData& map, const std::string& name);
+
+// G_Find( NULL, FOFS(targetname), name ) - so wie SET_WATCHTARGET,
+// SET_VIEWTARGET und ein Laufziel ohne TAG ihr Ziel finden: ohne
+// Gross/klein; Entities, die das Spiel beim Laden freigibt (waypoint,
+// waypoint_small, waypoint_navgoal, ref_tag, info_null), findet es nicht;
+// eine Figur heisst wie ihr NPC_targetname, der Spieler "player".
+// istFigur: das Ziel ist ein NPC oder der Spieler.
+[[nodiscard]] bool engineFindet(const MapData& map, const std::string& name, float out[3],
+                                bool* istFigur = nullptr);
+
+// Wie gehDauerMs, aber fuer eine Figur, die schon in voller Fahrt ist: ein
+// neues Ziel, ein anderes Tempo oder ein SET_ORIGIN mitten im Weg. Die Engine
+// lenkt dann aus der laufenden Geschwindigkeit weiter (STEER::Activate liest
+// ps.velocity, g_navigator.cpp:3977) - der Anlauf von 300 ms faellt weg.
+// rc601 (bewegung): nicht mehr benutzt (siehe gehDauerMs).
+[[nodiscard]] double gehDauerInFahrtMs(double dist, double v, double ux, double uy,
+                                       double zielRadius = 12.0);
+
+// Das Geh- und Lauftempo, das der Ablauf (AblaufWelt::tempo) fuer eine Figur
+// nimmt, bevor das Skript es aendert: die Werte aus der .npc beim Spawnen.
+// -1 fuer eine unbekannte Figur.
+[[nodiscard]] std::function<float(const std::string& figur, bool gehen)> ablaufTempo(const Scene& s);
+// rc601 (bewegung, teil 3): Fallen und Vorlauf je Figur fuer den Ablauf
+// (AblaufWelt::vorlauf) - dieselbe Regel wie der erste Plan in der Szene.
+[[nodiscard]] std::function<int(const std::string& figur)> ablaufVorlauf(const Scene& s);
+
+// rc601 (bewegung, Durchsicht 2): was die Engine beim Spawnen nach der
+// Schwierigkeit (g_spskill, SzenenHilfe::schwierigkeit) an den Werten der .npc
+// aendert - in der Reihenfolge von NPC_Begin:
+//   * yawSpeed (NPC_spawn.cpp:1828-1877 MD): "rodian" nichts; Stormtrooper,
+//     Guard, Clonetrooper, SBD, Battledroid, Swamptrooper, Impworker und
+//     "rodian2" auf 0 mal 0,75, auf 2 mal 1,5; Reborn, BoC, Shadowtrooper,
+//     Galen auf 1 mal 1,25, auf 2 mal 1,5; sonst ("default:;", also auch auf
+//     3 = Jedi Master) nichts. OpenJK kennt nur Stormtrooper/Swamptrooper/
+//     Impworker/rodian2 bzw. Reborn/Shadowtrooper.
+//   * NPC_SetMiscDefaultData (NPC_spawn.cpp:335-346, 633-641 MD = OpenJK):
+//     CLASS_SAND_CREATURE ab 2 runSpeed *= 1.5f (int), CLASS_TUSKEN ab 2
+//     runSpeed 280 und walkSpeed 65.
+// yawSpeed ist float, walkSpeed/runSpeed int (b_public.h:193-195).
+void npcWerteBeimSpawnen(const NpcDef& def, const std::string& npcTyp, int schwierigkeit, float& yawSpeed,
+                         float& gehTempo, float& laufTempo);
+
+// rc601 (bewegung, Durchsicht 2): die Drehrate, mit der NPC_UpdateAngles dreht
+// (NPC_utils.cpp:274-290 MD), je Denkbild nach der Waffe IN DER HAND:
+// WP_EMPLACED_GUN yawSpeed 20, sonst ein Rocket Trooper ohne Feind 1, sonst
+// stats.yawSpeed (yawRate, schon als Grad/s). waffe "" heisst: die beim
+// Spawnen (Actor::startWaffe); "drop" legt sie ab (WP_NONE).
+[[nodiscard]] float npcDrehrate(const Actor& a, const std::string& waffe, float yawRate);
+// Fuer den Ablauf (AblaufWelt::drehrateNpc/drehrateYaw): dasselbe je Name,
+// und die yawSpeed-Rate beim Spawnen (.npc, Schwierigkeit). -1: unbekannt.
+[[nodiscard]] std::function<float(const std::string& figur, const std::string& waffe, float yawRate)> ablaufDrehrate(
+    const Scene& s);
+[[nodiscard]] std::function<float(const std::string& figur)> ablaufDrehrateYaw(const Scene& s);
+// rc601 integ: der Takt des Verhaltens je Figur und Waffe in der Hand fuer den
+// Ablauf (AblaufWelt::verhaltenTakt) - npcVerhaltenTaktMs mit dem Regelwerk
+// zur Zeit des Aufrufs, Rang und Startwaffe aus der Szene.
+std::function<int(const std::string&, const std::string&)> ablaufVerhaltenTakt(const Scene& s, int spielstufe);
+
+// =====================================================================
+// Paket bewegung (rc601): Drehen wie im Spiel
+// =====================================================================
+//
+// Gemeldet: "NPCs don't rotate with their YAW_SPEED. They just instantly
+// turn."
+//
+// In der Engine geht JEDE Drehung eines NPC durch einen einzigen Regler,
+// NPC_UpdateAngles (NPC_utils.cpp:235 ff., MD; OpenJK NPC_utils.cpp:221):
+//
+//     error = AngleDelta( ps.viewangles[YAW], targetYaw );
+//     if ( fabs( error ) > MIN_ANGLE_ERROR ) {
+//         decay = 60.0 + yawSpeed * 3;  decay *= 50.0f / 1000.0f;
+//         error naeher an 0 um decay, ohne Ueberschiessen
+//     }
+//     ucmd.angles[YAW] = ANGLE2SHORT( targetYaw + error ) - ...
+//
+// targetYaw ist desiredYaw. Den schreiben STEER beim Gehen (Laufrichtung,
+// g_navigator.cpp:4152), NPC_BSCinematic mit Watchtarget (jedes Denkbild,
+// NPC_behavior.cpp:304-315), Q3_SetDYaw (SET_DYAW, SET_VIEWTARGET,
+// SET_ANGLES) und G_Roff.
+//
+// Takt: Movie Duels ruft das Verhalten - und damit NPC_UpdateAngles - in
+// JEDEM Denkbild zu 50 ms (NPC_Think, NPC.cpp:2213 und 2359-2368:
+// nextBStateThink = level.time + FRAMETIME/2, mit Klinge FRAMETIME/4). Also
+// dreht ein NPC (60 + 3*yawSpeed) Grad je Sekunde, 330 bei yawSpeed 90.
+// Im unveraenderten OpenJK laeuft das Verhalten nur alle FRAMETIME = 100 ms
+// (OpenJK NPC.cpp:2487) - dort ist es die HAELFTE (ausser Jedi mit
+// Schwert ab Rang lt auf g_spskill >= 2). behaved rechnet wie Movie Duels.
+inline constexpr float kMinAngleError = 0.01F;   // b_local.h, MIN_ANGLE_ERROR
+inline constexpr double kNpcDenktaktMs = 50.0;   // NPC_Think: nextthink = level.time + FRAMETIME/2
+
+// AngleNormalize180 (q_math.c): das Ergebnis liegt in (-180, 180].
+[[nodiscard]] float winkel180(float a) noexcept;
+
+// Der Gierwinkel eines NPC zwischen zwei Ereignissen. Geschlossen gerechnet
+// und genau an jedem Denkbild nach dem Ereignis; dazwischen linear, wie
+// cgame zwischen zwei Bildern mittelt. Eine Kehre um genau 180 Grad laeuft
+// wie AngleDelta sie liefert (+180: der Winkel nimmt ab).
+struct GierLauf {
+    float yaw0 = 0.0F;                 // viewangles[YAW] zu t0
+    double t0 = 0.0;
+    float ziel = 0.0F;                 // desiredYaw
+    float rate = kNpcTurnDegPerSec;    // Grad je Sekunde: (60 + 3*yawSpeed)
+    [[nodiscard]] float bei(double t) const noexcept;
+    // desiredYaw wechselt (STEER, Watchtarget, SET_DYAW).
+    void zielAb(double t, float neu) noexcept {
+        yaw0 = bei(t);
+        t0 = t;
+        ziel = neu;
+    }
+    // SET_YAWSPEED gilt ab seiner Zeit, nicht rueckwirkend.
+    void rateAb(double t, float r) noexcept {
+        yaw0 = bei(t);
+        t0 = t;
+        rate = r;
+    }
+    // SetClientViewAngle und Q3_SetDYaw zugleich (SET_ANGLES): ein Sprung.
+    void setzen(double t, float y) noexcept {
+        yaw0 = y;
+        ziel = y;
+        t0 = t;
+    }
+};
+
+// Wie lange TID_ANGLE_FACE haelt, wenn der Winkel `fehler` Grad vom Ziel
+// entfernt ist: NPC_UpdateAngles meldet die Aufgabe im ersten Denkbild, in
+// dem der Fehler schon null ist (NPC_utils.cpp:388-391), also ein Bild nach
+// dem letzten Schritt. Mindestens ein Denkbild. Negativ: nie (Drehrate 0).
+[[nodiscard]] double drehHalteMs(float fehler, float rate) noexcept;
+// rc601 (bewegung, teil 3): ANGLE2SHORT wie im Spiel. NPC_UpdateAngles schreibt
+// ucmd.angles[YAW] = ANGLE2SHORT(targetYaw + error) - delta_angles[YAW]
+// (NPC_utils.cpp:366 MD), PM_UpdateViewAngles macht daraus mit "short temp"
+// viewangles[YAW] = SHORT2ANGLE(temp) (bg_pangles.cpp:1982-2015 MD) - die Gier
+// hat 65536 Stufen (0,0055 Grad), jedes Denkbild neu abgeschnitten.
+// npcGierSchritt: ein Denkbild; drehHalteMs(yaw, ziel, rate): wann
+// TID_ANGLE_FACE fertig ist, Denkbild fuer Denkbild.
+[[nodiscard]] float npcGierSchritt(float yaw, float ziel, float rate) noexcept;
+[[nodiscard]] double drehHalteMs(float yaw, float ziel, float rate) noexcept;
+
+// =====================================================================
+// Paket bewegung (rc601): Schwerkraft wie Pmove
+// =====================================================================
+//
+// Gemeldet: "NPCs aren't affected by gravity."
+//
+// Bis rc600 war eine Figur rein kinematisch: Z kam aus dem Spawner, aus
+// SET_ORIGIN oder einer geraden 3D-Linie zum Laufziel. Sie schwebte ueber
+// Senken, sank in Anstiege, glitt schraeg zwischen zwei Etagen und blieb in
+// der Luft stehen, wenn sie dort platziert war.
+//
+// Jeder NPC ist in der Engine ein client, den Pmove in jedem NPC_Think
+// bewegt (NPC.cpp:2158-2161 und 2401-2405: ClientThink alle 50 ms, das
+// Skript laeuft danach, :2414): PM_GroundTrace prueft
+// 0,25 Einheiten unter dem Kasten (bg_pmove.cpp:7423), PM_StepSlideMove
+// steigt hoechstens STEPSIZE hoch (bg_slidemove.cpp:368), PM_WalkMove klappt
+// die Bewegung auf einen begehbaren Hang (bg_pmove.cpp:4340, 4522), und in
+// der Luft zieht PM_SlideMove ps.gravity ab - als Trapez, also an jedem Takt
+// genau z0 - g/2 t^2 (bg_slidemove.cpp:97-99). Die Konstanten (Movie Duels
+// gleich OpenJK):
+inline constexpr float kSchwerkraft = 800.0F;    // g_gravity (g_main.cpp:749)
+inline constexpr float kStufe = 18.0F;           // STEPSIZE (bg_public.h:92)
+inline constexpr float kFussTiefe = 24.0F;       // -DEFAULT_MINS_2 (bg_public.h:75)
+inline constexpr float kNpcHalbBreite = 16.0F;   // DEFAULT_MAXS_0 (g_client.cpp, playerMaxs)
+inline constexpr double kPmoveTaktMs = 50.0;     // ein Pmove je NPC_Think
+
+// Ein senkrechter Strahl von `von` nach `bis` zur Zeit ms (Brush-Entities
+// stehen, wo sie dann sind). true mit dem ersten Treffer von oben.
+using BodenStrahl = std::function<bool(const std::array<float, 3>& von, const std::array<float, 3>& bis, double ms,
+                                       std::array<float, 3>& treffer)>;
+
+struct SchwerkraftHilfe {
+    BodenStrahl strahl;
+    double endeMs = 0.0;   // so weit wird gerechnet
+    // Kann sich der Boden bei (x, y) zur Zeit ms bewegen (ein Brush-Modell,
+    // das gerade faehrt, sich dreht oder erscheint)? Dann wird er in jedem
+    // Takt neu abgefragt - eine Figur auf einem Aufzug faehrt mit. Ohne
+    // Angabe: nur, wenn die Figur sich bewegt.
+    std::function<bool(float x, float y, double ms)> beweglich;
+    // rc601 (bewegung, Review): nur fuer die Probe - Ort, Verhalten und
+    // "fort" je Takt wie frueher ueber Actor::at statt ueber den schnellen
+    // Durchlauf durch die Schritte. Beide muessen Bit fuer Bit gleich sein
+    // (tests/bewegungtest.cpp, "Review P1").
+    bool nachActorAt = false;
+};
+
+// Der Boden unter dem Kasten der halben Breite hb: fuenf Strahlen (Mitte und
+// die vier Ecken bei +-hb), der hoechste Treffer zwischen zOben und zUnten
+// zaehlt - so traegt der 32x32-Kasten von PM_GroundTrace, solange ein Teil
+// ueber dem Boden steht, und liegt am Hang auf der oberen Kante auf.
+[[nodiscard]] bool bodenUnter(const BodenStrahl& strahl, float x, float y, float zOben, float zUnten, float hb,
+                              double ms, float& bodenZ);
+
+// Die Hoehe jeder Figur je Pmove-Takt einrechnen (Actor::hoehe; Actor::at
+// nimmt dann Z daraus). Ohne Strahl geschieht nichts. Was gilt:
+//
+//   * Wer schon vor dem Skript da ist (Actor::erscheintMs < 0), ist laengst
+//     gelandet: beim Skriptanfang steht er auf dem Boden unter dem Spawner.
+//   * Wer im Ablauf gespawnt wird, steht zuerst am Spawner (DROPTOFLOOR
+//     setzt im SP nur den Spawner um, nicht die Figur: G_SetOrigin auf eine
+//     Entity ohne client, NPC_spawn.cpp:2469-2483 und 2659-2662), wird von
+//     G_CheckInSolid bis 24 gehoben und faellt dann - erst ein Pmove-Schritt
+//     von 200 ms in NPC_Begin, dann wieder einer beim ersten NPC_Think.
+//   * SET_ORIGIN (G_SetOrigin, Q3_Interface.cpp:8792) setzt genau, die
+//     Geschwindigkeit bleibt; danach geht Pmove weiter. Eingefuegte
+//     Spruenge (kill-Halt, Vorschauen) aendern Z nicht.
+//   * Kein Pmove waehrend BS_NOCLIP und solange ein CEILING-Jedi
+//     (JSF_AMBUSH) haengt - dann gilt die 3D-Linie wie bisher; keins
+//     waehrend einer ROFF-Bahn der Figur (NPC_ApplyRoff, NPC.cpp:2158-2166).
+//   * Flieger (MT_FLYSWIM) und Fahrzeuge fallen nicht.
+void schwerkraftEinrechnen(Scene& s, const SchwerkraftHilfe& h);
+
+// rc601 (bewegung, R8): target_gravity_change (g_target.cpp:937-965 MD). Mit
+// GLOBAL (spawnflags 1) setzt der use g_gravity = "gravity" - ab dem naechsten
+// ClientThink fuer jede Figur ohne eigene Schwerkraft (Scene::schwerkraftAb);
+// sonst bekommt der Ausloeser ps.gravity = floor(gravity) und
+// SVF_CUSTOM_GRAVITY (wie SET_GRAVITY). Die Benutzungen kommen aus dem Ablauf
+// (Ablauf::benutzt), samt Relais aufgeloest.
+struct SchwerkraftBenutzung {
+    double ms = 0.0;
+    std::string name;        // targetname
+    std::string ausloeser;   // der activator (affect-Name), leer: unbekannt
+};
+void schwerkraftWechsel(Scene& s, const MapData& map, const std::vector<SchwerkraftBenutzung>& benutzt);
+
+struct BspGeometry;
+struct BspMesh;
+// Feste Inhalte fuer eine Figur: MASK_NPCSOLID (bg_public.h:1000) ohne
+// CONTENTS_BODY, das nur Entities tragen - CONTENTS_SOLID, _MONSTERCLIP,
+// _TERRAIN (surfaceflags.h:32-45). Wasser, Nebel, Lava und nonsolid tragen
+// keins davon (q3map2: surfaceparm loescht CONTENTS_SOLID).
+inline constexpr std::uint32_t kFesteInhalte = 0x1U | 0x20U | 0x1000U;
+// Je Shader-Nummer: traegt er eine Figur?
+[[nodiscard]] std::vector<bool> festeShader(const BspGeometry& geo);
+
+// Ein Strahl gegen die Welt der Karte (traceRay), der durch Flaechen ohne
+// feste Inhalte geht. true mit dem Treffer.
+[[nodiscard]] bool bodenTreffer(const BspGeometry& geo, const float von[3], const float bis[3], float treffer[3]);
+// Derselbe Strahl gegen ein Netz (ein Brush-Modell in seinem eigenen Raum).
+// `fest` sagt je Shader-Nummer, ob er fest ist; leer: alles fest.
+[[nodiscard]] bool netzTreffer(const BspMesh& netz, const std::vector<bool>& fest, const float von[3],
+                               const float bis[3], float treffer[3]);
+
+// Ein Raster fuer SENKRECHTE Strahlen gegen ein Netz: die Dreiecke je Zelle
+// in X/Y. Die Welt der Karte geht so gegen die UNTERTEILTEN Patches (die
+// Flaeche, die man sieht) statt gegen ihr Kontrollgitter wie traceRay
+// (bspgeo.cpp: "eine NAEHERUNG ... nicht um Spielmechanik"), und schnell
+// genug fuer fuenf Strahlen je Figur und Takt.
+struct BodenRaster {
+    float x0 = 0.0F;
+    float y0 = 0.0F;
+    float zelle = 64.0F;
+    int nx = 0;
+    int ny = 0;
+    std::vector<std::array<float, 9>> dreiecke;   // je drei Ecken
+    std::vector<std::uint32_t> anfang;            // je Zelle, CSR (nx*ny+1)
+    std::vector<std::uint32_t> liste;             // Dreiecksnummern
+    [[nodiscard]] bool leer() const noexcept { return dreiecke.empty(); }
+};
+[[nodiscard]] BodenRaster baueBodenRaster(const BspMesh& netz, const std::vector<bool>& fest, float zelle = 64.0F);
+// Der hoechste Treffer bei (x, y) zwischen zOben und zUnten.
+[[nodiscard]] bool rasterTreffer(const BodenRaster& r, float x, float y, float zOben, float zUnten, float& z);
+
+// =====================================================================
+// Paket bewegung (rc601): Laufziele ohne Weg im Wegnetz (Teil 4)
+// =====================================================================
+//
+// Gemeldet: "NPCs don't walk to waypoints correctly."
+//
+// Im Spiel laeuft ein NPC nur dann gerade auf sein Ziel zu, wenn
+// STEER::SafeToGoTo es erlaubt (g_navigator.cpp:4459-4515): unter 110
+// Einheiten (|dz| < 50), unter 500 auf benachbarten Knoten des Wegnetzes,
+// oder unter 400 nach einer freien MoveTrace. Sonst sucht NAV::GoTo einen
+// Weg ueber das Netz (A*, g_navigator.cpp:939-1076); findet es keinen, ruft
+// NPC_MoveToGoal STEER::Stop (NPC_move.cpp:762-822) - in JEDEM Denkbild. Die
+// Figur bleibt stehen, und TID_MOVE_NAV wird nie fertig: ein dowait auf die
+// Laufaufgabe haengt.
+//
+// behaved laeuft immer gerade (die Wege ueber das Netz fehlen noch). Damit
+// das nicht still falsch aussieht, meldet prepareScene jeden Lauf, der 400
+// Einheiten oder weiter von seinem Ziel beginnt und dorthin keinen Weg im
+// Netz hat.
+inline constexpr float kNavDirektMax = 400.0F;   // STEER::SafeToGoTo, MoveTrace-Fall
+struct WegNetz;
+struct NavOhneWeg {
+    std::size_t figur = 0;      // Index in Scene::actors
+    double ms = 0.0;            // Beginn des Laufs
+    float abstand = 0.0F;       // vom Ort beim Beginn zum Ziel
+    int zielKnoten = -1;        // der Knoten des Ziels im Netz, -1: keiner
+    std::array<float, 3> von{};
+    std::array<float, 3> ziel{};
+};
+// Gibt es im Netz einen Weg vom Knoten nahe `von` zum Knoten des Ziels? Ein
+// waypoint_navgoal ist selbst ein Knoten (PT_GOALNODE, g_nav.cpp:51-110);
+// sonst gilt der naechste. zielKnoten (optional) bekommt ihn.
+[[nodiscard]] bool wegImNetz(const WegNetz& netz, const std::array<float, 3>& von, const std::array<float, 3>& ziel,
+                             int* zielKnoten = nullptr);
+// Jeder Lauf (WalkTo) einer NPC-Figur, der kNavDirektMax oder weiter vom
+// Ziel beginnt und dorthin keinen Weg im Netz hat - einmal je Lauf, nicht
+// je Stueck (ein neues Tempo teilt den Weg).
+[[nodiscard]] std::vector<NavOhneWeg> navZieleOhneWeg(const Scene& s, const WegNetz& netz);
 
 }  // namespace bhed
 #endif

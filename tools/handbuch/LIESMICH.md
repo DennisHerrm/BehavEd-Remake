@@ -13,6 +13,7 @@ Text in allen vier Sprachen und, wenn sich das Bild ändert, die Bilder.
 | Datei | Inhalt |
 |---|---|
 | `inhalt_basis.py` | `T(en, de, zh, ja)` – jeder Text in allen vier Sprachen (fehlt einer, bricht der Bau ab); feste Beschriftungen des Handbuchs |
+| `uebersetzung/<sprache>/*.json` | Übersetzungen der Texte, die aus Daten oder Schleifen entstehen (Befehlsseiten, Knopftabellen, Tutorial-Schritte, die Beschreibungen aus `Q3_Interface.h`/`behaved.bhc` …): `{englischer Text: Übersetzung}`. `T("…")` ohne Übersetzung im Aufruf nimmt sie von dort; `Tf(vorlage, werte…)` übersetzt eine Vorlage mit `%s`/`%d`. Texte ohne Wörter (nur `Code`, `{{Kennung}}`, `[[Seite]]`, Zahlen) gelten in jeder Sprache gleich |
 | `inhalt.py` | Gruppen (Seitenleiste) und Reihenfolge der Seiten |
 | `inhalt_start.py`, `inhalt_skript.py`, `inhalt_karte.py`, `inhalt_szene.py`, `inhalt_mission.py`, `inhalt_tutorials.py`, `inhalt_referenz.py` | die Seiten |
 | `gen_handbuch.py` | baut `handbuch/<sprache>/*.html`, den Suchindex `suche.js` je Sprache, kopiert `assets/` |
@@ -40,7 +41,12 @@ python tools/handbuch/gen_handbuch.py            # -> handbuch/
 python tools/handbuch/gen_handbuch.py <ordner>   # -> <ordner>/handbuch/
 ```
 
-Am Ende nennt der Bau fehlende Bilder.
+Am Ende nennt der Bau fehlende Bilder. Fehlt einer Seite eine Sprache – ein Text
+ohne Übersetzung (weder im Aufruf noch in `uebersetzung/`), ein Bild, oder ein
+Bild mit Oberfläche nur auf Englisch –, nennt er sie und endet mit Fehler.
+`python tools/handbuch/gen_handbuch.py --pruefen` baut nur zur Probe (ctest
+`handbuch_sprachen`). Ändert man einen englischen Text, der in `uebersetzung/`
+steht, den Eintrag dort mitziehen (der Bau meldet nicht mehr gebrauchte Einträge).
 
 ## Bilder neu aufnehmen
 

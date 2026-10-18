@@ -3320,4 +3320,42 @@ float effectShakeAt(const std::vector<EffectInstance>& live, double nowMs,
     return staerkste;
 }
 
+// --- rc601 ton: wann ein Effekt KLINGT ---------------------------------------
+//
+// Gemeldet: "You can hear everything on the map". Ein fx_runner mit START_OFF
+// laeuft vom ersten bis zum naechsten use (fx_runner_use, g_fx.cpp); danach
+// denkt er nicht mehr (nextthink -1) und schickt kein EV_PLAY_EFFECT - also
+// auch keinen Klang. Die Zeichnung hielt sich daran (durchgaenge oben, "b0 <
+// inst.endMs"), die Klangschleife der Zeitleiste rechnete selbst und spielte
+// weiter. Dieselbe Regel jetzt hier.
+//
+// Das Fenster ist halb offen, (vonMs, bisMs]: die vorige Rechnung nahm mit
+// ceil auch den Start AUF vonMs mit - der lag aber schon im vorigen Fenster
+// (bis dahin einschliesslich) und klang dann zweimal.
+std::vector<double> klangStarts(const EffectInstance& inst, double vonMs, double bisMs, int hoechstens) {
+    std::vector<double> starts;
+    if (hoechstens <= 0 || bisMs < inst.startMs) {
+        return starts;
+    }
+    const auto gilt = [&](double b) { return inst.endMs < 0.0 || b < inst.endMs; };
+    if (!(inst.loops && inst.intervalMs > 1.0F)) {
+        if (inst.startMs > vonMs && gilt(inst.startMs)) {
+            starts.push_back(inst.startMs);
+        }
+        return starts;
+    }
+    const auto iv = static_cast<double>(inst.intervalMs);
+    // Der erste Start NACH vonMs: n = floor((von - start) / iv) + 1, bei
+    // einem Fenster vor dem ersten Start n = 0.
+    double n = (vonMs < inst.startMs) ? 0.0 : std::floor((vonMs - inst.startMs) / iv) + 1.0;
+    for (; static_cast<int>(starts.size()) < hoechstens; n += 1.0) {
+        const double b = inst.startMs + n * iv;
+        if (b > bisMs || !gilt(b)) {
+            break;
+        }
+        starts.push_back(b);
+    }
+    return starts;
+}
+
 }  // namespace bhed

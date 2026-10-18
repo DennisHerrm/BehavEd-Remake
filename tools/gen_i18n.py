@@ -1433,6 +1433,12 @@ S = [
     ("GraphPickHint", "Click a node to see its details and connections.", "Einen Knoten anklicken zeigt seine Angaben und Verbindungen.",
      "单击节点可查看其详情和连接。", "ノードをクリックすると詳細とつながりを表示します。"),
     ("GraphScript", "Script", "Skript", "脚本", "スクリプト"),
+    ("GraphCommands", "Commands of this script", "Befehle dieses Skripts", "此脚本的命令", "このスクリプトのコマンド"),
+    ("GraphCommandsOpen", "Open this script to edit its commands here.", "Dieses Skript öffnen, um seine Befehle hier zu bearbeiten.",
+     "打开此脚本即可在此编辑其命令。", "このスクリプトを開くと、ここでコマンドを編集できます。"),
+    ("GraphEditHere", "Edit here", "Hier bearbeiten", "在此编辑", "ここで編集"),
+    ("GraphCommandsEmpty", "No commands yet - drag one from the Events list here.", "Noch keine Befehle - einen aus der Ereignisliste hierher ziehen.",
+     "还没有命令 - 从事件列表拖一个到这里。", "まだコマンドがありません - イベント一覧からここへドラッグしてください。"),
     ("GraphShowInMap", "Show in map", "In der Karte zeigen", "在地图中显示", "マップで表示"),
     ("GraphLinks", "Connections", "Verbindungen", "连接", "つながり"),
     ("GraphConnectAs", "Connect as", "Verbinden als", "连接为", "接続の種類"),
@@ -1448,10 +1454,15 @@ S = [
     ("TracksMoving", "moving", "Fahrt", "移动", "移動"),
     ("TracksEmpty", "This script has nothing on the timeline yet.", "Dieses Skript hat noch nichts auf der Zeitachse.",
      "此脚本在时间轴上还没有内容。", "このスクリプトにはまだタイムライン上の内容がありません。"),
-    ("TracksHint", "Click a block to select its line - drag its right edge to change the duration - drag in the ruler to move through time.",
-     "Einen Block anklicken wählt seine Zeile - die rechte Kante ziehen ändert die Dauer - im Lineal ziehen bewegt durch die Zeit.",
-     "单击块可选中对应行 - 拖动右边缘可修改时长 - 在标尺上拖动可移动时间。",
-     "ブロックをクリックで行を選択 - 右端をドラッグで長さを変更 - ルーラーをドラッグで時間を移動。"),
+    ("TracksHint", "Click a block to select its line - double-click to edit it - right-click for the menu (copy, delete, move, insert) - drag its right edge to change the duration - drag a command from the Events list into a track to insert it there - drag in the ruler to move through time.",
+     "Einen Block anklicken wählt seine Zeile - Doppelklick bearbeitet sie - Rechtsklick öffnet das Menü (kopieren, löschen, verschieben, einfügen) - die rechte Kante ziehen ändert die Dauer - einen Befehl aus der Ereignisliste in eine Spur ziehen fügt ihn dort ein - im Lineal ziehen bewegt durch die Zeit.",
+     "单击块可选中对应行 - 双击可编辑 - 右键打开菜单(复制、删除、移动、插入) - 拖动右边缘可修改时长 - 把事件列表中的命令拖到轨道上即可在该处插入 - 在标尺上拖动可移动时间。",
+     "ブロックをクリックで行を選択 - ダブルクリックで編集 - 右クリックでメニュー(コピー、削除、移動、挿入) - 右端をドラッグで長さを変更 - イベント一覧のコマンドをトラックにドラッグするとそこに挿入 - ルーラーをドラッグで時間を移動。"),
+    ("TracksList", "Command list", "Befehlsliste", "命令列表", "コマンド一覧"),
+    ("TracksListHint", "Show every command of the script on the right - also those that take no time (affect, task, declare). Click, double-click, right-click and drop work as in the Graph.",
+     "Rechts jeden Befehl des Skripts zeigen - auch die ohne Zeit (affect, task, declare). Klick, Doppelklick, Rechtsklick und Ablegen wie im Graphen.",
+     "在右侧显示脚本的每个命令——包括不占时间的命令(affect、task、declare)。单击、双击、右键和拖放与图表中相同。",
+     "スクリプトのすべてのコマンドを右側に表示します(時間を使わない affect、task、declare も)。クリック、ダブルクリック、右クリック、ドロップはグラフと同じです。"),
     ("TracksPlay", "Play", "Abspielen", "播放", "再生"),
     ("TracksPause", "Pause", "Pause", "暂停", "一時停止"),
     ("TracksZoom", "Zoom %.1fx", "Zoom %.1fx", "缩放 %.1fx", "ズーム %.1fx"),
@@ -1790,6 +1801,263 @@ S = [
      "後ろに挿入"),
     ("MsgSelected", "%d selected", "%d ausgewählt", "已选择 %d 个", "%d 件を選択"),
 
+    # --- rc601 release ---
+    # Meldungsfenster beim Start, wenn das Befehlsmodell fehlt. Vorher stand
+    # dort nur englisch und technisch "behaved.bhc not found in <Ordner>" -
+    # meist hatte jemand nur die .exe aus dem Zip gezogen. %s ist der Ordner,
+    # in dem gesucht wurde.
+    ("DataMissing",
+     "BehavEd cannot find its data: behaved.bhc is missing in\n%s\n\n"
+     "Please unpack the whole zip file (right-click → Extract All…) and start "
+     "behaved.exe from the unpacked BehavEd-Remake folder. behaved.exe needs "
+     "its data folder next to it.",
+     "BehavEd findet seine Daten nicht: behaved.bhc fehlt in\n%s\n\n"
+     "Bitte das ganze Zip-Archiv entpacken (Rechtsklick → Alle extrahieren…) "
+     "und behaved.exe aus dem entpackten Ordner BehavEd-Remake starten. "
+     "behaved.exe braucht den Ordner data neben sich.",
+     "BehavEd 找不到它的数据：以下位置缺少 behaved.bhc\n%s\n\n"
+     "请解压整个 zip 文件（右键 → 全部解压缩…），然后从解压出的 BehavEd-Remake "
+     "文件夹启动 behaved.exe。behaved.exe 旁边必须有 data 文件夹。",
+     "BehavEd のデータが見つかりません。次の場所に behaved.bhc がありません:\n%s\n\n"
+     "zip ファイル全体を展開し(右クリック → すべて展開…)、展開した BehavEd-Remake "
+     "フォルダーから behaved.exe を起動してください。behaved.exe の隣には data "
+     "フォルダーが必要です。"),
+    # rc601 release (Durchsicht): die zweite Zeile derselben Meldung, wenn die
+    # eingebauten Daten sich nicht auspacken liessen (Platte voll,
+    # Einstellungsordner schreibgeschuetzt oder umgeleitet). Vorher stand dann
+    # nur DataMissing da ("das ganze Zip entpacken" - irrefuehrend fuer die
+    # eigenstaendige .exe), und der Grund ging nur ins Protokoll. Erstes %s:
+    # der Ordner, in den ausgepackt werden sollte; zweites %s: der Grund, wie
+    # ihn das System meldet.
+    ("DataUnpackFailed",
+     "The data built into the program could not be unpacked to\n%s\nReason: %s\n\n"
+     "Free some disk space or make that folder writable – or use the whole zip "
+     "as described above.",
+     "Die im Programm eingebauten Daten ließen sich nicht auspacken nach\n%s\nGrund: %s\n\n"
+     "Bitte Speicherplatz freimachen oder den Ordner beschreibbar machen – oder "
+     "das ganze Zip wie oben beschrieben verwenden.",
+     "无法将程序内置的数据解压到\n%s\n原因：%s\n\n"
+     "请释放磁盘空间或让该文件夹可写——或者按上文所述使用完整的 zip。",
+     "プログラムに内蔵されたデータを次の場所に展開できませんでした:\n%s\n理由: %s\n\n"
+     "ディスクの空き容量を確保するか、そのフォルダーに書き込めるようにしてください。"
+     "または、上の説明どおり zip 全体を使ってください。"),
+    # --- rc601 kamera ---
+    # Das Spielfenster: Seitenverhaeltnis und cg_fovAspectAdjust des Spiels
+    # (CG_CalcFOVFromX), der Rahmen des Spielbilds in der Ansicht.
+    ("GameScreen", "Game screen", "Spielbildschirm", "游戏画面", "ゲーム画面"),
+    ("GameScreenAspect", "Aspect ratio", "Seitenverhältnis", "宽高比", "アスペクト比"),
+    ("GameScreenMonitor", "Like the monitor (%.2f:1)", "Wie der Bildschirm (%.2f:1)",
+     "与显示器相同 (%.2f:1)", "モニターと同じ (%.2f:1)"),
+    ("GameScreenAspectHint",
+     "The game computes every camera's field of view for its own window (CG_CalcFOVFromX). "
+     "Movie Duels runs at the desktop resolution by default, OpenJK at 800x600 (4:3). "
+     "The view shows the game's picture as a frame and darkens what lies outside.",
+     "Das Spiel rechnet den Bildwinkel jeder Kamera für sein eigenes Fenster (CG_CalcFOVFromX). "
+     "Movie Duels läuft ab Werk in der Desktopauflösung, OpenJK in 800x600 (4:3). "
+     "Die Ansicht zeigt das Spielbild als Rahmen und dunkelt ab, was außerhalb liegt.",
+     "游戏按照其自身窗口计算每台摄像机的视野(CG_CalcFOVFromX)。"
+     "Movie Duels 默认使用桌面分辨率,OpenJK 默认 800x600(4:3)。"
+     "视图以边框显示游戏画面,并将边框外的部分变暗。",
+     "ゲームは各カメラの視野角を自分のウィンドウに合わせて計算します(CG_CalcFOVFromX)。"
+     "Movie Duels は既定でデスクトップ解像度、OpenJK は 800x600(4:3)で動作します。"
+     "ビューはゲーム画面を枠で示し、枠の外を暗くします。"),
+    ("GameFovAdjust", "cg_fovAspectAdjust", "cg_fovAspectAdjust", "cg_fovAspectAdjust",
+     "cg_fovAspectAdjust"),
+    ("GameFovAdjustAutoOn", "Automatic (on - Movie Duels)", "Automatisch (an - Movie Duels)",
+     "自动(开 - Movie Duels)", "自動(オン - Movie Duels)"),
+    ("GameFovAdjustAutoOff", "Automatic (off)", "Automatisch (aus)", "自动(关)", "自動(オフ)"),
+    ("GameFovAdjustOff", "Off (OpenJK, original game)", "Aus (OpenJK, Originalspiel)",
+     "关(OpenJK、原版游戏)", "オフ(OpenJK、オリジナル版)"),
+    ("GameFovAdjustOn", "On (Movie Duels)", "An (Movie Duels)", "开(Movie Duels)", "オン(Movie Duels)"),
+    ("GameFovAdjustHint",
+     "With cg_fovAspectAdjust 1 (Movie Duels) a ZOOM keeps its vertical angle at every aspect ratio, "
+     "and wide screens see more at the sides. With 0 (the OpenJK default; the original game has no such "
+     "setting) the ZOOM is the horizontal angle. Automatic: on under the Movie Duels game rules (Preferences, "
+     "Cutscene preview). To check your game, type cg_fovAspectAdjust in its console.",
+     "Mit cg_fovAspectAdjust 1 (Movie Duels) behält ein ZOOM bei jedem Seitenverhältnis seinen senkrechten "
+     "Winkel, und breite Bildschirme sehen seitlich mehr. Mit 0 (Vorgabe in OpenJK; das Originalspiel kennt "
+     "die Einstellung nicht) ist der ZOOM der waagerechte Winkel. Automatisch: an unter den Spielregeln "
+     "Movie Duels (Einstellungen, Szenenvorschau). Im Spiel nachsehen: cg_fovAspectAdjust in die Konsole tippen.",
+     "cg_fovAspectAdjust 为 1(Movie Duels)时,ZOOM 在任何宽高比下都保持垂直角度,宽屏在两侧看到更多。"
+     "为 0(OpenJK 默认;原版游戏没有此设置)时,ZOOM 是水平角度。自动:游戏规则为 Movie Duels 时开启"
+     "(首选项,过场动画预览)。要检查你的游戏,请在其控制台中输入 cg_fovAspectAdjust。",
+     "cg_fovAspectAdjust が 1(Movie Duels)なら、ZOOM はどのアスペクト比でも垂直の角度を保ち、"
+     "ワイド画面では左右がより広く見えます。0(OpenJK の既定。オリジナル版にはこの設定がありません)なら "
+     "ZOOM は水平の角度です。自動: ゲームルールが Movie Duels ならオン(設定、カットシーンのプレビュー)。"
+     "ゲームのコンソールで cg_fovAspectAdjust と入力すると確認できます。"),
+    ("GameFrameFree", "Game frame in the free view", "Spielrahmen in der freien Ansicht",
+     "在自由视图中显示游戏边框", "自由視点でゲーム枠を表示"),
+    ("GameFrameFreeHint",
+     "Darken what a camera placed here would not show in the game (zoom 90, the value after ENABLE) - "
+     "\"New camera shot here\" captures exactly this frame. Looking through the camera and during "
+     "playback the outside is always black.",
+     "Abdunkeln, was eine Kamera an dieser Stelle im Spiel nicht zeigen würde (Zoom 90, der Wert nach "
+     "ENABLE) - \"Neue Kameraeinstellung hier\" übernimmt genau diesen Rahmen. Beim Blick durch die Kamera "
+     "und beim Abspielen ist außerhalb immer schwarz.",
+     "将放在此处的摄像机在游戏中看不到的部分变暗(缩放 90,即 ENABLE 之后的值)——“在此新建镜头”正好采用"
+     "此边框。通过摄像机观看和播放时,边框外始终为黑色。",
+     "ここに置いたカメラがゲームで映さない部分を暗くします(ズーム 90、ENABLE 後の値)。「ここに新しい"
+     "ショット」はちょうどこの枠を取り込みます。カメラ視点と再生中は枠の外が常に黒になります。"),
+    # --- rc601 tour ---
+    # Tutorials im Programm (gui/tour.cpp): das Fenster, seine Knoepfe, die
+    # Einstiege im Help-Menue und auf der Startflaeche.
+    ("TourMenu", "Interactive tutorials", "Interaktive Tutorials", "交互式教程",
+     "インタラクティブ チュートリアル"),
+    ("TourMenuHint",
+     "The program shows you step by step which buttons to press - right here, on your own script",
+     "Das Programm zeigt dir Schritt für Schritt, welche Knöpfe du drücken musst - direkt hier, an deinem eigenen Skript",
+     "程序会一步一步告诉你该按哪个按钮——就在这里，用你自己的脚本",
+     "どのボタンを押せばよいかを、プログラムがその場で一歩ずつ案内します。自分のスクリプトでそのまま試せます"),
+    ("TourWindowTitle", "Tutorials", "Tutorials", "教程", "チュートリアル"),
+    ("TourListIntro",
+     "Pick a tutorial. The program highlights what to click and moves on as soon as you have done it.",
+     "Wähle ein Tutorial. Das Programm hebt hervor, was du anklicken musst, und geht weiter, sobald du es getan hast.",
+     "选择一个教程。程序会高亮显示要点击的位置，你完成后会自动进入下一步。",
+     "チュートリアルを選んでください。クリックする場所が強調表示され、操作が終わると自動で次へ進みます。"),
+    ("TourStart", "Start", "Starten", "开始", "開始"),
+    ("TourContinue", "Continue (step %d)", "Fortsetzen (Schritt %d)", "继续（第 %d 步）", "続ける（手順 %d）"),
+    ("TourRestart", "From the beginning", "Von vorn", "从头开始", "最初から"),
+    ("TourDoneMark", "Done", "Erledigt", "已完成", "完了"),
+    ("TourStep", "Step %d of %d", "Schritt %d von %d", "第 %d 步，共 %d 步", "手順 %d / %d"),
+    ("TourBack", "Back", "Zurück", "上一步", "戻る"),
+    ("TourSkip", "Skip", "Überspringen", "跳过", "スキップ"),
+    ("TourNext", "Next", "Weiter", "下一步", "次へ"),
+    ("TourShowMe", "Show me", "Zeig es mir", "演示给我看", "やって見せて"),
+    ("TourDoIt", "Do it for me", "Mach es für mich", "替我完成", "代わりに実行"),
+    ("TourClose", "Close", "Schließen", "关闭", "閉じる"),
+    ("TourGuide", "Open this page in the guide", "Diese Seite im Handbuch öffnen", "在手册中打开本页",
+     "このページをガイドで開く"),
+    ("TourAllList", "All tutorials", "Alle Tutorials", "全部教程", "すべてのチュートリアル"),
+    ("TourSkipHint",
+     "Skip this step - where it can, the program sets it up for the next one",
+     "Diesen Schritt überspringen - wo es geht, richtet das Programm ihn für den nächsten ein",
+     "跳过这一步——在可能的情况下，程序会为下一步做好准备",
+     "この手順をスキップします。可能な場合は、次の手順に必要な状態をプログラムが用意します"),
+    ("TourShowMeHint",
+     "A pointer moves to the place you should click. Nothing is clicked.",
+     "Ein Zeiger fährt zu der Stelle, die du anklicken sollst. Es wird nichts geklickt.",
+     "指针会移动到你应该点击的位置。不会真的点击任何东西。",
+     "クリックすべき場所へポインターが移動します。実際にはクリックしません。"),
+    ("TourDoItHint", "The program does this step for you", "Das Programm erledigt diesen Schritt für dich",
+     "程序替你完成这一步", "この手順をプログラムが代わりに行います"),
+    ("TourStepDone", "Well done!", "Gut gemacht!", "做得好！", "よくできました！"),
+    ("TourFinished", "Tutorial finished.", "Tutorial abgeschlossen.", "教程已完成。", "チュートリアルが完了しました。"),
+    ("TourFirst",
+     "First click the highlighted control - it opens what this step needs.",
+     "Klicke zuerst auf das Hervorgehobene - es öffnet, was dieser Schritt braucht.",
+     "请先点击高亮的控件——它会打开这一步需要的内容。",
+     "まず強調表示された部分をクリックしてください。この手順に必要なものが開きます。"),
+    ("TourNotVisible", "Not visible right now - follow the text.", "Gerade nicht zu sehen - folge dem Text.",
+     "当前看不到——请按文字说明操作。", "今は表示されていません。説明文に従ってください。"),
+    ("TourMissing", "Tutorials not found (%s)", "Tutorials nicht gefunden (%s)", "未找到教程（%s）",
+     "チュートリアルが見つかりません（%s）"),
+    ("TourViewSwitched",
+     "This tutorial uses the Classic view - switched to it",
+     "Dieses Tutorial nutzt die Ansicht Classic - dorthin umgeschaltet",
+     "本教程使用经典视图——已切换",
+     "このチュートリアルはクラシック表示を使います。切り替えました"),
+    ("TourStartGuide", "Interactive tour", "Interaktive Tour", "交互式导览", "インタラクティブ ツアー"),
+    ("TourStartGuideHint",
+     "Learn by doing: the program shows you every click",
+     "Lernen durch Tun: das Programm zeigt dir jeden Klick",
+     "边做边学：程序会告诉你每一次点击",
+     "実際に操作しながら学べます。すべてのクリックをプログラムが案内します"),
+    ("TourSearchHint", "Search the guide...", "Im Handbuch suchen ...", "搜索手册…", "ガイドを検索…"),
+    ("TourSearchNone", "Nothing found.", "Nichts gefunden.", "未找到结果。", "見つかりませんでした。"),
+    ("TourSearchGuide", "Open in the guide", "Im Handbuch öffnen", "在手册中打开", "ガイドで開く"),
+    # rc601 tour (Review): ein gemerkter Schritt hinter dem Ende einer kuerzer
+    # gewordenen Tour - vorher tat "Fortsetzen" still nichts.
+    ("TourStartFailed",
+     "Tutorial %s: step %d does not exist (it has %d steps) - start it from the beginning",
+     "Tutorial %s: Schritt %d gibt es nicht (es hat %d Schritte) - starte es von vorn",
+     "教程 %s：没有第 %d 步（共 %d 步）——请从头开始",
+     "チュートリアル %s：手順 %d はありません（全 %d 手順）。最初から始めてください"),
+    # --- rc601 ton ---
+    # Die Mischpegel der Vorschau wie die Klang-Cvars der Engine (s_volume,
+    # s_volumeVoice, s_musicvolume; Vorgaben snd_dma.cpp:455 ff., Movie Duels).
+    ("PrefsTonPegel", "Preview sound levels", "Lautstärke der Vorschau", "预览音量",
+     "プレビューの音量"),
+    ("PrefsTonEffekte", "Effects, sabers, speakers (s_volume)",
+     "Effekte, Schwerter, Lautsprecher (s_volume)", "效果、光剑、扬声器 (s_volume)",
+     "効果音・セーバー・スピーカー (s_volume)"),
+    ("PrefsTonStimmen", "Voices (s_volumeVoice)", "Stimmen (s_volumeVoice)",
+     "语音 (s_volumeVoice)", "音声 (s_volumeVoice)"),
+    ("PrefsTonMusik", "Music (s_musicvolume)", "Musik (s_musicvolume)",
+     "音乐 (s_musicvolume)", "音楽 (s_musicvolume)"),
+    ("PrefsTonSpielwerte", "Game defaults", "Werte des Spiels", "游戏默认值",
+     "ゲームの既定値"),
+    ("PrefsTonHinweis",
+     "Mixed like the game: effects 0.5, voices 1.0, music 0.25 (the sound defaults of Jedi Academy and Movie Duels).",
+     "Gemischt wie im Spiel: Effekte 0,5, Stimmen 1,0, Musik 0,25 (die Klangvorgaben von Jedi Academy und Movie Duels).",
+     "按游戏方式混音：效果 0.5，语音 1.0，音乐 0.25（Jedi Academy 和 Movie Duels 的默认声音设置）。",
+     "ゲームと同じ配分: 効果音 0.5、音声 1.0、音楽 0.25（Jedi Academy と Movie Duels の既定のサウンド設定）。"),
+    # --- rc601 bewegung ---
+    ("BewDrehUeberWatch",
+     "Facing %d degrees at %.2f s (SET_DYAW) - but a SET_WATCHTARGET is active there, so in the game the figure keeps facing its watch target",
+     "Blickrichtung %d Grad bei %.2f s (SET_DYAW) - dort ist aber ein SET_WATCHTARGET aktiv, im Spiel schaut die Figur weiter dorthin",
+     "朝向 %d 度 (%.2f 秒, SET_DYAW) - 但此处有 SET_WATCHTARGET 生效,游戏中角色会继续朝向注视目标",
+     "向き %d 度 (%.2f 秒, SET_DYAW) - ただしそこでは SET_WATCHTARGET が有効なため、ゲームではキャラクターは注視ターゲットの方を向き続けます"),
+    ("BewNavOhneWeg",
+     "NPC %s finds no path to %s (%d units away, at %.2f s) - stands still like in the game; a dowait on this walk never ends.",
+     "NPC %s findet keinen Weg zu %s (%d Einheiten entfernt, bei %.2f s) - bleibt stehen wie im Spiel; ein dowait auf diesen Lauf endet nie.",
+     "NPC %s 找不到通往 %s 的路径 (距离 %d 单位, %.2f 秒) - 与游戏中一样站着不动; 对此行走的 dowait 永远不会结束。",
+     "NPC %s は %s への経路を見つけられません (%d ユニット先、%.2f 秒) - ゲームと同じくその場に立ち止まります。この歩行への dowait は終わりません。"),
+    # Durchsicht 2: die Schwierigkeit der Vorschau (g_spskill) in den Einstellungen
+    ("PrefsGroupPreview", "Cutscene preview", "Szenenvorschau", "过场动画预览", "カットシーンのプレビュー"),
+    ("PrefsDifficulty", "Difficulty (g_spskill)", "Schwierigkeit (g_spskill)", "难度 (g_spskill)", "難易度 (g_spskill)"),
+    ("PrefsDifficultyNote",
+     "Like the difficulty in the game: on it depends how fast some NPCs turn (stormtroopers, reborn and others) and how fast tusken raiders walk and run, and how close two lightsabers must come to clash. Movie Duels starts on Jedi Knight, OpenJK on Padawan.",
+     "Wie die Schwierigkeit im Spiel: davon hängt ab, wie schnell sich manche NPCs drehen (Sturmtruppler, Reborn und andere) und wie schnell Tusken gehen und rennen, und wie nah sich zwei Lichtschwerter kommen müssen, um zu klirren. Movie Duels beginnt auf Jedi-Ritter, OpenJK auf Padawan.",
+     "与游戏中的难度相同: 它决定部分 NPC 的转身速度 (冲锋队员、重生者等) 以及塔斯肯袭击者的步行和奔跑速度,还有两把光剑需要靠多近才会相撞。Movie Duels 默认为绝地武士,OpenJK 默认为学徒。",
+     "ゲームの難易度と同じです。一部の NPC (ストームトルーパー、リボーンなど) の振り向く速さと、タスケン・レイダーの歩く・走る速さ、そして二本のライトセーバーがぶつかる距離が変わります。Movie Duels の初期値はジェダイ・ナイト、OpenJK はパダワンです。"),
+    ("DiffPadawan", "Padawan", "Padawan", "学徒", "パダワン"),
+    ("DiffJedi", "Jedi", "Jedi", "绝地", "ジェダイ"),
+    ("DiffKnight", "Jedi Knight", "Jedi-Ritter", "绝地武士", "ジェダイ・ナイト"),
+    ("DiffMaster", "Jedi Master", "Jedi-Meister", "绝地大师", "ジェダイ・マスター"),
+    # --- rc601 integ ---
+    # Der zentrale Schalter OpenJK / Movie Duels (Einstellungen, Szenenvorschau)
+    ("PrefsRegelwerk", "Game rules", "Spielregeln", "游戏规则", "ゲームルール"),
+    ("PrefsRegelAuto", "Automatic (detected: %s)", "Automatisch (erkannt: %s)", "自动(检测到: %s)",
+     "自動(検出: %s)"),
+    ("PrefsRegelOpenJK", "OpenJK (Jedi Academy)", "OpenJK (Jedi Academy)", "OpenJK(Jedi Academy)",
+     "OpenJK(Jedi Academy)"),
+    ("PrefsRegelMd", "Movie Duels", "Movie Duels", "Movie Duels", "Movie Duels"),
+    ("PrefsRegelNote",
+     "Which game the cutscene preview imitates. Movie Duels changes parts of Jedi Academy's game code, and the "
+     "preview follows the chosen one: how fast some NPC classes turn on each difficulty, the default difficulty "
+     "(Jedi Knight instead of Padawan), when lightsabers clash and which sounds and effects that makes, "
+     "cg_fovAspectAdjust and the game window (desktop resolution instead of 800x600), and whether a ROFF "
+     "sound stays where it started or goes with the figure. Automatic: Movie Duels when a Movie Duels folder "
+     "is among the game folders, otherwise OpenJK.",
+     "Welches Spiel die Szenenvorschau nachahmt. Movie Duels ändert Teile des Spielcodes von Jedi Academy, und "
+     "die Vorschau folgt dem gewählten: wie schnell sich manche NPC-Klassen je Schwierigkeit drehen, die "
+     "vorgegebene Schwierigkeit (Jedi-Ritter statt Padawan), wann Lichtschwerter klirren und mit welchen "
+     "Klängen und Effekten, cg_fovAspectAdjust und das Spielfenster (Desktopauflösung statt 800x600) und ob "
+     "ein ROFF-Klang an seinem Startort bleibt oder mit der Figur mitgeht. Automatisch: Movie Duels, wenn ein "
+     "Movie-Duels-Ordner unter den Spielordnern ist, sonst OpenJK.",
+     "过场动画预览模仿哪一个游戏。Movie Duels 修改了 Jedi Academy 的部分游戏代码,预览遵循所选的规则:"
+     "某些 NPC 类别在各难度下的转身速度、默认难度(绝地武士而非学徒)、光剑何时相撞以及产生的声音和效果、"
+     "cg_fovAspectAdjust 和游戏窗口(桌面分辨率而非 800x600),以及 ROFF 声音是停在起点还是随角色移动。"
+     "自动:游戏文件夹中有 Movie Duels 文件夹时为 Movie Duels,否则为 OpenJK。",
+     "カットシーンのプレビューがどちらのゲームをまねるか。Movie Duels は Jedi Academy のゲームコードの一部を"
+     "変更しており、プレビューは選んだ方に従います: 一部の NPC クラスが難易度ごとに振り向く速さ、既定の難易度"
+     "(パダワンではなくジェダイ・ナイト)、ライトセーバーがいつぶつかり、どんな音とエフェクトが出るか、"
+     "cg_fovAspectAdjust とゲームウィンドウ(800x600 ではなくデスクトップ解像度)、そして ROFF の音が"
+     "開始位置に留まるかキャラクターと一緒に動くか。自動: ゲームフォルダーに Movie Duels のフォルダーがあれば "
+     "Movie Duels、なければ OpenJK。"),
+    ("PrefsDifficultyAuto", "Game default (%s)", "Vorgabe des Spiels (%s)", "游戏默认 (%s)", "ゲームの既定 (%s)"),
+    ("RegelStatusAutoMd", "Game rules: %s (detected from the game folder)",
+     "Spielregeln: %s (am Spielordner erkannt)", "游戏规则: %s (根据游戏文件夹检测)",
+     "ゲームルール: %s (ゲームフォルダーから検出)"),
+    ("RegelStatusAutoOjk", "Game rules: %s (no Movie Duels folder among the game folders)",
+     "Spielregeln: %s (kein Movie-Duels-Ordner unter den Spielordnern)",
+     "游戏规则: %s (游戏文件夹中没有 Movie Duels 文件夹)",
+     "ゲームルール: %s (ゲームフォルダーに Movie Duels のフォルダーがありません)"),
+    ("RegelStatusFest", "Game rules: %s (chosen in Preferences)", "Spielregeln: %s (in den Einstellungen gewählt)",
+     "游戏规则: %s (在首选项中选择)", "ゲームルール: %s (設定で選択)"),
+    ("GameScreenAuto43", "Like the game: 4:3 (OpenJK, 800x600)", "Wie das Spiel: 4:3 (OpenJK, 800x600)",
+     "与游戏相同: 4:3(OpenJK,800x600)", "ゲームと同じ: 4:3(OpenJK、800x600)"),
+
 ]
 
 # --- Formatplatzhalter pruefen -------------------------------------------
@@ -1863,6 +2131,7 @@ h = '''// Oberflaechentexte in vier Sprachen.
 #define BHED_I18N_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace bhed::i18n {
@@ -1903,6 +2172,15 @@ Language fromSystemLocale(const std::string& locale);
 // Nur fuer Tests: ein Text in einer bestimmten Sprache.
 const char* trIn(Language language, Str id);
 
+// rc601 tour: die Kennung als Text ("FileSave"). Das Handbuch und die
+// Tutorials im Programm nennen Oberflaechentexte ueber ihre Kennung
+// ({{FileSave}}); zur Laufzeit werden sie damit in der eingestellten Sprache
+// beschriftet. "" fuer einen Wert ausserhalb der Tabelle.
+const char* strName(Str id);
+// Umgekehrt: die Kennung zu einem Namen. false (und *out unberuehrt), wenn es
+// den Namen nicht gibt - Gross- und Kleinschreibung zaehlt.
+bool strVonName(std::string_view name, Str* out);
+
 }  // namespace bhed::i18n
 #endif
 '''
@@ -1913,7 +2191,10 @@ open('include/bhed/i18n.h', 'w', encoding='utf-8', newline='\n').write(h)
 c = '''// Erzeugt von tools/gen_i18n.py - nicht von Hand aendern.
 #include "bhed/i18n.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <string_view>
+#include <vector>
 
 namespace bhed::i18n {
 namespace {
@@ -1936,9 +2217,46 @@ static_assert(sizeof(kTable) / sizeof(kTable[0]) == static_cast<std::size_t>(Str
               "Die Texttabelle passt nicht zur Aufzaehlung Str. "
               "Beide werden von tools/gen_i18n.py erzeugt - dort aendern.");
 
+// rc601 tour: die Kennungen, in derselben Reihenfolge (strName/strVonName).
+const char* const kNamen[] = {
+'''
+for n in names:
+    c += '    "%s",\n' % n
+c += '''};
+
+static_assert(sizeof(kNamen) / sizeof(kNamen[0]) == static_cast<std::size_t>(Str::Count),
+              "Die Namensliste passt nicht zur Aufzaehlung Str.");
+
 Language g_language = Language::English;
 
 }  // namespace
+
+const char* strName(Str id) {
+    const std::size_t index = static_cast<std::size_t>(id);
+    return index < static_cast<std::size_t>(Str::Count) ? kNamen[index] : "";
+}
+
+bool strVonName(std::string_view name, Str* out) {
+    // Einmal nach Namen sortiert, dann binaer gesucht: eine Tour loest die
+    // Kennungen ihres Schritttextes in jedem Bild auf.
+    static const std::vector<std::size_t> kSortiert = [] {
+        std::vector<std::size_t> v(static_cast<std::size_t>(Str::Count));
+        for (std::size_t k = 0; k < v.size(); ++k) { v[k] = k; }
+        std::sort(v.begin(), v.end(), [](std::size_t a, std::size_t b) {
+            return std::string_view(kNamen[a]) < std::string_view(kNamen[b]);
+        });
+        return v;
+    }();
+    const auto it = std::lower_bound(kSortiert.begin(), kSortiert.end(), name,
+                                     [](std::size_t k, std::string_view n) { return std::string_view(kNamen[k]) < n; });
+    if (it == kSortiert.end() || std::string_view(kNamen[*it]) != name) {
+        return false;
+    }
+    if (out != nullptr) {
+        *out = static_cast<Str>(*it);
+    }
+    return true;
+}
 
 const char* trIn(Language language, Str id) {
     const std::size_t index = static_cast<std::size_t>(id);

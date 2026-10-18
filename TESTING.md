@@ -11,7 +11,12 @@ what to trust and what to poke at.
 
 ## Getting started
 
-1. Unzip anywhere. Keep `behaved.exe` and the `data` folder together.
+1. From the release page, under **Assets**, take
+   `BehavEd-Remake-rcNNN-windows-x64.zip` (not "Source code" – that has no
+   program in it). Unzip anywhere. Keep `behaved.exe` and the `data` folder
+   together. Or take `BehavEd-Remake-rcNNN-windows-x64.exe` alone: it runs
+   without the zip and unpacks its data to `%APPDATA%\behaved\data\base`
+   (the guide is only in the zip).
 2. Run `behaved.exe`.
 3. **Add a game folder first:** `Datei → In .pk3 blättern → Spielordner
    hinzufügen`, then pick any `.pk3` inside your `GameData/base`. Do the same
@@ -267,3 +272,61 @@ checks data/base/behaved.bhc <jka>/code/game data/base/supplement.bhc
 ```
 
 `<jka>` ist Ravens Quelltextfreigabe (`github.com/grayj/Jedi-Academy`).
+
+## Release builds (rc601)
+
+Since rc601 every release is built by GitHub Actions
+(`.github/workflows/release.yml`) when a tag `v1.0.0-rcNNN` is pushed. The run
+builds with the static C++ runtime, runs all unit tests, packs
+`BehavEd-Remake-rcNNN-windows-x64.zip` with `tools/release_paket.py`, checks it,
+starts the standalone `BehavEd-Remake-rcNNN-windows-x64.exe` alone in an empty
+folder with `--pruefe-daten`, and creates a **draft** release with exactly
+these three files: the zip, the standalone exe and `SHA256SUMS.txt`. The draft
+is published by hand after the GUI self-test has passed on that very exe.
+
+How to make a release:
+
+1. Raise `kFassung`, add `## rcNNN` to `AENDERUNGEN.md` and
+   `tools/changelog.txt`, commit and push `main`.
+2. Tag and push the tag: `git tag v1.0.0-rcNNN && git push origin v1.0.0-rcNNN`.
+   The tag must be `v1.0.0-<kFassung>` (the run stops otherwise), and the
+   tagged commit must contain the workflow.
+3. Wait for the run. It creates the **draft** with the zip, the standalone exe
+   and `SHA256SUMS.txt`; the PDB is kept as the artifact
+   `BehavEd-Remake-rcNNN-debug-symbols` for 90 days. Download the artifact
+   (`gh run download <run-id> -n BehavEd-Remake-rcNNN`) into a scratch folder
+   and run the GUI self-test (mode 1) on exactly that exe.
+4. Publish: `gh release edit v1.0.0-rcNNN --draft=false --latest`.
+5. Then run self-test mode `update` (`BHED_UPDATE_LOKAL=rc500`) from a copy
+   of the program folder.
+
+Never upload a hand-made zip to a release (no `gh release create` with a
+local zip, no extra `.zip` asset): older built-in updaters install the
+**first** `.zip` of the release, so a second zip can end up on users' PCs
+instead of the checked one. Never use `--prerelease` either – the updater
+reads `/releases/latest`, which does not show pre-releases or drafts.
+
+A dry run without a release: Actions → Release → **Run workflow** on `main`
+(`workflow_dispatch`) builds, tests, packs and uploads the artifact only.
+
+Checks you can run locally:
+
+```
+ctest --test-dir build -C Release -R "exe_importe|eingebaute_daten|release_paket|update"
+python tools/release_paket.py pruefe <zip> --fassung rcNNN [--exe <standalone exe>]
+python tools/release_paket.py selbsttest
+```
+
+- `exe_importe` – `behaved.exe` binds only Windows DLLs (no VC++ runtime:
+  rc600 needed `MSVCP140.dll` and friends, which no zip contained).
+- `eingebaute_daten` – `data/base` is inside the program byte for byte, and
+  the unpacked copy gives the same command model; if unpacking fails, the
+  target folder and the reason end up in the translated message.
+- GUI self-test mode `eigenstaendig` – a copy of `behaved.exe`, renamed like the
+  release asset, alone in a folder: `--pruefe-daten` must end with 0 and unpack
+  the data into its own settings folder; a missing data folder gives a
+  translated message. A second copy whose settings folder cannot take
+  `data\base` must end with 2 and log the message with the unpack target and
+  the reason. The copies get `BHED_KEIN_MELDUNGSFENSTER=1`: instead of a
+  message box (with the Windows error sound) they only log the start message
+  and end at once, so a regression fails quietly.
