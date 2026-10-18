@@ -231,6 +231,10 @@ bool istAusdruck(std::size_t feld) {
 struct Schritt {
     std::string text;
     std::function<bool(int)> tun;
+    // rc601: Schritte mit eigener Zeitgrenze in Sekunden (das Update laedt
+    // seit rc601 ein Zip von ~110 MB) - fuer sie gilt die Grenze von 4000
+    // Bildern je Schritt nicht.
+    bool eigeneZeitgrenze = false;
 };
 
 // Schritte hinter dem laufenden einhaengen (Definition weiter unten).
@@ -5401,10 +5405,25 @@ std::vector<Schritt> updateSchritte() {
                bhed::update::zipAsset(z.release) != nullptr;
     }));
     add(tu("Update: installieren", [] { updater::installieren(); }));
-    add(warteBis("Update installiert", [] {
+    // rc601: das Zip wuchs von 14 auf ~110 MB (Handbuch in vier Sprachen mit
+    // Bildern) - mit 6000 Bildern (in Wahrheit 4000, der Deckel je Schritt)
+    // brach der Test beim Laden ab ("haengt", 0 Dateien). Darum Sekunden.
+    auto updateStart = std::make_shared<std::chrono::steady_clock::time_point>();
+    Schritt warteUpdate{"Warte: Update installiert", [updateStart](int b) {
+        if (b == 0) { *updateStart = std::chrono::steady_clock::now(); }
         const auto st = updater::zustand().stand;
-        return st == updater::Stand::Fertig || st == updater::Stand::Fehler;
-    }, 6000));
+        const double sek = std::chrono::duration<double>(std::chrono::steady_clock::now() - *updateStart).count();
+        if (st == updater::Stand::Fertig || st == updater::Stand::Fehler) {
+            diag::detail("Knopftest: Update installiert nach " + std::to_string(sek) + " s");
+            return true;
+        }
+        if (sek > 600.0) {
+            meldeFehler("Update installiert: nicht nach 600 s");
+            return true;
+        }
+        return false;
+    }, true};
+    add(warteUpdate);
     add(pause(0.3));
     add(foto("update_fertig"));
     add(pruefe("Update: installiert, die alte .exe beiseitegelegt, data/ da", [] {
@@ -23720,7 +23739,7 @@ void selbsttest() {
                 // Kein Schritt darf ewig laufen - aber Warten (Laden,
                 // Abspielen) darf bei ~400 Bildern je Sekunde ein paar
                 // Sekunden dauern.
-                if (a.imSchritt > 4000) {
+                if (a.imSchritt > 4000 && !a.schritte[a.schritt].eigeneZeitgrenze) {
                     meldeFehler(text + ": haengt");
                     ++a.schritt;
                     a.imSchritt = 0;
