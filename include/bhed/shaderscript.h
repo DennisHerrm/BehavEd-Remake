@@ -216,6 +216,26 @@ enum class CullMode : std::uint8_t { Front, Two, Back };
 // Die Engine verlaesst sich auf GL_REPEAT, behaved wiederholt ohnehin.
 enum class TexGen : std::uint8_t { Base, Environment };
 
+// rc602 kartenpruefung: WELCHES rgbGen eine Stufe hat (ParseStage,
+// tr_shader.cpp). Die Welt fasst vertex/exactVertex/lightingDiffuse zu
+// `rgbVertex` zusammen (die Eckenfarbe traegt dort das Licht); an Figuren
+// zaehlt der Unterschied: lightingDiffuse ist das Licht des Gitters
+// (RB_CalcDiffuseColor), vertex die Eckenfarbe des Modells.
+enum class RgbGenArt : std::uint8_t {
+    Keins,   // nicht angegeben: identity bzw. identityLighting (ParseStage:1713)
+    Identity,
+    IdentityLighting,
+    LightingDiffuse,
+    LightingDiffuseEntity,
+    Vertex,
+    ExactVertex,
+    OneMinusVertex,
+    Entity,
+    OneMinusEntity,
+    Const,
+    Wave,
+};
+
 // Der Tiefenvergleich dieser Stufe.
 //
 // ParseStage (tr_shader.cpp:1206) kennt drei Werte:
@@ -467,8 +487,13 @@ struct ShaderInfo {
     // kein eigenes Bild, aber sie belegt einen Platz in der Reihenfolge,
     // und die Reihenfolge entscheidet beim Uebereinanderlegen.
     struct Stage {
-        std::string image;        // leer bei $lightmap
+        std::string image;        // leer bei $lightmap und $whiteimage
         bool lightmap = false;    // map $lightmap
+        // rc603 Durchsicht: map $whiteimage - ParseStage bindet tr.whiteImage
+        // (tr_shader.cpp:1202 MD / 1239 OJ), ein 8x8 weisses Bild
+        // (tr_image.cpp:1276 MD / 1328 OJ).
+        // Steht z. B. als schwarze Grundstufe im Visier der Klonkrieger.
+        bool weiss = false;
         BlendMode blend = BlendMode::Opaque;
         AlphaTest alphaTest = AlphaTest::None;
         float alphaConst = -1.0F;
@@ -510,6 +535,7 @@ struct ShaderInfo {
         // rgbGen vertex / exactVertex / oneMinusVertex / lightingDiffuse:
         // die Farbe kommt aus den Ecken. Siehe ShaderInfo::rgbVertex.
         bool rgbVertex = false;
+        RgbGenArt rgbArt = RgbGenArt::Keins;   // rc602 kartenpruefung
         // `clampmap` statt `map`: mit GL_CLAMP geladen, nicht GL_REPEAT.
         // Die Textur laeuft am Rand in ihre Randfarbe aus, statt
         // zurueckzuspringen. 143 Shader der neun pk3, in den 43 Karten

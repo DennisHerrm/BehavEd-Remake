@@ -72,6 +72,7 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <functional>
 #include <future>
 #include <utility>
@@ -989,8 +990,31 @@ struct App {
         // Glaettung mit.
         float rawMap = 0.0F;
         float rawTotal = 0.0F;
+        // rc603 fix603: weitere Teile ungeglaettet (Selbsttest "spulen" -
+        // welches Teil beim Zurueckspulen teurer wird): die Schwerttakte
+        // (saberRechneBis), Funken/Klirren (saberEffekteBei), die
+        // Brandspuren (saberSpurenDa/-Anhaengen), das Effektnetz und die
+        // Figuren.
+        float rawSaber = 0.0F;
+        float rawSaberFx = 0.0F;
+        float rawSpuren = 0.0F;
+        float rawEffects = 0.0F;
+        float rawScene = 0.0F;
     };
     FrameCost frameCost;
+    // rc603 fix603: eine Pruefsumme dessen, was das letzte Bild gezeigt hat
+    // (Effektnetz samt Brandspuren, gezeichnete Klingen, Figuren mit ihren
+    // Bildern, bewegte Modelle) und die Zeit, fuer die es gerechnet wurde.
+    // Nur mit bildSummeAn (Selbsttest "spulen": Vor- und Zurueckspulen
+    // zeigen zur selben Zeit Bit fuer Bit dasselbe).
+    // Je Teil eine: 0 Effektnetz (mit Brandspuren), 1 gezeichnete Klingen,
+    // 2 Figuren, 3 bewegte Modelle, 4 der Klirrblitz (Durchsicht: er ist seit
+    // rc601 saber review 2c ein 2D-Bild nach den Balken, saberBlitzZeichnen2D,
+    // und lag damit in keinem der Teile 0-3).
+    bool bildSummeAn = false;
+    double bildSummeMs = -1.0;
+    std::array<std::uint64_t, 5> bildSumme{};
+    int bildSummeBild = -1;
     // --- Ist die Karte fertig geladen? ----------------------------------
     //
     // Der GPU-Weg darf das Netz nur anfassen, wenn niemand mehr daran baut.
@@ -1025,6 +1049,10 @@ struct App {
     int gpuKarte = 0;
     int gpuMover = 0;
     int gpuFiguren2 = 0;
+    // rc603: CPU-Zeit im Figurenabschnitt der Kartenansicht (alle
+    // Durchgaenge), aufsummiert in ms - der Selbsttest figurleistung liest die
+    // Differenz je Bild (Figurstufen: ohne, Bezugsweg, schneller Stufenweg).
+    double figurCpuMsSumme = 0.0;
     // Was die Debugschicht seit dem Start gemeldet hat, jede Meldung
     // einmal. Bis rc447 ging sie an den Windows-Debugger und war damit
     // unsichtbar; jetzt steht sie im Bericht.
@@ -1173,10 +1201,34 @@ struct App {
     // weapons.dat. Gebraucht wegen ihres Tags "tag_flash" - dort sitzt die
     // Muendung.
     std::map<std::string, Md3Model> weaponModels;
-    // Die Missionen des zuletzt gewaehlten Archivs.
+    // Die Missionen des Spiels zum zuletzt gewaehlten Archiv (rc603: das
+    // ganze Spiel, nicht nur das Archiv).
     std::vector<Mission> missions;
     bool missionPickOpen = false;
     std::string missionArchive;
+    // --- rc603: Load mission ueber das ganze Spiel ---------------------------
+    //
+    // Spielordner NUR fuer diese Sitzung (spielordnerFuerArchiv, bhed/mission.h):
+    // leer = die eingerichteten (settings.gamePaths). Wird nie gespeichert.
+    std::vector<std::string> sitzungsSpielordner;
+    // rc603 (Durchsicht): die Ordner, die rescanGamePaths zuletzt durchsucht
+    // hat - auch die ohne .pk3, die in gamePaths fehlen.
+    std::vector<std::string> eingeleseneSpielordner;
+    bool spielordnerEingelesen = false;
+    // Die Karten, die im Hintergrund gelesen werden (missionsSuche), in
+    // derselben Reihenfolge wie deren Auftraege, und die Skriptdateien des
+    // Spiels zum Aufloesen danach.
+    std::unique_ptr<MissionsSuche> missionsSuche;
+    std::chrono::steady_clock::time_point missionsSucheAb;   // fuer das Protokoll
+    std::vector<MissionsKarte> missionsSuchKarten;
+    std::vector<std::string> missionsSuchArchive;   // Archivpfad je Karte (das gewinnende)
+    std::vector<std::string> missionsSuchSchluessel;   // Schluessel im Zwischenspeicher je Karte
+    std::unordered_set<std::string> missionsSkriptNamen;
+    // Schon gelesene Skriptverweise je Karte (Archiv, Eintrag, Versatz,
+    // Groesse von .bsp und .ent) - ein zweites "Load mission" desselben
+    // Spiels liest keine Karte noch einmal.
+    std::map<std::string, std::vector<MapData::ScriptRef>> missionsVerweise;
+    char missionsFilter[64] = {};
     bool npcMapRead = false;
 
     // Die Shaderskripte EINMAL fuer die ganze Sitzung.
@@ -1211,6 +1263,10 @@ struct App {
     // GenerateImageMappingName gebildet - klein geschrieben, ohne Endung,
     // Schraegstriche vereinheitlicht. Genau das tut texKey() unten.
     std::unordered_map<std::string, TextureSet::Tex> texCache;
+    // rc603: die Bildpunkte der Figurstufen (ModelTextures::FigurStufe::pixel),
+    // je Bild einmal - Schluessel wie texCache. Schwach gehalten: das Bild
+    // lebt, solange eine Figur es traegt.
+    std::unordered_map<std::string, std::weak_ptr<const TextureSet::Tex>> figurStufenBilder;
     // Welche Eintraege von texCache die AKTUELLE Karte benutzt hat (ueber
     // loadTextureFor: Kartenflaechen, Himmel, Stufen, Effekte, Kartenmodelle).
     // Beim naechsten Kartenwechsel fliegen die alten heraus, die die neue
@@ -2821,11 +2877,22 @@ void openSkinFile();
 void openSkeletonFile();
 void openEntFile();
 void addGamePathDirectory(const std::string& dir);
+// rc603: die Spielordner, die gerade gelten - die dieser Sitzung
+// (sitzungsSpielordner), sonst die eingerichteten.
+const std::vector<std::string>& aktiveSpielordner();
+// rc603: die Spielordner dieser Sitzung setzen (leer = die eingerichteten)
+// und neu einlesen, wenn sich dadurch etwas aendert.
+void setzeSitzungsSpielordner(std::vector<std::string> ordner);
 void loadMissionArchive();
-// Die Missionen eines Archivs suchen und die Auswahl zeigen - das, was
-// "Load mission..." nach dem Dateidialog tut.
-// wunsch: der Name einer Mission darin - dann gleich diese (zuletzt geoeffnet).
+// Die Missionen des Spiels zu einem Archiv suchen und die Auswahl zeigen -
+// das, was "Load mission..." nach dem Dateidialog tut (rc603: das ganze Spiel,
+// die Missionen des Archivs vorn).
+// wunsch: der Name einer Mission - dann gleich diese (zuletzt geoeffnet).
 void missionenAusArchiv(const std::string& archiv, const std::string& wunsch = std::string());
+// rc603: die Hintergrundsuche abbrechen (Auswahl zu, Mission geladen).
+void missionsSucheBeenden();
+// rc603: ist die Hintergrundsuche fertig, ihre Missionen in die Liste nehmen.
+void missionsSucheUebernehmen();
 void loadMission(const Mission& m);
 void drawMissionPicker();
 
@@ -2973,6 +3040,8 @@ struct SaberGezeichnet {
     float spitze[3]{};
 };
 std::vector<SaberGezeichnet> saberGezeichnetesBild();
+// rc603 fix603: das Bild (ImGui::GetFrameCount), in dem die Liste oben entstand.
+int saberGezeichnetesBildNr();
 std::vector<SaberKlirren> saberKlirrenBis(double ms);
 std::vector<SaberWandEreignis> saberWandEreignisseBis(double ms);
 struct SaberZaehlung {
@@ -3006,6 +3075,10 @@ bool saberSpurenDa(double nowMs);
 std::vector<SpurPoly> saberSpurenBei(double ms);
 // Alles vergessen (Selbsttest: Vorspulen gegen Abspielen vergleichen).
 void saberVergessen();
+// rc603 fix603, nur fuer den Selbsttest: hoechstens so viele Clientbilder im
+// Speicher (0: die Vorgabe, 10 min) - so laufen Luecken, Schnappschuesse und
+// der gerettete laufende Stand auch in kurzen Szenen.
+void saberObergrenze(std::size_t bilder);
 extern int g_saberSpurenGezeichnet;
 
 }  // namespace bhed::gui

@@ -3290,6 +3290,19 @@ void drawGamePaths() {
         return;
     }
     Settings& st = g_app->settings;
+    // rc603: gelten gerade die Spielordner einer geladenen Mission (eines
+    // anderen Spiels), steht das hier - mit dem Weg zurueck. Die Liste
+    // darunter bleibt die eingerichtete, gespeicherte.
+    if (!g_app->sitzungsSpielordner.empty()) {
+        ImGui::TextColored(ImVec4{0.90F, 0.75F, 0.35F, 1.0F}, "%s", tr(Str::PathsSessionNote));
+        for (const std::string& o : g_app->sitzungsSpielordner) {
+            ImGui::BulletText("%s", o.c_str());
+        }
+        if (ImGui::SmallButton(tr(Str::PathsSessionBack))) {
+            setzeSitzungsSpielordner({});
+        }
+    }
+    const bool sitzung = !g_app->sitzungsSpielordner.empty();
     ImGui::SeparatorText(tr(Str::PrefsGamePaths));
     ImGui::TextDisabled("%s", tr(Str::PrefsGamePathsNote));
     // Die Reihenfolge ist keine Kosmetik.
@@ -3307,6 +3320,7 @@ void drawGamePaths() {
         ImGui::BeginDisabled(i == 0);
         if (ImGui::SmallButton(tr(Str::PrefsUp))) {
             std::swap(st.gamePaths[i], st.gamePaths[i - 1]);
+            g_app->sitzungsSpielordner.clear();   // rc603
             rescanGamePaths();
             refreshPk3List();
             ImGui::EndDisabled();
@@ -3320,6 +3334,7 @@ void drawGamePaths() {
         ImGui::BeginDisabled(letzter);
         if (ImGui::SmallButton(tr(Str::PrefsDown))) {
             std::swap(st.gamePaths[i], st.gamePaths[i + 1]);
+            g_app->sitzungsSpielordner.clear();   // rc603
             rescanGamePaths();
             refreshPk3List();
             ImGui::EndDisabled();
@@ -3330,6 +3345,7 @@ void drawGamePaths() {
         ImGui::SameLine();
         if (ImGui::SmallButton(tr(Str::PrefsRemove))) {
             st.gamePaths.erase(st.gamePaths.begin() + static_cast<std::ptrdiff_t>(i));
+            g_app->sitzungsSpielordner.clear();   // rc603
             rescanGamePaths();
             refreshPk3List();
             ImGui::PopID();
@@ -3346,7 +3362,9 @@ void drawGamePaths() {
         ImGui::TextUnformatted(st.gamePaths[i].c_str());
 
         // Was in diesem Ordner gefunden wurde - sonst raet man, ob er stimmt.
-        if (i < g_app->gamePaths.size()) {
+        // rc603: nur, wenn die eingerichteten gelten (sonst gehoeren die
+        // eingelesenen Ordner zur Sitzung).
+        if (!sitzung && i < g_app->gamePaths.size()) {
             const GamePath& gp = g_app->gamePaths[i];
             ImGui::SameLine();
             if (gp.archives.empty()) {
@@ -5618,8 +5636,9 @@ bool findSoundData(const std::string& name, std::string& out) {
         if (readFromArchives(t, out)) {
             return true;
         }
-        // Auch ausgepackt neben dem Spielordner nachsehen.
-        for (const std::string& dir : g_app->settings.gamePaths) {
+        // Auch ausgepackt neben dem Spielordner nachsehen (rc603: den
+        // geltenden - auch denen dieser Sitzung).
+        for (const std::string& dir : aktiveSpielordner()) {
             const std::string p = dir + "/" + t;
             std::ifstream f(p, std::ios::binary);
             if (f) {
@@ -11123,16 +11142,72 @@ ComboEditResult comboEdit(const char* id, std::string& value,
 }
 
 // Einen Ordner als Spielordner aufnehmen, falls er noch fehlt.
+//
+// rc603: nur noch auf ausdruecklichen Wunsch (Spielordner-Fenster) - "Load
+// mission" nimmt nichts mehr dauerhaft auf. Wer die eingerichteten Ordner
+// aendert, will mit ihnen arbeiten: die Ordner einer Sitzung enden dann.
 void addGamePathDirectory(const std::string& dir) {
     if (dir.empty()) {
         return;
     }
     for (const std::string& g : g_app->settings.gamePaths) {
         if (g == dir) {
+            if (!g_app->sitzungsSpielordner.empty()) {
+                setzeSitzungsSpielordner({});
+            }
             return;
         }
     }
     g_app->settings.gamePaths.push_back(dir);
+    g_app->sitzungsSpielordner.clear();
+    rescanGamePaths();
+    refreshPk3List();
+}
+
+const std::vector<std::string>& aktiveSpielordner() {
+    return g_app->sitzungsSpielordner.empty() ? g_app->settings.gamePaths : g_app->sitzungsSpielordner;
+}
+
+void setzeSitzungsSpielordner(std::vector<std::string> ordner) {
+    // Gleichen die neuen den eingerichteten, gilt keine Sitzung.
+    const auto gleich = [](const std::vector<std::string>& a, const std::vector<std::string>& b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            if (!gleicherOrdner(a[i], b[i])) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (gleich(ordner, g_app->settings.gamePaths)) {
+        ordner.clear();
+    }
+    g_app->sitzungsSpielordner = std::move(ordner);
+    // Neu einlesen nur, wenn die geltenden Ordner andere sind als die zuletzt
+    // eingelesenen - rescanGamePaths leert alle Zwischenspeicher.
+    // rc603 (Durchsicht): verglichen wird mit der Liste, die rescanGamePaths
+    // zuletzt durchsucht hat (eingeleseneSpielordner), nicht mit den Ordnern
+    // in g_app->gamePaths - dort fehlt ein Ordner ohne .pk3 (eine Mod nur mit
+    // losen Dateien), und dann las JEDES "Load mission" alle Spielordner neu
+    // (Selbsttest missionsliste, "Ordner ohne pk3": Einlesestand 7 -> 8, je
+    // rund 0,5 s, dazu alle Texturen der offenen Karte).
+    if (g_app->spielordnerEingelesen && gleich(g_app->eingeleseneSpielordner, aktiveSpielordner())) {
+        return;
+    }
+    if (g_app->sitzungsSpielordner.empty()) {
+        diag::info("Spielordner: wieder die eingerichteten");
+    } else {
+        std::string liste;
+        for (const std::string& o : g_app->sitzungsSpielordner) {
+            liste += (liste.empty() ? "" : "; ") + o;
+        }
+        diag::info("Spielordner nur fuer diese Sitzung: " + liste);
+        char z[1200];
+        std::snprintf(z, sizeof(z), tr(Str::MissionSessionStatus), liste.c_str());
+        addStatus(z);
+    }
     rescanGamePaths();
     refreshPk3List();
 }
@@ -11870,6 +11945,13 @@ void rescanGamePaths() {
     // sehen - und bekaeme sonst weiter die alte.
     g_app->texCache.clear();
     ++g_app->texCacheStand;
+    // rc603 Zusammenfuehrung: die Stufenbilder der Figuren ebenso. Sie sind
+    // nur schwach gehalten, leben aber weiter, solange noch jemand ihre
+    // Texturen haelt (die Modellansicht, App::modelTextures, ueberlebt das
+    // Neueinlesen). Ohne das bekaemen die neu geladenen Figuren das Bild aus
+    // den ALTEN Spielordnern - nach einem Spielwechsel bei Load mission
+    // (Movie Duels <-> JKA) kann derselbe Name ein anderes Bild sein.
+    g_app->figurStufenBilder.clear();
     g_app->skeletons.clear();
     g_app->effects.clear();
     g_app->effectRunners.clear();
@@ -11884,7 +11966,13 @@ void rescanGamePaths() {
     // ROFF-Bahnen ebenso - auch die gemerkten Fehlschlaege: der neue Ordner
     // bringt die Datei vielleicht mit.
     g_app->roffs.clear();
-    for (const std::string& dir : g_app->settings.gamePaths) {
+    // rc603: die geltenden Spielordner - die dieser Sitzung, wenn eine
+    // Mission eines anderen Spiels geladen ist, sonst die eingerichteten.
+    // rc603 (Durchsicht): welche durchsucht wurden, auch die ohne .pk3
+    // (setzeSitzungsSpielordner vergleicht damit).
+    g_app->eingeleseneSpielordner = aktiveSpielordner();
+    g_app->spielordnerEingelesen = true;
+    for (const std::string& dir : aktiveSpielordner()) {
         GamePath gp;
         if (scanGamePath(dir, gp)) {
             diag::info(dir + ": " + std::to_string(gp.archives.size()) + " Archive, " +

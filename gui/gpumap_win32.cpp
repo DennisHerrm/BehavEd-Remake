@@ -1270,6 +1270,120 @@ std::map<const GlmModel*, FigurPuffer> g_figuren;
 std::map<const void*, ID3D11ShaderResourceView*> g_figurBilder;
 // Zu jedem Bild: die Adresse der Bildpunkte, aus denen es hochgeladen wurde.
 std::map<const void*, const void*> g_figurBildDaten;
+// rc603: zaehlt jedes Entfernen aus g_figurBilder - wer sich ein Bild merkt
+// (StufenFlaeche), prueft damit, ob es noch lebt.
+unsigned g_figurBilderGeneration = 1;
+
+// --- rc603: Figurenbilder nach INHALT teilen ---------------------------------
+//
+// Gemessen im Szenenlauf (perf_lauf.sh, md_am_sith, intro2_sith / Flug /
+// intro2_sith) mit den Figurstufen: 5900 Figurenbilder hochgeladen, 1,56 s im
+// Hauptfaden (je Bild die Pyramide auf der CPU gebaut, ladeMitStufen). Jede
+// Figur traegt eigene KOPIEN ihrer Bilder (texturesFor kopiert aus
+// App::texCache in bySurface; die Stufenbilder teilen sich die Figuren seit
+// rc603 ueber ModelTextures::FigurStufe::pixel), und der Schluessel hier ist
+// die Adresse - 20 Kampfdroiden luden jedes Bild zwanzigmal, und jedes neue
+// Oeffnen des Skripts noch einmal. Gleiche Bildpunkte geben dieselbe Textur
+// samt Pyramide (ladeMitStufen rechnet sie aus den Bildpunkten allein) -
+// also wird nach dem Inhalt gesucht: zwei 64-Bit-Pruefwerte (XXH64 mit zwei
+// Startwerten) ueber Breite, Hoehe und Bildpunkte, je Adresse einmal
+// gerechnet. Ein Bild mit eigener Pyramide (mips nicht leer) bleibt beim
+// alten Weg. Das Bild aendert sich dadurch nicht (Selbsttest
+// figurStufenAlleSchritte: geteilt und ungeteilt Bildpunkt fuer Bildpunkt
+// gleich, mit und ohne Figurstufen).
+struct BildInhalt {
+    std::uint64_t a = 0;
+    std::uint64_t b = 0;
+    int w = 0;
+    int h = 0;
+    bool operator==(const BildInhalt& o) const { return a == o.a && b == o.b && w == o.w && h == o.h; }
+};
+struct BildInhaltHash {
+    std::size_t operator()(const BildInhalt& k) const { return static_cast<std::size_t>(k.a ^ (k.b * 31U)); }
+};
+std::unordered_map<BildInhalt, ID3D11ShaderResourceView*, BildInhaltHash> g_figurBildInhalt;
+bool g_figurBilderTeilen = true;
+int g_figurBilderHochgeladen = 0;   // wirklich hochgeladen (ladeMitStufen)
+int g_figurBilderGeteilt = 0;       // statt hochzuladen geteilt
+
+// XXH64 (Yann Collet, xxhash.h: XXH64_round, XXH64_mergeRound, XXH64_avalanche).
+std::uint64_t xxRotl(std::uint64_t x, int r) { return (x << r) | (x >> (64 - r)); }
+std::uint64_t xxRunde(std::uint64_t acc, std::uint64_t ein) {
+    acc += ein * 0xC2B2AE3D27D4EB4FULL;
+    acc = xxRotl(acc, 31);
+    return acc * 0x9E3779B185EBCA87ULL;
+}
+std::uint64_t xxMische(std::uint64_t acc, std::uint64_t wert) {
+    acc ^= xxRunde(0, wert);
+    return acc * 0x9E3779B185EBCA87ULL + 0x85EBCA77C2B2AE63ULL;
+}
+std::uint64_t xxh64(const std::uint8_t* p, std::size_t n, std::uint64_t saat) {
+    constexpr std::uint64_t P1 = 0x9E3779B185EBCA87ULL;
+    constexpr std::uint64_t P2 = 0xC2B2AE3D27D4EB4FULL;
+    constexpr std::uint64_t P3 = 0x165667B19E3779F9ULL;
+    constexpr std::uint64_t P4 = 0x85EBCA77C2B2AE63ULL;
+    constexpr std::uint64_t P5 = 0x27D4EB2F165667C5ULL;
+    const std::uint8_t* const ende = p + n;
+    auto lies64 = [](const std::uint8_t* q) {
+        std::uint64_t v = 0;
+        std::memcpy(&v, q, 8);
+        return v;
+    };
+    std::uint64_t h = 0;
+    if (n >= 32) {
+        std::uint64_t v1 = saat + P1 + P2;
+        std::uint64_t v2 = saat + P2;
+        std::uint64_t v3 = saat;
+        std::uint64_t v4 = saat - P1;
+        const std::uint8_t* const grenze = ende - 32;
+        do {
+            v1 = xxRunde(v1, lies64(p));
+            v2 = xxRunde(v2, lies64(p + 8));
+            v3 = xxRunde(v3, lies64(p + 16));
+            v4 = xxRunde(v4, lies64(p + 24));
+            p += 32;
+        } while (p <= grenze);
+        h = xxRotl(v1, 1) + xxRotl(v2, 7) + xxRotl(v3, 12) + xxRotl(v4, 18);
+        h = xxMische(h, v1);
+        h = xxMische(h, v2);
+        h = xxMische(h, v3);
+        h = xxMische(h, v4);
+    } else {
+        h = saat + P5;
+    }
+    h += static_cast<std::uint64_t>(n);
+    while (p + 8 <= ende) {
+        h ^= xxRunde(0, lies64(p));
+        h = xxRotl(h, 27) * P1 + P4;
+        p += 8;
+    }
+    if (p + 4 <= ende) {
+        std::uint32_t v = 0;
+        std::memcpy(&v, p, 4);
+        h ^= static_cast<std::uint64_t>(v) * P1;
+        h = xxRotl(h, 23) * P2 + P3;
+        p += 4;
+    }
+    while (p < ende) {
+        h ^= static_cast<std::uint64_t>(*p) * P5;
+        h = xxRotl(h, 11) * P1;
+        ++p;
+    }
+    h ^= h >> 33;
+    h *= P2;
+    h ^= h >> 29;
+    h *= P3;
+    h ^= h >> 32;
+    return h;
+}
+BildInhalt inhaltVon(const TextureSet::Tex& t) {
+    BildInhalt k;
+    k.w = t.width;
+    k.h = t.height;
+    k.a = xxh64(t.rgba.data(), t.rgba.size(), 0x603ULL);
+    k.b = xxh64(t.rgba.data(), t.rgba.size(), 0xB5ED0603ULL);
+    return k;
+}
 
 // --- Der Schluessel ist eine ADRESSE - der Inhalt kann wechseln ------------
 //
@@ -1358,6 +1472,9 @@ void benenne(ID3D11DeviceChild* g, const char* name) {
     g->SetPrivateData(kNameGuid, static_cast<UINT>(std::strlen(name)), name);
 }
 ID3D11Buffer* g_cbFigur = nullptr;
+// rc602 kartenpruefung: die Shaderstufe einer Figurenflaeche (JeStufe, b3):
+// gStufe, gStufeFarbe, gAuge, drei Achsen - 6 float4.
+ID3D11Buffer* g_cbStufe = nullptr;
 
 // --- Der zuletzt geschriebene Inhalt von JeBild -----------------------
 //
@@ -1377,6 +1494,62 @@ float g_bildDaten[44] = {0.0F};
 bool g_bildDatenDa = false;
 ShaderPaar g_figurShader;
 bool g_figurShaderVersucht = false;
+// --- rc603: der schnelle Stufenweg -------------------------------------------
+//
+// rc602 nahm die Figurstufen wieder heraus: "+5-7 ms je Bild in md_am_sith".
+// Nachgemessen im Selbsttest figurleistung (dasselbe Bild immer wieder, das
+// dichteste von intro2_sith: 2054 Figurenaufrufe mit Stufen, 570 ohne): die
+// CPU-Zeit der Figuren stieg von 0,95 auf 1,98 ms, mit der D3D-Debugschicht
+// (im Selbsttest an) von 3,0 auf 12,8 ms. Je Stufenaufruf liefen
+// batchStateFor/pipelineFor, zwei Nachschlagen in holeTexBild, Map/Unmap von
+// b3 und das Binden von drei Bildern.
+//
+// Die AUFRUFE muessen bleiben. Der Entwurf "eine Flaeche ein Aufruf" (alle
+// Stufen im Pixelshader gemischt, auf jeder Karte nachgemessen) zeichnet
+// nicht dasselbe Bild: wo zwei Dreiecke derselben Flaeche auf gleicher Tiefe
+// liegen, mischt das Spiel jede Folgestufe fuer JEDES von ihnen
+// (RB_IterateStagesGeneric zeichnet Stufe fuer Stufe das ganze tess, mit
+// GL_LEQUAL), ein Aufruf je Flaeche nur fuer das letzte. Nachgewiesen an
+// allen 12 Figurenarten mit Shaderstufen in md_am_sith: 29 Bildpunkte anders
+// (bis 61 Stufen), mit GL_LESS statt GL_LEQUAL andere Werte an genau diesen
+// Stellen.
+//
+// Deshalb hier dieselben Aufrufe in derselben Reihenfolge mit denselben
+// Zustaenden, Werten und Bildern wie rc602 - nur das, was sich an einer
+// Flaeche nicht aendert, einmal abgeleitet (StufenFlaeche), die Werte aller
+// Stufen einer Flaeche mit EINEM Map in den Ring (g_cbRing, NO_OVERWRITE) und
+// je Aufruf nur der Versatz (VSSetConstantBuffers1), das Bild und der Aufruf.
+// figurStufenBezugsweg(true) zeichnet zum Vergleich wie rc602 (Selbsttest:
+// Bildpunkt fuer Bildpunkt gleich, jede Figurenart der Karte).
+struct StufenFlaeche {
+    std::vector<const void*> pruef;   // bilder.data() je Stufe - neu geladen = neu ableiten
+    bool geht = true;                 // false: Bilder einer Stufe mit verschiedenem Zustand - Bezugsweg
+    struct Stufe {
+        ID3D11BlendState* bs = nullptr;
+        ID3D11DepthStencilState* ds = nullptr;   // nur mit tiefeAn()
+        // Nur mit keulenAn(); holeRaster haengt am Spiegel (g_spiegelnd, die
+        // Wicklung ist dort umgedreht) - je Lage eins, beim ersten Gebrauch.
+        std::uint32_t features = 0;
+        ID3D11RasterizerState* rs[2] = {nullptr, nullptr};
+        bool glow = false;
+        bool zeitabh = false;   // rgbGen/alphaGen wave: die Werte je Bild
+        float sd[8] = {};       // stufenWerte (ohne wave)
+        // Gemerkt je Bildnummer (animMap): Bild (Tex), Bildpunkte, Generation, Ansicht.
+        std::vector<const void*> bildTex;
+        std::vector<const void*> bildDaten;
+        std::vector<unsigned> bildGen;
+        std::vector<ID3D11ShaderResourceView*> bildSrv;
+    };
+    std::vector<Stufe> stufen;
+};
+// Haengt an ModelTextures::zeichenSpeicher (lebt mit den Texturen). Die
+// D3D-Zustaende stammen aus holeBlend/holeTiefe/holeRaster und leben bis
+// shutdown - danach gilt der Speicher nicht mehr (g_geraetGeneration).
+struct StufenSpeicher {
+    unsigned geraet = 0;
+    std::vector<StufenFlaeche> flaechen;   // Index wie ModelTextures::stufen
+};
+unsigned g_geraetGeneration = 1;
 // Die Klingen: eigener kleiner Shader, ein Eckenpuffer, der mitwaechst.
 ShaderPaar g_klingeShader;
 bool g_klingeShaderVersucht = false;
@@ -1683,10 +1856,33 @@ ID3D11ShaderResourceView* holeTexBild(const TextureSet::Tex* t) {
         }
         if (it->second != nullptr) { it->second->Release(); }
         g_figurBilder.erase(it);
+        ++g_figurBilderGeneration;
     }
-    ID3D11ShaderResourceView* srv = ladeMitStufen(*t);
-    if (srv == nullptr) {
-        return nullptr;
+    // rc603: nach dem Inhalt teilen (BildInhalt). Die Liste nach Inhalt haelt
+    // eine Referenz, jeder Adresseintrag eine eigene.
+    ID3D11ShaderResourceView* srv = nullptr;
+    if (g_figurBilderTeilen && t->mips.empty()) {
+        const BildInhalt k = inhaltVon(*t);
+        const auto gleich = g_figurBildInhalt.find(k);
+        if (gleich != g_figurBildInhalt.end()) {
+            srv = gleich->second;
+            srv->AddRef();
+            ++g_figurBilderGeteilt;
+        } else {
+            srv = ladeMitStufen(*t);
+            if (srv == nullptr) {
+                return nullptr;
+            }
+            ++g_figurBilderHochgeladen;
+            srv->AddRef();
+            g_figurBildInhalt[k] = srv;
+        }
+    } else {
+        srv = ladeMitStufen(*t);
+        if (srv == nullptr) {
+            return nullptr;
+        }
+        ++g_figurBilderHochgeladen;
     }
     g_figurBilder[t] = srv;
     g_figurBildDaten[t] = t->rgba.data();
@@ -1910,7 +2106,8 @@ void umrissUeberschreiben(ID3D11DeviceContext* c) {
 // Die Stapelkonstanten in den Ring schreiben und mit Versatz binden
 // (rc596, siehe g_cbRing). false: geht hier nicht, der Aufrufer nimmt den
 // alten Weg ueber g_cbStapel.
-bool stapelKonstantenImRing(ID3D11DeviceContext* c, const BatchState& stand, float zeit) {
+// rc603: die Pruefung, ob der Ring geht, fuer alle Nutzer (Stapel, Figurstufen).
+bool ringBereit(ID3D11DeviceContext* c) {
     if (g_ringGeht == 0) {
         return false;
     }
@@ -1939,6 +2136,36 @@ bool stapelKonstantenImRing(ID3D11DeviceContext* c, const BatchState& stand, flo
         }
         g_ringStand = kRingGroesse;
         g_ringGeht = 1;
+    }
+    return true;
+}
+
+// rc603: `eintraege` aufeinanderfolgende Eintraege im Ring abbilden (ein Map
+// fuer alle Stufen einer Figurenflaeche); erste = erste Konstante des ersten
+// Eintrags. Danach ringFertig. nullptr: geht nicht (der alte Weg).
+float* ringReservieren(ID3D11DeviceContext* c, UINT eintraege, UINT& erste) {
+    if (!ringBereit(c) || eintraege == 0 || eintraege * kRingEintrag > kRingGroesse) {
+        return nullptr;
+    }
+    D3D11_MAP art = D3D11_MAP_WRITE_NO_OVERWRITE;
+    if (g_ringStand + eintraege * kRingEintrag > kRingGroesse) {
+        art = D3D11_MAP_WRITE_DISCARD;
+        g_ringStand = 0;
+    }
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(c->Map(g_cbRing, 0, art, 0, &m))) {
+        return nullptr;
+    }
+    erste = g_ringStand / 16U;
+    float* ziel = reinterpret_cast<float*>(static_cast<unsigned char*>(m.pData) + g_ringStand);
+    g_ringStand += eintraege * kRingEintrag;
+    return ziel;
+}
+void ringFertig(ID3D11DeviceContext* c) { c->Unmap(g_cbRing, 0); }
+
+bool stapelKonstantenImRing(ID3D11DeviceContext* c, const BatchState& stand, float zeit) {
+    if (!ringBereit(c)) {
+        return false;
     }
     D3D11_MAP art = D3D11_MAP_WRITE_NO_OVERWRITE;
     if (g_ringStand + kRingEintrag > kRingGroesse) {
@@ -2682,6 +2909,35 @@ void gluehenKlingen(const std::vector<KlingenQuad>* klingen) { g_gluehKlingen = 
 int gluehenKlingenAufrufe() { return g_gluehenKlingen; }
 int zeichneKlingenIn(const std::vector<KlingenQuad>& quads, const float* viewProj, std::string* fehler,
                      ID3D11RenderTargetView* ziel);
+// rc602 kartenpruefung: Shaderstufen der Figuren (roter Test: noch keine).
+int g_figurStufenAufrufe = 0;
+int figurStufenAufrufe() { return g_figurStufenAufrufe; }
+bool g_figurStufenAus = false;
+void figurStufenAus(bool aus) { g_figurStufenAus = aus; }
+// rc603: der schnelle Stufenweg (StufenFlaeche) - Aufrufe des letzten
+// Hauptbildes; figurStufenBezugsweg(true) zeichnet wie rc602 (Selbsttest).
+int g_figurStufenSchnell = 0;
+int figurStufenSchnellAufrufe() { return g_figurStufenSchnell; }
+bool g_figurStufenBezug = false;
+void figurStufenBezugsweg(bool bezug) { g_figurStufenBezug = bezug; }
+// rc603 Durchsicht: die Achsen je Figurenaufruf (Selbsttest, siehe gpumap.h).
+std::vector<FigurAchsenEintrag>* g_figurAchsenProbe = nullptr;
+void figurAchsenProbe(std::vector<FigurAchsenEintrag>* ziel) { g_figurAchsenProbe = ziel; }
+// rc603: Figurenbilder teilen an/aus (Selbsttest) - verwirft alle
+// hochgeladenen Figurenbilder, das naechste Bild laedt neu.
+void figurBilderTeilen(bool an) {
+    for (auto& [k, s2] : g_figurBilder) { if (s2 != nullptr) { s2->Release(); } }
+    g_figurBilder.clear();
+    g_figurBildDaten.clear();
+    for (auto& [k, s2] : g_figurBildInhalt) { if (s2 != nullptr) { s2->Release(); } }
+    g_figurBildInhalt.clear();
+    ++g_figurBilderGeneration;
+    g_figurBilderTeilen = an;
+}
+void figurBilderZahlen(int& hochgeladen, int& geteilt) {
+    hochgeladen = g_figurBilderHochgeladen;
+    geteilt = g_figurBilderGeteilt;
+}
 int gluehenEffektAufrufe() { return g_gluehenEffekte; }
 
 int zeichneGluehen(const BspMesh& mesh, const TextureSet* textures,
@@ -2697,6 +2953,8 @@ int gluehenMoverAufrufe() { return g_gluehenMover; }
 int gluehenFigurAufrufe() { return g_figurGluehen; }
 
 void gluehenFigurenBeginnen(bool an, int breite, int hoehe) {
+    g_figurStufenAufrufe = 0;   // rc602: je Hauptbild
+    g_figurStufenSchnell = 0;   // rc603
     g_figurGluehenAn = false;
     g_glowVollVorbelegt = false;
     g_figurGluehen = 0;
@@ -3614,6 +3872,88 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
     c->VSSetConstantBuffers(0, 1, &g_cbBild);
     c->PSSetConstantBuffers(0, 1, &g_cbBild);
     c->VSSetConstantBuffers(2, 1, &g_cbFigur);
+    // rc602 kartenpruefung: b3, die Stufe - Vorgabe alles 0 (der alte Weg).
+    float stufenDaten[24] = {};
+    float achsen[3][3];
+    if (licht != nullptr && licht->achsenGesetzt) {
+        std::memcpy(achsen, licht->achsen, sizeof(achsen));
+    } else {
+        // Ohne Angabe: die Spalten von welt (G2_GenerateWorldMatrix - so bei
+        // Gegenstaenden, die eine eigene Entity sind), normiert. Griffe in der
+        // Hand bringen die Achsen ihrer Figur mit (rc603 Durchsicht).
+        for (int k = 0; k < 3; ++k) {
+            const float x = welt[0 * 4 + k];
+            const float y = welt[1 * 4 + k];
+            const float z = welt[2 * 4 + k];
+            const float l = std::sqrt(x * x + y * y + z * z);
+            achsen[k][0] = l > 0.0F ? x / l : 0.0F;
+            achsen[k][1] = l > 0.0F ? y / l : 0.0F;
+            achsen[k][2] = l > 0.0F ? z / l : 0.0F;
+        }
+    }
+    if (g_figurAchsenProbe != nullptr) {   // rc603 Durchsicht, Selbsttest
+        FigurAchsenEintrag e;
+        e.model = &model;
+        e.besitzer = licht != nullptr ? licht->besitzer : -1;
+        if (textures != nullptr) {
+            for (const auto& liste : textures->stufen) {
+                for (const ModelTextures::FigurStufe& fs : liste) { e.umgebung = e.umgebung || fs.art.umgebung; }
+            }
+        }
+        std::memcpy(e.achsen, achsen, sizeof(achsen));
+        g_figurAchsenProbe->push_back(e);
+    }
+    auto schreibeStufe = [&](const float* daten) {
+        if (g_cbStufe == nullptr) {
+            D3D11_BUFFER_DESC bd{};
+            bd.ByteWidth = 24U * 4U;
+            bd.Usage = D3D11_USAGE_DYNAMIC;
+            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            if (FAILED(d->CreateBuffer(&bd, nullptr, &g_cbStufe))) { return false; }
+        }
+        D3D11_MAPPED_SUBRESOURCE ms{};
+        if (FAILED(c->Map(g_cbStufe, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) { return false; }
+        std::memcpy(ms.pData, daten, 24U * sizeof(float));
+        c->Unmap(g_cbStufe, 0);
+        c->VSSetConstantBuffers(3, 1, &g_cbStufe);
+        return true;
+    };
+    (void)schreibeStufe(stufenDaten);
+    float letzteDaten[24] = {};
+    const PipelineState* letzteStufe = nullptr;
+    PipelineState stufenZustand;
+    // rc603: der schnelle Stufenweg (StufenFlaeche). Er bindet b3 als Versatz
+    // im Ring (VSSetConstantBuffers1); b3Zurueck bindet wieder g_cbStufe,
+    // bevor etwas zeichnet, das b3 ueber g_cbStufe/letzteDaten fuehrt.
+    bool b3ImRing = false;
+    auto b3Zurueck = [&]() {
+        if (b3ImRing) {
+            c->VSSetConstantBuffers(3, 1, &g_cbStufe);
+            b3ImRing = false;
+        }
+    };
+    // Die zuletzt vom schnellen Weg gesetzten Zustaende (aktGueltig = false:
+    // jemand anders hat seither gesetzt).
+    bool aktGueltig = false;
+    ID3D11BlendState* aktBs = nullptr;
+    ID3D11DepthStencilState* aktDs = nullptr;
+    ID3D11RasterizerState* aktRs = nullptr;
+    // Das Ziel fuer die glow-Stufen, einmal je Figur erfragt (wie im
+    // Bezugsweg je Stufe: nur im Hauptbild auch in den Gluehpuffer).
+    bool glowGefragt = false;
+    ID3D11RenderTargetView* glowRtv = nullptr;
+    ID3D11DepthStencilView* glowDsv = nullptr;
+    StufenSpeicher* stufenSpeicher = nullptr;
+    if (!g_figurStufenAus && !g_figurStufenBezug && textures != nullptr && !textures->stufen.empty()) {
+        if (!textures->zeichenSpeicher) { textures->zeichenSpeicher = std::make_shared<StufenSpeicher>(); }
+        stufenSpeicher = static_cast<StufenSpeicher*>(textures->zeichenSpeicher.get());
+        if (stufenSpeicher->geraet != g_geraetGeneration ||
+            stufenSpeicher->flaechen.size() != textures->stufen.size()) {
+            stufenSpeicher->geraet = g_geraetGeneration;
+            stufenSpeicher->flaechen.assign(textures->stufen.size(), StufenFlaeche{});
+        }
+    }
     // --- Auch b1, den Stapelpuffer ---------------------------------------
     //
     // Er wurde hier NICHT gebunden. Der Pixel-Shader liest daraus Farbe
@@ -3670,7 +4010,271 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
         if (t.kappe && !kappen) {
             continue;
         }
+        // --- rc602 kartenpruefung: die Stufen des Shaderskripts -------------
+        //
+        // RB_IterateStagesGeneric: je Stufe Farbe (ComputeColors), Alpha,
+        // Texturkoordinaten (ComputeTexCoords), Bild (R_BindAnimatedImage)
+        // und Mischart; ab der zweiten ohne Tiefe zu schreiben. glow-Stufen
+        // im Hauptbild auch in den Gluehpuffer (RB_DrawSurfs).
+        if (!g_figurStufenAus && textures != nullptr && t.surface < textures->stufen.size() &&
+            !textures->stufen[t.surface].empty()) {
+            const float zeitS = licht != nullptr ? licht->zeit : 0.0F;
+            const auto& stufen = textures->stufen[t.surface];
+            // R_BindAnimatedImage: (int)(Zeit * Tempo), oneshot bleibt auf
+            // dem letzten Bild stehen, sonst im Kreis.
+            auto bildNummer = [&](const ModelTextures::FigurStufe& fs) -> std::size_t {
+                std::size_t nr = 0;
+                const std::size_t anz = fs.bilder.size();
+                if (anz > 1U) {
+                    const int idx = static_cast<int>(std::floor(zeitS * fs.animFreq));
+                    if (fs.animEinmal) {
+                        nr = static_cast<std::size_t>(std::clamp(idx, 0, static_cast<int>(anz) - 1));
+                    } else {
+                        nr = static_cast<std::size_t>(std::max(idx, 0)) % anz;
+                    }
+                }
+                return nr;
+            };
+            auto bildDerStufe = [&](const ModelTextures::FigurStufe& fs) -> const TextureSet::Tex& {
+                return fs.bilder[bildNummer(fs)];
+            };
+            // rc603: die Bildpunkte dazu (geteilt, ModelTextures::FigurStufe::pixel).
+            auto pixelDerStufe = [&](const ModelTextures::FigurStufe& fs) -> const TextureSet::Tex* {
+                const std::size_t nr = bildNummer(fs);
+                return nr < fs.pixel.size() ? fs.pixel[nr].get() : nullptr;
+            };
+            // ComputeColors / alphaGen / tcGen der Stufe als Werte fuer den
+            // Vertexshader (figurStufe): [0] Farbe, [1] Alpha, [2] tcGen,
+            // [4..6] rgb, [7] a.
+            auto stufenWerte = [&](const FigurStufenArt& art, float* sd) {
+                switch (art.farbe) {
+                    case FigurFarbe::Licht: sd[0] = 0.0F; break;
+                    case FigurFarbe::Weiss: sd[0] = 1.0F; break;
+                    case FigurFarbe::Schwarz: sd[0] = 3.0F; break;
+                    case FigurFarbe::Fest:
+                        sd[0] = 2.0F;
+                        for (int q = 0; q < 3; ++q) { sd[4 + q] = art.rgb[q]; }
+                        break;
+                    case FigurFarbe::Welle: {
+                        sd[0] = 2.0F;
+                        const float w = figurWelle(art.rgbWelle, zeitS);
+                        for (int q = 0; q < 3; ++q) { sd[4 + q] = w; }
+                        break;
+                    }
+                }
+                switch (art.alpha) {
+                    case FigurAlpha::Eins: sd[1] = 0.0F; break;
+                    case FigurAlpha::Spekular: sd[1] = 1.0F; break;
+                    case FigurAlpha::Fest: sd[1] = 2.0F; sd[7] = art.a; break;
+                    case FigurAlpha::Welle: sd[1] = 2.0F; sd[7] = figurWelle(art.alphaWelle, zeitS); break;
+                }
+                sd[2] = art.umgebung ? 1.0F : 0.0F;
+            };
+            // --- rc603: der schnelle Stufenweg ------------------------------
+            //
+            // Dieselben Aufrufe, Zustaende, Werte und Bilder wie der
+            // Bezugsweg darunter (rc602) - siehe StufenFlaeche. Was sich an
+            // der Flaeche nicht aendert, steht im StufenSpeicher der Texturen;
+            // die Werte aller Stufen kommen mit einem Map in den Ring.
+            if (stufenSpeicher != nullptr && t.surface < stufenSpeicher->flaechen.size()) {
+                StufenFlaeche& sf = stufenSpeicher->flaechen[t.surface];
+                bool neuBauen = sf.pruef.size() != stufen.size();
+                for (std::size_t k = 0; !neuBauen && k < stufen.size(); ++k) {
+                    neuBauen = sf.pruef[k] != static_cast<const void*>(stufen[k].bilder.data());
+                }
+                if (neuBauen) {
+                    sf = StufenFlaeche{};
+                    for (std::size_t k = 0; k < stufen.size(); ++k) {
+                        const ModelTextures::FigurStufe& fs = stufen[k];
+                        sf.pruef.push_back(fs.bilder.data());
+                        StufenFlaeche::Stufe st;
+                        // Der Bezugsweg leitet den Zustand aus dem Bild der Zeit
+                        // ab (bildDerStufe); alle Bilder einer Stufe tragen
+                        // denselben (texturesFor) - sonst hier der Bezugsweg.
+                        const PipelineState z =
+                            pipelineFor(batchStateFor(fs.bilder.front(), 0.0F), false, false, k > 0U);
+                        for (const TextureSet::Tex& b : fs.bilder) {
+                            if (!z.gleichWie(pipelineFor(batchStateFor(b, 0.0F), false, false, k > 0U)) ||
+                                b.glow != fs.bilder.front().glow) {
+                                sf.geht = false;
+                            }
+                        }
+                        st.bs = holeBlend(z.blend, z.srcFactor, z.dstFactor);
+                        st.ds = tiefeAn() ? holeTiefe(z) : nullptr;
+                        st.features = z.features;
+                        st.glow = fs.bilder.front().glow;
+                        st.zeitabh = fs.art.farbe == FigurFarbe::Welle || fs.art.alpha == FigurAlpha::Welle;
+                        if (!st.zeitabh) { stufenWerte(fs.art, st.sd); }
+                        const std::size_t nb = fs.bilder.size();
+                        st.bildTex.assign(nb, nullptr);
+                        st.bildDaten.assign(nb, nullptr);
+                        st.bildGen.assign(nb, 0U);
+                        st.bildSrv.assign(nb, nullptr);
+                        sf.stufen.push_back(std::move(st));
+                    }
+                }
+                UINT erste = 0;
+                float* ring = sf.geht ? ringReservieren(c, static_cast<UINT>(stufen.size()), erste) : nullptr;
+                if (ring != nullptr) {
+                    // b3 je Stufe wie im Bezugsweg: [0..7] stufenWerte, [8..10]
+                    // Auge, [12..23] die drei Achsen.
+                    for (std::size_t k = 0; k < stufen.size(); ++k) {
+                        float sd[24] = {};
+                        if (sf.stufen[k].zeitabh) {
+                            stufenWerte(stufen[k].art, sd);
+                        } else {
+                            std::memcpy(sd, sf.stufen[k].sd, sizeof(sf.stufen[k].sd));
+                        }
+                        if (licht != nullptr) {
+                            for (int q = 0; q < 3; ++q) { sd[8 + q] = licht->auge[q]; }
+                        }
+                        for (int a2 = 0; a2 < 3; ++a2) {
+                            for (int q = 0; q < 3; ++q) { sd[12 + a2 * 4 + q] = achsen[a2][q]; }
+                        }
+                        std::memcpy(ring + k * (kRingEintrag / 4U), sd, sizeof(sd));
+                    }
+                    ringFertig(c);
+                    ID3D11ShaderResourceView* gebunden = nullptr;
+                    bool ersteGebunden = false;
+                    for (std::size_t k = 0; k < stufen.size(); ++k) {
+                        StufenFlaeche::Stufe& st = sf.stufen[k];
+                        const ModelTextures::FigurStufe& fs = stufen[k];
+                        const std::size_t nr = bildNummer(fs);
+                        const TextureSet::Tex* px = pixelDerStufe(fs);
+                        ID3D11ShaderResourceView* sb = nullptr;
+                        if (px != nullptr && st.bildTex[nr] == px && st.bildDaten[nr] == px->rgba.data() &&
+                            st.bildGen[nr] == g_figurBilderGeneration && st.bildSrv[nr] != nullptr) {
+                            sb = st.bildSrv[nr];
+                        } else {
+                            sb = holeTexBild(px);
+                            st.bildTex[nr] = px;
+                            st.bildDaten[nr] = px != nullptr ? px->rgba.data() : nullptr;
+                            st.bildGen[nr] = g_figurBilderGeneration;
+                            st.bildSrv[nr] = sb;
+                        }
+                        if (sb == nullptr) { continue; }
+                        ID3D11RasterizerState* rs = nullptr;
+                        if (keulenAn()) {
+                            ID3D11RasterizerState*& r = st.rs[g_spiegelnd ? 1 : 0];
+                            if (r == nullptr) { r = holeRaster(st.features); }
+                            rs = r;
+                        }
+                        // Nur setzen, was sich gegenueber der letzten Stufe aendert.
+                        if (!aktGueltig || st.bs != aktBs || st.ds != aktDs || rs != aktRs) {
+                            if (st.bs != nullptr) {
+                                const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+                                c->OMSetBlendState(st.bs, faktor, 0xFFFFFFFFU);
+                            }
+                            if (st.ds != nullptr) { c->OMSetDepthStencilState(st.ds, 0); }
+                            if (rs != nullptr) { c->RSSetState(rs); }
+                            umrissUeberschreiben(c);
+                            aktBs = st.bs;
+                            aktDs = st.ds;
+                            aktRs = rs;
+                            aktGueltig = true;
+                        }
+                        const UINT ersteK = erste + static_cast<UINT>(k) * (kRingEintrag / 16U);
+                        const UINT anzahl = kRingEintrag / 16U;
+                        g_ctx1->VSSetConstantBuffers1(3, 1, &g_cbRing, &ersteK, &anzahl);
+                        b3ImRing = true;
+                        if (!ersteGebunden) {
+                            ID3D11ShaderResourceView* srvs[3] = {sb, nullptr, nullptr};
+                            c->PSSetShaderResources(0, 3, srvs);
+                            ersteGebunden = true;
+                            gebunden = sb;
+                        } else if (sb != gebunden) {
+                            c->PSSetShaderResources(0, 1, &sb);
+                            gebunden = sb;
+                        }
+                        c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+                        ++abgesetzt;
+                        ++g_figurStufenAufrufe;
+                        ++g_figurStufenSchnell;
+                        if (st.glow) {
+                            if (!glowGefragt) {
+                                glowGefragt = true;
+                                c->OMGetRenderTargets(1, &glowRtv, &glowDsv);
+                            }
+                            if (g_figurGluehenAn && !ersatzBild && glowRtv == g_zielRtv && g_glowVollRtv != nullptr) {
+                                c->OMSetRenderTargets(1, &g_glowVollRtv, glowDsv);
+                                c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+                                ++abgesetzt;
+                                ++g_figurGluehen;
+                                c->OMSetRenderTargets(1, &glowRtv, glowDsv);
+                            }
+                        }
+                    }
+                    letzteStufe = nullptr;   // der Bezugsweg setzt danach neu
+                    letzter = nullptr;       // der naechste Teil setzt seinen Zustand neu
+                    continue;
+                }
+            }
+            aktGueltig = false;   // rc603: der Bezugsweg setzt Zustaende
+            b3Zurueck();
+            for (std::size_t k = 0; k < stufen.size(); ++k) {
+                const ModelTextures::FigurStufe& fs = stufen[k];
+                const TextureSet::Tex& tex = bildDerStufe(fs);
+                ID3D11ShaderResourceView* sb = holeTexBild(pixelDerStufe(fs));
+                if (sb == nullptr) { continue; }
+                const PipelineState z = pipelineFor(batchStateFor(tex, 0.0F), false, false, k > 0U);
+                // Nur setzen, was sich gegenueber der letzten Stufe aendert.
+                if (letzteStufe == nullptr || !letzteStufe->gleichWie(z)) {
+                    stufenZustand = z;
+                    letzteStufe = &stufenZustand;
+                    ID3D11BlendState* bs = holeBlend(z.blend, z.srcFactor, z.dstFactor);
+                    if (bs != nullptr) {
+                        const float faktor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+                        c->OMSetBlendState(bs, faktor, 0xFFFFFFFFU);
+                    }
+                    if (tiefeAn()) {
+                        ID3D11DepthStencilState* ds = holeTiefe(z);
+                        if (ds != nullptr) { c->OMSetDepthStencilState(ds, 0); }
+                    }
+                    if (keulenAn()) {
+                        ID3D11RasterizerState* rs = holeRaster(z.features);
+                        if (rs != nullptr) { c->RSSetState(rs); }
+                    }
+                    umrissUeberschreiben(c);
+                }
+                float sd[24] = {};
+                stufenWerte(fs.art, sd);
+                if (licht != nullptr) {
+                    for (int q = 0; q < 3; ++q) { sd[8 + q] = licht->auge[q]; }
+                }
+                for (int a2 = 0; a2 < 3; ++a2) {
+                    for (int q = 0; q < 3; ++q) { sd[12 + a2 * 4 + q] = achsen[a2][q]; }
+                }
+                if (std::memcmp(sd, letzteDaten, sizeof(sd)) != 0) {
+                    (void)schreibeStufe(sd);
+                    std::memcpy(letzteDaten, sd, sizeof(sd));
+                }
+                ID3D11ShaderResourceView* srvs[3] = {sb, nullptr, nullptr};
+                c->PSSetShaderResources(0, 3, srvs);
+                c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+                ++abgesetzt;
+                ++g_figurStufenAufrufe;
+                if (tex.glow) {
+                    ID3D11RenderTargetView* rtv = nullptr;
+                    ID3D11DepthStencilView* dsv = nullptr;
+                    c->OMGetRenderTargets(1, &rtv, &dsv);
+                    if (g_figurGluehenAn && !ersatzBild && rtv == g_zielRtv && g_glowVollRtv != nullptr) {
+                        c->OMSetRenderTargets(1, &g_glowVollRtv, dsv);
+                        c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
+                        ++abgesetzt;
+                        ++g_figurGluehen;
+                        c->OMSetRenderTargets(1, &rtv, dsv);
+                    }
+                    if (rtv != nullptr) { rtv->Release(); }
+                    if (dsv != nullptr) { dsv->Release(); }
+                }
+            }
+            letzter = nullptr;   // der naechste Teil setzt seinen Zustand neu
+            continue;
+        }
+        letzteStufe = nullptr;
+        aktGueltig = false;   // rc603: der schnelle Stufenweg setzt danach neu
         ID3D11ShaderResourceView* bild = holeFigurBild(textures, t.surface);
+
         if (bild == nullptr && ersatzBild) {
             bild = holeErsatzBild();
         }
@@ -3718,10 +4322,26 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
             }
             umrissUeberschreiben(c);
         }
+        b3Zurueck();   // rc603
+        if (std::memcmp(stufenDaten, letzteDaten, sizeof(stufenDaten)) != 0) {
+            (void)schreibeStufe(stufenDaten);   // der alte Weg: Stufe 0
+            std::memcpy(letzteDaten, stufenDaten, sizeof(stufenDaten));
+        }
         ID3D11ShaderResourceView* srvs[3] = {bild, nullptr, nullptr};
         c->PSSetShaderResources(0, 3, srvs);
         c->DrawIndexed(t.numIndexes, t.firstIndex, 0);
         ++abgesetzt;
+    }
+    if (glowRtv != nullptr) { glowRtv->Release(); }   // rc603 (schneller Stufenweg)
+    if (glowDsv != nullptr) { glowDsv->Release(); }
+    // rc603: b3 wieder auf g_cbStufe - und fuer die Leuchtstufen unten auf den
+    // alten Weg (Stufe 0). Bis rc603 stand dort, was die letzte Stufe der
+    // Schleife geschrieben hatte (gStufe.x = 2: die Farbe der Stufe statt des
+    // Lichts), wenn eine Figur Leuchtstufen UND Shaderstufen hatte.
+    b3Zurueck();
+    if (std::memcmp(stufenDaten, letzteDaten, sizeof(stufenDaten)) != 0) {
+        (void)schreibeStufe(stufenDaten);
+        std::memcpy(letzteDaten, stufenDaten, sizeof(stufenDaten));
     }
     // --- rc602: die Leuchtstufen (ModelTextures::gluehStufen) --------------
     //
@@ -4971,8 +5591,13 @@ void shutdown() {
     g_figuren.clear();
     for (auto& [k, s2] : g_figurBilder) { if (s2 != nullptr) { s2->Release(); } }
     g_figurBilder.clear();
+    ++g_figurBilderGeneration;
     g_figurBildDaten.clear();
+    for (auto& [k, s2] : g_figurBildInhalt) { if (s2 != nullptr) { s2->Release(); } }   // rc603
+    g_figurBildInhalt.clear();
+    ++g_geraetGeneration;   // rc603: gemerkte Zustaende der Figurstufen ungueltig
     if (g_cbFigur != nullptr) { g_cbFigur->Release(); g_cbFigur = nullptr; }
+    if (g_cbStufe != nullptr) { g_cbStufe->Release(); g_cbStufe = nullptr; }
     if (g_figurShader.vs != nullptr) { g_figurShader.vs->Release(); }
     if (g_figurShader.ps != nullptr) { g_figurShader.ps->Release(); }
     if (g_figurShader.layout != nullptr) { g_figurShader.layout->Release(); }
@@ -6165,6 +6790,16 @@ void gluehenEffekte(const BspMesh*) {}
 int gluehenEffektAufrufe() { return 0; }
 void gluehenKlingen(const std::vector<KlingenQuad>*) {}
 int gluehenKlingenAufrufe() { return 0; }
+int figurStufenAufrufe() { return 0; }
+void figurStufenAus(bool) {}
+int figurStufenSchnellAufrufe() { return 0; }
+void figurStufenBezugsweg(bool) {}
+void figurAchsenProbe(std::vector<FigurAchsenEintrag>*) {}
+void figurBilderTeilen(bool) {}
+void figurBilderZahlen(int& hochgeladen, int& geteilt) {
+    hochgeladen = 0;
+    geteilt = 0;
+}
 int gluehenFigurAufrufe() { return 0; }
 void gluehenFigurenBeginnen(bool, int, int) {}
 void gluehenFigurenEnde() {}

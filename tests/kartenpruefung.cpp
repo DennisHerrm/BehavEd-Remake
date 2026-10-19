@@ -72,9 +72,7 @@ int main() {
 
     const ShaderAnweisungen& sbd = m["models/players/sbd/body"];
     const auto ff = fehlendeMerkmale(sbd, Zusammenhang::Figur, "models/players/sbd/body");
-    pruefe(hat(ff, "figur: stufe tcgen environment"), "Figur: Chromstufe fehlt " + liste(ff));
-    pruefe(hat(ff, "figur: grundstufe anderes bild"), "Figur: Grundstufe body_x statt body (Skript vor Bild)");
-    pruefe(!hat(ff, "figur: weitere stufe"), "Figur: glow-Stufe zaehlt nicht als Luecke");
+    pruefe(ff.empty(), "Figur: seit rc602 alle Stufen (Chrom, Skript vor Bild, glow) - keine Luecke " + liste(ff));
     const auto fw = fehlendeMerkmale(sbd, Zusammenhang::Welt);
     pruefe(fw.empty(), "derselbe Shader an der Welt: nichts fehlt " + liste(fw));
 
@@ -131,14 +129,14 @@ int main() {
 
     // --- Aufstellen (FinishSpawningItem) -------------------------------------
     {
-        bhed::MapData m;
+        bhed::MapData mk;
         bhed::parseEntities("{\n\"classname\" \"weapon_saber\"\n\"origin\" \"0 0 100\"\n\"angles\" \"90\"\n"
                             "\"spawnflags\" \"16\"\n}\n"
                             "{\n\"classname\" \"weapon_saber\"\n\"origin\" \"0 0 100\"\n\"targetname\" \"t1\"\n}\n"
                             "{\n\"classname\" \"weapon_saber\"\n\"origin\" \"0 0 100\"\n\"spawnflags\" \"512\"\n}\n"
                             "{\n\"classname\" \"weapon_saber\"\n\"origin\" \"0 0 100\"\n\"spawnflags\" \"1\"\n}\n"
                             "{\n\"classname\" \"weapon_saber\"\n\"origin\" \"0 0 100\"\n\"notsingle\" \"1\"\n}\n",
-                            m.entities);
+                            mk.entities);
         int spuren = 0;
         bool fest = false;
         std::array<float, 3> geseheneMins{};
@@ -151,22 +149,22 @@ int main() {
             endpos = {start[0], start[1], 8.0F};
             startsolid = fest;
         };
-        const bhed::GegenstandAufstellung a0 = bhed::gegenstandAufstellen(m.entities[0], *sab, 1, true, spur);
+        const bhed::GegenstandAufstellung a0 = bhed::gegenstandAufstellen(mk.entities[0], *sab, 1, true, spur);
         pruefe(a0.sichtbar && a0.ort[2] == 8.0F && geseheneMins[2] == -8.0F, "faellt mit den mins des Gegenstands");
         pruefe(a0.winkel[1] == 90.0F && a0.winkel[0] == 0.0F, "MD: \"angles\" \"90\" ist der Gierwinkel");
         pruefe(a0.md3Winkel[0] == -20.0F, "ITMSF_VERTICAL am Schwert: Nicken -20 (nur Achsen)");
-        const bhed::GegenstandAufstellung a0oj = bhed::gegenstandAufstellen(m.entities[0], *sab, 1, false, spur);
+        const bhed::GegenstandAufstellung a0oj = bhed::gegenstandAufstellen(mk.entities[0], *sab, 1, false, spur);
         pruefe(a0oj.winkel[0] == 90.0F && a0oj.winkel[1] == 0.0F, "OpenJK: \"angles\" \"90\" ist Nicken");
-        pruefe(!bhed::gegenstandAufstellen(m.entities[1], *sab, 1, true, spur).sichtbar, "targetname: erst per use");
-        pruefe(!bhed::gegenstandAufstellen(m.entities[2], *sab, 1, true, spur).sichtbar &&
-                   bhed::gegenstandAufstellen(m.entities[2], *sab, 2, true, spur).sichtbar,
+        pruefe(!bhed::gegenstandAufstellen(mk.entities[1], *sab, 1, true, spur).sichtbar, "targetname: erst per use");
+        pruefe(!bhed::gegenstandAufstellen(mk.entities[2], *sab, 1, true, spur).sichtbar &&
+                   bhed::gegenstandAufstellen(mk.entities[2], *sab, 2, true, spur).sichtbar,
                "spawnflags 512: auf g_spskill 1 entfernt, auf 2 da");
         const int vorher = spuren;
-        const bhed::GegenstandAufstellung a3 = bhed::gegenstandAufstellen(m.entities[3], *sab, 1, true, spur);
+        const bhed::GegenstandAufstellung a3 = bhed::gegenstandAufstellen(mk.entities[3], *sab, 1, true, spur);
         pruefe(a3.sichtbar && spuren == vorher && a3.ort[2] == 101.0F, "ITMSF_SUSPEND: kein Fallen, origin+1");
-        pruefe(!bhed::gegenstandAufstellen(m.entities[4], *sab, 1, true, spur).sichtbar, "notsingle: entfernt");
+        pruefe(!bhed::gegenstandAufstellen(mk.entities[4], *sab, 1, true, spur).sichtbar, "notsingle: entfernt");
         fest = true;
-        pruefe(!bhed::gegenstandAufstellen(m.entities[0], *sab, 1, true, spur).sichtbar, "im Festen: entfernt");
+        pruefe(!bhed::gegenstandAufstellen(mk.entities[0], *sab, 1, true, spur).sichtbar, "im Festen: entfernt");
     }
 
     std::printf("%s: %d Fehler\n", g_fehler == 0 ? "OK" : "FEHLER", g_fehler);

@@ -6,6 +6,36 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc603 2026-10-19
+[en]
+- Preview, walking: an NPC walking through a door no longer sways in front of an invisible obstacle - a figure that a script moves later (SET_COPY_ORIGIN, SET_ORIGIN) blocks others only from that moment on, like in the game. An NPC that starts walking right next to another figure (Dooku after the saber lock in Movie Duels' md_gd_jedi, and about twenty other cutscenes) no longer jumps hundreds of units at the first step - every step uses the game's frame time.
+- Preview, timeline: dragging the playhead backwards is as smooth as forwards - the lightsaber simulation keeps what it has computed instead of recomputing ten seconds after every second of rewinding. Lightsaber clashes look the same scrubbing forwards or backwards, and no clash sound is lost during playback any more.
+- Figures draw every stage of their shader again, like the game - shine, chrome, tinted parts such as the battle droids' paint, blinking and animated stages - without the slowdown of rc602: figures share their textures (md_am_sith uses about 700 MB less memory and stutters less). Weapons and saber hilts in the hand reflect their chrome like the game, the clone troopers' visors are black with a shine again, and shine and chrome use the game's fast inverse square root.
+- Load mission lists all missions of the game - any .pk3 of a game folder works (assets1.pk3 of plain Jedi Academy lists t1_sour, kor1, yavin1 ...); the chosen archive's missions come first, the rest is read in the background, a filter narrows the list. An archive of another game or installation is used for this session only. The mission's scripts open in the order the game starts them (spawn scripts, worldspawn, trigger_always, NPC spawners, the player start's targets and everything they start; entities the game removes while spawning start nothing).
+- Fixed: Load mission re-read all game folders each time when one of them contains no .pk3; changing the game folders while a mission with map models was open could crash.
+- Guide: Missions page and its picture updated in all four languages.
+[de]
+- Vorschau, Laufen: ein NPC, der durch eine Tür geht, pendelt nicht mehr vor einem unsichtbaren Hindernis - eine Figur, die ein Skript erst später versetzt (SET_COPY_ORIGIN, SET_ORIGIN), hält andere erst ab diesem Moment auf, wie im Spiel. Ein NPC, der direkt neben einer anderen Figur losläuft (Dooku nach dem Säbelduell in md_gd_jedi von Movie Duels und rund zwanzig weitere Zwischensequenzen), springt beim ersten Schritt nicht mehr Hunderte Einheiten - jeder Schritt rechnet mit der Bildzeit des Spiels.
+- Vorschau, Zeitleiste: Rückwärtsziehen des Zeitzeigers läuft so flüssig wie vorwärts - die Lichtschwert-Simulation behält, was sie berechnet hat, statt nach jeder Sekunde Rückspulen zehn Sekunden neu zu rechnen. Schwertschläge sehen vorwärts und rückwärts gleich aus, und beim Abspielen geht kein Klirrklang mehr verloren.
+- Figuren zeichnen wieder jede Stufe ihres Shaders wie das Spiel - Glanz, Chrom, eingefärbte Teile wie die Farbe der Kampfdroiden, blinkende und bewegte Stufen - ohne die Verlangsamung von rc602: Figuren teilen sich ihre Texturen (md_am_sith braucht rund 700 MB weniger Speicher und ruckelt weniger). Waffen und Schwertgriffe in der Hand spiegeln ihr Chrom wie im Spiel, die Visiere der Klonkrieger sind wieder schwarz mit Glanz, Glanz und Chrom nutzen die schnelle Wurzel des Spiels.
+- Load mission nennt alle Missionen des Spiels - jedes .pk3 eines Spielordners geht (assets1.pk3 des reinen Jedi Academy nennt t1_sour, kor1, yavin1 ...); die Missionen des gewählten Archivs stehen oben, der Rest wird im Hintergrund gelesen, ein Filter schränkt die Liste ein. Ein Archiv eines anderen Spiels oder einer anderen Installation gilt nur für diese Sitzung. Die Skripte der Mission öffnen sich in der Reihenfolge, in der das Spiel sie startet (spawnscripts, worldspawn, trigger_always, NPC-Spawner, die Ziele der Startposition und alles, was daraus folgt; Entities, die das Spiel beim Spawnen entfernt, starten nichts).
+- Behoben: Load mission las jedes Mal alle Spielordner neu, wenn einer keine .pk3 enthält; das Ändern der Spielordner bei offener Mission mit Kartenmodellen konnte abstürzen.
+- Handbuch: Seite Missionen und ihr Bild in allen vier Sprachen aktualisiert.
+[zh]
+- 预览·行走:穿门而过的 NPC 不再在看不见的障碍物前来回摇摆——被脚本稍后移动的角色(SET_COPY_ORIGIN、SET_ORIGIN)从那一刻起才会阻挡他人,与游戏一致。紧挨着另一个角色起步的NPC(Movie Duels 的 md_gd_jedi 中光剑锁定后的杜库,以及约二十段其他过场动画)第一步不再跳出数百个单位——每一步都使用游戏的帧时间。
+- 预览·时间轴:向后拖动播放头与向前一样流畅——光剑模拟保留已计算的结果,而不是每倒退一秒就重新计算十秒。光剑碰撞向前或向后拖动看起来相同,播放时也不再丢失碰撞音效。
+- 角色重新像游戏一样绘制其着色器的每个阶段——光泽、镀铬、着色部件(如战斗机器人的涂装)、闪烁和动画阶段——且没有 rc602 的减速:角色共享纹理(md_am_sith 少用约 700 MB 内存,卡顿更少)。手中的武器和光剑柄像游戏一样反射镀铬,克隆人士兵的面罩重新是带光泽的黑色,光泽和镀铬使用游戏的快速平方根倒数。
+- Load mission 列出该游戏的全部任务——游戏目录中的任意 .pk3 均可(原版 Jedi Academy 的assets1.pk3 会列出 t1_sour、kor1、yavin1……);所选压缩包的任务在前,其余在后台读取,筛选框可缩小列表。其他游戏或其他安装的压缩包只在本次会话中使用。任务的脚本按游戏启动它们的顺序打开(spawnscript、worldspawn、trigger_always、NPC 生成器、玩家出生点的目标及由此引发的一切;游戏在生成时移除的实体不启动任何脚本)。
+- 已修复:某个游戏目录不含 .pk3 时,Load mission 每次都重新读取所有游戏目录;打开带地图模型的任务时更改游戏目录可能崩溃。
+- 手册:四种语言的"任务"页面及其图片已更新。
+[ja]
+- プレビュー・歩行:ドアを通り抜ける NPC が見えない障害物の前で左右に揺れなくなりました。スクリプトが後から移動させるキャラクター(SET_COPY_ORIGIN、SET_ORIGIN)は、ゲームと同じくその瞬間から他のキャラクターを妨げます。別のキャラクターのすぐ隣で歩き出す NPC(Movie Duels のmd_gd_jedi でセーバーロック後のドゥークー、ほか約 20 のカットシーン)が最初の一歩で数百ユニット跳ばなくなりました。どの一歩もゲームのフレーム時間で計算します。
+- プレビュー・タイムライン:再生ヘッドを後ろへドラッグしても前へと同じく滑らかです。ライトセーバーのシミュレーションは計算済みの結果を保持し、1 秒巻き戻すごとに 10 秒を再計算することはなくなりました。セーバーの衝突は前後どちらにスクラブしても同じに見え、再生中に衝突音が失われることもなくなりました。
+- キャラクターがゲームと同じくシェーダーのすべてのステージを再び描画します(光沢、クローム、バトルドロイドの塗装のような着色部分、点滅やアニメーションのステージ)。rc602 の速度低下はありません。キャラクターはテクスチャを共有します(md_am_sith で約 700 MB のメモリ削減、カクつきも減少)。手に持った武器やセーバーの柄はゲームと同じようにクロームを映し、クローン・トルーパーのバイザーは再び光沢のある黒になり、光沢とクロームはゲームの高速逆平方根を使います。
+- Load mission はゲームのすべてのミッションを一覧表示します。ゲームフォルダーのどの .pk3 でもかまいません(素の Jedi Academy の assets1.pk3 でも t1_sour、kor1、yavin1 … が表示されます)。選んだアーカイブのミッションが先頭に並び、残りはバックグラウンドで読み込まれ、フィルターで絞り込めます。別のゲームや別のインストールのアーカイブは、このセッションだけで使われます。ミッションのスクリプトは、ゲームが開始する順番で開きます(spawnscript、worldspawn、trigger_always、NPC スポナー、スタート位置のターゲットと、そこから始まるすべて。ゲームがスポーン時に取り除くエンティティは何も開始しません)。
+- 修正:ゲームフォルダーのどれかに .pk3 がないと、Load mission が毎回すべてのゲームフォルダーを読み直していました。マップモデルのあるミッションを開いたままゲームフォルダーを変更するとクラッシュすることがありました。
+- ガイド:4 言語の「ミッション」ページとその画像を更新しました。
+
 ## rc602 2026-10-18
 [en]
 - NPC classes set their own NPC_type like the game (all SP_NPC_* spawn functions of OpenJK and Movie Duels, including random and spawnflag choices); NPCs that spawn at map start appear in the preview even when no script names them - e.g. the R2 droid in md_am_sith. The inspector shows the effective type.

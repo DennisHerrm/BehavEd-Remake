@@ -37,6 +37,7 @@
 #include <sstream>
 #include <set>
 #include <string>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -2584,8 +2585,142 @@ ModelTextures texturesFor(const GlmModel& model) {
             ++leuchtStufen;
         }
     }
+    // --- rc602 kartenpruefung: ALLE Stufen des Shaderskripts ----------------
+    //
+    // Auf 161 von 278 Karten tragen Figuren Shader mit mehreren Stufen
+    // (Glanz, Chrom, getoente Grundstufe der Kampfdroiden, rgbGen wave,
+    // animMap). Die Engine nimmt fuer den Hautnamen ZUERST das Skript
+    // (R_FindShader) und zeichnet seine Stufen nacheinander
+    // (RB_IterateStagesGeneric) - die Grundstufe ist dann die erste Stufe des
+    // Skripts, auch wenn sie ein anderes Bild zeigt als der Hautname. Was
+    // davon an einer Figur gilt, steht in bhed/figurstufen.h; gezeichnet wird
+    // es in gpu::zeichneFigur. Die glow-Stufen sind dabei - die Liste
+    // gluehStufen bleibt fuer diese Flaeche leer.
+    out.stufen.assign(model.surfaces.size(), {});
+    int stufenFlaechen = 0;
+    // rc603: die Bildpunkte einmal je Bild (App::figurStufenBilder), nicht je
+    // Figur und Stufe kopiert - siehe ModelTextures::FigurStufe::pixel.
+    auto ladeStufenBild = [&](const std::string& bildName) -> std::shared_ptr<const TextureSet::Tex> {
+        // rc603 Durchsicht: tr.whiteImage - R_CreateBuiltinImages legt "*white"
+        // als 8x8 Bild mit allen Bytes 255 an (tr_image.cpp:1273-1276 MD,
+        // 1328 OJ). ParseStage bindet es fuer "map $whiteimage" und, an Figuren
+        // (lightmapsNone), fuer "map $lightmap" (tr_shader.cpp:1202-1220 MD,
+        // 1239-1250 OJ);
+        // R_FindImageFile("*white") findet es unter seinem Namen.
+        if (bildName == "*white") {
+            static const std::shared_ptr<const TextureSet::Tex> kWeiss = [] {
+                auto w = std::make_shared<TextureSet::Tex>();
+                w->width = 8;
+                w->height = 8;
+                w->rgba.assign(8U * 8U * 4U, 255U);
+                return std::shared_ptr<const TextureSet::Tex>(std::move(w));
+            }();
+            return kWeiss;
+        }
+        const std::string sk = image::mappingName(bildName) + "@" + std::to_string(kMaxSize);
+        if (const auto da = g_app->figurStufenBilder.find(sk); da != g_app->figurStufenBilder.end()) {
+            if (auto lebt = da->second.lock()) { return lebt; }
+        }
+        std::shared_ptr<TextureSet::Tex> neu;
+        const auto hit = g_app->texCache.find(sk);
+        if (hit != g_app->texCache.end()) {
+            if (hit->second.rgba.empty()) { return nullptr; }
+            neu = std::make_shared<TextureSet::Tex>();
+            neu->width = hit->second.width;
+            neu->height = hit->second.height;
+            neu->rgba = hit->second.rgba;
+        } else {
+            std::string data;
+            for (const std::string& kandidat : textureCandidates(bildName)) {
+                if (!readFromArchives(kandidat, data)) { continue; }
+                const image::Image im =
+                    image::decode(reinterpret_cast<const unsigned char*>(data.data()), data.size());
+                if (!im.ok || im.width <= 0 || im.height <= 0) { continue; }
+                TextureSet::Tex t = shrink(im, kMaxSize);
+                g_app->texCache[sk] = t;
+                neu = std::make_shared<TextureSet::Tex>(std::move(t));
+                break;
+            }
+        }
+        if (!neu) { return nullptr; }
+        g_app->figurStufenBilder[sk] = neu;
+        return neu;
+    };
+    for (std::size_t i = 0; i < model.surfaces.size(); ++i) {
+        const GlmSurface& s = model.surfaces[i];
+        if (s.isTag()) { continue; }
+        std::string name = s.texture.empty() ? s.shader : s.texture;
+        std::replace(name.begin(), name.end(), '\\', '/');
+        if (name.empty()) { continue; }
+        std::string key = name;
+        for (char& c : key) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        const std::size_t dot = key.find_last_of('.');
+        const std::size_t slash = key.find_last_of('/');
+        if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) { key = key.substr(0, dot); }
+        readShaders();
+        const auto it = shaderMap.find(key);
+        if (it == shaderMap.end()) { continue; }
+        std::vector<ModelTextures::FigurStufe> liste;
+        bool vollstaendig = true;
+        for (const FigurStufenArt& art : figurStufen(it->second)) {
+            const ShaderInfo::Stage& st = it->second.stages[art.stufe];
+            ModelTextures::FigurStufe fs;
+            fs.art = art;
+            fs.animFreq = st.animFreq;
+            fs.animEinmal = st.animOneShot;
+            // rc603 Durchsicht: $whiteimage/$lightmap - tr.whiteImage (siehe oben).
+            const std::vector<std::string> bilder = art.weiss                ? std::vector<std::string>{"*white"}
+                                                    : st.animImages.empty() ? std::vector<std::string>{st.image}
+                                                                            : st.animImages;
+            for (const std::string& b : bilder) {
+                std::shared_ptr<const TextureSet::Tex> px = ladeStufenBild(b);
+                if (!px) {
+                    vollstaendig = false;
+                    break;
+                }
+                TextureSet::Tex z;   // Groesse und Zustand, die Bildpunkte in fs.pixel
+                z.width = px->width;
+                z.height = px->height;
+                z.blend = st.blend;
+                z.srcFactor = st.srcFactor;
+                z.dstFactor = st.dstFactor;
+                z.alphaTest = st.alphaTest;
+                z.alphaConst = st.alphaConst;
+                z.glow = st.glow;
+                z.ausSkript = true;
+                z.rgbVertex = st.rgbVertex;
+                z.cull = it->second.cull;
+                z.depthWrite = st.depthWrite;
+                z.depthFunc = st.depthFunc;
+                z.numTexMods = 0;   // tcMod an Figuren: nicht nachgebildet
+                fs.bilder.push_back(std::move(z));
+                fs.pixel.push_back(std::move(px));
+            }
+            if (!vollstaendig) { break; }
+            liste.push_back(std::move(fs));
+        }
+        // Fehlt ein Bild, zeigt das Spiel dort sein Ersatzbild ("*default");
+        // dann lieber der alte Weg (nur das Bild), und es steht im Protokoll.
+        if (!vollstaendig || liste.empty()) {
+            if (!vollstaendig) { diag::detail("Figurstufen: Bild fehlt in " + key + " - nur das Bild"); }
+            continue;
+        }
+        // Skript vor Bild: die erste Stufe mit ihren Bildpunkten (eine Kopie
+        // je Figur wie bisher - bySurface traegt Bildpunkte).
+        {
+            TextureSet::Tex basis = liste.front().bilder.front();
+            basis.rgba = liste.front().pixel.front()->rgba;
+            out.bySurface[i] = std::move(basis);
+        }
+        out.gluehStufen[i].clear();
+        out.stufen[i] = std::move(liste);
+        ++stufenFlaechen;
+    }
     std::string line = std::to_string(out.found) + " gefunden, " +
                        std::to_string(out.missing) + " nicht gefunden";
+    if (stufenFlaechen != 0) {
+        line += ", " + std::to_string(stufenFlaechen) + " Flaechen mit Shaderstufen";
+    }
     if (leuchtStufen != 0) {
         line += ", " + std::to_string(leuchtStufen) + " Leuchtstufen";
     }
@@ -8082,62 +8217,250 @@ void loadMissionArchive() {
     missionenAusArchiv(p);
 }
 
+namespace {
+// rc603: die Zeit der letzten Aenderung eines Archivs (fuer den Schluessel).
+std::string archivStand(const std::string& pfad) {
+    std::error_code ec;
+    const auto t = std::filesystem::last_write_time(std::filesystem::u8path(pfad), ec);
+    return ec ? std::string("?") : std::to_string(static_cast<long long>(t.time_since_epoch().count()));
+}
+
+// rc603: der Schluessel einer Karte im Zwischenspeicher missionsVerweise -
+// Archiv mit Aenderungszeit, Eintrag, Versatz und Groesse von .bsp und .ent.
+// Wird ein Archiv neu gepackt (Save mission), aendert sich seine Zeit.
+std::string verweisSchluessel(const MissionsAuftrag& a, const std::string& bspStand, const std::string& entStand) {
+    return a.bspArchiv + "@" + bspStand + "|" + a.bsp.name + "|" + std::to_string(a.bsp.localHeaderOffset) + "|" +
+           std::to_string(a.bsp.size) + "|" + a.entArchiv + "@" + entStand + "|" + a.ent.name + "|" +
+           std::to_string(a.ent.localHeaderOffset) + "|" + std::to_string(a.ent.size);
+}
+
+std::string nurDateiname(const std::string& p) {
+    const std::size_t s = p.find_last_of("/\\");
+    return s == std::string::npos ? p : p.substr(s + 1);
+}
+
+DateiGibt skriptGibt() {
+    return [](const std::string& n) {
+        std::string k = n;
+        for (char& c : k) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return g_app->missionsSkriptNamen.count(k) != 0U;
+    };
+}
+}  // namespace
+
+void missionsSucheBeenden() {
+    if (g_app->missionsSuche) {
+        MissionsSuche& su = *g_app->missionsSuche;
+        su.abbrechen();
+        // Was schon gelesen ist, in den Zwischenspeicher - das naechste "Load
+        // mission" desselben Spiels liest es nicht noch einmal.
+        std::size_t behalten = 0;
+        for (std::size_t i = 0; i < su.gesamt() && i < g_app->missionsSuchSchluessel.size(); ++i) {
+            if (su.bearbeitet()[i] != 0 && su.gelesen()[i] != 0) {
+                g_app->missionsVerweise[g_app->missionsSuchSchluessel[i]] = su.verweise()[i];
+                ++behalten;
+            }
+        }
+        diag::detail("Missionssuche abgebrochen bei " + std::to_string(su.erledigt()) + " von " +
+                     std::to_string(su.gesamt()) + " Karten, " + std::to_string(behalten) + " gemerkt");
+        g_app->missionsSuche.reset();
+    }
+    g_app->missionsSuchKarten.clear();
+    g_app->missionsSuchArchive.clear();
+    g_app->missionsSuchSchluessel.clear();
+}
+
+void missionsSucheUebernehmen() {
+    if (!g_app->missionsSuche || !g_app->missionsSuche->fertig()) {
+        return;
+    }
+    const MissionsSuche& su = *g_app->missionsSuche;
+    const DateiGibt gibt = skriptGibt();
+    std::size_t nichtLesbar = 0;
+    for (std::size_t i = 0; i < su.gesamt() && i < g_app->missionsSuchKarten.size(); ++i) {
+        // Eine Karte, die sich nicht lesen laesst, bleibt ohne Skripte - wie
+        // bisher in findMissions.
+        if (su.gelesen()[i] != 0) {
+            g_app->missionsVerweise[g_app->missionsSuchSchluessel[i]] = su.verweise()[i];
+        } else {
+            ++nichtLesbar;
+        }
+        Mission m = missionAus(g_app->missionsSuchKarten[i], su.verweise()[i], gibt);
+        m.archiv = g_app->missionsSuchArchive[i];
+        g_app->missions.push_back(std::move(m));
+    }
+    sortiereMissionen(g_app->missions);
+    const double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_app->missionsSucheAb).count();
+    diag::info("Missionssuche fertig: " + std::to_string(su.gesamt()) + " Karten im Hintergrund gelesen (" +
+               std::to_string(static_cast<long>(ms)) + " ms)" +
+               (nichtLesbar != 0U ? ", " + std::to_string(nichtLesbar) + " nicht lesbar" : std::string()) + ", " +
+               std::to_string(g_app->missions.size()) + " Karten in der Auswahl");
+    g_app->missionsSuche.reset();
+    g_app->missionsSuchKarten.clear();
+    g_app->missionsSuchArchive.clear();
+    g_app->missionsSuchSchluessel.clear();
+}
+
 void missionenAusArchiv(const std::string& p, const std::string& wunsch) {
     diag::Step step("Mission suchen: " + p);
     g_app->settings.lastDir = directoryOf(p);
     g_app->missionArchive = p;
+    missionsSucheBeenden();
 
-    // Das Archiv als Spielordner aufnehmen, damit Texturen und Modelle
-    // daraus gefunden werden. Der Ordner darum kommt mit - dort liegen die
-    // Basisdaten.
-    addGamePathDirectory(directoryOf(p));
-
-    Pk3 archive;
-    std::string err;
-    if (!readPk3Directory(p, archive, &err)) {
-        step.fail(err);
-        platform::showError(p + "\n" + err, tr(Str::AppTitle));
-        return;
+    // Erst pruefen, ob es ueberhaupt ein Archiv ist - vor jeder Aenderung an
+    // den Spielordnern.
+    {
+        Pk3 archive;
+        std::string err;
+        if (!readPk3Directory(p, archive, &err)) {
+            step.fail(err);
+            platform::showError(p + "\n" + err, tr(Str::AppTitle));
+            return;
+        }
     }
-    std::vector<std::string> names;
-    names.reserve(archive.entries.size());
-    for (const Pk3Entry& e : archive.entries) {
-        names.push_back(e.name);
-    }
-    // Gelesen wird aus ALLEN Spielordnern, nicht nur aus diesem Archiv:
-    // eine Mission kann ihre Karte im Mod und die Skripte in den Basisdaten
-    // haben. Das Archiv selbst ist gerade dazugekommen.
-    g_app->missions = findMissions(names, [](const std::string& n,
-                                             std::string& out) {
-        return readFromArchives(n, out);
-    });
-    diag::info(std::to_string(g_app->missions.size()) + " Karten gefunden");
 
-    // Aus "zuletzt geoeffnet": die gemerkte Mission, ohne Auswahl (rc599).
-    if (!wunsch.empty()) {
-        for (const Mission& m : g_app->missions) {
-            if (m.name == wunsch) {
+    // --- rc603: das Spiel des Archivs --------------------------------------
+    //
+    // Vorher: addGamePathDirectory(directoryOf(p)) - der Ordner kam DAUERHAFT
+    // in die Einstellungen, auch der eines anderen Spiels (JK2), und gewann
+    // als spaeterer Ordner sogar gegen die eingerichteten. Jetzt bestimmt
+    // spielordnerFuerArchiv die Ordner des Spiels; gehoeren sie nicht zu den
+    // eingerichteten, gelten sie nur fuer diese Sitzung.
+    const SpielordnerWahl wahl =
+        spielordnerFuerArchiv(p, g_app->settings.gamePaths, g_app->sitzungsSpielordner, [](const std::string& o) {
+            std::error_code ec;
+            for (const auto& e : std::filesystem::directory_iterator(std::filesystem::u8path(o), ec)) {
+                std::string ext = e.path().extension().string();
+                for (char& c : ext) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+                if (ext == ".pk3") {
+                    return true;
+                }
+            }
+            return false;
+        });
+    setzeSitzungsSpielordner(wahl.art == SpielordnerWahl::Art::Eingerichtet ? std::vector<std::string>{} : wahl.ordner);
+
+    // --- Alle Archive des Spiels, in der Suchreihenfolge der Engine ---------
+    //
+    // Nur die Namen, die hier zaehlen (maps/, scripts/) - so bleibt die
+    // Abschrift klein, auch bei 40 Archiven von Movie Duels.
+    std::vector<SpielArchiv> spiel;
+    std::vector<const Pk3*> pk3s;
+    for (const GamePath& gp : g_app->gamePaths) {
+        for (const Pk3& a : gp.archives) {
+            SpielArchiv sa;
+            sa.pfad = a.path;
+            for (const Pk3Entry& e : a.entries) {
+                const char c = e.name.empty() ? '\0' : static_cast<char>(std::tolower(static_cast<unsigned char>(e.name[0])));
+                if (c == 'm' || c == 's') {
+                    sa.namen.push_back(e.name);
+                }
+            }
+            spiel.push_back(std::move(sa));
+            pk3s.push_back(&a);
+        }
+    }
+    const std::vector<MissionsKarte> karten = missionsKarten(spiel, p);
+    std::vector<std::string> staende;
+    staende.reserve(pk3s.size());
+    for (const Pk3* a : pk3s) {
+        staende.push_back(archivStand(a->path));
+    }
+    g_app->missionsSkriptNamen = skriptNamen(spiel);
+    const DateiGibt gibt = skriptGibt();
+
+    // Je Karte: aus dem Zwischenspeicher, sofort (im gewaehlten Archiv - so
+    // viel wie bisher), oder im Hintergrund.
+    g_app->missions.clear();
+    std::vector<MissionsAuftrag> hinten;
+    std::size_t sofort = 0;
+    std::size_t gemerkt = 0;
+    for (const MissionsKarte& k : karten) {
+        MissionsAuftrag a;
+        const Pk3& bspArc = *pk3s[k.bspArchiv];
+        const Pk3Entry* be = bspArc.find(k.bsp);
+        if (be == nullptr) {
+            continue;
+        }
+        a.bspArchiv = bspArc.path;
+        a.bsp = *be;
+        if (!k.ent.empty()) {
+            const Pk3& entArc = *pk3s[k.entArchiv];
+            if (const Pk3Entry* ee = entArc.find(k.ent)) {
+                a.entArchiv = entArc.path;
+                a.ent = *ee;
+            }
+        }
+        const std::string schluessel =
+            verweisSchluessel(a, staende[k.bspArchiv], a.entArchiv.empty() ? std::string() : staende[k.entArchiv]);
+        const auto merk = g_app->missionsVerweise.find(schluessel);
+        const bool gesucht = !wunsch.empty() && k.name == wunsch;
+        if (merk != g_app->missionsVerweise.end() || k.imGewaehlten || gesucht) {
+            std::vector<MapData::ScriptRef> verweise;
+            if (merk != g_app->missionsVerweise.end()) {
+                verweise = merk->second;
+                ++gemerkt;
+            } else {
+                if (leseSkriptVerweise(a, verweise)) {
+                    g_app->missionsVerweise[schluessel] = verweise;
+                }
+                ++sofort;
+            }
+            Mission m = missionAus(k, verweise, gibt);
+            m.archiv = nurDateiname(a.bspArchiv);
+            // Aus "zuletzt geoeffnet": die gemerkte Mission, ohne Auswahl
+            // (rc599) - auch wenn sie nicht im gewaehlten Archiv liegt.
+            if (gesucht) {
+                diag::info("Mission \"" + wunsch + "\" aus " + m.archiv + " (zuletzt geoeffnet)");
+                g_app->missions.push_back(m);
                 loadMission(m);
                 return;
             }
+            g_app->missions.push_back(std::move(m));
+            continue;
         }
+        g_app->missionsSuchKarten.push_back(k);
+        g_app->missionsSuchArchive.push_back(nurDateiname(a.bspArchiv));
+        g_app->missionsSuchSchluessel.push_back(schluessel);
+        hinten.push_back(std::move(a));
     }
-    // Genau eine spielbare Mission? Dann direkt laden.
+    sortiereMissionen(g_app->missions);
+    diag::info(std::to_string(karten.size()) + " Karten im Spiel (" + std::to_string(spiel.size()) + " Archive), " +
+               std::to_string(sofort) + " gleich gelesen, " + std::to_string(gemerkt) + " gemerkt, " +
+               std::to_string(hinten.size()) + " im Hintergrund");
+    if (!hinten.empty()) {
+        // Faeden: genug, dass auch Movie Duels (rund 3 GB Karten) in wenigen
+        // Sekunden durch ist, aber hoechstens 8 - jeder haelt eine ganze
+        // Karte (bis ~30 MB) im Speicher, und das Bild soll fluessig bleiben.
+        const unsigned kerne = std::max(1U, std::thread::hardware_concurrency());
+        const unsigned faeden = std::max(1U, std::min(8U, kerne > 2U ? kerne - 2U : 1U));
+        g_app->missionsSucheAb = std::chrono::steady_clock::now();
+        g_app->missionsSuche = std::make_unique<MissionsSuche>(std::move(hinten), faeden);
+    }
+
+    // Genau eine spielbare Mission im ganzen Spiel? Dann direkt laden.
     //
-    // Bei mehreren wird gefragt - und das ist der Normalfall: ein Mod bringt
-    // ueblicherweise mehrere Missionen mit, je eine .ent je Karte.
-    int playable = 0;
-    const Mission* only = nullptr;
-    for (const Mission& m : g_app->missions) {
-        if (m.playable()) {
-            ++playable;
-            only = &m;
+    // Bei mehreren wird gefragt - und das ist der Normalfall. Solange noch im
+    // Hintergrund gelesen wird, steht die Zahl nicht fest: dann die Auswahl.
+    if (!g_app->missionsSuche) {
+        int playable = 0;
+        const Mission* only = nullptr;
+        for (const Mission& m : g_app->missions) {
+            if (m.playable()) {
+                ++playable;
+                only = &m;
+            }
+        }
+        if (playable == 1 && only != nullptr) {
+            const Mission kopie = *only;
+            loadMission(kopie);
+            return;
         }
     }
-    if (playable == 1 && only != nullptr) {
-        loadMission(*only);
-        return;
-    }
+    g_app->missionsFilter[0] = '\0';
     g_app->missionPickOpen = true;
 }
 
@@ -8174,6 +8497,9 @@ void loadMission(const Mission& m) {
     const std::string vorherMapId = g_app->map.path;
     const std::string vorherMapPath = g_app->settings.mapPath;
     diag::Step step("Mission laden: " + m.name);
+    // rc603: die Auswahl ist erledigt - keine Karten mehr im Hintergrund
+    // lesen, das Laden braucht die Platte und die Kerne selbst.
+    missionsSucheBeenden();
 
     std::string data;
     if (!readFromArchives(m.mapFile, data)) {
@@ -8238,7 +8564,68 @@ void loadMission(const Mission& m) {
     // Mitte, oder war das erste Skript schon offen (Mission zum zweiten Mal
     // geladen), stand danach ein fremdes Skript vorn (Selbsttest "mission").
     int erstesReiter = -1;
-    for (const Mission::Script& sc2 : m.scripts) {
+    // --- rc603: in der Reihenfolge, in der das Spiel die Skripte startet ----
+    //
+    // Gewuenscht: "kann er die scripts bei load mission in der Reihenfolge
+    // als Tab oeffnen, wie sie ingame abgespielt werden?" Bisher kamen sie in
+    // der Reihenfolge der Entities - bei t2_trip zuerst common/use_turbo, das
+    // erst ein Trigger des Spielers startet, und das Intro an siebter Stelle.
+    //
+    // Jetzt laeuft die Karte im ICARUS-Nachbau vom Laden an
+    // (simuliereKartenstart): spawnscripts, worldspawn, trigger_always,
+    // Spawner ohne targetname, die Ziele der Startposition beim ClientSpawn,
+    // und alles, was daraus per run, use, Relais, Spawn und kill folgt. Die
+    // Reiter oeffnen nach dem ersten Start; was dort nie startet (Trigger
+    // beim Betreten, Kampf), steht dahinter in der bisherigen Reihenfolge.
+    // Vorn steht das erste.
+    const std::vector<std::size_t> folge = [&m] {
+        std::vector<std::string> pfade;
+        pfade.reserve(m.scripts.size());
+        for (const Mission::Script& sc : m.scripts) {
+            pfade.push_back(sc.ref);
+        }
+        const auto ab = std::chrono::steady_clock::now();
+        AblaufWelt welt = ablaufWelt();
+        welt.spielstufe = regelwerkSpielstufe();
+        const auto abSim = std::chrono::steady_clock::now();
+        const NavPlanZaehler wegeVorher = navPlanZaehler();
+        const Ablauf start = simuliereKartenstart(welt);
+        const NavPlanZaehler wegeNachher = navPlanZaehler();
+        std::vector<std::size_t> f = skripteNachStart(pfade, start);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ab).count();
+        const double msSim = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - abSim).count();
+        diag::detail("Kartenstart: Welt " + std::to_string(static_cast<long>(ms - msSim)) + " ms, Nachbau " +
+                     std::to_string(static_cast<long>(msSim)) + " ms, Wege " +
+                     std::to_string(wegeNachher.kalt - wegeVorher.kalt) + " neu (" +
+                     std::to_string(static_cast<long>(wegeNachher.msKalt - wegeVorher.msKalt)) + " ms)");
+        // Fuers Protokoll: die Zeit je Skript (wie skripteNachStart vergleicht -
+        // ohne Gross/Klein; die Pfade aus der Karte haben keine Endung).
+        const auto gleichOhneFall = [](const std::string& a, const std::string& b) {
+            return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+                       return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+                   });
+        };
+        std::string text;
+        for (const std::size_t i : f) {
+            double t = -1.0;
+            for (std::size_t k = 0; k < start.skripte.size() && k < start.skriptBeginn.size(); ++k) {
+                if (gleichOhneFall(start.skripte[k], pfade[i])) {
+                    t = start.skriptBeginn[k];
+                }
+            }
+            text += " " + pfade[i] + (t >= 0.0 ? "@" + std::to_string(static_cast<long>(t)) : std::string("@-"));
+        }
+        char z[160];
+        std::snprintf(z, sizeof(z), "Reihenfolge der Skripte (Kartenstart, %.1f ms, %ld Befehle, bis %.0f ms):",
+                      ms, static_cast<long>(start.befehle), start.laufMs);
+        diag::info(std::string(z) + text);
+        for (const std::string& h : start.hinweise) {
+            diag::detail("Kartenstart: " + h);
+        }
+        return f;
+    }();
+    for (const std::size_t si : folge) {
+        const Mission::Script& sc2 = m.scripts[si];
         if (sc2.file.empty()) {
             continue;
         }
@@ -8313,11 +8700,112 @@ void loadMission(const Mission& m) {
     addStatus(msg);
 }
 
-// Die Auswahl, wenn ein Archiv mehrere Karten enthaelt.
+// Die Auswahl der Missionen.
+//
+// rc603: die Missionen des ganzen Spiels - oben die des gewaehlten Archivs,
+// darunter alle weiteren (im Hintergrund gelesen, solange steht dort, wie
+// weit). Bei Movie Duels sind das rund 300 Karten: die Liste rollt in einem
+// eigenen Feld, Kopf (Spielordner, Filter) und Abbrechen bleiben stehen.
+namespace {
+// Eine Zeile der Auswahl; true, wenn diese Mission geladen werden soll.
+bool missionsZeile(std::size_t i) {
+    const Mission& m = g_app->missions[i];
+    ImGui::PushID(static_cast<int>(i));
+    ImGui::BeginDisabled(!m.playable());
+    const bool geklickt = ImGui::Button(m.name.c_str(), ImVec2{ImGui::GetFontSize() * 14.0F, 0.0F});
+    ImGui::EndDisabled();
+    if (geklickt) {
+        ImGui::PopID();
+        return true;
+    }
+    ImGui::SameLine();
+    if (m.playable()) {
+        ImGui::TextDisabled("%d", static_cast<int>(m.scripts.size()));
+
+        // --- Teilen sich mehrere Missionen eine Karte? ----------------
+        //
+        // Gefragt: "sind das alle Missionen, oder teilen sich davon
+        // welche was? Das muesste ich wissen."
+        //
+        // Die Antwort steht in den Daten - sie wurde nur nicht gezeigt.
+        // Jede Mission kennt ihre .bsp; tragen zwei dieselbe, spielen
+        // sie auf derselben Karte. Bei Movie Duels ist das der Regelfall:
+        // md_afif2_jedi und md_afif2_sith sind dieselbe Karte, einmal
+        // aus Sicht des Jedi und einmal des Sith.
+        //
+        // Das ist keine Nebensache: wer eine davon laedt, sieht die
+        // Geometrie der anderen mit, und die Skripte laufen ueber
+        // dieselben Entities.
+        {
+            int gleicheKarte = 0;
+            for (const Mission& andere : g_app->missions) {
+                if (andere.playable() && andere.mapFile == m.mapFile) {
+                    ++gleicheKarte;
+                }
+            }
+            if (gleicheKarte > 1) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s %d", tr(Str::MissionSharesMap), gleicheKarte);
+            }
+        }
+        // Beim Ueberfahren zeigen, WAS geladen wird - Entity-Datei und
+        // die Skripte. Sonst raet man am Kartennamen herum.
+        if (ImGui::IsItemHovered() || ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(m.mapFile.c_str());
+            // rc603: aus welchem Archiv die Engine die Karte laedt.
+            if (!m.archiv.empty()) {
+                ImGui::TextDisabled(tr(Str::MissionFromArchive), m.archiv.c_str());
+            }
+            // Und im Hinweisfenster die Namen dazu - so sieht man
+            // sofort, WELCHE es sind.
+            for (const Mission& andere : g_app->missions) {
+                if (andere.playable() && andere.mapFile == m.mapFile && andere.name != m.name) {
+                    ImGui::TextDisabled("%s %s", tr(Str::MissionSharesMap), andere.name.c_str());
+                }
+            }
+            if (!m.entFile.empty()) {
+                ImGui::TextDisabled("%s", m.entFile.c_str());
+            }
+            ImGui::Separator();
+            for (const Mission::Script& sc : m.scripts) {
+                if (sc.file.empty()) {
+                    ImGui::TextDisabled("%s  (%s)", sc.ref.c_str(), tr(Str::MapScriptMissing));
+                } else {
+                    ImGui::TextUnformatted(sc.ref.c_str());
+                }
+            }
+            ImGui::EndTooltip();
+        }
+    } else {
+        ImGui::TextDisabled("%s", tr(Str::MissionDuel));
+    }
+    ImGui::PopID();
+    return false;
+}
+
+bool passtZumFilter(const Mission& m, const std::string& filter) {
+    if (filter.empty()) {
+        return true;
+    }
+    std::string n = m.name;
+    for (char& c : n) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return n.find(filter) != std::string::npos;
+}
+}  // namespace
+
 void drawMissionPicker() {
     if (!g_app->missionPickOpen) {
+        // Zu (Abbrechen, eine Mission gewaehlt, von aussen geschlossen):
+        // die Hintergrundsuche wird nicht mehr gebraucht.
+        if (g_app->missionsSuche) {
+            missionsSucheBeenden();
+        }
         return;
     }
+    missionsSucheUebernehmen();
     ImGui::OpenPopup("##missionpick");
     const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2{0.5F, 0.5F});
@@ -8326,96 +8814,103 @@ void drawMissionPicker() {
         return;
     }
     ImGui::TextUnformatted(tr(Str::MissionPick));
+    // rc603: welche Spielordner gelten - das Spiel, dessen Missionen hier
+    // stehen. Die vollen Pfade im Hinweis.
+    {
+        std::string kurz;
+        for (const GamePath& gp : g_app->gamePaths) {
+            kurz += (kurz.empty() ? "" : ", ") + nurDateiname(gp.directory);
+        }
+        ImGui::TextDisabled("%s %s", tr(Str::MissionGameFolders), kurz.c_str());
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            for (const GamePath& gp : g_app->gamePaths) {
+                ImGui::TextUnformatted(gp.directory.c_str());
+            }
+            ImGui::EndTooltip();
+        }
+        if (!g_app->sitzungsSpielordner.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4{0.90F, 0.75F, 0.35F, 1.0F}, "%s", tr(Str::MissionSessionOnly));
+        }
+    }
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0F);
+    ImGui::InputTextWithHint("##missionfilter", tr(Str::Pk3Filter), g_app->missionsFilter,
+                             sizeof(g_app->missionsFilter));
+    std::string filter = g_app->missionsFilter;
+    for (char& c : filter) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     ImGui::Separator();
 
-    bool anyPlayable = false;
-    for (std::size_t i = 0; i < g_app->missions.size(); ++i) {
-        const Mission& m = g_app->missions[i];
-        ImGui::PushID(static_cast<int>(i));
-        ImGui::BeginDisabled(!m.playable());
-        if (ImGui::Button(m.name.c_str(), ImVec2{ImGui::GetFontSize() * 14.0F, 0.0F})) {
-            const Mission copy = m;   // loadMission raeumt die Liste auf
-            ImGui::CloseCurrentPopup();
-            ImGui::EndDisabled();
-            ImGui::PopID();
-            ImGui::EndPopup();
-            loadMission(copy);
-            return;
+    std::size_t eigene = 0;
+    std::size_t weitere = 0;
+    for (const Mission& m : g_app->missions) {
+        if (!passtZumFilter(m, filter)) {
+            continue;
         }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (m.playable()) {
-            anyPlayable = true;
-            ImGui::TextDisabled("%d", static_cast<int>(m.scripts.size()));
-
-            // --- Teilen sich mehrere Missionen eine Karte? ----------------
-            //
-            // Gefragt: "sind das alle Missionen, oder teilen sich davon
-            // welche was? Das muesste ich wissen."
-            //
-            // Die Antwort steht in den Daten - sie wurde nur nicht gezeigt.
-            // Jede Mission kennt ihre .bsp; tragen zwei dieselbe, spielen
-            // sie auf derselben Karte. Bei Movie Duels ist das der Regelfall:
-            // md_afif2_jedi und md_afif2_sith sind dieselbe Karte, einmal
-            // aus Sicht des Jedi und einmal des Sith.
-            //
-            // Das ist keine Nebensache: wer eine davon laedt, sieht die
-            // Geometrie der anderen mit, und die Skripte laufen ueber
-            // dieselben Entities.
-            {
-                int gleicheKarte = 0;
-                for (const Mission& andere : g_app->missions) {
-                    if (andere.playable() && andere.mapFile == m.mapFile) {
-                        ++gleicheKarte;
-                    }
-                }
-                if (gleicheKarte > 1) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("%s %d", tr(Str::MissionSharesMap),
-                                        gleicheKarte);
-                }
-            }
-            // Beim Ueberfahren zeigen, WAS geladen wird - Entity-Datei und
-            // die Skripte. Sonst raet man am Kartennamen herum.
-            if (ImGui::IsItemHovered() || ImGui::IsItemHovered(
-                    ImGuiHoveredFlags_AllowWhenDisabled)) {
-                ImGui::BeginTooltip();
-                ImGui::TextUnformatted(m.mapFile.c_str());
-                // Und im Hinweisfenster die Namen dazu - so sieht man
-                // sofort, WELCHE es sind.
-                for (const Mission& andere : g_app->missions) {
-                    if (andere.playable() && andere.mapFile == m.mapFile &&
-                        andere.name != m.name) {
-                        ImGui::TextDisabled("%s %s",
-                                            tr(Str::MissionSharesMap),
-                                            andere.name.c_str());
-                    }
-                }
-                if (!m.entFile.empty()) {
-                    ImGui::TextDisabled("%s", m.entFile.c_str());
-                }
-                ImGui::Separator();
-                for (const Mission::Script& sc : m.scripts) {
-                    if (sc.file.empty()) {
-                        ImGui::TextDisabled("%s  (%s)", sc.ref.c_str(),
-                                            tr(Str::MapScriptMissing));
-                    } else {
-                        ImGui::TextUnformatted(sc.ref.c_str());
-                    }
-                }
-                ImGui::EndTooltip();
-            }
-        } else {
-            ImGui::TextDisabled("%s", tr(Str::MissionDuel));
-        }
-        ImGui::PopID();
+        (m.imGewaehlten ? eigene : weitere) += 1;
     }
-    if (!anyPlayable) {
+    const bool sucht = static_cast<bool>(g_app->missionsSuche);
+    // Hoehe: so viele Zeilen wie da sind, hoechstens 22 - dann rollt das Feld.
+    const float zeile = ImGui::GetFrameHeightWithSpacing();
+    const float zeilen = static_cast<float>(eigene + weitere) + (eigene > 0 ? 1.5F : 0.0F) +
+                         ((weitere > 0 || sucht) ? 1.5F : 0.0F) + (sucht ? 2.0F : 0.0F);
+    const float hoehe = std::max(2.0F, std::min(22.0F, zeilen)) * zeile + ImGui::GetStyle().WindowPadding.y * 2.0F;
+    std::optional<Mission> laden;
+    const bool anyPlayable =
+        std::any_of(g_app->missions.begin(), g_app->missions.end(), [](const Mission& m) { return m.playable(); });
+    if (ImGui::BeginChild("##missionliste", ImVec2{ImGui::GetFontSize() * 34.0F, hoehe}, ImGuiChildFlags_None)) {
+        if (eigene > 0) {
+            char kopf[600];
+            std::snprintf(kopf, sizeof(kopf), tr(Str::MissionInArchive), nurDateiname(g_app->missionArchive).c_str());
+            ImGui::SeparatorText(kopf);
+            for (std::size_t i = 0; i < g_app->missions.size() && !laden; ++i) {
+                const Mission& m = g_app->missions[i];
+                if (m.imGewaehlten && passtZumFilter(m, filter) && missionsZeile(i)) {
+                    laden = m;   // loadMission raeumt die Liste auf
+                }
+            }
+        }
+        if ((weitere > 0 || sucht) && !laden) {
+            ImGui::SeparatorText(tr(Str::MissionOtherArchives));
+            if (sucht) {
+                const MissionsSuche& su = *g_app->missionsSuche;
+                char z[200];
+                std::snprintf(z, sizeof(z), tr(Str::MissionSearching), static_cast<int>(su.erledigt()),
+                              static_cast<int>(su.gesamt()));
+                ImGui::TextDisabled("%s", z);
+                ImGui::ProgressBar(su.gesamt() > 0 ? static_cast<float>(su.erledigt()) / static_cast<float>(su.gesamt()) : 1.0F,
+                                   ImVec2{ImGui::GetFontSize() * 20.0F, 0.0F}, "");
+            }
+            for (std::size_t i = 0; i < g_app->missions.size() && !laden; ++i) {
+                const Mission& m = g_app->missions[i];
+                if (!m.imGewaehlten && passtZumFilter(m, filter) && missionsZeile(i)) {
+                    laden = m;
+                }
+            }
+        }
+    }
+    ImGui::EndChild();
+    if (laden) {
+        // Die Auswahl ist erledigt - auch wenn loadMission erst fragt
+        // (ungesicherte Entities derselben Karte). Vorher blieb
+        // missionPickOpen dann stehen, und nach der Frage ging die Auswahl
+        // wieder auf, hinter jedem weiteren Fenster (rc603, Selbsttest
+        // missionsbau: "Cancel" im Fenster Save mission nicht zu finden).
+        g_app->missionPickOpen = false;
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        loadMission(*laden);
+        return;
+    }
+    if (!anyPlayable && !sucht) {
         ImGui::TextDisabled("%s", tr(Str::MissionNone));
     }
     ImGui::Separator();
     if (ImGui::Button(tr(Str::EditorCancel))) {
         g_app->missionPickOpen = false;
+        missionsSucheBeenden();
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -11897,6 +12392,23 @@ void drawMapView() {
     std::vector<ActorDraw> gpuFiguren;
     bool gezeichnet = false;   // hat die Grafikkarte in diesem Bild gezeichnet?
     if (g_app->mapDirty) {
+        // rc603: fehlen die Modelle der Figuren (rescanGamePaths hat sie
+        // geleert - neue Spielordner, etwa die einer Mission eines anderen
+        // Spiels), JETZT neu laden, bevor dieses Bild Effekte und bewegliche
+        // Teile sammelt. Das Nachladen stand weiter unten, bei den Figuren -
+        // nach dem Sammeln: loadMapModels leert md3Meshes, und die schon
+        // gesammelten Mover zeigten in die geleerte Tabelle. Selbsttest
+        // missionsliste (t2_trip, dann zurueck zu Movie Duels): Absturz in
+        // zeichneKarte, gpumap_win32.cpp:5400, beim Lesen eines freigegebenen
+        // Netzes.
+        if (g_app->showActors && !g_app->scene.actors.empty() &&
+            g_app->actorAssets.size() != g_app->scene.actors.size()) {
+            loadActorModels();
+            kinoSkeletteAbgleichen();
+            preloadSaberAssets();
+            loadMapEffects();
+            loadMapModels();
+        }
         // Die Blende kommt ganz zuletzt, in die Ueberlagerung - nach Figuren
         // und Effekten. Sonst uebermalen die sie wieder: "kann man durch die
         // schwarzen balken noch durchsehen wenn die cutscene laeuft".
@@ -12007,16 +12519,27 @@ void drawMapView() {
         // mit ausgeschalteten Effekten, denn die Zeichnung der Klingen (Laenge,
         // Kuerzen an Waenden) liest sie weiter unten. Vorher geschah das nur
         // ueber saberEffekteBei, also nur mit sichtbaren Effekten.
+        // rc603 fix603: Teilzeiten ungeglaettet (FrameCost::rawSaber ...).
+        const auto msSeit = [](std::chrono::steady_clock::time_point a) {
+            return std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - a).count();
+        };
+        const auto tSab0 = std::chrono::steady_clock::now();
         saberRechneBis(g_app->playMs);
+        kosten.rawSaber = msSeit(tSab0);
         // rc601 saber review 2c: die Kamera dieses Bildes fuer den Klirrblitz,
         // der als 2D-Bild ueber den Kinobalken kommt (blendeUeberlagern).
         saberBlitzAnsicht(0, &useCam, w, h, g_app->playMs);
         // rc601 saber: Funken, Kochen und Klirren der Lichtschwerter - auch in
         // Karten ohne fx_runner (die Bedingung darunter liess sie sonst weg).
+        const auto tSfx0 = std::chrono::steady_clock::now();
         const std::vector<EffectInstance> schwertFx =
             g_app->showEffects ? saberEffekteBei(g_app->playMs) : std::vector<EffectInstance>{};
+        kosten.rawSaberFx = msSeit(tSfx0);
+        const auto tSp0 = std::chrono::steady_clock::now();
+        const bool spurenDa = g_app->showEffects && saberSpurenDa(g_app->playMs);
+        kosten.rawSpuren = msSeit(tSp0);
         if (g_app->showEffects &&
-            (!g_app->effectRunners.empty() || !schwertFx.empty() || saberSpurenDa(g_app->playMs))) {
+            (!g_app->effectRunners.empty() || !schwertFx.empty() || spurenDa)) {
             // Die Schuesse kommen dazu - dieselbe Liste, derselbe
             // Zeichenweg. Ein eigener waere ein zweiter Rasterisierer.
             std::vector<EffectInstance> alle = g_app->effectRunners;
@@ -12730,6 +13253,11 @@ void drawMapView() {
         // Ungeglaettet daneben - siehe FrameCost::rawMap.
         g_app->frameCost.rawMap = kosten.map;
         g_app->frameCost.rawTotal = kosten.total;
+        g_app->frameCost.rawSaber = kosten.rawSaber;
+        g_app->frameCost.rawSaberFx = kosten.rawSaberFx;
+        g_app->frameCost.rawSpuren = kosten.rawSpuren;
+        g_app->frameCost.rawEffects = kosten.effects;
+        g_app->frameCost.rawScene = kosten.scene;
 
         // --- Die Aufschluesselung ins Protokoll --------------------------
         //
@@ -13072,6 +13600,8 @@ void drawMapView() {
                     // --- Die Figuren, im deckenden Durchgang -----------
                     gpu::setzeSchritt("Figuren vorbereiten");
                     gpu::beginneMessung(gpu::Abschnitt::Figuren);
+                    // rc603: CPU-Zeit der Figuren (Selbsttest figurleistung).
+                    const auto figurCpuAb = std::chrono::steady_clock::now();
                     // rc602: Leuchtstufen der Figuren gehen mit ins Gluehen -
                     // nur im Hauptbild und nur, wenn es nachher gezeichnet wird
                     // (dieselbe Bedingung wie beim Gluehen unten).
@@ -13158,6 +13688,20 @@ void drawMapView() {
                         // lichter), mal Helligkeit und auf 0..1 - wie im
                         // Rasterer (renderActors).
                         gpu::FigurLicht licht;
+                        // rc602 kartenpruefung: fuer die Shaderstufen - Auge, Zeit
+                        // und ent->e.axis = AnglesToAxis(0, yaw, 0) der Figur
+                        // (ohne den Zeichnerausgleich von baueFigurWelt).
+                        for (int k = 0; k < 3; ++k) { licht.auge[k] = bildCam.pos[k]; }
+                        licht.zeit = zeit;
+                        licht.besitzer = a.figur;   // rc603 Durchsicht (Selbsttest)
+                        {
+                            const float gier = a.yaw * 3.14159265F / 180.0F;
+                            const float cg = std::cos(gier);
+                            const float sg = std::sin(gier);
+                            const float ax[3][3] = {{cg, sg, 0.0F}, {-sg, cg, 0.0F}, {0.0F, 0.0F, 1.0F}};
+                            std::memcpy(licht.achsen, ax, sizeof(ax));
+                            licht.achsenGesetzt = true;
+                        }
                         if (a.light.ok) {
                             licht.gitter = true;
                             for (int k = 0; k < 3; ++k) {
@@ -13280,6 +13824,21 @@ void drawMapView() {
                                 gpu::baueGriffWelt(fw, hand, gw2);
                                 static const std::vector<BoneMatrix> kStarr;
                                 std::string fh;
+                                // rc603 Durchsicht: die Achsen der FIGUR, nicht die
+                                // des Griffs. Waffe, Griff und Kinomodell stehen in
+                                // der Ghoul2-Liste der Figur (G2API_InitGhoul2Model
+                                // auf ent->ghoul2 + G2API_AttachG2Model,
+                                // wp_saber.cpp:812-816, Q3_Interface.cpp:6345-6351
+                                // MD; wp_saber.cpp:407, Q3_Interface.cpp:5897 OJ)
+                                // und werden mit ihrem refEntity gezeichnet - die
+                                // Bolzenmatrix ist nur die Wurzel der Knochen
+                                // (R_AddGhoulSurfaces, tr_ghoul2.cpp:2860-2866 MD,
+                                // 2656 OJ). backEnd.ori ist damit die Stellung der
+                                // Figur, und tcGen environment
+                                // (RB_CalcEnvironmentTexCoords, tr_shade_calc.cpp:868
+                                // MD / 902 OJ) rechnet Normale und Blick in IHREN
+                                // Achsen. rc602 nahm die Spalten von gw2 - der Chrom
+                                // jedes Schwertgriffs drehte mit der Hand.
                                 const int nh = gpu::zeichneFigur(
                                     *an.model, an.textures, kStarr, gw2, vp, &fh,
                                     &licht, g_app->showCaps);
@@ -13429,6 +13988,8 @@ void drawMapView() {
                             const App::ActorAssets* as = gegenstandGlmFuer(gg.pfad);
                             if (as == nullptr) { continue; }
                             gpu::FigurLicht gl;
+                            for (int k = 0; k < 3; ++k) { gl.auge[k] = bildCam.pos[k]; }
+                            gl.zeit = zeit;
                             const auto lg = sampleLightGrid(g_app->geo, gg.ort);
                             if (lg.ok) {
                                 gl.gitter = true;
@@ -13447,6 +14008,8 @@ void drawMapView() {
                     }
                     gpu::gluehenFigurenEnde();
                     gpu::beendeMessung(gpu::Abschnitt::Figuren);
+                    g_app->figurCpuMsSumme +=
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - figurCpuAb).count();
 
                     // --- Dynamisches Licht und Blobschatten ------------
                     //
@@ -13845,6 +14408,74 @@ void drawMapView() {
                                     ? ms
                                     : g_app->mapFrameMs * 0.9F + ms * 0.1F;
             g_app->frameCost.rawMap = ms;
+        }
+        // rc603 fix603: die Pruefsumme dieses Bildes (App::bildSumme), nach dem
+        // Zeichnen (die Klingen meldet erst der Zeichenweg). Nicht
+        // darin: die Schwertspuren (g_spuren, vom vorigen Bild abhaengig wie
+        // im Spiel, "lastTime > cg.time") und das Licht der Figuren (die
+        // Schwertlichter des vorigen Bildes).
+        if (g_app->bildSummeAn) {
+            std::uint64_t summe = 1469598103934665603ULL;
+            const auto dazu = [&summe](const void* p, std::size_t n) {
+                const auto* b = static_cast<const unsigned char*>(p);
+                for (std::size_t i = 0; i < n; ++i) { summe = (summe ^ b[i]) * 1099511628211ULL; }
+            };
+            const auto teil = [&summe](std::size_t nr) {
+                g_app->bildSumme[nr] = summe;
+                summe = 1469598103934665603ULL;
+            };
+            const BspMesh& en = g_app->effectMesh;
+            for (const BspVertex& v : en.verts) {
+                dazu(v.xyz, sizeof(v.xyz));
+                dazu(v.st, sizeof(v.st));
+                dazu(v.colour, sizeof(v.colour));
+            }
+            if (!en.indexes.empty()) { dazu(en.indexes.data(), en.indexes.size() * sizeof(en.indexes[0])); }
+            for (const BspMesh::Batch& b : en.batches) {
+                dazu(&b.shader, sizeof(b.shader));
+                dazu(&b.firstIndex, sizeof(b.firstIndex));
+                dazu(&b.numIndexes, sizeof(b.numIndexes));
+            }
+            teil(0);
+            const std::vector<SaberGezeichnet> klingen =
+                saberGezeichnetesBildNr() == ImGui::GetFrameCount() ? saberGezeichnetesBild() : std::vector<SaberGezeichnet>{};
+            for (const SaberGezeichnet& k : klingen) {
+                dazu(&k.figur, sizeof(k.figur));
+                dazu(&k.fach, sizeof(k.fach));
+                dazu(&k.klinge, sizeof(k.klinge));
+                dazu(k.wurzel, sizeof(k.wurzel));
+                dazu(k.spitze, sizeof(k.spitze));
+            }
+            teil(1);
+            for (const ActorDraw& d : gpuFiguren) {
+                dazu(&d.figur, sizeof(d.figur));
+                dazu(&d.frame, sizeof(d.frame));
+                dazu(&d.frameNext, sizeof(d.frameNext));
+                dazu(&d.frameFraction, sizeof(d.frameFraction));
+                dazu(&d.prevFrame, sizeof(d.prevFrame));
+                dazu(&d.blendLerp, sizeof(d.blendLerp));
+                dazu(d.pos, sizeof(d.pos));
+                dazu(&d.yaw, sizeof(d.yaw));
+                dazu(&d.headYaw, sizeof(d.headYaw));
+                dazu(&d.torsoFrame, sizeof(d.torsoFrame));
+                dazu(&d.torsoNext, sizeof(d.torsoNext));
+                dazu(&d.torsoFraction, sizeof(d.torsoFraction));
+                dazu(&d.torsoPrevFrame, sizeof(d.torsoPrevFrame));
+                dazu(&d.torsoBlendLerp, sizeof(d.torsoBlendLerp));
+                dazu(&d.faceFrame, sizeof(d.faceFrame));
+                dazu(&d.anbauten, sizeof(d.anbauten));
+            }
+            teil(2);
+            for (const App::PickMover& pm : g_app->pickMover) {
+                dazu(&pm.entity, sizeof(pm.entity));
+                dazu(pm.welt, sizeof(pm.welt));
+            }
+            teil(3);
+            // Teil 4: der Klirrblitz - saberBlitzZeichnen2D kommt erst nach den
+            // Balken (weiter unten) und mischt ihn dann hier hinein.
+            teil(4);
+            g_app->bildSummeMs = g_app->playMs;
+            g_app->bildSummeBild = ImGui::GetFrameCount();
         }
         // --- Auf dem GPU-Weg: dieselbe Ueberlagerung als eigenes Bild ------
         //

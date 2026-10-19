@@ -377,11 +377,26 @@ bool figurProbe(std::size_t ai, double ms, FigurProbe& out) {
 // fast stehende Klinge zeichnet ihre Brandspur dann anders gedreht (die
 // Richtung von oldPos nach endpos ist bei 1e-4 Abstand reines Rundungsrauschen)
 // - gemessen im Selbsttest "Vorspulen gleich Abspielen".
+//
+// rc603 fix603: gemeldet "Wenn ich die Timeline von links nach rechts bewege,
+// laeuft es fluessig ...; wenn ich aber von rechts nach links bewege, um
+// zurueckzuspulen, bricht die Framerate massiv ein." Bis rc602 behielt der
+// Speicher nur die Clientbilder der letzten ~11 s hinter dem laufenden Stand.
+// Zurueck ueber den Anfang des Brandspurfensters hinaus fehlten Bilder, und
+// rechneBis setzte am Schnappschuss davor neu auf - rund 1375 Clientbilder
+// (intro2_sith: 150-380 ms) nach jeder Sekunde Zurueckspulen. Jetzt bleiben
+// die gerechneten Bilder stehen; `abschnitte` fuehrt, welche lueckenlos da
+// sind. Jedes Bild ist exakt (jede Rechnung beginnt am Szenenanfang, am
+// laufenden Stand oder an einem Schnappschuss - also wie vom Anfang
+// durchgespielt). Fehlt im Fenster etwas, wird nur das Fehlende gerechnet,
+// bis an den naechsten schon gerechneten Abschnitt; der laufende Stand bleibt
+// dabei erhalten (Kopf), wenn die Rechnung vor ihm endet.
 constexpr long long kSpurFensterTakte = kSpurGesamtZeit / kSaberClientTaktMs;   // 1250 (10 s)
-constexpr long long kVorlaufTakte = kSpurFensterTakte + 125;                    // so weit rechnet ein Sprung vor
+constexpr long long kVorlaufTakte = kSpurFensterTakte + 125;                    // das Fenster samt Effektrueckblick
 constexpr long long kSchnappTakte = 125;                                         // 1 s
 constexpr double kEffektRueckblickMs = 1000.0;   // so weit zurueck stehen Effekte in der Liste
-constexpr double kKlirrenBehaltenMs = 3000.0;
+constexpr std::size_t kMaxBilder = 75000;        // rc603 fix603: 10 min Clientbilder, darueber faellt das Entfernteste
+std::size_t g_maxBilder = kMaxBilder;            // saberObergrenze (Selbsttest)
 
 struct ClientBild {
     std::vector<SaberFigur> figuren;                 // Lage und gekuerzte Laenge (nur die letzten Bilder)
@@ -395,6 +410,9 @@ struct SaberSpeicher {
     bool gueltig = false;
     long long letzter = LLONG_MIN;
     std::map<long long, ClientBild> bilder;
+    // rc603 fix603: die lueckenlos gerechneten Clientbilder, Anfang -> Ende
+    // (beide eingeschlossen; getrennt und nicht aneinanderstossend).
+    std::map<long long, long long> abschnitte;
     std::map<int, SaberWandKlinge> klingen;
     std::map<int, SaberWandFigur> wandFiguren;
     std::map<int, SaberFigur> server;                // Stand nach dem letzten Serverbild
@@ -405,7 +423,7 @@ struct SaberSpeicher {
     long long probenFiguren = 0;
     double spurenMs = 0.0;            // davon CG_CreateSaberMarks
     long long spurenPolys = 0;
-    long long erzeugung = 0;          // zaehlt das Neuaufsetzen (fuer spurenStand)
+    long long erzeugung = 0;          // zaehlt das Vergessen (fuer spurenStand)
     // Der ganze Stand nach Clientbild t (samt Bild t, das der Server des
     // naechsten Bildes noch liest) - alle kSchnappTakte Bilder.
     struct Schnappschuss {
@@ -413,6 +431,11 @@ struct SaberSpeicher {
         std::map<int, SaberWandFigur> wandFiguren;
         std::map<int, SaberFigur> server;
         ClientBild bild;
+        // rc603 fix603 (Durchsicht): die Klirren der Serverbilder, die IN Bild
+        // t liefen (zur vollen Sekunde t*8 immer eines). Faellt Bild t ueber
+        // der Obergrenze (bildEntfernen loescht sie mit), bringt das
+        // Neuaufsetzen hier sie mit dem Bild zurueck - gerechnet wird ab t+1.
+        std::vector<std::pair<long long, std::vector<SaberKlirren>>> klirren;
     };
     std::map<long long, Schnappschuss> schnapp;
 };
@@ -664,37 +687,155 @@ void clientSchritt(SaberSpeicher& sp, long long t) {
     }
 }
 
-// Den laufenden Stand wegwerfen, die Schnappschuesse behalten (Sprung).
-void standVergessen(SaberSpeicher& sp) {
+// Alles wegwerfen (neue Szene, neuer Schluessel).
+void allesVergessen(SaberSpeicher& sp) {
     ++sp.erzeugung;
     sp.gueltig = false;
     sp.letzter = LLONG_MIN;
     sp.bilder.clear();
+    sp.abschnitte.clear();
     sp.klingen.clear();
     sp.wandFiguren.clear();
     sp.server.clear();
     sp.klirren.clear();
-}
-
-void allesVergessen(SaberSpeicher& sp) {
-    standVergessen(sp);
     sp.schnapp.clear();
 }
 
-// Nach einem Sprung: vom letzten Schnappschuss <= grenze weiterrechnen (oder
-// vom Anfang der Szene). Liefert das erste zu rechnende Clientbild.
-long long neuAufsetzen(SaberSpeicher& sp, long long grenze) {
-    standVergessen(sp);
-    auto it = sp.schnapp.upper_bound(grenze);
-    if (it == sp.schnapp.begin()) {
-        return 0;
+// --- rc603 fix603: die gerechneten Abschnitte ---------------------------------
+
+// Liegt [a, b] ganz in einem gerechneten Abschnitt?
+bool abgedeckt(const SaberSpeicher& sp, long long a, long long b) {
+    auto it = sp.abschnitte.upper_bound(a);
+    if (it == sp.abschnitte.begin()) {
+        return false;
     }
     --it;
-    sp.klingen = it->second.klingen;
-    sp.wandFiguren = it->second.wandFiguren;
-    sp.server = it->second.server;
-    sp.bilder[it->first] = it->second.bild;
-    return it->first + 1;
+    return it->second >= b;
+}
+
+// Das erste Clientbild in [a, b], das fehlt (b + 1: keines).
+long long ersteLuecke(const SaberSpeicher& sp, long long a, long long b) {
+    long long t = a;
+    while (t <= b) {
+        auto it = sp.abschnitte.upper_bound(t);
+        if (it == sp.abschnitte.begin()) {
+            return t;
+        }
+        --it;
+        if (it->second < t) {
+            return t;
+        }
+        t = it->second + 1;
+    }
+    return t;
+}
+
+// [a, b] als gerechnet eintragen, mit allem verschmolzen, was es beruehrt.
+void abschnittEintragen(SaberSpeicher& sp, long long a, long long b) {
+    auto it = sp.abschnitte.upper_bound(b + 1);
+    while (it != sp.abschnitte.begin()) {
+        const auto vor = std::prev(it);
+        if (vor->second < a - 1) {
+            break;
+        }
+        a = std::min(a, vor->first);
+        b = std::max(b, vor->second);
+        it = sp.abschnitte.erase(vor);
+    }
+    sp.abschnitte[a] = b;
+}
+
+// Die Serverbilder, die im Clientbild t laufen: Zeit s*50 in ((t-1)*8, t*8]
+// (clientSchritt; Bild 0 nimmt auch das Serverbild 0).
+void serverBilderIn(long long t, long long& sVon, long long& sBis) {
+    sVon = (t <= 0) ? 0 : ((t - 1) * kSaberClientTaktMs) / kSaberServerTaktMs + 1;
+    sBis = (std::max(t, 0LL) * kSaberClientTaktMs) / kSaberServerTaktMs;
+}
+
+// Ein Clientbild fallen lassen (Obergrenze), samt den Serverbildern, die in
+// seine Zeit fallen ((t-1)*8, t*8], und dem laufenden Stand, wenn er es braucht.
+void bildEntfernen(SaberSpeicher& sp, long long t) {
+    sp.bilder.erase(t);
+    auto it = sp.abschnitte.upper_bound(t);
+    if (it != sp.abschnitte.begin()) {
+        --it;
+        if (it->second >= t) {
+            const long long a = it->first;
+            const long long b = it->second;
+            sp.abschnitte.erase(it);
+            if (a <= t - 1) {
+                sp.abschnitte[a] = t - 1;
+            }
+            if (t + 1 <= b) {
+                sp.abschnitte[t + 1] = b;
+            }
+        }
+    }
+    long long sVon = 0;
+    long long sBis = 0;
+    serverBilderIn(t, sVon, sBis);
+    for (long long s = sVon; s <= sBis; ++s) {
+        sp.klirren.erase(s);
+    }
+    if (t == sp.letzter || t == sp.letzter - 1) {
+        sp.letzter = LLONG_MIN;
+    }
+}
+
+// Hoechstens kMaxBilder Clientbilder - das am weitesten von ziel entfernte
+// faellt zuerst, das Fenster samt Effektrueckblick nie.
+void bilderBegrenzen(SaberSpeicher& sp, long long ziel) {
+    while (sp.bilder.size() > g_maxBilder) {
+        const long long vorn = sp.bilder.begin()->first;
+        const long long hinten = sp.bilder.rbegin()->first;
+        const bool vornFrei = vorn < ziel - kVorlaufTakte - 2;
+        const bool hintenFrei = hinten > ziel;
+        if (!vornFrei && !hintenFrei) {
+            break;
+        }
+        bildEntfernen(sp, (vornFrei && (!hintenFrei || ziel - vorn >= hinten - ziel)) ? vorn : hinten);
+    }
+}
+
+// Der laufende Stand nach Clientbild `letzter`: was clientSchritt fuer das
+// naechste Bild liest (klingen, wandFiguren, server und die Lagen der Bilder
+// letzter-1 und letzter fuer die Serverbilder).
+struct Kopf {
+    long long letzter = LLONG_MIN;
+    std::map<int, SaberWandKlinge> klingen;
+    std::map<int, SaberWandFigur> wandFiguren;
+    std::map<int, SaberFigur> server;
+    std::vector<SaberFigur> figurenVor;
+    std::vector<SaberFigur> figurenJetzt;
+};
+Kopf kopfSichern(const SaberSpeicher& sp) {
+    Kopf k;
+    k.letzter = sp.letzter;
+    k.klingen = sp.klingen;
+    k.wandFiguren = sp.wandFiguren;
+    k.server = sp.server;
+    if (const auto v = sp.bilder.find(sp.letzter - 1); v != sp.bilder.end()) {
+        k.figurenVor = v->second.figuren;
+    }
+    if (const auto j = sp.bilder.find(sp.letzter); j != sp.bilder.end()) {
+        k.figurenJetzt = j->second.figuren;
+    }
+    return k;
+}
+void kopfZurueck(SaberSpeicher& sp, Kopf&& k) {
+    const auto v = sp.bilder.find(k.letzter - 1);
+    const auto j = sp.bilder.find(k.letzter);
+    if (j == sp.bilder.end()) {
+        return;   // fehlt (kann nicht vorkommen) - dann bleibt der neue Stand
+    }
+    sp.letzter = k.letzter;
+    sp.klingen = std::move(k.klingen);
+    sp.wandFiguren = std::move(k.wandFiguren);
+    sp.server = std::move(k.server);
+    if (v != sp.bilder.end()) {
+        v->second.figuren = std::move(k.figurenVor);
+    }
+    j->second.figuren = std::move(k.figurenJetzt);
 }
 
 void rechneBis(double ms) {
@@ -713,44 +854,75 @@ void rechneBis(double ms) {
         sp.schluessel = key;
     }
     const long long ziel = static_cast<long long>(std::floor(std::max(ms, 0.0) / kSaberClientTaktMs));
-    // Schon gerechnet - auch nach einem Sprung zurueck, solange das Fenster der
-    // Brandspuren (10 s) noch ganz im Speicher steht.
+    // Schon gerechnet - vorwaerts wie zurueck, solange das Fenster der
+    // Brandspuren (10 s) bis ziel lueckenlos da ist.
     const long long fensterVon = std::max(0LL, ziel - kSpurFensterTakte);
-    if (sp.gueltig && ziel <= sp.letzter && sp.bilder.count(ziel) != 0U && sp.bilder.begin()->first <= fensterVon) {
+    if (sp.gueltig && abgedeckt(sp, fensterVon, ziel)) {
         return;
     }
     const auto t0 = std::chrono::steady_clock::now();
+    // Ab dem ersten fehlenden Bild: vom laufenden Stand oder vom Schnappschuss
+    // davor, je nachdem was naeher liegt (gleich weit: der laufende Stand),
+    // sonst vom Szenenanfang.
+    const long long luecke = ersteLuecke(sp, fensterVon, ziel);
+    long long schnapp = LLONG_MIN;
+    if (const auto it = sp.schnapp.upper_bound(luecke - 1); it != sp.schnapp.begin()) {
+        schnapp = std::prev(it)->first;
+    }
+    const bool vomKopf = sp.letzter != LLONG_MIN && sp.letzter <= luecke - 1 && sp.letzter >= schnapp;
     long long von = 0;
-    if (sp.gueltig && ziel > sp.letzter && ziel - sp.letzter <= kVorlaufTakte) {
+    Kopf alt;
+    if (vomKopf) {
         von = sp.letzter + 1;
     } else {
-        von = neuAufsetzen(sp, ziel - kSpurFensterTakte - 1);
+        if (sp.letzter != LLONG_MIN) {
+            alt = kopfSichern(sp);
+        }
+        sp.klingen.clear();
+        sp.wandFiguren.clear();
+        sp.server.clear();
+        if (schnapp != LLONG_MIN) {
+            const SaberSpeicher::Schnappschuss& sn = sp.schnapp[schnapp];
+            sp.klingen = sn.klingen;
+            sp.wandFiguren = sn.wandFiguren;
+            sp.server = sn.server;
+            sp.bilder[schnapp] = sn.bild;
+            for (const auto& [s, liste] : sn.klirren) { sp.klirren[s] = liste; }
+            von = schnapp + 1;
+        }
     }
-    for (long long t = von; t <= ziel; ++t) {
+    // Bis ziel - oder bis an den Abschnitt, der ziel schon enthaelt.
+    long long ende = ziel;
+    if (auto it = sp.abschnitte.upper_bound(ziel); it != sp.abschnitte.begin()) {
+        --it;
+        if (it->second >= ziel && it->first > von) {
+            ende = it->first - 1;
+        }
+    }
+    for (long long t = von; t <= ende; ++t) {
         clientSchritt(sp, t);
         ++sp.takte;
         if (t % kSchnappTakte == 0 && sp.schnapp.count(t) == 0U) {
-            SaberSpeicher::Schnappschuss& s = sp.schnapp[t];
-            s.klingen = sp.klingen;
-            s.wandFiguren = sp.wandFiguren;
-            s.server = sp.server;
-            s.bild = sp.bilder[t];
+            SaberSpeicher::Schnappschuss& sn = sp.schnapp[t];
+            sn.klingen = sp.klingen;
+            sn.wandFiguren = sp.wandFiguren;
+            sn.server = sp.server;
+            sn.bild = sp.bilder[t];
+            long long sVon = 0;
+            long long sBis = 0;
+            serverBilderIn(t, sVon, sBis);
+            for (long long s = sVon; s <= sBis; ++s) {
+                if (const auto k = sp.klirren.find(s); k != sp.klirren.end()) { sn.klirren.emplace_back(s, k->second); }
+            }
         }
     }
+    abschnittEintragen(sp, von > 0 ? von - 1 : 0, ende);
+    sp.letzter = ende;
+    if (alt.letzter != LLONG_MIN && alt.letzter > ende) {
+        kopfZurueck(sp, std::move(alt));   // vorwaerts geht es dort ohne Neuaufsetzen weiter
+    }
     sp.gueltig = true;
-    sp.letzter = ziel;
-    // Alte Bilder weg - die Brandspuren brauchen 10 s, der Effektrueckblick 1 s.
-    while (!sp.bilder.empty() && sp.bilder.begin()->first < ziel - kVorlaufTakte - 2) {
-        sp.bilder.erase(sp.bilder.begin());
-    }
-    // Klirren so lange wie die Bilder (vorher: 3 s hinter ms - nach einem Sprung
-    // zurueck fehlten dann Klirren, Effekt und Blitz).
-    const double aeltestesMs =
-        sp.bilder.empty() ? ms : static_cast<double>(sp.bilder.begin()->first * kSaberClientTaktMs);
-    while (!sp.klirren.empty() &&
-           static_cast<double>(sp.klirren.begin()->first * kSaberServerTaktMs) < aeltestesMs - kKlirrenBehaltenMs) {
-        sp.klirren.erase(sp.klirren.begin());
-    }
+    bilderBegrenzen(sp, ziel);
     sp.rechenMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
 
@@ -881,9 +1053,15 @@ std::vector<EffectInstance> saberEffekteBei(double nowMs) {
             aus.push_back(inst);
         }
     }
+    // rc603 fix603: die Serverbilder bis zum Clientbild `bis` - das Serverbild
+    // zur Zeit s*50 laeuft in dem Clientbild, in dessen ((t-1)*8, t*8] es
+    // faellt (clientSchritt). Vorher bis nowMs: ein Klirren zwischen t*8 und
+    // nowMs war beim Vorspulen noch nicht gerechnet, nach dem Zurueckspulen
+    // schon - je nach Richtung ein anderes Bild (Selbsttest "spulen").
+    const double grenze = static_cast<double>(bis * kSaberClientTaktMs);
     const long long sVon = static_cast<long long>(std::floor((nowMs - kEffektRueckblickMs) / kSaberServerTaktMs));
     for (auto it = sp.klirren.lower_bound(sVon); it != sp.klirren.end(); ++it) {
-        if (static_cast<double>(it->first * kSaberServerTaktMs) > nowMs) {
+        if (static_cast<double>(it->first * kSaberServerTaktMs) > grenze) {
             break;
         }
         for (const SaberKlirren& k : it->second) {
@@ -954,13 +1132,21 @@ void saberTonEreignisse(double vonMs, double bisMs) {
             }
         }
     }
-    const long long sVon = static_cast<long long>(std::floor(vonMs / kSaberServerTaktMs));
+    // rc603 fix603: das Fenster der Serverbilder in Clientbildern wie oben,
+    // (t(vonMs)*8, t(bisMs)*8] - das Serverbild s laeuft im Clientbild, in
+    // dessen ((t-1)*8, t*8] es faellt. Vorher (vonMs, bisMs]: ein Klirren
+    // zwischen dem letzten Clientbild und bisMs war beim Abspielen noch nicht
+    // gerechnet, fiel aus diesem Fenster und lag im naechsten schon davor -
+    // es blieb stumm.
+    const double vonGrenze = std::floor(vonMs / kSaberClientTaktMs) * kSaberClientTaktMs;
+    const double bisGrenze = std::floor(bisMs / kSaberClientTaktMs) * kSaberClientTaktMs;
+    const long long sVon = static_cast<long long>(std::floor(vonGrenze / kSaberServerTaktMs));
     for (auto it = sp.klirren.lower_bound(sVon); it != sp.klirren.end(); ++it) {
         const double sMs = static_cast<double>(it->first * kSaberServerTaktMs);
-        if (sMs > bisMs) {
+        if (sMs > bisGrenze) {
             break;
         }
-        if (sMs <= vonMs) {
+        if (sMs <= vonGrenze) {
             continue;
         }
         for (const SaberKlirren& k : it->second) {
@@ -1115,8 +1301,11 @@ void saberBlitzZeichnen2D(int ansicht, ImDrawList* dl, ImVec2 a, ImVec2 b, bool 
     }
     const double nowMs = ans.ms;
     const SaberKlirren* letzter = nullptr;
+    // rc603 fix603: nur Serverbilder bis zum Clientbild von nowMs (wie
+    // saberEffekteBei) - spaetere sind beim Vorspulen noch nicht gerechnet.
+    const double grenze = static_cast<double>(taktVon(nowMs) * kSaberClientTaktMs);
     for (auto it = sp.klirren.rbegin(); it != sp.klirren.rend() && letzter == nullptr; ++it) {
-        if (static_cast<double>(it->first * kSaberServerTaktMs) > nowMs) {
+        if (static_cast<double>(it->first * kSaberServerTaktMs) > grenze) {
             continue;
         }
         for (const SaberKlirren& k : it->second) {
@@ -1183,6 +1372,19 @@ void saberBlitzZeichnen2D(int ansicht, ImDrawList* dl, ImVec2 a, ImVec2 b, bool 
     dl->PushClipRect(a, b, true);
     render::zeichneAdditiv(dl, tex, p0, p1, IM_COL32(204, 204, 204, 255));   // R_SetColor( 0.8, 0.8, 0.8 )
     dl->PopClipRect();
+    // rc603 fix603 (Durchsicht): der Blitz in die Pruefsumme dieses Bildes
+    // (App::bildSumme Teil 4, Selbsttest "spulen") - Lage und Groesse in
+    // 640x480 und das Klirren, von dem er kommt.
+    if (ansicht == 0 && g_app->bildSummeAn && g_app->bildSummeBild == ImGui::GetFrameCount()) {
+        std::uint64_t& h = g_app->bildSumme[4];
+        const auto dazu = [&h](const void* p, std::size_t n) {
+            const auto* by = static_cast<const unsigned char*>(p);
+            for (std::size_t i = 0; i < n; ++i) { h = (h ^ by[i]) * 1099511628211ULL; }
+        };
+        const float lage[4] = {x0, y0, bw, bh};
+        dazu(lage, sizeof(lage));
+        dazu(&letzter->ms, sizeof(letzter->ms));
+    }
     ++g_saberBlitze;
     ++g_saberBlitze2D;
     if (nachBalken) {
@@ -1287,11 +1489,15 @@ void saberVergessen() {
     spurAnzeige().gueltig = false;
 }
 
+void saberObergrenze(std::size_t bilder) { g_maxBilder = bilder > 0U ? bilder : kMaxBilder; }
+
 std::vector<SaberGezeichnet> saberGezeichnetesBild() {
     // Was im zuletzt gezeichneten Bild stand (die Ansicht zeichnet nur neu,
     // wenn sich etwas aendert - rc596 "idle").
     return gezeichnet().liste;
 }
+
+int saberGezeichnetesBildNr() { return gezeichnet().bild; }
 
 std::vector<SaberKlirren> saberKlirrenBis(double ms) {
     std::vector<SaberKlirren> aus;

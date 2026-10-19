@@ -2787,6 +2787,7 @@ struct LaufRechner {
             l0.pmove(0.2F, 200);
             LaufTakt takt;
             takt.t = abMs;
+            takt.msec = 200;   // rc603 fix603
             takt.ort = z.ort;
             takt.tempo = z.tempo;
             takt.zustandWunschGier = z.wunschGier;
@@ -2886,6 +2887,8 @@ struct LaufRechner {
         } else {
             l.pmove(static_cast<float>(ersteMs) * 0.001F, ersteMs);
         }
+        // rc603 fix603: LaufTakt::msec (PM_NoclipMove rechnet hier fest 50).
+        const int bildMs = w.ohneKoerper ? 50 : ersteMs;
         ersteMs = 50;
         if (mitTakt) {
             // rc601 integ: oldMoveDir fuer das naechste Denkbild; last_ucmd nur
@@ -2900,6 +2903,7 @@ struct LaufRechner {
         }
         LaufTakt takt;
         takt.t = t;
+        takt.msec = bildMs;
         takt.ort = z.ort;
         takt.tempo = z.tempo;
         takt.bewegt = bewegt;
@@ -3241,6 +3245,46 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
     // Den Abschnitt ab hier selbst rechnen: ein Rechner ab dem Stand der Figur.
     const auto abweichen = [&](Stand& s, double t) {
         const NavAbschnitt& a = abschnitte[static_cast<std::size_t>(s.aktuell)];
+        const LaufPlan& allein = *a.allein;
+        // rc603 fix603: pml.msec des Denkbilds t - dieselbe Bildzeit wie im Plan
+        // ohne die anderen (LaufTakt::msec). Bis fix603 war es die Zeit seit dem
+        // letzten Takt: nach dem Stillstehen bis zum Befehl (eine Luecke in den
+        // Takten) rechnete das erste Laufdenkbild ein Pmove ueber Sekunden -
+        // dooku5 in md_gd_jedi (cin4_jedi) spurte 1020 weit statt 7,5. Im Spiel
+        // denkt ein NPC jedes Bild (NPC_Think: nextthink = level.time +
+        // FRAMETIME/2, NPC.cpp:2213 MD / 2369 OpenJK; ucmd.serverTime =
+        // level.time - 50, NPC.cpp:2147 MD / 2278 OpenJK, ohne Verhalten
+        // last_ucmd.serverTime ebenso, 2514 OpenJK), pml.msec ist nie mehr als
+        // 200 (bg_pmove.cpp:33781-33789 MD / 14756-14761 OpenJK).
+        int bildMs = 50;
+        if (s.k < allein.takte.size() && std::fabs(allein.takte[s.k].t - t) < 0.5) { bildMs = allein.takte[s.k].msec; }
+        // rc603 fix603: schon der Vorlauf von NPC_Begin (der Takt bei abMs)
+        // beruehrt einen anderen - ihn rechnet der Rechner wie planeLauf
+        // (G_CheckInSolid, Pmove von 200 ms, das erste NPC_Think 150 ms spaeter
+        // mit 200 ms), mit den Kaesten der anderen.
+        const bool beimSpawn = !s.abgewichen && s.k == 0 && a.werte.spawnVorlauf && !a.werte.ohneKoerper &&
+                               !allein.takte.empty() && std::fabs(allein.takte[0].t - a.abMs) < 0.5 &&
+                               std::fabs(a.abMs - t) < 0.5;
+        if (beimSpawn) {
+            s.bau = std::make_shared<LaufPlan>();
+            s.bau->abMs = allein.abMs;
+            s.bau->anfang = allein.anfang;
+            s.bau->hoeheGilt = allein.hoeheGilt;
+            s.abgewichen = true;
+            s.rechner = std::make_unique<LaufRechner>(kw, allein.anfang, a.werte, a.abMs, a.grenzeMs);
+            s.rechner->ohneNie = true;
+            for (std::size_t i = 0; i < s.rechner->plan.takte.size(); ++i) {
+                s.bau->takte.push_back(s.rechner->plan.takte[i]);
+                s.bau->zustaende.push_back(s.rechner->plan.zustaende[i]);
+            }
+            if (!s.rechner->plan.zustaende.empty()) {
+                s.z = s.rechner->plan.zustaende.back();
+                s.zT = s.rechner->plan.takte.back().t;
+                s.hatZustand = true;
+            }
+            s.art = Art::Rechnet;
+            return;
+        }
         if (!s.abgewichen) {
             s.bau = std::make_shared<LaufPlan>();
             const LaufPlan& al = *a.allein;
@@ -3265,7 +3309,7 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
         s.rechner = std::make_unique<LaufRechner>(kw, s.hatZustand ? s.z : s.bau->anfang, w, vorher, a.grenzeMs);
         s.rechner->ohneNie = true;
         s.rechner->t = t;
-        s.rechner->ersteMs = std::max(50, static_cast<int>(std::lround(t - vorher)));
+        s.rechner->ersteMs = bildMs;
         s.rechner->ersterZielTakt = !(vorher > a.werte.zielAbMs + 0.5) && !angekommen;
         s.rechner->fertig = !(t <= a.grenzeMs + 0.5);
         s.art = Art::Rechnet;
@@ -3288,7 +3332,17 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
         for (const std::size_t f : reihe) {
             Stand& s = st[f];
             // Ein neuer Abschnitt beginnt mit dem Denkbild nach seinem abMs.
-            while (s.naechster < s.abs.size() && abschnitte[s.abs[s.naechster]].abMs < t - 0.5) {
+            // rc603 fix603: einer mit dem Vorlauf von NPC_Begin schon bei abMs -
+            // sein erster Takt (G_CheckInSolid, Pmove von 200 ms) liegt dort und
+            // wird wie jeder andere gegen die Kaesten geprueft. Bis fix603 ging
+            // er ungeprueft durch, und der Stand blieb der vor dem Spawn: wich
+            // die Figur beim ersten NPC_Think ab, begann sie wieder oben.
+            const auto beginnt = [&](const NavAbschnitt& a) {
+                if (a.abMs < t - 0.5) { return true; }
+                return a.werte.spawnVorlauf && !a.werte.ohneKoerper && a.allein && !a.allein->takte.empty() &&
+                       std::fabs(a.allein->takte.front().t - a.abMs) < 0.5 && std::fabs(a.abMs - t) < 0.5;
+            };
+            while (s.naechster < s.abs.size() && beginnt(abschnitte[s.abs[s.naechster]])) {
                 const std::size_t ai = s.abs[s.naechster];
                 const NavAbschnitt& a = abschnitte[ai];
                 LaufZustand beginn = a.start;
@@ -3332,7 +3386,16 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
             andere(f, t);
             if (s.art == Art::Folgt) {
                 const LaufPlan& al = *a.allein;
-                while (s.k < al.takte.size() && al.takte[s.k].t < t - 0.5) { ++s.k; }
+                // rc603 fix603: Takte zwischen den Denkbildern des gemeinsamen
+                // Takts (ein Vorlauf ab einer Zeit ausserhalb des 50-ms-Rasters)
+                // gelten wie gerechnet - der Stand ist danach ihrer, nicht der
+                // von vorher.
+                while (s.k < al.takte.size() && al.takte[s.k].t < t - 0.5) {
+                    s.z = al.zustaende[s.k];
+                    s.zT = al.takte[s.k].t;
+                    s.hatZustand = true;
+                    ++s.k;
+                }
                 if (s.k < al.takte.size()) {
                     if (std::fabs(al.takte[s.k].t - t) > 0.5) { tutWas = true; continue; }   // Luecke im Plan (Vorlauf)
                     if (frei(al.takte[s.k])) {

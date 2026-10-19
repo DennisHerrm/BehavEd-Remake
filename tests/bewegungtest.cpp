@@ -3170,6 +3170,201 @@ void teil3Koerper() {
     }
 }
 
+// --- rc603 fix603: Tuer-Lauf - ein Ort aus der Zukunft als Hindernis --------
+//
+// Anwender: "In unserer Mission von Mustafar sieht das an manchen Stellen, wo
+// Anakin durch die Tuer laeuft, nicht richtig aus. Statt durch die Tuer laeuft
+// er nur nach links und rechts." (md_am_sith, ani_walk.ibi: ani2 geht nach
+// ani2_nav1, am Ende "player" SET_COPY_ORIGIN "ani2".) Der echte Spieler hat
+// keinen Spawner und keinen bekannten Ort; erst Q3_SetCopyOrigin
+// (Q3_Interface.cpp:1413 -> Q3_SetOrigin :1309, G_SetOrigin + linkentity zur
+// Zeit des Befehls) stellt ihn hin. behaved stellte den Kasten einer Figur ohne
+// Plan an ihren Ort vom ENDE des Ablaufs - und zwar ab Beginn: der Spieler
+// stand von Anfang an dort, wo ani2 am Ende ankommt, und ani2 pendelte davor.
+void tuerLaufKoerper() {
+    std::printf("\n== fix603: Tuer-Lauf - Orte von Figuren ohne Plan zur Zeit (TL1) ==\n");
+    const std::vector<ProbeKlotz> boden = {{{-3000, -3000, -16}, {3000, 3000, 0}, kNavSolid}};
+    auto welt = std::make_shared<NavWelt>();
+    welt->spur = [boden](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int, std::uint32_t maske) {
+        return probeSpur(boden, a, mi, ma, b, maske);
+    };
+    welt->boden = [](float, float, float zOben, float zUnten, float& z) {
+        if (zOben < 0.0F || zUnten > 0.0F) { return false; }
+        z = 0.0F;
+        return true;
+    };
+    const MapData m = karte(
+        "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"a\"\n\"NPC_type\" \"jedi\"\n\"origin\" \"0 0 24.125\"\n}\n"
+        "{\n\"classname\" \"waypoint_navgoal\"\n\"targetname\" \"za\"\n\"origin\" \"300 0 24\"\n}\n");
+    AblaufWelt aw;
+    aw.karte = &m;
+    aw.nav = welt;
+    const std::string text = "affect ( \"a\", FLUSH )\n{\n\tset ( \"SET_WALKING\", \"true\" );\n"
+                             "\tset ( \"SET_NAVGOAL\", \"za\" );\n\twait ( 15000 );\n}\n"
+                             "wait ( 12000 );\n"
+                             "affect ( \"player\", FLUSH )\n{\n\tset ( \"SET_COPY_ORIGIN\", \"a\" );\n}\n";
+    int durchgaenge = 0;
+    const Ablauf a = simuliereAblaufMitKoerpern(lies(text), "", aw, &durchgaenge);
+    // Ab wann steht der Kasten des Spielers?
+    double frueh = 1.0e300;
+    for (std::size_t i = 0; i < a.laufFiguren.size() && i < a.laufFigurNamen.size(); ++i) {
+        if (a.laufFigurNamen[i] != "player") { continue; }
+        for (const auto& [ms, ort] : a.laufFiguren[i].orte) { frueh = std::min(frueh, ms); }
+    }
+    SzenenHilfe h;
+    h.nav = welt;
+    h.koerperPlaene = aw.koerperPlaene;
+    const Scene s = buildScene(a.flach, m, &h);
+    const Actor* fa = figur(s, "a");
+    const double an = fa != nullptr ? ankunftVon(*fa) : -2.0;
+    const float rest = fa != nullptr ? std::hypot(300.0F - fa->at(11000.0).pos[0], fa->at(11000.0).pos[1]) : 999.0F;
+    // Bezug: derselbe Weg ohne den Spieler.
+    AblaufWelt aw0;
+    aw0.karte = &m;
+    aw0.nav = welt;
+    const Ablauf a0 = simuliereAblaufMitKoerpern(lies(text.substr(0, text.find("wait ( 12000 )"))), "", aw0, nullptr);
+    SzenenHilfe h0;
+    h0.nav = welt;
+    h0.koerperPlaene = aw0.koerperPlaene;
+    const Scene s0 = buildScene(a0.flach, m, &h0);
+    const Actor* fa0 = figur(s0, "a");
+    const double an0 = fa0 != nullptr ? ankunftVon(*fa0) : -3.0;
+    std::printf("  info  TL1 Spieler-Kasten ab %.0f ms, a angekommen %.0f (ohne Spieler %.0f), Rest bei 11 s %.1f (%d Rechnungen)\n",
+                frueh, an, an0, static_cast<double>(rest), durchgaenge);
+    pruefe(frueh >= 11999.0, "TL1 der Spieler (ohne Ort) ist erst ab SET_COPY_ORIGIN bei 12000 ms ein Koerper (ab " +
+                                 std::to_string(frueh) + ")");
+    pruefe(an > 0.0 && an < 11000.0 && rest < 24.0F && nah(an, an0, 0.5),
+           "TL1 a kommt an wie ohne den Spieler - kein Kasten aus der Zukunft im Weg (Ankunft " + std::to_string(an) + " / " +
+               std::to_string(an0) + ", Rest " +
+               std::to_string(rest) + ")");
+}
+
+// --- rc603 fix603: pml.msec im gemeinsamen Takt nach einer Pause (KP1-KP2) ---
+//
+// md_gd_jedi, cin4_jedi.ibi: dooku5 (beim Laden gespawnt) steht bis zu seinem
+// SET_NAVGOAL bei 6700 ms still, yoda2 steht dicht daneben. Im ersten Denkbild
+// des Wegs (6750) sprang er ~450 Einheiten, das erste Pmove spurte ~1020 weit
+// (150 * 6,8 s). Im Spiel denkt ein NPC jedes Bild (NPC_Think: nextthink =
+// level.time + FRAMETIME/2, NPC.cpp:2213 MD; ucmd.serverTime = level.time - 50,
+// NPC.cpp:2147), pml.msec = serverTime - commandTime ist also 50 und nie mehr
+// als 200 (bg_pmove.cpp:33781-33789 MD, g_active.cpp:10094-10102). Der Plan
+// ohne die anderen ueberspringt das Stillstehen (eine Luecke in den Takten);
+// wich die Figur danach ab, nahm der gemeinsame Takt die ganze Luecke als
+// Bildzeit (t - Zeit des letzten Takts).
+void koerperTaktNachPause() {
+    std::printf("\n== fix603: gemeinsamer Takt - pml.msec nach einer Pause im Plan (KP1-KP2) ==\n");
+    const std::vector<ProbeKlotz> boden = {{{-3000, -3000, -16}, {3000, 3000, 0}, kNavSolid}};
+    auto welt = std::make_shared<NavWelt>();
+    welt->spur = [boden](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int, std::uint32_t maske) {
+        return probeSpur(boden, a, mi, ma, b, maske);
+    };
+    welt->boden = [](float, float, float zOben, float zUnten, float& z) {
+        if (zOben < 0.0F || zUnten > 0.0F) { return false; }
+        z = 0.0F;
+        return true;
+    };
+    // Beim Laden der Karte gespawnt (Vorlauf ab NPC_Begin), Ziel erst ab 6700,
+    // 100 entfernt: STEER::SafeToGoTo gibt unter 110 sofort frei
+    // (g_navigator.cpp:4337 MD) - schon das erste Laufdenkbild bewegt sie.
+    const auto abschnitt = [&](NavVec von) {
+        NavAbschnitt a;
+        a.figur = 0;
+        a.abMs = kNavKartenSpawnMs;
+        a.grenzeMs = 20000.0;
+        a.start.ort = von;
+        a.start.gesetztMs = kNavKartenSpawnMs;
+        a.start.gesetztSpawn = true;
+        a.werte.zielGesetzt = true;
+        a.werte.ziel = {100.0F, 0.0F, 24.125F};
+        a.werte.maxTempo = 150.0F;
+        a.werte.gehTempo = 90.0F;
+        a.werte.zielAbMs = 6700.0;
+        a.werte.spawnVorlauf = true;
+        a.sprung = true;
+        a.allein = std::make_shared<const LaufPlan>(planeLauf(*welt, a.start, a.werte, a.abMs, a.grenzeMs));
+        return a;
+    };
+    // Der weiteste Schritt eines Denkbilds (waagrecht) nach dem Befehl.
+    const auto weitester = [](const LaufPlan& p, double ab, double& wann) {
+        float best = 0.0F;
+        NavVec vorher = p.anfang.ort;
+        for (const LaufTakt& k : p.takte) {
+            const float d = std::hypot(k.ort[0] - vorher[0], k.ort[1] - vorher[1]);
+            if (k.t > ab && d > best) {
+                best = d;
+                wann = k.t;
+            }
+            vorher = k.ort;
+        }
+        return best;
+    };
+    // KP1 - wie dooku5: die zweite Figur steht so, dass erst die Spuren des
+    // ersten Laufdenkbilds (MoveTrace nach vorn, 150 weit) ihren Kasten
+    // beruehren - dort weicht der Plan ab. Mehr als 150 * 0,05 = 7,5 kann ein
+    // Denkbild nicht gehen.
+    {
+        std::vector<NavFigurKoerper> fg(2);
+        fg[1].reihe = 1;
+        fg[1].orte.push_back({-1.0e299, {60.0F, 33.0F, 24.125F}});
+        std::vector<NavAbschnitt> abs = {abschnitt({0.0F, 0.0F, 24.125F})};
+        const NavKoerperErgebnis e = navKoerperLauf(*welt, fg, abs);
+        const LaufPlan& p = *e.plaene[0];
+        double wann = -1.0;
+        const float weit = weitester(p, 6700.0, wann);
+        double wann0 = -1.0;
+        const float weit0 = weitester(*abs[0].allein, 6700.0, wann0);
+        const LaufTakt* erster = nullptr;
+        for (const LaufTakt& k : p.takte) {
+            if (erster == nullptr && k.t > 6700.5) { erster = &k; }
+        }
+        std::printf("  info  KP1 %d Plaene geaendert; weitester Schritt %.2f bei %.0f ms (ohne die andere %.2f bei %.0f), "
+                    "erstes Laufdenkbild %.0f bei %.1f %.1f, angekommen %.0f\n",
+                    e.geaendert, static_cast<double>(weit), wann, static_cast<double>(weit0), wann0,
+                    erster != nullptr ? erster->t : -1.0, erster != nullptr ? static_cast<double>(erster->ort[0]) : 0.0,
+                    erster != nullptr ? static_cast<double>(erster->ort[1]) : 0.0, p.ankunftMs);
+        pruefe(e.geaendert > 0 && erster != nullptr && erster->t < 6750.5,
+               "KP1 die Figur weicht im ersten Laufdenkbild (6750) vom Plan ohne die andere ab");
+        pruefe(weit <= 150.0F * 0.05F + 0.01F,
+               "KP1 kein Denkbild geht weiter als runSpeed * 50 ms = 7,5 (weitester Schritt " + std::to_string(weit) + " bei " +
+                   std::to_string(wann) + " ms)");
+        pruefe(p.ankunftMs > 6750.0 && p.ankunftMs < 6700.0 + 3000.0,
+               "KP1 sie kommt an ihrem Ziel an (" + std::to_string(p.ankunftMs) + " ms)");
+    }
+    // KP2 - die zweite Figur steht schon beim Spawn dicht daneben: die Spuren
+    // des Vorlaufs (G_CheckInSolid, Pmove von 200 ms in NPC_Begin) beruehren
+    // ihren Kasten. Die Figur erscheint 40 ueber dem Boden und faellt noch beim
+    // ersten NPC_Think. Der gemeinsame Takt rechnet den Vorlauf wie der Plan
+    // ohne die andere: der Kasten trifft keine dieser Spuren, also Bit fuer
+    // Bit dieselben Takte - der Spawn bei -200 (200 ms Fallen) und das erste
+    // NPC_Think bei -50 (wieder 200 ms).
+    {
+        std::vector<NavFigurKoerper> fg(2);
+        fg[1].reihe = 1;
+        fg[1].orte.push_back({-1.0e299, {-33.0F, 0.0F, 24.125F}});
+        std::vector<NavAbschnitt> abs = {abschnitt({0.0F, 0.0F, 64.0F})};
+        const NavKoerperErgebnis e = navKoerperLauf(*welt, fg, abs);
+        const LaufPlan& p = *e.plaene[0];
+        const LaufPlan& al = *abs[0].allein;
+        bool gleich = p.takte.size() >= 2 && al.takte.size() >= 2;
+        for (std::size_t i = 0; gleich && i < 2; ++i) {
+            gleich = p.takte[i].t == al.takte[i].t && p.takte[i].ort == al.takte[i].ort;
+        }
+        std::printf("  info  KP2 %d Plaene geaendert; Takte mit der anderen %.0f (z %.3f), %.0f (z %.3f); ohne %.0f (z %.3f), %.0f (z %.3f)\n",
+                    e.geaendert, p.takte.empty() ? -1.0 : p.takte[0].t,
+                    p.takte.empty() ? 0.0 : static_cast<double>(p.takte[0].ort[2]), p.takte.size() < 2 ? -1.0 : p.takte[1].t,
+                    p.takte.size() < 2 ? 0.0 : static_cast<double>(p.takte[1].ort[2]), al.takte.empty() ? -1.0 : al.takte[0].t,
+                    al.takte.empty() ? 0.0 : static_cast<double>(al.takte[0].ort[2]), al.takte.size() < 2 ? -1.0 : al.takte[1].t,
+                    al.takte.size() < 2 ? 0.0 : static_cast<double>(al.takte[1].ort[2]));
+        pruefe(e.geaendert > 0 && gleich,
+               "KP2 Abweichung schon beim Spawn: Vorlauf (-200, 200 ms) und erstes NPC_Think (-50, 200 ms) wie ohne die andere");
+        double wann = -1.0;
+        const float weit = weitester(p, 6700.0, wann);
+        pruefe(weit <= 150.0F * 0.05F + 0.01F,
+               "KP2 kein Denkbild geht weiter als 7,5 (weitester Schritt " + std::to_string(weit) + " bei " +
+                   std::to_string(wann) + " ms)");
+    }
+}
+
 // --- rc601 (bewegung, teil 3): Patches halten Spuren auf (W1) ------------------
 namespace teil3w {
 void i32an(std::string& b, std::int32_t v) {
@@ -3447,6 +3642,8 @@ int main(int argc, char** argv) {
     teil3Winkel();
     regelwerkVerhaltenTakt();   // rc601 integ
     knotenGrenze();   // rc602 kartenpruefung
+    tuerLaufKoerper();   // rc603 fix603
+    koerperTaktNachPause();   // rc603 fix603 (dooku5)
     std::printf("\n%s (%d Fehlschlaege)\n", fehler != 0 ? "FEHLGESCHLAGEN" : "alle Bewegungsproben bestanden", fehler);
     return fehler != 0 ? 1 : 0;
 }

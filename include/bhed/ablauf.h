@@ -35,6 +35,7 @@
 #include "bhed/navlauf.h"
 #include "bhed/script.h"
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -113,6 +114,10 @@ struct AblaufWelt {
     // Nach dem Ende des Startskripts noch so lange weiterlaufen lassen
     // (Figuren, die noch laufen; Klaenge, die noch klingen).
     double nachlaufMs = 3000.0;
+    // rc603: g_spskill fuer den Kartenstart (simuliereKartenstart) - wer bei
+    // dieser Schwierigkeit nicht spawnt (SpawnForCurrentDifficultySetting),
+    // startet auch kein Skript. < 0: alle Entities.
+    int spielstufe = -1;
 };
 
 // Woher ein Befehl im flachen Skript stammt.
@@ -125,6 +130,11 @@ struct Ablauf {
     // [0] ist das Startskript, danach alles, was per run, use oder
     // spawnscript dazukam - als Pfad wie "md_ga/kill_fett2".
     std::vector<std::string> skripte;
+    // rc603: parallel zu skripte - wann das Skript zum ersten Mal loslief
+    // (ms; -1 = nur geladen, nie gestartet) und an welcher Stelle unter allen
+    // Starts (bei gleicher Zeit entscheidet sie).
+    std::vector<double> skriptBeginn;
+    std::vector<int> skriptFolge;
     // Wer das Startskript ausfuehrt (targetname), leer = ein
     // target_scriptrunner ohne Namen oder unbekannt.
     std::string traeger;
@@ -184,6 +194,20 @@ struct Ablauf {
 // vorige, endet die Schleife ohne sie) - an (Vorgabe) oder aus, nur fuer die
 // Probe P4b, die beide Wege Bit fuer Bit vergleicht.
 void ablaufKoerperAbkuerzungAn(bool an);
+
+// rc603: die Karte vom Laden an, ohne Startskript - was die Engine beim Laden
+// selbst anstoesst (spawnscripts der Entities, worldspawn, trigger_always,
+// NPC-Spawner ohne targetname, die Ziele der Startposition beim ClientSpawn),
+// und alles, was daraus folgt. skriptBeginn sagt, wann jedes Skript im Spiel
+// zum ersten Mal startet (relativ zum Start der Karte). Was nur der Spieler
+// ausloest (Trigger beim Betreten, ein Kampf), startet hier nicht.
+[[nodiscard]] Ablauf simuliereKartenstart(const AblaufWelt& welt);
+
+// rc603: die Skripte `pfade` (ICARUS-Pfade wie in den Entities) in der
+// Reihenfolge ihres ersten Starts in `a` - bei gleicher Zeit nach der Folge
+// der Starts; die nie gestarteten dahinter in ihrer Reihenfolge. Ergebnis:
+// Indizes in `pfade`.
+[[nodiscard]] std::vector<std::size_t> skripteNachStart(const std::vector<std::string>& pfade, const Ablauf& a);
 
 // Wer fuehrt dieses Skript in der Karte aus? targetname der Entity, die
 // es als usescript/spawnscript/... traegt (bei NPC-Spawnern der

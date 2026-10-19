@@ -405,6 +405,13 @@ int main() {
                     std::string::npos);
         // rc602: weiss NUR fuer eine Leuchtstufe (gLichtRichtung.w = 2,
         // identityLighting), sonst Licht wie bisher.
+        // rc603 Durchsicht: Glanz und Chrom der Figurstufen mit Q_rsqrt wie
+        // RB_CalcSpecularAlpha / VectorNormalizeFast (q_math.c:375 MD), nicht
+        // mit der genauen Laenge.
+        erwarte("Figurstufen: 1/|viewer| ueber Q_rsqrt (0x5f3759df, eine Newton-Stufe)",
+                f.find("float il = qRsqrt(dot(zumAuge, zumAuge));") != std::string::npos &&
+                    f.find("0x5f3759df - (asint(zahl) >> 1)") != std::string::npos &&
+                    f.find("length(zumAuge)") == std::string::npos);
         erwarte("Leuchtstufe der Figur: weiss nur mit gLichtRichtung.w > 1.5",
                 f.find("if (gLichtRichtung.w > 1.5) {") != std::string::npos &&
                     f.find("} else if (gLichtRichtung.w > 0.5) {") != std::string::npos);

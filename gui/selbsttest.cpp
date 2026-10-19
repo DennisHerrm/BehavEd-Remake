@@ -1779,7 +1779,25 @@ std::string erstesArg(int tab, const std::string& befehl) {
 Schritt waehleInListe(const std::string& label, bool praefix, int versuch = 0,
                       const std::string& fenster = "##Combo") {
     return {"Waehle \"" + label + "\" in der Liste", [=](int b) {
-                if (finde(label, fenster, 0, praefix) != nullptr) {
+                if (const Element* e = finde(label, fenster, 0, praefix)) {
+                    // rc603: steht der Eintrag nur halb im Bild (am Rand der
+                    // rollenden Liste), erst ganz hineinrollen - sonst meldet
+                    // klick "nicht ganz sichtbar".
+                    if (!ganzSichtbar(*e) && b < 8) {
+                        if (b == 0) {
+                            if (ImGuiWindow* w = ImGui::FindWindowByName(e->innen.c_str())) {
+                                const float h = e->rect.GetHeight();
+                                float d = 0.0F;
+                                if (e->rect.Max.y > w->InnerClipRect.Max.y - h * 0.5F) {
+                                    d = e->rect.Max.y - w->InnerClipRect.Max.y + h;
+                                } else if (e->rect.Min.y < w->InnerClipRect.Min.y + h * 0.5F) {
+                                    d = e->rect.Min.y - w->InnerClipRect.Min.y - h;
+                                }
+                                ImGui::SetScrollY(w, w->Scroll.y + d);
+                            }
+                        }
+                        return false;
+                    }
                     schritteEinfuegen({klick(label, fenster, 0, praefix)});
                     return true;
                 }
@@ -1788,9 +1806,19 @@ Schritt waehleInListe(const std::string& label, bool praefix, int versuch = 0,
                     return true;
                 }
                 if (b == 0) {
+                    // rc603: bevorzugt ein Eintrag in einem KINDfenster - dort
+                    // rollt die Liste (die Missionsauswahl hat Kopf und Filter
+                    // ueber einer eigenen Liste; das Rad ueber dem Filter rollte
+                    // nichts).
                     const Element* irgendeins = nullptr;
                     for (const Element& e : g_elemente) {
-                        if (e.fenster.find(fenster) != std::string::npos) {
+                        if (e.fenster.find(fenster) == std::string::npos) {
+                            continue;
+                        }
+                        if (irgendeins == nullptr) {
+                            irgendeins = &e;
+                        }
+                        if (e.innen != e.fenster) {
                             irgendeins = &e;
                             break;
                         }
@@ -7707,6 +7735,266 @@ std::vector<Schritt> letzteMissionSchritte() {
     return s;
 }
 
+// --- rc603: Load mission zeigt die Missionen des ganzen Spiels (BHED_EDITORTEST=missionsliste) ---
+//
+// Gemeldet: mit den Daten des reinen JKA (base) zeigt "Load mission" keine
+// Mission zur Auswahl. Karten, Entities und Skripte liegen in JKA (und JK2)
+// ueber assets0..assets3 verteilt; die Auswahl suchte nur im EINEN gewaehlten
+// Archiv - nur assets0 ergab Missionen, assets1 eine leere Liste. Dazu nahm
+// "Load mission" den Ordner des Archivs DAUERHAFT in die Spielordner auf.
+//
+// Nachgestellt mit dem reinen JKA (BHED_JKA_BASIS, sonst der Steam-Ordner
+// "GameData original/base"): assets1.pk3 waehlen muss t1_*, t2_*, t3_*, kor1,
+// yavin1, taspir1 ... nennen, ohne die Spielordner der Einstellungen zu
+// aendern und ohne Movie-Duels-Missionen dazwischen. Danach eine pk3 aus
+// einem eingerichteten Spielordner (Movie Duels base): dann die Missionen von
+// Movie Duels UND die des Grundspiels darin.
+namespace missionsliste {
+struct Zustand {
+    std::string jka;                    // Ordner des reinen JKA (base)
+    std::string mdBasis;                // eingerichteter Ordner mit assets1.pk3
+    std::vector<std::string> vorher;    // settings.gamePaths vor dem Test
+};
+bool hat(const std::string& name, bool spielbar) {
+    for (const Mission& m : g_app->missions) {
+        if (m.name == name) { return !spielbar || m.playable(); }
+    }
+    return false;
+}
+std::string liste() {
+    int spielbar = 0;
+    for (const Mission& m : g_app->missions) {
+        if (m.playable()) { ++spielbar; }
+    }
+    std::string s = std::to_string(g_app->missions.size()) + " Karten, " + std::to_string(spielbar) + " spielbar:";
+    int n = 0;
+    for (const Mission& m : g_app->missions) {
+        if (++n > 14) {
+            s += " ...";
+            break;
+        }
+        s += " " + m.name;
+    }
+    return s;
+}
+std::string ordnerListe(const std::vector<std::string>& v) {
+    std::string s;
+    for (const std::string& o : v) { s += " [" + o + "]"; }
+    return s.empty() ? std::string(" (keine)") : s;
+}
+std::vector<std::string> aktiveOrdner() {
+    std::vector<std::string> aktiv;
+    for (const GamePath& gp : g_app->gamePaths) { aktiv.push_back(gp.directory); }
+    return aktiv;
+}
+std::string klein(std::string s) {
+    for (char& c : s) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    return s;
+}
+// Die Skripte einer Mission (aus der Auswahl) in der Reihenfolge ihrer Reiter.
+std::vector<std::string> reiterFolge(const std::string& mission) {
+    std::vector<std::pair<int, std::string>> paare;
+    for (const Mission& m : g_app->missions) {
+        if (m.name != mission) { continue; }
+        for (const Mission::Script& sc : m.scripts) {
+            const int r = reiterFuerSkriptRef(sc.ref);
+            if (r >= 0) { paare.emplace_back(r, sc.ref); }
+        }
+    }
+    std::sort(paare.begin(), paare.end());
+    std::vector<std::string> out;
+    for (const auto& [r, ref] : paare) {
+        if (out.empty() || klein(out.back()) != klein(ref)) { out.push_back(ref); }
+    }
+    return out;
+}
+}  // namespace missionsliste
+
+std::vector<Schritt> missionsListeSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto z = std::make_shared<missionsliste::Zustand>();
+    add(tu("Missionsliste: Ausgangslage (reines JKA, eingerichtete Spielordner)", [=] {
+        const char* e = std::getenv("BHED_JKA_BASIS");
+        z->jka = e != nullptr ? e : "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Jedi Academy\\GameData original\\base";
+        z->vorher = g_app->settings.gamePaths;
+        for (const std::string& o : g_app->settings.gamePaths) {
+            std::error_code ec;
+            if (z->mdBasis.empty() && std::filesystem::is_regular_file(std::filesystem::u8path(o + "\\assets1.pk3"), ec)) {
+                z->mdBasis = o;
+            }
+        }
+        g_app->missionPickOpen = false;
+        diag::detail("Knopftest: Missionsliste - reines JKA \"" + z->jka + "\", eingerichtet" +
+                     missionsliste::ordnerListe(z->vorher) + ", assets1.pk3 in \"" + z->mdBasis + "\"");
+    }));
+    add(pruefe("Missionsliste: reines JKA (assets1.pk3) und ein eingerichteter Ordner mit assets1.pk3 vorhanden", [=] {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(std::filesystem::u8path(z->jka + "\\assets1.pk3"), ec) && !z->mdBasis.empty();
+    }));
+    // --- 1. Eine pk3 OHNE Karten aus dem reinen JKA ------------------------
+    add(tu("Missionsliste: Load mission mit assets1.pk3 des reinen JKA", [=] { missionenAusArchiv(z->jka + "\\assets1.pk3"); }));
+    add(warteBis("Missionsliste: t1_sour in der Auswahl", [] { return missionsliste::hat("t1_sour", true); }, 3500));
+    add(pruefe("Missionsliste: assets1.pk3 (ohne Karten) nennt die Missionen von JKA - t1_sour, t2_trip, t3_bounty, kor1, yavin1, taspir1", [] {
+        diag::detail("Knopftest: Missionsliste - reines JKA: " + missionsliste::liste());
+        bool alle = g_app->missionPickOpen;
+        for (const char* n : {"t1_sour", "t2_trip", "t3_bounty", "kor1", "yavin1", "taspir1", "t1_inter", "vjun3"}) {
+            if (!missionsliste::hat(n, true)) {
+                diag::detail(std::string("Knopftest: Missionsliste - fehlt: ") + n);
+                alle = false;
+            }
+        }
+        return alle;
+    }));
+    // Dieselben Skriptverweise wie der bisherige Weg (findMissions ueber das
+    // EINE Archiv, readBsp im Hauptfaden): die Hintergrundsuche liest Lump 0
+    // in Arbeitsfaeden (readBspEntityLump) - fuer jede Karte in assets0.pk3
+    // muss dasselbe herauskommen.
+    add(pruefe("Missionsliste: Hintergrundsuche liefert je Karte dieselben Skriptverweise wie findMissions mit readBsp (assets0.pk3)", [=] {
+        Pk3 a0;
+        if (!readPk3Directory(z->jka + "\\assets0.pk3", a0)) { return false; }
+        std::vector<std::string> namen;
+        for (const Pk3Entry& e : a0.entries) { namen.push_back(e.name); }
+        const std::vector<Mission> alt = findMissions(namen, [](const std::string& n, std::string& out) { return readFromArchives(n, out); });
+        int gleich = 0;
+        int verschieden = 0;
+        for (const Mission& ma : alt) {
+            const Mission* mn = nullptr;
+            for (const Mission& m : g_app->missions) {
+                if (m.name == ma.name) { mn = &m; }
+            }
+            bool ok = mn != nullptr && mn->scripts.size() == ma.scripts.size() && mn->entFile == ma.entFile;
+            for (std::size_t i = 0; ok && i < ma.scripts.size(); ++i) {
+                ok = mn->scripts[i].ref == ma.scripts[i].ref && mn->scripts[i].key == ma.scripts[i].key;
+            }
+            (ok ? gleich : verschieden) += 1;
+            if (!ok) { diag::detail("Knopftest: Missionsliste - anders als findMissions: " + ma.name); }
+        }
+        diag::detail("Knopftest: Missionsliste - Vergleich mit findMissions: " + std::to_string(gleich) + " gleich, " +
+                     std::to_string(verschieden) + " verschieden");
+        return verschieden == 0 && gleich == static_cast<int>(alt.size()) && gleich > 50;
+    }));
+    add(pruefe("Missionsliste: kein Movie-Duels-Archiv dazwischen (nur das Spiel des Archivs)", [] {
+        for (const Mission& m : g_app->missions) {
+            if (m.name.rfind("md_", 0) == 0) { return false; }
+        }
+        return true;
+    }));
+    add(pruefe("Missionsliste: die Spielordner der Einstellungen bleiben, wie sie waren", [=] {
+        diag::detail("Knopftest: Missionsliste - Einstellungen jetzt" + missionsliste::ordnerListe(g_app->settings.gamePaths) +
+                     ", aktiv" + missionsliste::ordnerListe(missionsliste::aktiveOrdner()));
+        return g_app->settings.gamePaths == z->vorher;
+    }));
+    add(tu("Missionsliste: Auswahl zu", [] { g_app->missionPickOpen = false; }));
+    add(pause(0.3));
+    // --- 2. Eine pk3 aus einem EINGERICHTETEN Spielordner -------------------
+    add(tu("Missionsliste: Load mission mit assets1.pk3 aus dem eingerichteten Spielordner (Movie Duels base)",
+           [=] { missionenAusArchiv(z->mdBasis + "\\assets1.pk3"); }));
+    add(warteBis("Missionsliste: md_am_sith in der Auswahl", [] { return missionsliste::hat("md_am_sith", true); }, 3500));
+    add(pruefe("Missionsliste: Missionen von Movie Duels (md_am_sith, md_ga_jedi) UND des Grundspiels (t1_sour, kor1)", [] {
+        diag::detail("Knopftest: Missionsliste - eingerichtet: " + missionsliste::liste());
+        return missionsliste::hat("md_am_sith", true) && missionsliste::hat("md_ga_jedi", true) &&
+               missionsliste::hat("t1_sour", true) && missionsliste::hat("kor1", true);
+    }));
+    add(pruefe("Missionsliste: es gelten wieder genau die eingerichteten Spielordner", [=] {
+        const std::vector<std::string> aktiv = missionsliste::aktiveOrdner();
+        diag::detail("Knopftest: Missionsliste - aktiv" + missionsliste::ordnerListe(aktiv));
+        return aktiv == z->vorher && g_app->settings.gamePaths == z->vorher;
+    }));
+    add(tu("Missionsliste: Auswahl zu", [] { g_app->missionPickOpen = false; }));
+    add(pause(0.3));
+    // --- 3. t1_sour aus dem reinen JKA laden -------------------------------
+    add(tu("Missionsliste: noch einmal assets1.pk3 des reinen JKA", [=] { missionenAusArchiv(z->jka + "\\assets1.pk3"); }));
+    add(warteBis("Missionsliste: t1_sour wieder in der Auswahl", [] { return missionsliste::hat("t1_sour", true); }, 3500));
+    add(waehleInListe("t1_sour", false, 0, "##missionpick"));
+    add(warteBis("Missionsliste: t1_sour geladen", [] {
+        return g_app->map.path == "maps/t1_sour.bsp" && g_app->camTrackValid && g_app->missionAktiv;
+    }, 3000));
+    add(pruefe("Missionsliste: t1_sour mit Entities und seinen Skripten aus dem reinen JKA, Einstellungen unveraendert", [=] {
+        int t1 = 0;
+        for (std::size_t i = 0; i < g_app->tabs.size(); ++i) {
+            const bool aktiv = static_cast<int>(i) == g_app->activeTab;
+            const std::string& n = aktiv ? g_app->path : g_app->tabs[i].path;
+            const std::string& sp = aktiv ? g_app->skriptPfad : g_app->tabs[i].skriptPfad;
+            if (n.find("t1_sour") != std::string::npos || sp.find("t1_sour") != std::string::npos) { ++t1; }
+        }
+        diag::detail("Knopftest: Missionsliste - geladen " + g_app->map.path + ", " + std::to_string(g_app->map.entities.size()) +
+                     " Entities, " + std::to_string(t1) + " Reiter mit t1_sour-Skripten, aktiv" +
+                     missionsliste::ordnerListe(missionsliste::aktiveOrdner()));
+        return g_app->map.path == "maps/t1_sour.bsp" && g_app->map.entities.size() > 100 && t1 >= 5 &&
+               g_app->settings.gamePaths == z->vorher;
+    }));
+    // --- 4. rc603: die Reiter in der Reihenfolge, in der das Spiel startet ---
+    //
+    // Der Betreuer: "kann er die scripts bei load mission in der Reihenfolge
+    // als Tab oeffnen, wie sie ingame abgespielt werden?" - Vorher in der
+    // Reihenfolge der Entities. t2_trip: info_player_start (Entity 616)
+    // zielt auf t534 - zwei target_scriptrunner, t2_Trip/intro (612) und
+    // T2_Trip/playerspawn (621); G_UseTargets (g_client.cpp:2432) findet sie
+    // in Entity-Reihenfolge. Vorn standen aber common/use_turbo (39) und
+    // common/wrong_way (69), die erst ein Trigger des Spielers startet.
+    add(tu("Reihenfolge: t2_trip aus dem reinen JKA", [=] { missionenAusArchiv(z->jka + "\\assets1.pk3"); }));
+    add(warteBis("Reihenfolge: t2_trip in der Auswahl", [] { return missionsliste::hat("t2_trip", true); }, 3500));
+    add(waehleInListe("t2_trip", false, 0, "##missionpick"));
+    add(warteBis("Reihenfolge: t2_trip geladen", [] {
+        return g_app->map.path == "maps/t2_trip.bsp" && g_app->camTrackValid && g_app->missionAktiv;
+    }, 3000));
+    add(pruefe("Reihenfolge: t2_trip - vorn t2_Trip/intro, dann T2_Trip/playerspawn (beide vom Spielerstart), das erste aktiv", [] {
+        const std::vector<std::string> folge = missionsliste::reiterFolge("t2_trip");
+        std::string text;
+        for (const std::string& r : folge) { text += " " + r; }
+        diag::detail("Knopftest: Reihenfolge - t2_trip, Reiter:" + text + ", aktiv " + g_app->shownName);
+        return folge.size() >= 2 && missionsliste::klein(folge[0]) == "t2_trip/intro" &&
+               missionsliste::klein(folge[1]) == "t2_trip/playerspawn" &&
+               missionsliste::klein(g_app->shownName).rfind("intro.", 0) == 0;
+    }));
+    // --- Aufraeumen: zurueck zu den eingerichteten Spielordnern ------------
+    add(tu("Missionsliste: zurueck - eine pk3 des eingerichteten Spielordners", [=] { missionenAusArchiv(z->mdBasis + "\\assets1.pk3"); }));
+    add(warteBis("Missionsliste: eingerichtete Auswahl", [] { return missionsliste::hat("md_am_sith", true); }, 3500));
+    add(tu("Missionsliste: Auswahl zu", [] { g_app->missionPickOpen = false; }));
+    add(pruefe("Missionsliste: danach gelten die eingerichteten Spielordner", [=] {
+        return missionsliste::aktiveOrdner() == z->vorher && g_app->settings.gamePaths == z->vorher;
+    }));
+    // --- rc603 (Durchsicht): ein eingerichteter Spielordner ohne .pk3 -------
+    //
+    // setzeSitzungsSpielordner verglich die geltenden Ordner mit den
+    // EINGELESENEN (g_app->gamePaths) - ein Ordner ohne .pk3 (eine Mod nur mit
+    // losen Dateien, ein leerer "base") fehlt dort. Dann las JEDES "Load
+    // mission" alle Spielordner neu: rescanGamePaths leert alle
+    // Zwischenspeicher und laedt die Texturen der offenen Karte neu. Vorher
+    // (addGamePathDirectory) geschah bei einem eingerichteten Ordner nichts.
+    auto stand = std::make_shared<int>(0);
+    add(tu("Ordner ohne pk3: einen leeren Spielordner einrichten", [] {
+        std::error_code ec;
+        const std::filesystem::path leer = std::filesystem::current_path(ec) / "leerer_spielordner";
+        std::filesystem::create_directories(leer, ec);
+        g_app->settings.gamePaths.push_back(leer.string());
+        rescanGamePaths();
+        refreshPk3List();
+    }));
+    add(tu("Ordner ohne pk3: Load mission (eingerichteter Ordner)", [=] { missionenAusArchiv(z->mdBasis + "\\assets1.pk3"); }));
+    add(warteBis("Ordner ohne pk3: Auswahl", [] { return missionsliste::hat("md_am_sith", true); }, 3500));
+    add(tu("Ordner ohne pk3: Auswahl zu, Einlesestand merken", [=] {
+        g_app->missionPickOpen = false;
+        *stand = g_app->texCacheStand;
+    }));
+    add(pause(0.3));
+    add(tu("Ordner ohne pk3: noch einmal Load mission", [=] { missionenAusArchiv(z->mdBasis + "\\assets1.pk3"); }));
+    add(pruefe("Ordner ohne pk3: ein zweites Load mission mit denselben Spielordnern liest sie nicht neu ein", [=] {
+        diag::detail("Knopftest: Missionsliste - Einlesestand vorher " + std::to_string(*stand) + ", nachher " +
+                     std::to_string(g_app->texCacheStand) + ", eingelesen " + std::to_string(g_app->gamePaths.size()) +
+                     " von" + missionsliste::ordnerListe(g_app->settings.gamePaths));
+        return g_app->texCacheStand == *stand;
+    }));
+    add(tu("Ordner ohne pk3: Auswahl zu, Ordner wieder weg", [=] {
+        g_app->missionPickOpen = false;
+        g_app->settings.gamePaths = z->vorher;
+        rescanGamePaths();
+        refreshPk3List();
+    }));
+    return s;
+}
+
 // --- Eine eigene Mission wie ein Anwender laden (BHED_EDITORTEST=missionfoto) ---
 //
 // Map-Tab -> "Load mission..." -> Mission aus einer pk3 waehlen, dann die
@@ -8378,6 +8666,9 @@ std::vector<Schritt> saberSchritte() {
     // der Brandspuren auf). Gleich sein muessen die gezeichnete Laenge, die
     // Wandereignisse der letzten Sekunde und jede lebende Brandspur - Bit fuer
     // Bit (eine fast stehende Klinge dreht ihre Spur sonst nach Rundungsrauschen).
+    // rc603 fix603: der Speicher behaelt jetzt alle gerechneten Bilder - damit
+    // der Sprung zurueck trotzdem am Schnappschuss neu rechnet, haelt er hier
+    // nur 1000 Bilder (saberObergrenze; vorn faellt, was vor 20 s - 11 s liegt).
     add(pruefe("Schwerter A: Vorspulen gleich Abspielen bei 13 s (Laenge, Funken, Brandspuren)", [=] {
         const int fi = saberFigurIndex("sabtest");
         constexpr double kZiel = 13000.0;
@@ -8395,11 +8686,13 @@ std::vector<Schritt> saberSchritte() {
         float la = 0.0F;
         int ea = 0;
         stand(a, la, ea);
+        saberObergrenze(1000);
         saberRechneBis(20000.0);   // Sprung nach vorn ...
         std::vector<SpurPoly> b;
         float lb = 0.0F;
         int eb = 0;
         stand(b, lb, eb);          // ... und zurueck
+        saberObergrenze(0);
         bool gleich = a.size() == b.size();
         for (std::size_t i = 0; gleich && i < a.size(); ++i) {
             gleich = a[i].zeit == b[i].zeit && a[i].shader == b[i].shader && a[i].zahl == b[i].zahl &&
@@ -8487,6 +8780,50 @@ std::vector<Schritt> saberSchritte() {
                      ", als 2D-Bild " + std::to_string(g_saberBlitze2D) + ", davon nach den Balken " +
                      std::to_string(g_saberBlitzeNachBalken));
         return g_saberBlitzeNetz == 0 && g_saberBlitze2D > 0 && g_saberBlitzeNachBalken > 0;
+    }));
+    // rc603 fix603 (Durchsicht Zurueckspulen): ueber der Obergrenze faellt ein
+    // Clientbild samt den Klirren seiner Serverbilder (bildEntfernen). Setzt die
+    // Rechnung spaeter an einem Schnappschuss auf, dessen Bild schon fort war,
+    // kommt das Bild aus dem Schnappschuss zurueck - das Klirren des
+    // Serverbildes, das IN diesem Bild lief, nicht: zur vollen Sekunde t*8
+    // (t = 125, 250, ...) laeuft immer ein Serverbild. Hier klirrt jedes
+    // Serverbild. Vorwaerts bis 14 s mit 1000 Bildern im Speicher (Bild 125 bei
+    // 1 s faellt), zurueck auf 12 s (setzt am Schnappschuss 125 auf) und auf
+    // 1,1 s: dieselben Klirren und dieselben Effekte bei 1,1 s wie ohne
+    // Obergrenze.
+    add(pruefe("Schwerter B: Klirren am Schnappschuss nach dem Zurueckspulen mit Obergrenze gleich", [=] {
+        const auto lauf = [](std::size_t grenze, std::vector<double>& klirren, std::size_t& effekte) {
+            saberVergessen();
+            saberObergrenze(grenze);
+            for (double ms = 0.0; ms <= 14000.0; ms += 16.0) { saberRechneBis(ms); }
+            saberRechneBis(12000.0);
+            effekte = saberEffekteBei(1100.0).size();
+            klirren.clear();
+            for (const SaberKlirren& k : saberKlirrenBis(3000.0)) { klirren.push_back(k.ms); }
+            saberObergrenze(0);
+            saberVergessen();
+        };
+        std::vector<double> ohne;
+        std::vector<double> mit;
+        std::size_t effOhne = 0;
+        std::size_t effMit = 0;
+        lauf(0, ohne, effOhne);
+        lauf(1000, mit, effMit);
+        const auto bei = [](const std::vector<double>& v, double ms) {
+            return static_cast<int>(std::count(v.begin(), v.end(), ms));
+        };
+        std::string fehlt;
+        for (double ms = 0.0; ms <= 3000.0; ms += 50.0) {
+            if (bei(ohne, ms) != bei(mit, ms)) {
+                fehlt += " " + std::to_string(static_cast<int>(ms)) + " ms (" + std::to_string(bei(ohne, ms)) + "/" +
+                         std::to_string(bei(mit, ms)) + ")";
+            }
+        }
+        diag::detail("Knopftest: Schwerter B - Klirren bis 3 s ohne Obergrenze " + std::to_string(ohne.size()) +
+                     " (bei 1000 ms " + std::to_string(bei(ohne, 1000.0)) + "), mit Obergrenze 1000 " +
+                     std::to_string(mit.size()) + "; Effekte bei 1,1 s " + std::to_string(effOhne) + " / " +
+                     std::to_string(effMit) + (fehlt.empty() ? std::string() : "; verschieden bei" + fehlt));
+        return bei(ohne, 1000.0) > 0 && ohne == mit && effOhne == effMit;
     }));
     // --- B2) rc601 integ: dieselbe Szene unter OpenJK - G_InCinematicSaberAnim
     //     kennt dort nur BOTH_CIN_16/17 (wp_saber.cpp:2434-2443 OJ), den Befehl
@@ -9647,6 +9984,22 @@ std::vector<Schritt> missionsbauSchritte() {
         }
         missionenAusArchiv(z->pk3);
     }));
+    // rc603: "Load mission" nennt die Missionen des ganzen Spiels (der
+    // Spielordner des Laufs liegt bei den eingerichteten) - die des
+    // gewaehlten Archivs stehen vorn; die gespeicherte Mission waehlen.
+    add(pruefe("Auswahl: die Mission der gespeicherten pk3 steht vorn (im gewaehlten Archiv)", [] {
+        const bool vorn = g_app->missionPickOpen && !g_app->missions.empty() &&
+                          g_app->missions[0].name == g_app->mission.name && g_app->missions[0].imGewaehlten;
+        diag::detail("Knopftest: Missionsbau - Auswahl " + std::string(g_app->missionPickOpen ? "offen" : "zu") + ", vorn \"" +
+                     (g_app->missions.empty() ? std::string("-") : g_app->missions[0].name) + "\", Mission \"" +
+                     g_app->mission.name + "\", " + std::to_string(g_app->missions.size()) + " Karten");
+        return vorn;
+    }));
+    add(tu("Auswahl: die gespeicherte Mission waehlen", [] {
+        if (g_app->missionPickOpen) {
+            schritteEinfuegen({waehleInListe(g_app->mission.name, false, 0, "##missionpick")});
+        }
+    }));
     add(warteBis("gespeicherte Mission geladen", [] { return g_app->camTrackValid && g_app->missionAktiv; }, 1500));
     add(pruefe("Geladen: genau die gespeicherten Entities", [=] {
         bool gleich = g_app->map.entities.size() == z->gespeichert.size() && !z->gespeichert.empty();
@@ -9692,6 +10045,11 @@ std::vector<Schritt> missionsbauSchritte() {
         missionenAusArchiv(z->pk3);
     }));
     add(pause(0.3));
+    add(tu("Auswahl: dieselbe Mission waehlen (rc603: Missionen des ganzen Spiels)", [] {
+        if (g_app->missionPickOpen) {
+            schritteEinfuegen({waehleInListe(g_app->mission.name, false, 0, "##missionpick"), pause(0.3)});
+        }
+    }));
     add(pruefe("Rueckfrage vor dem Verwerfen", [] { return g_app->frageOffen; }));
     add(klick(tr(Str::AnswerNo), "###frage"));
     add(pause(0.3));
@@ -16172,6 +16530,892 @@ std::vector<Schritt> festeModelleSchritte() {
     return s;
 }
 
+// --- rc603: schneller Stufenweg und geteilte Bilder an JEDER Figurenart -----
+//
+// Der Vergleich oben steht vor einem Kampfdroiden. Die Stufen anderer Figuren
+// sind anders gebaut (Chrom mit tcGen environment, glow, Glanz mit
+// lightingSpecular, getoente Grundstufe) - jede Art mit Shaderstufen, die
+// beim Kartenstart steht, bekommt denselben Vergleich: zweimal im Bezugsweg
+// (rc602, A und B), dann im schnellen Stufenweg (C); C == A ueberall, wo
+// A == B, und gleich viele Stufenaufrufe. Dazu (Figurenbilder nach Inhalt
+// geteilt) an der ersten Art: geteilt (A, B) gegen ungeteilt (C).
+//
+// Mit diesem Vergleich fiel der Entwurf "eine Flaeche ein Aufruf" (alle
+// Stufen im Pixelshader gemischt) durch: 29 Bildpunkte anders an 4 von 12
+// Arten - dort, wo zwei Dreiecke einer Flaeche auf gleicher Tiefe liegen
+// (siehe StufenFlaeche, gpumap_win32.cpp).
+std::vector<Schritt> figurStufenAlleSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    constexpr double kMs = 1000.0;
+    constexpr int kPlaetze = 12;   // so viele Arten hoechstens
+    struct Stand {
+        std::vector<int> figuren;   // je Art eine Figur (Index in scene.actors)
+        std::vector<std::uint8_t> a;
+        std::vector<std::uint8_t> b;
+        long long verglichen = 0;
+        long long mitte = 0;
+        long long anders = 0;
+        int groesste = 0;
+        int geprueft = 0;
+        int schnell = 0;
+        int aufrufeBezug = 0;   // Stufenaufrufe im Bezugsweg (Bild B)
+        int aufrufeAnders = 0;  // Ansichten mit ungleich vielen Stufenaufrufen
+        std::string liste;
+    };
+    auto st = std::make_shared<Stand>();
+    add(tu("Figurstufen alle: Arten suchen", [=] {
+        st->figuren.clear();
+        std::set<std::string> arten;
+        for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->actorAssets.size(); ++i) {
+            const App::ActorAssets& aa = g_app->actorAssets[i];
+            const Actor& ak = g_app->scene.actors[i];
+            bool stufen = false;
+            for (const auto& f : aa.textures.stufen) { stufen = stufen || !f.empty(); }
+            if (!stufen || !ak.kartenFigur || !ak.at(kMs).visible || i >= g_app->figurGezeichnet.size()) { continue; }
+            // Die Art: die Namen der Flaechen mit Stufen.
+            std::string art;
+            for (std::size_t k = 0; k < aa.textures.stufen.size() && k < aa.model.surfaces.size(); ++k) {
+                if (!aa.textures.stufen[k].empty()) {
+                    const GlmSurface& sf = aa.model.surfaces[k];
+                    art += (sf.texture.empty() ? sf.shader : sf.texture) + ";";
+                }
+            }
+            if (arten.insert(art).second && static_cast<int>(st->figuren.size()) < kPlaetze) {
+                st->figuren.push_back(static_cast<int>(i));
+            }
+        }
+        diag::detail("Knopftest: Figurstufen alle - " + std::to_string(st->figuren.size()) +
+                     " Arten mit Shaderstufen beim Kartenstart");
+        gpu::figurStufenBezugsweg(true);
+    }));
+    // Zwei Bilder gleich, wo A == B: die Zahl der verglichenen, anderen und die
+    // groesste Abweichung; mitte = verglichene Bildpunkte in der Bildmitte.
+    auto vergleiche = [](const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b,
+                         const std::vector<std::uint8_t>& c, int w, int h, long long& verglichen, long long& mitte,
+                         long long& anders, int& groesste) {
+        if (a.size() != b.size() || a.size() != c.size() || a.size() != static_cast<std::size_t>(w) * h * 4U) {
+            return false;
+        }
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                bool ab = true;
+                for (int k = 0; k < 3; ++k) { ab = ab && a[i + k] == b[i + k]; }
+                if (!ab) { continue; }
+                ++verglichen;
+                if (y >= h * 3 / 10 && y < h * 7 / 10 && x >= w * 2 / 5 && x < w * 3 / 5) { ++mitte; }
+                int d = 0;
+                for (int k = 0; k < 3; ++k) { d = std::max(d, std::abs(static_cast<int>(c[i + k]) - static_cast<int>(a[i + k]))); }
+                if (d > 0) {
+                    ++anders;
+                    if (anders <= 8) {
+                        char z[200];
+                        std::snprintf(z, sizeof(z), "Knopftest: anders bei %d %d: A %d %d %d, C %d %d %d", x, y, a[i],
+                                      a[i + 1], a[i + 2], c[i], c[i + 1], c[i + 2]);
+                        diag::detail(z);
+                    }
+                }
+                groesste = std::max(groesste, d);
+            }
+        }
+        return true;
+    };
+    for (int j = 0; j < kPlaetze; ++j) {
+        auto da = [=] { return j < static_cast<int>(st->figuren.size()); };
+        add(tu("Figurstufen alle: vor Art " + std::to_string(j + 1), [=] {
+            if (!da()) { return; }
+            const std::size_t fi = static_cast<std::size_t>(st->figuren[static_cast<std::size_t>(j)]);
+            const ActorState as = g_app->scene.actors[fi].at(kMs);
+            std::array<float, 3> p = g_app->figurGezeichnet[fi];
+            if (p[0] == 0.0F && p[1] == 0.0F && p[2] == 0.0F) { p = {as.pos[0], as.pos[1], as.pos[2]}; }
+            const float yaw = as.angles[1] * 3.14159265F / 180.0F;
+            g_app->leftMode = 1;
+            g_app->throughCamera = false;
+            g_app->cameraSelected = false;
+            g_app->draufsicht = false;
+            g_app->playing = false;
+            g_app->playMs = kMs;
+            // Schraeg von vorn (40 Grad), damit Chrom und Glanz nicht nur
+            // senkrecht getroffen werden.
+            const float blick = yaw + 0.7F * ((j % 2 == 0) ? 1.0F : -1.0F);
+            g_app->cam.pos[0] = p[0] + std::cos(blick) * 70.0F;
+            g_app->cam.pos[1] = p[1] + std::sin(blick) * 70.0F;
+            g_app->cam.pos[2] = p[2] + 24.0F;
+            g_app->cam.angles[0] = 8.0F;
+            g_app->cam.angles[1] = blick * 180.0F / 3.14159265F + 180.0F;
+            g_app->cam.angles[2] = 0.0F;
+            gpu::figurStufenBezugsweg(true);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(tu("Figurstufen alle: A lesen", [=] {
+            if (!da()) { return; }
+            int w = 0;
+            int h = 0;
+            (void)gpu::leseFarbe(st->a, w, h);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(tu("Figurstufen alle: B lesen, schneller Stufenweg", [=] {
+            if (!da()) { return; }
+            int w = 0;
+            int h = 0;
+            (void)gpu::leseFarbe(st->b, w, h);
+            st->aufrufeBezug = gpu::figurStufenAufrufe();
+            gpu::figurStufenBezugsweg(false);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(tu("Figurstufen alle: C vergleichen", [=] {
+            if (!da()) { return; }
+            std::vector<std::uint8_t> c;
+            int w = 0;
+            int h = 0;
+            const bool gelesen = gpu::leseFarbe(c, w, h);
+            const int schnell = gpu::figurStufenSchnellAufrufe();
+            const int aufrufe = gpu::figurStufenAufrufe();
+            long long v = 0;
+            long long m = 0;
+            long long an = 0;
+            int g = 0;
+            const bool ok = gelesen && vergleiche(st->a, st->b, c, w, h, v, m, an, g);
+            const std::size_t fi = static_cast<std::size_t>(st->figuren[static_cast<std::size_t>(j)]);
+            const std::string name = g_app->scene.actors[fi].name;
+            st->verglichen += v;
+            st->mitte += m;
+            st->anders += an;
+            st->groesste = std::max(st->groesste, g);
+            st->schnell += schnell;
+            if (aufrufe != st->aufrufeBezug || schnell != aufrufe) { ++st->aufrufeAnders; }
+            if (ok && schnell > 0) { ++st->geprueft; }
+            char z[360];
+            std::snprintf(z, sizeof(z),
+                          "Knopftest: Figurstufen alle - Art %d %s (%s): Stufenaufrufe Bezugsweg %d, schnell %d (davon "
+                          "schneller Weg %d), verglichen %lld (Bildmitte %lld), anders %lld, groesste Abweichung %d",
+                          j + 1, name.c_str(), g_app->scene.actors[fi].npcType.c_str(), st->aufrufeBezug, aufrufe,
+                          schnell, v, m, an, g);
+            diag::detail(z);
+            st->liste += " " + name;
+            gpu::figurStufenBezugsweg(true);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    }
+    add(pruefe("Figurstufen alle: der schnelle Stufenweg zeichnet jede Figurenart Bildpunkt fuer Bildpunkt wie der Bezugsweg", [=] {
+        gpu::figurStufenBezugsweg(false);
+        g_app->mapDirty = true;
+        char z[300];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Figurstufen alle - %d Arten geprueft, verglichen %lld (Bildmitte %lld), anders %lld, "
+                      "groesste Abweichung %d, Aufrufe des schnellen Wegs %d, Ansichten mit anderer Aufrufzahl %d",
+                      st->geprueft, st->verglichen, st->mitte, st->anders, st->groesste, st->schnell, st->aufrufeAnders);
+        diag::detail(z);
+        return st->geprueft >= 2 && st->geprueft == static_cast<int>(st->figuren.size()) && st->mitte > 0 &&
+               st->anders == 0 && st->aufrufeAnders == 0;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    // --- geteilt gegen ungeteilt, vor der ersten Art -------------------------
+    //
+    // Zweimal: mit Figurstufen (deren Bildpunkte teilen sich die Figuren schon
+    // ueber ModelTextures::FigurStufe::pixel) und ohne (jede Flaeche aus der
+    // eigenen Kopie in bySurface - dort teilt erst der Inhalt).
+    for (int teil = 0; teil < 2; ++teil) {
+        const bool ohneStufen = teil == 1;
+        struct Teilen {
+            std::vector<std::uint8_t> a;
+            std::vector<std::uint8_t> b;
+            int hoch0 = 0;
+            int geteilt0 = 0;
+            int hochAn = 0;
+            int geteiltAn = 0;
+            int hochAus = 0;
+        };
+        auto tl = std::make_shared<Teilen>();
+        const std::string wie = ohneStufen ? " (ohne Figurstufen)" : " (mit Figurstufen)";
+        add(tu("Figurbilder teilen" + wie + ": vor die erste Art, geteilt (A)", [=] {
+            if (st->figuren.empty()) { return; }
+            const std::size_t fi = static_cast<std::size_t>(st->figuren[0]);
+            const ActorState as = g_app->scene.actors[fi].at(kMs);
+            std::array<float, 3> p = g_app->figurGezeichnet[fi];
+            if (p[0] == 0.0F && p[1] == 0.0F && p[2] == 0.0F) { p = {as.pos[0], as.pos[1], as.pos[2]}; }
+            const float yaw = as.angles[1] * 3.14159265F / 180.0F;
+            g_app->cam.pos[0] = p[0] + std::cos(yaw) * 90.0F;
+            g_app->cam.pos[1] = p[1] + std::sin(yaw) * 90.0F;
+            g_app->cam.pos[2] = p[2] + 20.0F;
+            g_app->cam.angles[0] = 0.0F;
+            g_app->cam.angles[1] = as.angles[1] + 180.0F;
+            g_app->cam.angles[2] = 0.0F;
+            gpu::figurStufenAus(ohneStufen);
+            // Frisch geteilt laden: so zaehlt, was dieses Bild hochlaedt.
+            gpu::figurBilderTeilen(true);
+            gpu::figurBilderZahlen(tl->hoch0, tl->geteilt0);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(tu("Figurbilder teilen" + wie + ": A lesen", [=] {
+            int w = 0;
+            int h = 0;
+            (void)gpu::leseFarbe(tl->a, w, h);
+            gpu::figurBilderZahlen(tl->hochAn, tl->geteiltAn);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(tu("Figurbilder teilen" + wie + ": B lesen, ungeteilt (C)", [=] {
+            int w = 0;
+            int h = 0;
+            (void)gpu::leseFarbe(tl->b, w, h);
+            int g0 = 0;
+            gpu::figurBilderTeilen(false);
+            gpu::figurBilderZahlen(tl->hochAus, g0);
+            g_app->mapDirty = true;
+        }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+        add(pause(0.2));
+        add(pruefe("Figurbilder teilen" + wie + ": geteilt und ungeteilt Bildpunkt fuer Bildpunkt gleich" +
+                       (ohneStufen ? ", weniger hochgeladen" : ""),
+                   [=] {
+                       std::vector<std::uint8_t> c;
+                       int w = 0;
+                       int h = 0;
+                       const bool gelesen = gpu::leseFarbe(c, w, h);
+                       int hochEnde = 0;
+                       int g1 = 0;
+                       gpu::figurBilderZahlen(hochEnde, g1);
+                       gpu::figurBilderTeilen(true);
+                       gpu::figurStufenAus(false);
+                       g_app->mapDirty = true;
+                       long long verglichen = 0;
+                       long long mitte = 0;
+                       long long anders = 0;
+                       int groesste = 0;
+                       const bool ok = gelesen && vergleiche(tl->a, tl->b, c, w, h, verglichen, mitte, anders, groesste);
+                       const int hochGeteilt = tl->hochAn - tl->hoch0;
+                       const int geteilt = tl->geteiltAn - tl->geteilt0;
+                       const int hochUngeteilt = hochEnde - tl->hochAus;
+                       char z[320];
+                       std::snprintf(z, sizeof(z),
+                                     "Knopftest: Figurbilder teilen%s - geteilt %d hochgeladen + %d geteilt, ungeteilt %d "
+                                     "hochgeladen; verglichen %lld (Bildmitte %lld), anders %lld, groesste Abweichung %d",
+                                     wie.c_str(), hochGeteilt, geteilt, hochUngeteilt, verglichen, mitte, anders, groesste);
+                       diag::detail(z);
+                       const bool gleich = ok && mitte > 0 && anders == 0 && hochGeteilt > 0;
+                       return ohneStufen ? (gleich && geteilt > 0 && hochGeteilt < hochUngeteilt)
+                                         : (gleich && hochGeteilt <= hochUngeteilt);
+                   }));
+        add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    }
+    return s;
+}
+
+// --- rc603 Durchsicht: Anbauten und Weissbild-Stufen ------------------------
+//
+// 1. Waffe, Schwertgriff und Kinomodell haengen im Spiel an der GHOUL2-LISTE
+//    der Figur (G2API_InitGhoul2Model(ent->ghoul2, ...) und
+//    G2API_AttachG2Model, wp_saber.cpp:812-816 / Q3_Interface.cpp:6345-6351
+//    MD) - sie werden mit dem refEntity der Figur gezeichnet
+//    (R_AddGhoulSurfaces, tr_ghoul2.cpp:2860-2866 MD: die Bolzenmatrix wird
+//    nur zur Wurzel der Knochen). backEnd.ori ist also die Stellung der FIGUR,
+//    und tcGen environment (RB_CalcEnvironmentTexCoords) rechnet in ihren
+//    Achsen. Geprueft: jeder Anbau mit einer Umgebungsstufe rechnet b3 mit
+//    denselben Achsen wie der Koerper seiner Figur.
+// 2. "map $whiteimage" (tr.whiteImage) ist eine Stufe: das Visier der
+//    Klonkrieger (models/players/MB2_Clones/visor) ist weiss mal rgbGen const
+//    (0 0 0) - deckend schwarz - und darauf der Glanz. Geprueft in
+//    md_jt_intro (20 Klonkrieger beim Kartenstart).
+std::vector<Schritt> figurAnbauAchsenSchritte(const std::string& karte) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    constexpr double kMs = 1000.0;
+    struct Stand {
+        int figur = -1;
+        std::string griff;
+        std::vector<gpu::FigurAchsenEintrag> probe;
+    };
+    auto st = std::make_shared<Stand>();
+    add(tu("Anbauachsen " + karte + ": Figur mit Umgebungsstufe am Anbau suchen", [=] {
+        st->figur = -1;
+        st->griff.clear();
+        st->probe.clear();
+        for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->figurGezeichnet.size(); ++i) {
+            const Actor& ak = g_app->scene.actors[i];
+            const ActorState as = ak.at(kMs);
+            if (!ak.kartenFigur || !as.visible) { continue; }
+            ActorDraw d;
+            anbautenFuer(ak, as, kMs, d);
+            for (int j = 0; j < d.anbauten && st->figur < 0; ++j) {
+                const AnbauDraw& an = d.anbau[static_cast<std::size_t>(j)];
+                if (an.textures == nullptr || an.model == nullptr) { continue; }
+                for (const auto& liste : an.textures->stufen) {
+                    for (const ModelTextures::FigurStufe& fs : liste) {
+                        if (fs.art.umgebung && st->figur < 0) {
+                            st->figur = static_cast<int>(i);
+                            st->griff = an.model->name;
+                        }
+                    }
+                }
+            }
+            if (st->figur >= 0) { break; }
+        }
+        if (st->figur < 0) {
+            diag::detail("Knopftest: Anbauachsen " + karte + " - keine Figur mit Umgebungsstufe am Anbau");
+            return;
+        }
+        const std::size_t fi = static_cast<std::size_t>(st->figur);
+        const ActorState as = g_app->scene.actors[fi].at(kMs);
+        std::array<float, 3> p = g_app->figurGezeichnet[fi];
+        if (p[0] == 0.0F && p[1] == 0.0F && p[2] == 0.0F) { p = {as.pos[0], as.pos[1], as.pos[2]}; }
+        const float yaw = as.angles[1] * 3.14159265F / 180.0F;
+        g_app->leftMode = 1;
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = kMs;
+        g_app->cam.pos[0] = p[0] + std::cos(yaw) * 80.0F;
+        g_app->cam.pos[1] = p[1] + std::sin(yaw) * 80.0F;
+        g_app->cam.pos[2] = p[2] + 10.0F;
+        g_app->cam.angles[0] = 5.0F;
+        g_app->cam.angles[1] = as.angles[1] + 180.0F;
+        g_app->cam.angles[2] = 0.0F;
+        diag::detail("Knopftest: Anbauachsen " + karte + " - Figur #" + std::to_string(st->figur) + " " +
+                     g_app->scene.actors[fi].name + ", Anbau " + st->griff);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(tu("Anbauachsen " + karte + ": ein Bild mit Probe", [=] {
+        st->probe.clear();
+        gpu::figurAchsenProbe(&st->probe);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pruefe("Anbauachsen " + karte + ": Waffe/Griff rechnen tcGen environment in den Achsen ihrer Figur", [=] {
+        gpu::figurAchsenProbe(nullptr);
+        if (st->figur < 0) { return false; }
+        std::set<const GlmModel*> anbauModelle;
+        for (const auto& [k, v] : g_app->hiltCache) { anbauModelle.insert(&v.model); }
+        const gpu::FigurAchsenEintrag* koerper = nullptr;
+        for (const gpu::FigurAchsenEintrag& e : st->probe) {
+            if (e.besitzer == st->figur && anbauModelle.count(e.model) == 0U) {
+                koerper = &e;
+                break;
+            }
+        }
+        int anbauten = 0;
+        float abweichung = 0.0F;
+        for (const gpu::FigurAchsenEintrag& e : st->probe) {
+            if (e.besitzer != st->figur || !e.umgebung || anbauModelle.count(e.model) == 0U || koerper == nullptr) {
+                continue;
+            }
+            ++anbauten;
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 3; ++c) {
+                    abweichung = std::max(abweichung, std::fabs(e.achsen[r][c] - koerper->achsen[r][c]));
+                }
+            }
+        }
+        char z[260];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Anbauachsen %s - Figur #%d, Aufrufe in der Probe %zu, Koerper %s, Anbauten mit "
+                      "Umgebungsstufe %d, groesste Abweichung der Achsen %.4f",
+                      karte.c_str(), st->figur, st->probe.size(), koerper != nullptr ? "ja" : "nein", anbauten,
+                      static_cast<double>(abweichung));
+        diag::detail(z);
+        return koerper != nullptr && anbauten > 0 && abweichung < 1e-5F;
+    }));
+    return s;
+}
+
+std::vector<Schritt> figurStufenDurchsichtSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    add(tu("Figurstufen Durchsicht: md_jt_intro laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/md_jt_intro.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(gezeichnet("md_jt_intro"));
+    add(pause(0.5));
+    add(pruefe("Figurstufen Durchsicht: Klonvisier - $whiteimage ist Stufe 0 (tr.whiteImage, schwarz), dann der Glanz", [] {
+        int figuren = 0;
+        std::string zeile = "Knopftest: Klonvisier - keine Figur mit models/players/mb2_clones/visor";
+        bool ok = false;
+        static const std::vector<ModelTextures::FigurStufe> kKeine;
+        for (std::size_t i = 0; i < g_app->actorAssets.size() && !ok; ++i) {
+            const App::ActorAssets& aa = g_app->actorAssets[i];
+            for (std::size_t k = 0; k < aa.model.surfaces.size(); ++k) {
+                const GlmSurface& sf = aa.model.surfaces[k];
+                std::string n = sf.texture.empty() ? sf.shader : sf.texture;
+                std::replace(n.begin(), n.end(), '\\', '/');
+                for (char& c : n) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+                if (n.rfind("models/players/mb2_clones/visor", 0) != 0) { continue; }
+                ++figuren;
+                const auto& stufen = k < aa.textures.stufen.size() ? aa.textures.stufen[k] : kKeine;
+                bool weiss = false;
+                if (!stufen.empty() && !stufen[0].pixel.empty() && stufen[0].pixel[0] != nullptr) {
+                    const TextureSet::Tex& w = *stufen[0].pixel[0];
+                    weiss = w.width == 8 && w.height == 8 && w.rgba.size() == 256U &&
+                            std::all_of(w.rgba.begin(), w.rgba.end(), [](std::uint8_t b) { return b == 255U; });
+                }
+                const bool schwarz = !stufen.empty() && stufen[0].art.farbe == FigurFarbe::Fest &&
+                                     stufen[0].art.rgb[0] == 0.0F && stufen[0].art.rgb[1] == 0.0F &&
+                                     stufen[0].art.rgb[2] == 0.0F && stufen[0].art.stufe == 0U;
+                const bool glanz = stufen.size() == 2U && stufen[1].art.umgebung &&
+                                   stufen[1].art.alpha == FigurAlpha::Spekular;
+                char z[300];
+                std::snprintf(z, sizeof(z),
+                              "Knopftest: Klonvisier - Figur #%zu %s, Flaeche %zu: %zu Stufen, Stufe 0 Weissbild %s, "
+                              "schwarz %s, Stufe 1 Glanz %s",
+                              i, i < g_app->scene.actors.size() ? g_app->scene.actors[i].name.c_str() : "?", k,
+                              stufen.size(), weiss ? "ja" : "nein", schwarz ? "ja" : "nein", glanz ? "ja" : "nein");
+                zeile = z;
+                ok = stufen.size() == 2U && weiss && schwarz && glanz;
+                break;
+            }
+        }
+        diag::detail(zeile + " (" + std::to_string(figuren) + " Visiere gesehen)");
+        return ok;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    return s;
+}
+
+// --- Zusammenfuehrung rc603: Stufenbilder nach dem Neueinlesen der Spielordner
+//
+// Zwei Spuren treffen sich hier: t_stufen haelt die Bildpunkte der
+// Figurstufen je Bildname einmal (App::figurStufenBilder, schwach gehalten -
+// "das Bild lebt, solange eine Figur es traegt"), t_mission wechselt beim
+// Load mission die geltenden Spielordner fuer die Sitzung (Movie Duels <->
+// reines JKA) und liest sie dann mit rescanGamePaths neu ein. rescanGamePaths
+// verwirft alles, was aus den Spielordnern stammt (texCache, Modelle, Figuren)
+// - die Stufenbilder blieben aber, solange noch jemand ihre Texturen haelt:
+// die Modellansicht (App::modelTextures) ueberlebt das Neueinlesen. Die neu
+// geladenen Figuren bekamen dann das Bild aus den ALTEN Spielordnern, obwohl
+// derselbe Name in den neuen ein anderes Bild sein kann (Movie Duels ersetzt
+// Bilder des Grundspiels). Ein Bild muss aus den geltenden Spielordnern
+// kommen, wie jedes andere Bild nach rescanGamePaths (texCache ist leer).
+// Geprueft: eine Figur mit Stufenbild, ihre Texturen gehalten wie von der
+// Modellansicht, Spielordner neu einlesen, die neu geladene Figur traegt ein
+// NEU gelesenes Bild (andere Adresse, gleicher Inhalt - es sind dieselben
+// Ordner).
+std::vector<Schritt> figurStufenSpielordnerSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    struct Stand {
+        int figur = -1;
+        std::size_t flaeche = 0;
+        std::size_t stufe = 0;
+        std::shared_ptr<const TextureSet::Tex> bild;
+        std::shared_ptr<ModelTextures> gehalten;   // steht fuer App::modelTextures
+    };
+    auto st = std::make_shared<Stand>();
+    auto istWeiss = [](const TextureSet::Tex& w) {
+        return w.width == 8 && w.height == 8 &&
+               std::all_of(w.rgba.begin(), w.rgba.end(), [](std::uint8_t b) { return b == 255U; });
+    };
+    add(tu("Figurstufen Spielordner: eine Figur mit Stufenbild, ihre Texturen gehalten", [=] {
+        *st = Stand{};
+        for (std::size_t i = 0; i < g_app->actorAssets.size() && st->figur < 0; ++i) {
+            const ModelTextures& tx = g_app->actorAssets[i].textures;
+            for (std::size_t k = 0; k < tx.stufen.size() && st->figur < 0; ++k) {
+                for (std::size_t n = 0; n < tx.stufen[k].size(); ++n) {
+                    const auto& px = tx.stufen[k][n].pixel;
+                    if (px.empty() || px[0] == nullptr || istWeiss(*px[0])) { continue; }
+                    st->figur = static_cast<int>(i);
+                    st->flaeche = k;
+                    st->stufe = n;
+                    st->bild = px[0];
+                    st->gehalten = std::make_shared<ModelTextures>(tx);
+                    break;
+                }
+            }
+        }
+        diag::detail("Knopftest: Figurstufen Spielordner - Figur #" + std::to_string(st->figur) + ", Flaeche " +
+                     std::to_string(st->flaeche) + ", Stufe " + std::to_string(st->stufe));
+    }));
+    add(tu("Figurstufen Spielordner: Spielordner neu einlesen (wie Load mission bei einem Spielwechsel)", [] {
+        rescanGamePaths();
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Figurstufen Spielordner: Figuren neu geladen", [] {
+        return !g_app->scene.actors.empty() && g_app->actorAssets.size() == g_app->scene.actors.size();
+    }, 900));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pruefe("Figurstufen Spielordner: nach dem Neueinlesen ist das Stufenbild neu gelesen, nicht das alte", [=] {
+        bool neuGelesen = false;
+        bool gleich = false;
+        const void* jetzt = nullptr;
+        if (st->figur >= 0 && static_cast<std::size_t>(st->figur) < g_app->actorAssets.size()) {
+            const ModelTextures& tx = g_app->actorAssets[static_cast<std::size_t>(st->figur)].textures;
+            if (st->flaeche < tx.stufen.size() && st->stufe < tx.stufen[st->flaeche].size()) {
+                const auto& px = tx.stufen[st->flaeche][st->stufe].pixel;
+                if (!px.empty() && px[0] != nullptr) {
+                    jetzt = px[0].get();
+                    neuGelesen = px[0] != st->bild;
+                    gleich = px[0]->width == st->bild->width && px[0]->height == st->bild->height &&
+                             px[0]->rgba == st->bild->rgba;
+                }
+            }
+        }
+        char z[240];
+        std::snprintf(z, sizeof(z), "Knopftest: Figurstufen Spielordner - Bild vorher %p, nachher %p, neu gelesen %s, "
+                      "Inhalt gleich %s", static_cast<const void*>(st->bild.get()), jetzt,
+                      neuGelesen ? "ja" : "nein", gleich ? "ja" : "nein");
+        diag::detail(z);
+        st->gehalten.reset();
+        st->bild.reset();
+        return st->figur >= 0 && neuGelesen && gleich;
+    }));
+    return s;
+}
+
+// --- rc602 kartenpruefung: Shaderstufen der Figuren ------------------------
+//
+// Auf 161 von 278 Karten tragen Figuren Shader mit mehreren Stufen - in
+// md_am_sith die Kampfdroiden (battledroid/arms: rgbGen const, dann
+// Mischstufe, lightingDiffuse als Filter, Glanz). behaved zeichnete nur das
+// Bild mit dem Hautnamen. Geprueft vor einem Kampfdroiden der Karte: die
+// Stufen werden gezeichnet (Zaehler) und veraendern das Bild gegenueber dem
+// alten Weg (nur das Bild) - eigener Farbpuffer, kein Bildschirmfoto.
+std::vector<Schritt> figurStufenSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto fi = std::make_shared<int>(-1);
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    auto aufrufe = std::make_shared<int>(0);
+    constexpr double kMs = 1000.0;
+    add(tu("Figurstufen: vor einen Kampfdroiden", [=] {
+        *fi = -1;
+        for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->actorAssets.size(); ++i) {
+            const App::ActorAssets& aa = g_app->actorAssets[i];
+            bool droide = false;
+            for (const GlmSurface& sf : aa.model.surfaces) {
+                const std::string n = sf.texture.empty() ? sf.shader : sf.texture;
+                if (n.find("models/players/battledroid/") != std::string::npos) { droide = true; }
+            }
+            // Eine Figur vom Kartenstart (steht sicher da), sichtbar zur Pruefzeit.
+            const Actor& ak = g_app->scene.actors[i];
+            if (droide && ak.kartenFigur && ak.at(kMs).visible && i < g_app->figurGezeichnet.size()) {
+                *fi = static_cast<int>(i);
+                break;
+            }
+        }
+        g_app->leftMode = 1;
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = kMs;
+        if (*fi >= 0) {
+            const ActorState st = g_app->scene.actors[static_cast<std::size_t>(*fi)].at(kMs);
+            // Wo sie zuletzt gezeichnet wurde - sonst (noch nie im Bild) der Skriptort.
+            std::array<float, 3> p = g_app->figurGezeichnet[static_cast<std::size_t>(*fi)];
+            if (p[0] == 0.0F && p[1] == 0.0F && p[2] == 0.0F) { p = {st.pos[0], st.pos[1], st.pos[2]}; }
+            const float yaw = st.angles[1] * 3.14159265F / 180.0F;
+            // 60 vor der Figur, in Brusthoehe, Blick zurueck auf sie.
+            g_app->cam.pos[0] = p[0] + std::cos(yaw) * 60.0F;
+            g_app->cam.pos[1] = p[1] + std::sin(yaw) * 60.0F;
+            g_app->cam.pos[2] = p[2] + 20.0F;
+            g_app->cam.angles[0] = 0.0F;
+            g_app->cam.angles[1] = st.angles[1] + 180.0F;
+            g_app->cam.angles[2] = 0.0F;
+            diag::detail("Knopftest: Figurstufen - Figur #" + std::to_string(*fi) + " " +
+                         g_app->scene.actors[static_cast<std::size_t>(*fi)].name + " bei " + std::to_string(p[0]) +
+                         " " + std::to_string(p[1]) + " " + std::to_string(p[2]) + ", Gier " +
+                         std::to_string(st.angles[1]) + ", Skript " + std::to_string(st.pos[0]) + " " +
+                         std::to_string(st.pos[1]) + " " + std::to_string(st.pos[2]));
+        }
+        gpu::figurStufenAus(false);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("figurstufen_mit"));
+    add(tu("Figurstufen: messen, dann nur das Bild (alter Weg)", [=] {
+        *aufrufe = gpu::figurStufenAufrufe();
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        gpu::figurStufenAus(true);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Figurstufen: die Stufen des Shaders werden gezeichnet und veraendern die Figur", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        gpu::figurStufenAus(false);
+        g_app->mapDirty = true;
+        double summe = 0.0;
+        long long n = 0;
+        if (gelesen && w == *bw && h == *bh && mit->size() == ohne.size() && w > 0) {
+            for (int y = h * 3 / 10; y < h * 7 / 10; ++y) {
+                for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                    const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                    for (int c = 0; c < 3; ++c) { summe += std::abs(static_cast<int>((*mit)[i + c]) - static_cast<int>(ohne[i + c])); }
+                    ++n;
+                }
+            }
+        }
+        const double mittel = n > 0 ? summe / static_cast<double>(n * 3) : 0.0;
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Figurstufen - Stufenaufrufe %d, Bildmitte mit/ohne Stufen: %.2f",
+                      *aufrufe, mittel);
+        diag::detail(z);
+        return *fi >= 0 && *aufrufe > 0 && mittel > 2.0;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    // --- rc603: der schnelle Stufenweg zeichnet dasselbe Bild wie rc602 ------
+    //
+    // "+5-7 ms je Bild in md_am_sith" (rc602). Der schnelle Stufenweg setzt
+    // dieselben Aufrufe ab, leitet aber nur einmal je Flaeche ab und schreibt
+    // die Werte mit einem Map in den Ring (StufenFlaeche, gpumap_win32.cpp).
+    // Er darf das Bild um KEINEN Wert aendern: zweimal im Bezugsweg (rc602;
+    // A, B - was zwischen zwei Bildern ohnehin wechselt, zaehlt nicht), dann
+    // schnell (C); ueberall, wo A und B gleich sind, muss C gleich A sein.
+    auto einzA = std::make_shared<std::vector<std::uint8_t>>();
+    auto einzB = std::make_shared<std::vector<std::uint8_t>>();
+    add(tu("Figurstufen: im Bezugsweg zeichnen (A)", [=] {
+        gpu::figurStufenBezugsweg(true);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(tu("Figurstufen: A lesen, noch einmal im Bezugsweg (B)", [=] {
+        int w = 0;
+        int h = 0;
+        (void)gpu::leseFarbe(*einzA, w, h);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(tu("Figurstufen: B lesen, schnell zeichnen (C)", [=] {
+        int w = 0;
+        int h = 0;
+        (void)gpu::leseFarbe(*einzB, w, h);
+        gpu::figurStufenBezugsweg(false);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Figurstufen: der schnelle Stufenweg zeichnet Bildpunkt fuer Bildpunkt dasselbe wie der Bezugsweg", [=] {
+        std::vector<std::uint8_t> ges;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ges, w, h);
+        const int sammel = gpu::figurStufenSchnellAufrufe();
+        long long verglichen = 0;
+        long long anders = 0;
+        long long wechselnd = 0;
+        long long figur = 0;
+        int groesste = 0;
+        if (gelesen && ges.size() == einzA->size() && ges.size() == einzB->size()) {
+            for (std::size_t i = 0; i + 3 < ges.size(); i += 4) {
+                bool ab = true;
+                for (int c = 0; c < 3; ++c) {
+                    if ((*einzA)[i + c] != (*einzB)[i + c]) { ab = false; }
+                }
+                if (!ab) { ++wechselnd; continue; }
+                ++verglichen;
+                int d = 0;
+                for (int c = 0; c < 3; ++c) {
+                    d = std::max(d, std::abs(static_cast<int>(ges[i + c]) - static_cast<int>((*einzA)[i + c])));
+                }
+                if (d > 0) { ++anders; }
+                groesste = std::max(groesste, d);
+            }
+            // Die Bildmitte (die Figur) muss verglichen worden sein.
+            for (int y = h * 3 / 10; y < h * 7 / 10; ++y) {
+                for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                    const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                    bool ab = true;
+                    for (int c = 0; c < 3; ++c) { ab = ab && (*einzA)[i + c] == (*einzB)[i + c]; }
+                    if (ab) { ++figur; }
+                }
+            }
+        }
+        char z[260];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Figurstufen schneller Stufenweg - Aufrufe %d, verglichen %lld (Bildmitte %lld), "
+                      "wechselnd %lld, anders %lld, groesste Abweichung %d",
+                      sammel, verglichen, figur, wechselnd, anders, groesste);
+        diag::detail(z);
+        return gelesen && sammel > 0 && figur > 0 && anders == 0;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    // rc603: jede Figurenart der Karte, geteilte Bilder.
+    for (Schritt& x : figurStufenAlleSchritte()) { s.push_back(std::move(x)); }
+    return s;
+}
+
+// --- rc603: was die Figurstufen kosten (Modus figurleistung) ---------------
+//
+// rc602 nahm die Figurstufen wieder heraus: "+5-7 ms je Bild in md_am_sith"
+// (rund 2000 Aufrufe mehr, 39 Figuren). Der Szenenlauf (perf_lauf.sh) misst
+// ganze Bilder samt Szenenrechnung und streut stark. Hier wird DASSELBE Bild
+// (intro2_sith an der Stelle mit den meisten Figurenaufrufen, durch die
+// Szenenkamera, angehalten) immer wieder gezeichnet - abwechselnd ohne Stufen
+// (wie rc602), im Bezugsweg (rc602-Figurstufen) und im schnellen Stufenweg,
+// in Bloecken mit wechselnder Reihenfolge. Gemessen je Bild: die ganze Bildzeit, die
+// CPU-Zeit des Figurenabschnitts (App::figurCpuMsSumme) und die Zeit der
+// Grafikkarte fuer die Figuren (Zeitmarken, Abschnitt::Figuren).
+std::vector<Schritt> figurLeistungSchritte() {
+    std::vector<Schritt> s;
+    struct Stand {
+        bool geladen = false;
+        double ms = 0.0;
+        int figuren = 0;
+        std::vector<double> wand[3];
+        std::vector<double> cpu[3];
+        std::vector<double> gpu[3];
+        int aufrufe[3] = {};
+        std::chrono::steady_clock::time_point seit;
+        double cpuVorher = 0.0;
+    };
+    auto st = std::make_shared<Stand>();
+    s.push_back(tu("Figurleistung: md_am_sith", [] {
+        g_app->leftMode = 1;
+        if (g_app->map.path.find("md_am_sith") == std::string::npos) {
+            (void)loadMapFromArchive("maps/md_am_sith.bsp");
+        }
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 1200));
+    s.push_back(tu("Figurleistung: intro2_sith oeffnen", [=] {
+        std::string data;
+        std::string gefunden;
+        for (const char* ext : {".txt", ".icarus", ".ibi", ".IBI"}) {
+            if (readFromArchives(std::string("scripts/md_am/intro2_sith") + ext, data)) {
+                gefunden = ext;
+                break;
+            }
+        }
+        if (gefunden.empty()) {
+            diag::detail("Knopftest: Figurleistung - intro2_sith nicht im Archiv");
+            return;
+        }
+        while (g_app->tabs.size() > 1) { reiterSchliessen(static_cast<int>(g_app->tabs.size()) - 1); }
+        g_app->doc = Document{Script{}};
+        g_app->path.clear();
+        g_app->shownName.clear();
+        g_app->skriptPfad.clear();
+        openScriptFromMemory(data, "md_am/intro2_sith" + gefunden);
+        g_app->camTrackValid = false;
+        g_app->throughCamera = true;
+        g_app->playing = false;
+        g_app->playMs = 0.0;
+        g_app->audioUpTo = -1.0;
+        st->geladen = true;
+    }));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 1200));
+    // Einmal durchspielen, damit alle Figuren ihre Modelle und Bilder haben
+    // (wie im Szenenlauf), dann die Stelle mit den meisten sichtbaren Figuren
+    // mit Shaderstufen (BHED_FIGURLEISTUNG_MS: eine feste Stelle).
+    s.push_back({"Figurleistung: vorlaufen", [=](int b) {
+                     if (!st->geladen) { return true; }
+                     const double dauer = std::max(g_app->camTrack.durationMs, 1000.0);
+                     const double t = b * 500.0;
+                     // Das Bild davor (t - 500) ist gezeichnet: die Stelle mit den
+                     // meisten Figurenaufrufen (jede Stufe ein Aufruf).
+                     if (b > 1 && g_app->gpuFiguren2 > st->figuren) {
+                         st->figuren = g_app->gpuFiguren2;
+                         st->ms = t - 500.0;
+                     }
+                     if (t > dauer) {
+                         if (const char* fest = std::getenv("BHED_FIGURLEISTUNG_MS")) { st->ms = std::atof(fest); }
+                         g_app->playing = false;
+                         g_app->playMs = st->ms;
+                         g_app->throughCamera = true;
+                         g_app->mapDirty = true;
+                         return true;
+                     }
+                     g_app->playing = true;
+                     g_app->playMs = t;
+                     g_app->mapDirty = true;
+                     return false;
+                 }});
+    s.push_back(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    s.push_back(pause(0.5));
+    // Je Runde drei Bloecke (Reihenfolge je Runde verschoben), je Block
+    // kBilder Bilder; die ersten kAnlauf zaehlen nicht (Wechsel, die
+    // Zeitmarken kommen zwei Bilder spaeter).
+    constexpr int kRunden = 8;
+    constexpr int kBilder = 40;
+    constexpr int kAnlauf = 8;
+    s.push_back({"Figurleistung: messen", [=](int b) {
+                     if (!st->geladen) { return true; }
+                     const int jeRunde = 3 * kBilder;
+                     const auto jetzt = std::chrono::steady_clock::now();
+                     auto modusVon = [&](int bild) {
+                         const int runde = bild / jeRunde;
+                         const int block = (bild % jeRunde) / kBilder;
+                         return (block + runde) % 3;
+                     };
+                     if (b > 0) {
+                         const int vor = b - 1;
+                         const int m = modusVon(vor);
+                         if (vor % kBilder >= kAnlauf) {
+                             st->wand[m].push_back(std::chrono::duration<double, std::milli>(jetzt - st->seit).count());
+                             st->cpu[m].push_back(g_app->figurCpuMsSumme - st->cpuVorher);
+                             const float g = gpu::millisekunden(gpu::Abschnitt::Figuren);
+                             if (g >= 0.0F) { st->gpu[m].push_back(g); }
+                             st->aufrufe[m] = g_app->gpuFiguren2;
+                         }
+                     }
+                     if (b >= kRunden * jeRunde) {
+                         gpu::figurStufenAus(false);
+                         gpu::figurStufenBezugsweg(false);
+                         g_app->mapDirty = true;
+                         return true;
+                     }
+                     const int m = modusVon(b);
+                     gpu::figurStufenAus(m == 0);
+                     gpu::figurStufenBezugsweg(m == 1);
+                     g_app->playing = false;
+                     g_app->playMs = st->ms;
+                     g_app->mapDirty = true;
+                     st->seit = std::chrono::steady_clock::now();
+                     st->cpuVorher = g_app->figurCpuMsSumme;
+                     return false;
+                 }});
+    s.push_back(pruefe("Figurleistung: gemessen (ohne Stufen / Bezugsweg / schneller Stufenweg)", [=] {
+        auto median = [](std::vector<double> v) {
+            if (v.empty()) { return -1.0; }
+            std::sort(v.begin(), v.end());
+            return v[v.size() / 2];
+        };
+        auto mittel = [](const std::vector<double>& v) {
+            double x = 0.0;
+            for (double d : v) { x += d; }
+            return v.empty() ? -1.0 : x / static_cast<double>(v.size());
+        };
+        static const char* kName[3] = {"ohne Stufen", "Bezugsweg", "schneller Stufenweg"};
+        std::string z = "Knopftest: Figurleistung - intro2_sith bei " + std::to_string(static_cast<int>(st->ms)) +
+                        " ms (die meisten Figurenaufrufe beim Durchspielen: " + std::to_string(st->figuren) + ")";
+        for (int m = 0; m < 3; ++m) {
+            char t[300];
+            std::snprintf(t, sizeof(t),
+                          " | %s: Bild Median %.2f Mittel %.2f ms, Figuren CPU Median %.3f Mittel %.3f ms, "
+                          "Grafikkarte Median %.3f ms, Aufrufe %d (%zu Bilder)",
+                          kName[m], median(st->wand[m]), mittel(st->wand[m]), median(st->cpu[m]), mittel(st->cpu[m]),
+                          median(st->gpu[m]), st->aufrufe[m], st->wand[m].size());
+            z += t;
+        }
+        diag::detail(z);
+        return st->geladen && !st->wand[0].empty() && !st->wand[1].empty() && !st->wand[2].empty();
+    }));
+    return s;
+}
+
 // Die drei rc602-Pruefungen am Stueck, mit gemerkter und zurueckgesetzter
 // Ansicht (Modus, Kamera, Zeit, Gluehen) - fuer den Modus karte.
 std::vector<Schritt> effekteKartenstartSchritte() {
@@ -16195,6 +17439,7 @@ std::vector<Schritt> effekteKartenstartSchritte() {
     for (Schritt& x : fxRunnerStartSchritte()) { s.push_back(std::move(x)); }
     for (Schritt& x : gluehenFigurSchritte()) { s.push_back(std::move(x)); }
     for (Schritt& x : gegenstaendeKarteSchritte()) { s.push_back(std::move(x)); }   // rc602 kartenpruefung
+    for (Schritt& x : figurStufenSchritte()) { s.push_back(std::move(x)); }   // rc602 kartenpruefung
     s.push_back(tu("Effekte: Ansicht zurueck", [=] {
         g_app->leftMode = m->leftMode;
         g_app->cam = m->cam;
@@ -16288,6 +17533,919 @@ std::vector<Schritt> npcKlasseSchritte() {
         g_app->pickedEntity = -1;
         g_app->leftMode = 0;
     }));
+    return s;
+}
+
+// --- rc603 fix603: Tuer-Lauf in md_am_sith ----------------------------------
+//
+// Anwender: "wenn du ein movement script hast, das ein character wo hinlaufen
+// soll, geht es manchmal nicht zuverlaessig. In unserer Mission von Mustafar
+// sieht das an manchen Stellen, wo Anakin durch die Tuer laeuft, nicht richtig
+// aus. Statt durch die Tuer laeuft er nur nach links und rechts."
+// ani_walk.ibi: ani2 (848 -1056) geht mit walkSpeed 55 nach ani2_nav1
+// (528 -1056), das Skript oeffnet locked_door3 bei 1000 ms. intro2_sith.ibi:
+// ani1 (336 6872) geht nach ani1_nav1 (208 6640). Im Spiel kommen beide an.
+// Geprueft: angekommen (STEER::Reached), und auf dem Weg keine Pendelei quer
+// zur Laufrichtung (Seitenwechsel der Querbewegung je Denkbild).
+// Braucht die geladene Mission md_am_sith (karteSchritte).
+namespace tuerlauf {
+void probe(std::vector<Schritt>& s, const std::string& reiter, const std::string& wer, float zx, float zy, double bisMs) {
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto gefunden = std::make_shared<bool>(false);
+    add(tu("Tuer-Lauf: Reiter " + reiter, [=] {
+        *gefunden = false;
+        for (int i = 0; i < static_cast<int>(g_app->tabs.size()); ++i) {
+            const auto& tab = g_app->tabs[static_cast<std::size_t>(i)];
+            if ((tab.path + "|" + tab.shownName).find(reiter) != std::string::npos) {
+                g_app->tabRequest = i;
+                *gefunden = true;
+                break;
+            }
+        }
+    }));
+    add(pause(1.0));
+    add(tu("Tuer-Lauf: Szene neu", [] {
+        prepareScene();
+        g_app->playing = false;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.5));
+    add(pruefe("Tuer-Lauf: " + wer + " (" + reiter + ") kommt an seinem Ziel an, ohne quer zu pendeln", [=] {
+        const Actor* a = nullptr;
+        for (const Actor& x : g_app->scene.actors) {
+            if (x.name == wer) { a = &x; }
+        }
+        if (!*gefunden || a == nullptr) {
+            diag::detail("Knopftest: Tuer-Lauf - Reiter " + reiter + " oder Figur " + wer + " fehlt");
+            return false;
+        }
+        double ankunft = -1.0;
+        double start = -1.0;
+        for (const ActorStep& st : a->steps) {
+            if (st.kind != ActorStep::Kind::WalkTo) { continue; }
+            if (start < 0.0) { start = st.startMs; }
+            if (st.ankunftMs >= 0.0 && ankunft < 0.0) { ankunft = st.ankunftMs; }
+            {
+                char z[260];
+                std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf %s Stueck %.0f-%.0f von %.1f %.1f nach %.1f %.1f, Plan ab %.1f %.1f, erster Takt %.1f %.1f",
+                              wer.c_str(), st.startMs, st.endMs, static_cast<double>(st.from[0]), static_cast<double>(st.from[1]),
+                              static_cast<double>(st.to[0]), static_cast<double>(st.to[1]),
+                              st.lauf ? static_cast<double>(st.lauf->anfang.ort[0]) : 0.0, st.lauf ? static_cast<double>(st.lauf->anfang.ort[1]) : 0.0,
+                              (st.lauf && !st.lauf->takte.empty()) ? static_cast<double>(st.lauf->takte.front().ort[0]) : 0.0,
+                              (st.lauf && !st.lauf->takte.empty()) ? static_cast<double>(st.lauf->takte.front().ort[1]) : 0.0);
+                diag::detail(z);
+                if (st.lauf && !st.lauf->takte.empty()) {
+                    diag::detail("Knopftest: Tuer-Lauf   erster Takt bei " + std::to_string(st.lauf->takte.front().t) + ", Plan ab " +
+                                 std::to_string(st.lauf->abMs) + ", Takte " + std::to_string(st.lauf->takte.size()));
+                    // rc603 fix603: BHED_PROBE_TAKTE="<von> <bis>" - jedes Denkbild
+                    // des Plans in diesem Fenster (Ort, Geschwindigkeit, ps.speed,
+                    // pml.msec, Steuerziel).
+                    if (const char* fe = std::getenv("BHED_PROBE_TAKTE")) {
+                        double tv = 0.0;
+                        double tb = 0.0;
+                        std::istringstream is(fe);
+                        if (is >> tv >> tb) {
+                            for (std::size_t i = 0; i < st.lauf->takte.size() && i < st.lauf->zustaende.size(); ++i) {
+                                const LaufTakt& k = st.lauf->takte[i];
+                                if (k.t < tv - 0.5 || k.t > tb + 0.5) { continue; }
+                                const LaufZustand& zz = st.lauf->zustaende[i];
+                                char zt[300];
+                                std::snprintf(zt, sizeof(zt),
+                                              "Knopftest: Tuer-Lauf   Takt %.0f (%d ms) ort %.2f %.2f %.2f vel %.1f %.1f %.1f speed %d boden %d "
+                                              "stueck %d richtung %.0f %.0f %.0f gier %.1f wunsch %.1f seite %d/%d pfad %d",
+                                              k.t, k.msec, static_cast<double>(k.ort[0]), static_cast<double>(k.ort[1]),
+                                              static_cast<double>(k.ort[2]), static_cast<double>(zz.tempoVek[0]),
+                                              static_cast<double>(zz.tempoVek[1]), static_cast<double>(zz.tempoVek[2]), k.tempo,
+                                              zz.amBoden ? 1 : 0, k.stueck, static_cast<double>(k.richtung[0]),
+                                              static_cast<double>(k.richtung[1]), static_cast<double>(k.richtung[2]),
+                                              static_cast<double>(zz.gier), static_cast<double>(zz.wunschGier), zz.seiteAusweichen,
+                                              zz.letzteSeite, zz.pfadGroesse);
+                                diag::detail(zt);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Tueren mit Namen locked_door* zur Zeit (Zustand 0 zu, 1 offen, 2/3 unterwegs).
+        const std::shared_ptr<const NavWelt> w = navWeltVorschau();
+        int wechsel = 0;
+        int vorzeichen = 0;
+        float querWeg = 0.0F;
+        float px = 0.0F;
+        float py = 0.0F;
+        for (double t = std::max(0.0, start - 1000.0); t <= bisMs; t += 50.0) {
+            const ActorState x = a->at(t);
+            const float dx = zx - x.pos[0];
+            const float dy = zy - x.pos[1];
+            const float d = std::hypot(dx, dy);
+            if (t > start && d > 24.0F) {
+                // Querbewegung zur Richtung aufs Ziel.
+                const float qx = x.pos[0] - px;
+                const float qy = x.pos[1] - py;
+                const float quer = (qx * -dy + qy * dx) / std::max(d, 1.0F);
+                const int v = quer > 0.3F ? 1 : quer < -0.3F ? -1 : 0;
+                // rc603 fix603: ein Seitenwechsel zaehlt erst nach mindestens 4
+                // Einheiten quer in die andere Richtung - auf einer Treppe zittert
+                // die Geschwindigkeit an den Stufenkanten um eine Einheit
+                // (PM_StepSlideMove, dooku5 in md_gd_jedi), das ist kein Pendeln.
+                if (v != 0 && vorzeichen != 0 && v != vorzeichen) {
+                    if (querWeg >= 4.0F) { ++wechsel; }
+                    querWeg = 0.0F;
+                }
+                if (v != 0) {
+                    vorzeichen = v;
+                    querWeg += std::fabs(quer);
+                }
+            }
+            px = x.pos[0];
+            py = x.pos[1];
+            if (static_cast<int>(t) % 250 == 0) {
+                std::string tuer;
+                for (std::size_t i = 0; w && w->mover && i < g_app->map.entities.size(); ++i) {
+                    const MapEntity& e = g_app->map.entities[i];
+                    if (e.classname != "func_door" || e.targetname.rfind("locked_door", 0) != 0) { continue; }
+                    const NavMoverPlan::Stand* st = w->mover->standVon(static_cast<int>(i), t);
+                    if (st != nullptr) { tuer += " " + e.targetname + "#" + std::to_string(i) + "=" + std::to_string(st->zustand); }
+                }
+                char z[200];
+                std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf %s t=%5.0f pos %.1f %.1f %.1f gier %.1f bis Ziel %.1f",
+                              wer.c_str(), t, static_cast<double>(x.pos[0]), static_cast<double>(x.pos[1]),
+                              static_cast<double>(x.pos[2]), static_cast<double>(x.angles[1]), static_cast<double>(d));
+                diag::detail(z + tuer);
+            }
+        }
+        const ActorState e = a->at(bisMs);
+        const float rest = std::hypot(zx - e.pos[0], zy - e.pos[1]);
+        diag::detail("Knopftest: Tuer-Lauf " + wer + " - Weg ab " + std::to_string(start) + ", angekommen " +
+                     std::to_string(ankunft) + ", Rest " + std::to_string(rest) + ", Seitenwechsel " + std::to_string(wechsel));
+        return start >= 0.0 && ankunft > start && rest < 40.0F && wechsel <= 2;
+    }));
+}
+}  // namespace tuerlauf
+
+std::vector<Schritt> tuerLaufSchritte() {
+    std::vector<Schritt> s;
+    tuerlauf::probe(s, "ani_walk", "ani2", 528.0F, -1056.0F, 16000.0);
+    tuerlauf::probe(s, "intro2_sith", "ani1", 208.0F, 6640.0F, 120000.0);
+    // Die anderen Wege der Mission: ani3 durch die Tuer zum Rat (end_cin,
+    // am Ende ebenfalls "player" SET_COPY_ORIGIN "ani3"), der Wachmann in
+    // ani_walk, die beiden Super-Kampfdroiden (sbd_entre).
+    tuerlauf::probe(s, "end_cin", "ani3", -192.0F, 1792.0F, 120000.0);
+    tuerlauf::probe(s, "ani_walk", "bigguard1", 432.0F, -936.0F, 40000.0);
+    tuerlauf::probe(s, "sbd_entre", "sbd1", 8.0F, 5192.0F, 30000.0);
+    tuerlauf::probe(s, "sbd_entre", "sbd2", 120.0F, 5240.0F, 30000.0);
+    return s;
+}
+
+// rc603 fix603: wie weit ein Denkbild eine Figur hoechstens tragen kann.
+// Pmove eines NPC zu Fuss (bhed/navlauf.cpp, Lauf::pmove): PM_Friction
+// verkleinert die Geschwindigkeit nur; PM_Accelerate (bg_pmove.cpp:949 MD)
+// gibt in wishdir hoechstens bis wishspeed dazu (addspeed = wishspeed -
+// DotProduct(velocity, wishdir)) - also |v|^2 <= |v_vorher|^2 + wishspeed^2.
+// wishspeed ist ps.speed (PM_WalkMove, bg_pmove.cpp:4360-4377), in der Luft
+// PM_CmdScale <= ps.speed, gegen die Richtung mal pm_airDecelRate 1,35
+// (PM_AirMove, 4058-4245). Im Bild kommt die Schwerkraft dazu (PM_SlideMove,
+// bg_slidemove.cpp:47-357: endVelocity[2] -= gravity * frametime);
+// PM_ClipVelocity macht nur kuerzer, "nudge velocity out along it" schiebt um
+// die Ebenennormale (Laenge 1) - dafuer 1 Einheit Spiel. PM_StepSlideMove
+// geht waagrecht nicht weiter als der Schub. pml.msec ist nie mehr als 200
+// (bg_pmove.cpp:33781-33789 MD). Also waagrecht hoechstens
+//   (sqrt(|v_vorher|^2 + (1,35 * ps.speed)^2) + gravity * dt) * dt + 1.
+namespace tuerlauf {
+struct Sprung {
+    double t = 0.0;
+    float weit = 0.0F;
+    float grenze = 0.0F;
+    int msec = 50;
+};
+void spruenge(const LaufPlan& p, double bisMs, float schwer, std::vector<Sprung>& aus) {
+    NavVec ort = p.anfang.ort;
+    NavVec v = p.anfang.tempoVek;
+    for (std::size_t i = 0; i < p.takte.size() && i < p.zustaende.size(); ++i) {
+        const LaufTakt& k = p.takte[i];
+        if (k.t > bisMs + 0.5) { break; }
+        const int msec = std::clamp(k.msec, 1, 200);
+        const float dt = static_cast<float>(msec) * 0.001F;
+        const float wunsch = 1.35F * static_cast<float>(std::max(0, k.tempo));
+        const float vMax = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + wunsch * wunsch) + std::fabs(schwer) * dt;
+        const float grenze = vMax * dt + 1.0F;
+        const float weit = std::hypot(k.ort[0] - ort[0], k.ort[1] - ort[1]);
+        if (weit > grenze) { aus.push_back({k.t, weit, grenze, msec}); }
+        ort = k.ort;
+        v = p.zustaende[i].tempoVek;
+    }
+}
+}  // namespace tuerlauf
+
+// Uebersicht (nur Protokoll): alle Wege in allen Reitern der geladenen
+// Mission - welche Figur kommt nie an, und wo pendelt eine (die Richtung der
+// Bewegung je 250 ms kehrt sich um). Mit BHED_MISSION=<karte> laedt der Modus
+// tuerlauf diese Mission statt md_am_sith (fuer andere Karten).
+// rc603 fix603: BHED_MISSION darf eine Liste sein ("a,b,c") oder "alle" (jede
+// Mission mit Karte und Skripten in den Spielordnern, Movie Duels und JKA;
+// BHED_KARTEN filtert nach Teilen des Namens); die Reiter
+// einer Mission werden nach ihrer Uebersicht wieder geschlossen. Jede
+// Uebersicht prueft ausserdem jedes Denkbild jedes Plans gegen die Grenze von
+// tuerlauf::spruenge.
+std::vector<std::string> tuerLaufMissionen(const std::string& wunsch) {
+    std::vector<std::string> liste;
+    if (wunsch != "alle") {
+        std::istringstream is(wunsch);
+        std::string teil;
+        while (std::getline(is, teil, ',')) {
+            if (!teil.empty()) { liste.push_back(teil); }
+        }
+        return liste;
+    }
+    // Je Name die Mission aus dem LETZTEN Archiv mit ihrer Karte - die laedt
+    // tuerLaufLadenSchritte, wie das Spiel (spaetere Archive gewinnen) - und
+    // nur, wenn wenigstens eines ihrer Skripte wirklich da ist.
+    std::map<std::string, bool> mitSkript;
+    for (const GamePath& gp : g_app->gamePaths) {
+        for (const Pk3& arc : gp.archives) {
+            std::vector<std::string> namen;
+            namen.reserve(arc.entries.size());
+            bool karten = false;
+            for (const Pk3Entry& e : arc.entries) {
+                namen.push_back(e.name);
+                karten = karten || (e.name.size() > 4 && e.name.compare(e.name.size() - 4, 4, ".bsp") == 0);
+            }
+            if (!karten) { continue; }
+            for (const Mission& m : findMissions(namen, [](const std::string& n, std::string& out) { return readFromArchives(n, out); })) {
+                bool da = false;
+                for (const Mission::Script& sc : m.scripts) { da = da || !sc.file.empty(); }
+                // Die Karte selbst muss es auch geben (siege_hoth und
+                // siege_destroyer2 bringen nur .ent und Skripte mit).
+                bool karte = false;
+                for (const GamePath& gk : g_app->gamePaths) {
+                    for (const Pk3& ak : gk.archives) { karte = karte || ak.find(m.mapFile) != nullptr; }
+                }
+                mitSkript[m.name] = da && karte;
+            }
+        }
+    }
+    // BHED_KARTEN="teil1,teil2": nur Missionen, deren Name einen Teil enthaelt
+    // (wie im Modus kartenpruefung).
+    std::vector<std::string> teile;
+    if (const char* nur = std::getenv("BHED_KARTEN")) {
+        std::istringstream is(nur);
+        std::string teil;
+        while (std::getline(is, teil, ',')) {
+            if (!teil.empty()) { teile.push_back(teil); }
+        }
+    }
+    for (const auto& [name, da] : mitSkript) {
+        bool passt = teile.empty();
+        for (const std::string& tl : teile) { passt = passt || name.find(tl) != std::string::npos; }
+        if (da && passt) { liste.push_back(name); }
+    }
+    return liste;
+}
+
+std::vector<Schritt> tuerLaufLadenSchritte(const std::string& karte, const std::shared_ptr<int>& ab) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto archiv = std::make_shared<std::string>();
+    add(tu("Tuer-Lauf: Archiv mit maps/" + karte + ".bsp suchen", [=] {
+        *ab = static_cast<int>(g_app->tabs.size());
+        archiv->clear();
+        // rc603 fix603: auch maps/mp/ (die Siege-Karten der Grundspiel-Archive).
+        for (const GamePath& gp : g_app->gamePaths) {
+            for (const Pk3& arc : gp.archives) {
+                if (arc.find("maps/" + karte + ".bsp") != nullptr || arc.find("maps/mp/" + karte + ".bsp") != nullptr) {
+                    *archiv = arc.path;
+                }
+            }
+        }
+        diag::detail("Knopftest: Tuer-Lauf - Archiv \"" + *archiv + "\"");
+        if (archiv->empty()) { return; }
+        missionenAusArchiv(*archiv);
+        // rc603 fix603: statt der Auswahl im Fenster (lange Listen in den
+        // JKA-Archiven) die Mission direkt - wie ein Klick darauf.
+        if (g_app->missionPickOpen) {
+            g_app->missionPickOpen = false;
+            for (const Mission& m : g_app->missions) {
+                if (m.name == karte) {
+                    loadMission(m);
+                    break;
+                }
+            }
+        }
+    }));
+    add(warteBis("Tuer-Lauf: Mission geladen", [=] {
+        return !g_app->map.empty() && static_cast<int>(g_app->tabs.size()) > *ab &&
+               g_app->map.path.find(karte) != std::string::npos;
+    }, 1200));
+    add(pause(1.0));
+    return s;
+}
+
+std::vector<Schritt> tuerLaufAlleSchritte(const std::shared_ptr<int>& ab, const std::string& karte, bool schliessen) {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto nr = std::make_shared<int>(0);
+    auto summe = std::make_shared<std::array<int, 4>>();
+    for (int i = 0; i < 40; ++i) {
+        add(tu("Tuer-Lauf: Reiter " + std::to_string(i) + " der Mission", [=] {
+            const int r = *ab + i;
+            if (r < static_cast<int>(g_app->tabs.size())) { g_app->tabRequest = r; }
+        }));
+        // rc603 fix603: warten, bis der Reiter vorn ist - nicht eine feste
+        // halbe Sekunde je Reiter, auch je fehlendem (bei "alle" 163 Missionen).
+        add(warteBis("Tuer-Lauf: Reiter " + std::to_string(i) + " vorn", [=] {
+            const int r = *ab + i;
+            return r >= static_cast<int>(g_app->tabs.size()) || (g_app->activeTab == r && g_app->tabRequest < 0);
+        }, 300));
+        add(tu("Tuer-Lauf: Wege im Reiter " + std::to_string(i), [=] {
+            const int r = *ab + i;
+            if (r >= static_cast<int>(g_app->tabs.size())) { return; }
+            prepareScene();
+            g_app->playing = false;
+            const auto& tab = g_app->tabs[static_cast<std::size_t>(r)];
+            for (const Actor& a : g_app->scene.actors) {
+                double von = -1.0;
+                double bis = -1.0;
+                int wege = 0;
+                int an = 0;
+                const ActorStep* letzter = nullptr;
+                // rc603 fix603: die Plaene der Wegstuecke (mehrere Stuecke
+                // teilen einen) - bis wohin gezeigt.
+                std::map<const LaufPlan*, double> plaene;
+                for (const ActorStep& st : a.steps) {
+                    if (st.kind != ActorStep::Kind::WalkTo) { continue; }
+                    letzter = &st;
+                    if (von < 0.0) { von = st.startMs; }
+                    bis = std::max(bis, st.endMs);
+                    ++wege;
+                    if (st.ankunftMs >= 0.0) { ++an; }
+                    if (st.lauf) {
+                        auto [it, neu] = plaene.emplace(st.lauf.get(), st.endMs);
+                        if (!neu) { it->second = std::max(it->second, st.endMs); }
+                    }
+                }
+                for (const auto& [vp, vt] : a.vorlaeufe) {
+                    if (vp) {
+                        auto [it, neu] = plaene.emplace(vp.get(), vt);
+                        if (!neu) { it->second = std::max(it->second, vt); }
+                    }
+                }
+                if (wege == 0) { continue; }
+                int kehren = 0;
+                const double ende = std::min(bis, von + 60000.0);
+                float ax = 0.0F;
+                float ay = 0.0F;
+                for (double t = von + 250.0; t <= ende; t += 250.0) {
+                    const ActorState p = a.at(t - 250.0);
+                    const ActorState q = a.at(t);
+                    const float bx = q.pos[0] - p.pos[0];
+                    const float by = q.pos[1] - p.pos[1];
+                    const float la = std::hypot(ax, ay);
+                    const float lb = std::hypot(bx, by);
+                    if (la > 2.0F && lb > 2.0F && ax * bx + ay * by < -0.5F * la * lb) { ++kehren; }
+                    if (lb > 2.0F) {
+                        ax = bx;
+                        ay = by;
+                    }
+                }
+                // rc603 fix603: jedes Denkbild gegen die Grenze (tuerlauf::spruenge).
+                float schwer = std::max(800.0F, g_app->scene.schwerkraft);
+                for (const auto& [ms, g] : g_app->scene.schwerkraftAb) { schwer = std::max(schwer, std::fabs(g)); }
+                for (const auto& [ms, g] : a.eigeneSchwerkraft) { schwer = std::max(schwer, std::fabs(g)); }
+                std::vector<tuerlauf::Sprung> spr;
+                for (const auto& [plan, planBis] : plaene) { tuerlauf::spruenge(*plan, planBis, schwer, spr); }
+                std::sort(spr.begin(), spr.end(), [](const tuerlauf::Sprung& x, const tuerlauf::Sprung& y) { return x.t < y.t; });
+                (*summe)[0] += 1;
+                (*summe)[1] += an == 0 ? 1 : 0;
+                (*summe)[2] += kehren > 2 ? 1 : 0;
+                (*summe)[3] += static_cast<int>(spr.size());
+                std::string zuletzt;
+                if (letzter != nullptr) {
+                    const ActorState e = a.at(letzter->endMs);
+                    char z[200];
+                    std::snprintf(z, sizeof(z), "; letztes Stueck %.0f-%.0f%s%s, Ziel %.0f %.0f, dort noch %.0f weit",
+                                  letzter->startMs, letzter->endMs, letzter->teilweg ? " abgeschnitten" : "",
+                                  (letzter->lauf && letzter->lauf->nie) ? " ohne Weg (nie)" : "",
+                                  static_cast<double>(letzter->laufZiel[0]), static_cast<double>(letzter->laufZiel[1]),
+                                  static_cast<double>(std::hypot(letzter->laufZiel[0] - e.pos[0], letzter->laufZiel[1] - e.pos[1])));
+                    zuletzt = z;
+                }
+                diag::detail("Knopftest: Tuer-Lauf Uebersicht " + tab.shownName + " " + a.name + ": " + std::to_string(wege) +
+                             " Wegstuecke ab " + std::to_string(static_cast<int>(von)) + ", angekommen " + std::to_string(an) +
+                             ", Umkehren " + std::to_string(kehren) + ", Spruenge " + std::to_string(spr.size()) + zuletzt);
+                for (std::size_t j = 0; j < spr.size() && j < 6; ++j) {
+                    char z[260];
+                    std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf Sprung %s %s %s: Denkbild %.0f ms geht %.1f weit, moeglich %.1f (pml.msec %d)",
+                                  karte.c_str(), tab.shownName.c_str(), a.name.c_str(), spr[j].t, static_cast<double>(spr[j].weit),
+                                  static_cast<double>(spr[j].grenze), spr[j].msec);
+                    diag::detail(z);
+                }
+            }
+            ++*nr;
+        }));
+    }
+    add(tu("Tuer-Lauf: Summe " + karte, [=] {
+        diag::detail("Knopftest: Tuer-Lauf Summe " + karte + ": " + std::to_string(*nr) + " Reiter, " + std::to_string((*summe)[0]) +
+                     " Figuren mit Weg, nie angekommen " + std::to_string((*summe)[1]) + ", pendelnd " +
+                     std::to_string((*summe)[2]) + ", Spruenge " + std::to_string((*summe)[3]));
+    }));
+    add(pruefe("Tuer-Lauf: " + karte + " - kein Denkbild geht weiter, als Pmove die Figur tragen kann", [=] {
+        return (*summe)[3] == 0;
+    }));
+    if (schliessen) {
+        add(tu("Tuer-Lauf: Reiter der Mission " + karte + " schliessen", [=] {
+            for (int r = static_cast<int>(g_app->tabs.size()) - 1; r >= std::max(1, *ab); --r) { reiterSchliessen(r); }
+        }));
+        add(pause(0.5));
+    }
+    return s;
+}
+
+// --- rc603 fix603: Zurueckspulen so fluessig wie Vorspulen (BHED_EDITORTEST=spulen) ---
+//
+// Gemeldet: "Wenn ich die Timeline von links nach rechts bewege, laeuft es
+// fluessig, keine FPS-Probleme; wenn ich aber von rechts nach links bewege,
+// um zurueckzuspulen, bricht die Framerate massiv ein."
+// Nachgestellt mit echter Maus: auf dem Lineal der Zeitleiste druecken, je
+// Bild ein Stueck (BHED_SPUL_SCHRITT ms, Vorgabe 100) nach rechts bis zum
+// Ende der Szene (hoechstens 120 s), ebenso zurueck, dann loslassen.
+// Gemessen wird jedes Bild (Wanduhr zwischen zwei Aufrufen) samt seinen
+// Teilen (FrameCost::raw*), und jedes Bild traegt seine Pruefsumme
+// (App::bildSumme): zur selben Zeit muss das Zurueckspulen Bit fuer Bit
+// dasselbe zeigen wie das Vorspulen.
+namespace spulen {
+struct Bild {
+    int richtung = 0;   // 0 vor, 1 zurueck
+    double wand = 0.0;
+    double ms = 0.0;
+    float saber = 0.0F;
+    float saberFx = 0.0F;
+    float spuren = 0.0F;
+    float effekte = 0.0F;
+    float szene = 0.0F;
+    float ansicht = 0.0F;
+};
+struct Lauf {
+    bool gefunden = false;
+    std::vector<float> xs;
+    float y = 0.0F;
+    std::size_t n = 0;
+    double dauer = 0.0;
+    int richtung = 0;
+    std::chrono::steady_clock::time_point seit;
+    std::vector<Bild> bilder;
+    std::map<double, std::array<std::uint64_t, 5>> vor;
+    std::map<double, std::array<std::uint64_t, 5>> zurueck;
+    int verglichen = 0;
+    int abweichend = 0;
+    std::array<int, 5> abweichendTeil{};
+    std::array<int, 2> blitzBilder{};   // Bilder mit Klirrblitz (Teil 4), vor / zurueck
+    std::string abweichungen;   // die ersten Zeiten mit den verschiedenen Teilen
+    int letztesSummenBild = -1;
+    int letztesKostenBild = -1;
+    // Lineal beim Druecken (x, Breite, Spanne, y). Aendert es sich beim Ziehen
+    // (das Fenster wurde von aussen umgestellt), treffen vor und zurueck nicht
+    // mehr dieselben Zeiten - dann wird die Probe einmal wiederholt.
+    std::array<float, 4> lineal{};
+    bool linealGeaendert = false;
+    bool wiederholt = false;
+    // Vorher-Stand der Oberflaeche
+    int leftMode = 0;
+    bool showTracks = true;
+    float timelineFrac = 0.22F;
+    double timelineZoom = 1.0;
+    double timelineStart = 0.0;
+    bool throughCamera = false;
+};
+
+struct Stat {
+    int n = 0;
+    double mittel = 0.0;
+    double median = 0.0;
+    double p95 = 0.0;
+    double max = 0.0;
+    double saber = 0.0;
+    double saberFx = 0.0;
+    double spuren = 0.0;
+    double effekte = 0.0;
+    double szene = 0.0;
+    double ansicht = 0.0;
+};
+Stat statistik(const std::vector<Bild>& bilder, int richtung) {
+    Stat s;
+    std::vector<double> w;
+    for (const Bild& b : bilder) {
+        if (b.richtung != richtung) { continue; }
+        w.push_back(b.wand);
+        s.saber += b.saber;
+        s.saberFx += b.saberFx;
+        s.spuren += b.spuren;
+        s.effekte += b.effekte;
+        s.szene += b.szene;
+        s.ansicht += b.ansicht;
+    }
+    s.n = static_cast<int>(w.size());
+    if (w.empty()) { return s; }
+    for (const double x : w) { s.mittel += x; }
+    const double n = static_cast<double>(w.size());
+    s.mittel /= n;
+    s.saber /= n;
+    s.saberFx /= n;
+    s.spuren /= n;
+    s.effekte /= n;
+    s.szene /= n;
+    s.ansicht /= n;
+    std::sort(w.begin(), w.end());
+    s.median = w[w.size() / 2];
+    s.p95 = w[std::min(w.size() - 1, w.size() * 95 / 100)];
+    s.max = w.back();
+    return s;
+}
+std::string text(const Stat& s) {
+    char z[400];
+    std::snprintf(z, sizeof(z),
+                  "%d Bilder, Mittel %.1f ms, Median %.1f, 95 %% %.1f, max %.1f | je Bild: Schwerttakte %.2f, "
+                  "Funken/Klirren %.2f, Brandspuren %.2f, Effektnetz %.2f, Figuren %.2f, Ansicht gesamt %.2f",
+                  s.n, s.mittel, s.median, s.p95, s.max, s.saber, s.saberFx, s.spuren, s.effekte, s.szene, s.ansicht);
+    return z;
+}
+
+// Die Gesamtsummen (vor, zurueck) der Laeufe ohne Obergrenze, je Reiter.
+std::map<std::string, std::pair<std::string, std::string>>& summen() {
+    static std::map<std::string, std::pair<std::string, std::string>> m;
+    return m;
+}
+
+// obergrenze > 0: der Schwertspeicher haelt nur so viele Clientbilder
+// (saberObergrenze) - dann fehlen zurueck Bilder, die Rechnung setzt an
+// Schnappschuessen auf und rettet den laufenden Stand. Geprueft wird dann nur,
+// dass jedes Bild dasselbe zeigt wie ohne Obergrenze (gleiche Gesamtsummen).
+void probe(std::vector<Schritt>& s, const std::string& reiter, std::size_t obergrenze = 0, int versuch = 0) {
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    const std::string name = reiter + (obergrenze > 0 ? " (Obergrenze " + std::to_string(obergrenze) + " Clientbilder)" : "");
+    auto L = std::make_shared<Lauf>();
+    const char* sw = std::getenv("BHED_SPUL_SCHRITT");
+    const double schritt = sw != nullptr ? std::max(10.0, std::atof(sw)) : 100.0;
+    add(tu("Spulen: Reiter " + name, [=] {
+        *L = Lauf{};
+        for (int i = 0; i < static_cast<int>(g_app->tabs.size()); ++i) {
+            const auto& tab = g_app->tabs[static_cast<std::size_t>(i)];
+            if ((tab.path + "|" + tab.shownName).find(reiter) != std::string::npos) {
+                g_app->tabRequest = i;
+                L->gefunden = true;
+                break;
+            }
+        }
+        L->leftMode = g_app->leftMode;
+        L->showTracks = g_app->showTracks;
+        L->timelineFrac = g_app->timelineFrac;
+        L->timelineZoom = g_app->timelineZoom;
+        L->timelineStart = g_app->timelineViewStartMs;
+        L->throughCamera = g_app->throughCamera;
+    }));
+    add(pause(1.0));
+    add(tu("Spulen: Szene neu, Zeitleiste zeigen, Zeiger auf 0", [=] {
+        prepareScene();
+        g_app->leftMode = 1;
+        g_app->showTracks = true;
+        g_app->timelineFrac = std::max(g_app->timelineFrac, 0.30F);
+        g_app->timelineZoom = 1.0;
+        g_app->timelineViewStartMs = 0.0;
+        g_app->throughCamera = true;
+        g_app->playing = false;
+        g_app->playMs = 0.0;
+        g_app->bildSummeAn = true;
+        g_app->mapDirty = true;
+        saberObergrenze(obergrenze);
+    }));
+    add(warteBis("Spulen: Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(pause(1.0));
+    add({"Spulen: " + name + " mit der Maus auf dem Lineal vor und zurueck", [=](int b) {
+             ImGuiIO& io = ImGui::GetIO();
+             if (!L->gefunden) { return true; }
+             if (b == 0) {
+                 const double dauer = std::min(120000.0, std::max(g_app->camTrack.durationMs,
+                                                                std::min(g_app->timeline.practicalEndMs, 600000.0)));
+                 const auto xVon = [](double ms) {
+                     return g_app->tlFeldX +
+                            static_cast<float>((ms - g_app->tlSichtStart) / std::max(1.0, g_app->tlSichtSpanne)) * g_app->tlFeldW;
+                 };
+                 // Ganze Punkte wie eine echte Maus; je Bild mindestens einer.
+                 float alt = -1.0e9F;
+                 for (double ms = 0.0; ms <= dauer + 0.5; ms += schritt) {
+                     const float x = std::round(xVon(ms));
+                     if (x > alt) {
+                         L->xs.push_back(x);
+                         alt = x;
+                     }
+                 }
+                 L->n = L->xs.size();
+                 L->dauer = dauer;
+                 L->y = g_app->tlLinealY;
+                 L->lineal = {g_app->tlFeldX, g_app->tlFeldW, static_cast<float>(g_app->tlSichtSpanne), g_app->tlLinealY};
+                 diag::detail("Knopftest: Spulen " + name + " - Dauer " + std::to_string(static_cast<int>(dauer)) + " ms, " +
+                              std::to_string(L->n) + " Stellen je Richtung, Lineal x " +
+                              std::to_string(L->xs.empty() ? 0.0F : L->xs.front()) + " .. " +
+                              std::to_string(L->xs.empty() ? 0.0F : L->xs.back()) + ", y " + std::to_string(L->y) +
+                              ", Spanne " + std::to_string(g_app->tlSichtSpanne));
+                 if (L->n < 2) { return true; }
+                 setzeMaus(ImVec2{L->xs.front(), L->y});
+                 return false;
+             }
+             if (b == 1) { return false; }
+             if (b == 2) {
+                 io.AddMouseButtonEvent(0, true);
+                 L->seit = std::chrono::steady_clock::now();
+                 return false;
+             }
+             // Das Bild seit dem letzten Aufruf.
+             const auto jetzt = std::chrono::steady_clock::now();
+             const std::array<float, 4> lineal = {g_app->tlFeldX, g_app->tlFeldW, static_cast<float>(g_app->tlSichtSpanne),
+                                                  g_app->tlLinealY};
+             L->linealGeaendert = L->linealGeaendert || lineal != L->lineal;
+             if (b >= 4) {
+                 Bild x;
+                 x.richtung = L->richtung;
+                 x.wand = std::chrono::duration<double, std::milli>(jetzt - L->seit).count();
+                 x.ms = g_app->playMs;
+                 const App::FrameCost& k = g_app->frameCost;
+                 if (g_app->bildSummeBild != L->letztesKostenBild) {
+                     L->letztesKostenBild = g_app->bildSummeBild;
+                     x.saber = k.rawSaber;
+                     x.saberFx = k.rawSaberFx;
+                     x.spuren = k.rawSpuren;
+                     x.effekte = k.rawEffects;
+                     x.szene = k.rawScene;
+                     x.ansicht = k.rawTotal;
+                 }
+                 L->bilder.push_back(x);
+             }
+             // Die Pruefsumme des zuletzt gezeichneten Bildes, nach seiner Zeit.
+             if (g_app->bildSummeBild != L->letztesSummenBild && g_app->bildSummeBild >= 0) {
+                 L->letztesSummenBild = g_app->bildSummeBild;
+                 const double ms = g_app->bildSummeMs;
+                 // Durchsicht: Teil 4 ist der Klirrblitz (leer = FNV-Anfang).
+                 L->blitzBilder[static_cast<std::size_t>(L->richtung)] +=
+                     g_app->bildSumme[4] != 1469598103934665603ULL ? 1 : 0;
+                 if (L->richtung == 0) {
+                     L->vor[ms] = g_app->bildSumme;
+                 } else {
+                     L->zurueck[ms] = g_app->bildSumme;
+                     const auto v = L->vor.find(ms);
+                     if (v != L->vor.end()) {
+                         ++L->verglichen;
+                         if (v->second != g_app->bildSumme) {
+                             std::string teile;
+                             for (std::size_t t = 0; t < 5; ++t) {
+                                 if (v->second[t] != g_app->bildSumme[t]) {
+                                     ++L->abweichendTeil[t];
+                                     teile += " " + std::to_string(t);
+                                 }
+                             }
+                             if (L->abweichend < 8) {
+                                 L->abweichungen += " [" + std::to_string(static_cast<int>(ms)) + " ms: Teil" + teile + "]";
+                             }
+                             ++L->abweichend;
+                         }
+                     }
+                 }
+             }
+             L->seit = std::chrono::steady_clock::now();
+             const std::size_t k = static_cast<std::size_t>(b - 3);
+             if (k < L->n) {
+                 L->richtung = 0;
+                 setzeMaus(ImVec2{L->xs[k], L->y});
+                 return false;
+             }
+             if (k < 2 * L->n - 1) {
+                 L->richtung = 1;
+                 setzeMaus(ImVec2{L->xs[2 * L->n - 2 - k], L->y});
+                 return false;
+             }
+             if (k < 2 * L->n + 2) { return false; }   // das letzte Bild noch zeichnen lassen
+             if (k == 2 * L->n + 2) {
+                 io.AddMouseButtonEvent(0, false);
+                 return false;
+             }
+             return k >= 2 * L->n + 5;
+         }});
+    add(tu("Spulen: " + name + " - Lineal beim Ziehen unveraendert?", [=] {
+        if (!L->linealGeaendert) { return; }
+        diag::detail("Knopftest: Spulen " + name + " - das Lineal hat sich beim Ziehen geaendert (Fenster von aussen umgestellt)" +
+                     (versuch == 0 ? std::string(" - die Probe wird einmal wiederholt") : std::string()));
+        if (versuch == 0) {
+            L->wiederholt = true;
+            std::vector<Schritt> neu;
+            probe(neu, reiter, obergrenze, 1);
+            schritteEinfuegen(std::move(neu));
+        }
+    }));
+    add(pruefe("Spulen: " + name + " - zurueck so fluessig wie vor (Mittel und 95 %)", [=] {
+        if (!L->gefunden) {
+            diag::detail("Knopftest: Spulen - Reiter " + reiter + " fehlt");
+            return false;
+        }
+        const Stat v = statistik(L->bilder, 0);
+        const Stat z = statistik(L->bilder, 1);
+        diag::detail("Knopftest: Spulen " + name + " vor:     " + text(v));
+        diag::detail("Knopftest: Spulen " + name + " zurueck: " + text(z));
+        // Die langsamsten Bilder zurueck, mit Zeit und Teilen.
+        std::vector<Bild> lang;
+        for (const Bild& b : L->bilder) {
+            if (b.richtung == 1) { lang.push_back(b); }
+        }
+        std::sort(lang.begin(), lang.end(), [](const Bild& a, const Bild& b) { return a.wand > b.wand; });
+        for (std::size_t i = 0; i < std::min<std::size_t>(lang.size(), 5); ++i) {
+            char zl[300];
+            std::snprintf(zl, sizeof(zl),
+                          "Knopftest: Spulen %s langsam zurueck bei %.0f ms: %.1f ms (Schwerttakte %.1f, Funken %.1f, "
+                          "Brandspuren %.1f, Effektnetz %.1f, Figuren %.1f, Ansicht %.1f)",
+                          name.c_str(), lang[i].ms, lang[i].wand, static_cast<double>(lang[i].saber),
+                          static_cast<double>(lang[i].saberFx), static_cast<double>(lang[i].spuren),
+                          static_cast<double>(lang[i].effekte), static_cast<double>(lang[i].szene),
+                          static_cast<double>(lang[i].ansicht));
+            diag::detail(zl);
+        }
+        if (L->wiederholt) { return true; }   // die Wiederholung prueft
+        // Mit Obergrenze rechnet das Zurueckspulen absichtlich nach - nur die Zahlen.
+        return v.n > 20 && z.n > 20 && (obergrenze > 0 || (z.mittel <= v.mittel * 1.25 + 2.0 && z.p95 <= v.p95 * 1.5 + 5.0));
+    }));
+    add(pruefe("Spulen: " + name + " - zurueck zeigt zu jeder Zeit Bit fuer Bit dasselbe wie vor" +
+                   (obergrenze > 0 ? std::string(" und wie ohne Obergrenze") : std::string()), [=] {
+        // Eine Summe ueber alle Bilder je Richtung - zum Vergleich zweier
+        // Fassungen (vorher/nachher gleich = die Beschleunigung aendert nichts).
+        // Durchsicht: die Teile 0-3 wie bisher (vergleichbar mit den
+        // Summen in NOTIZEN_fix603.md), der Klirrblitz (Teil 4) daneben.
+        const auto gesamt = [](const std::map<double, std::array<std::uint64_t, 5>>& m, std::size_t von,
+                               std::size_t bis) {
+            std::uint64_t h = 1469598103934665603ULL;
+            const auto dazu = [&h](std::uint64_t x) {
+                for (int i = 0; i < 8; ++i) { h = (h ^ ((x >> (8 * i)) & 0xFFU)) * 1099511628211ULL; }
+            };
+            for (const auto& [ms, teile] : m) {
+                std::uint64_t b = 0;
+                std::memcpy(&b, &ms, sizeof(b));
+                dazu(b);
+                for (std::size_t t = von; t < bis; ++t) { dazu(teile[t]); }
+            }
+            char z[40];
+            std::snprintf(z, sizeof(z), "%016llx", static_cast<unsigned long long>(h));
+            return std::string(z);
+        };
+        const std::string gv = gesamt(L->vor, 0, 4) + " Blitz " + gesamt(L->vor, 4, 5);
+        const std::string gz = gesamt(L->zurueck, 0, 4) + " Blitz " + gesamt(L->zurueck, 4, 5);
+        diag::detail("Knopftest: Spulen " + name + " - Gesamtsumme vor " + gv + " (" + std::to_string(L->vor.size()) +
+                     " Zeiten), zurueck " + gz + " (" + std::to_string(L->zurueck.size()) + " Zeiten)");
+        if (L->wiederholt) { return true; }   // die Wiederholung prueft
+        bool wieOhne = true;
+        if (obergrenze == 0) {
+            summen()[reiter] = {gv, gz};
+        } else {
+            const auto o = summen().find(reiter);
+            wieOhne = o != summen().end() && o->second.first == gv && o->second.second == gz;
+            diag::detail("Knopftest: Spulen " + name + " - ohne Obergrenze: " +
+                         (o != summen().end() ? "vor " + o->second.first + ", zurueck " + o->second.second
+                                              : std::string("kein Lauf")) +
+                         (wieOhne ? " - gleich" : " - VERSCHIEDEN"));
+        }
+        diag::detail("Knopftest: Spulen " + name + " - Pruefsummen: " + std::to_string(L->vor.size()) + " vor, " +
+                     std::to_string(L->verglichen) + " zurueck verglichen, " + std::to_string(L->abweichend) +
+                     " verschieden (Effektnetz " + std::to_string(L->abweichendTeil[0]) + ", Klingen " +
+                     std::to_string(L->abweichendTeil[1]) + ", Figuren " + std::to_string(L->abweichendTeil[2]) +
+                     ", bewegte Modelle " + std::to_string(L->abweichendTeil[3]) + ", Klirrblitz " +
+                     std::to_string(L->abweichendTeil[4]) + "; Bilder mit Klirrblitz vor " +
+                     std::to_string(L->blitzBilder[0]) + ", zurueck " + std::to_string(L->blitzBilder[1]) + ")" +
+                     L->abweichungen);
+        return L->gefunden && L->verglichen > static_cast<int>(L->n) / 2 && L->abweichend == 0 && wieOhne;
+    }));
+    // Leistung, ohne Oberflaeche: die Schwerttakte der ganzen Szene am Stueck
+    // wie beim Abspielen (je 16 ms ein saberRechneBis), bester von 3 Laeufen.
+    if (obergrenze == 0) {
+        add(tu("Spulen: " + name + " - Schwerttakte am Stueck (Leistung)", [=] {
+            double best = 1.0e30;
+            for (int r = 0; r < 3; ++r) {
+                saberVergessen();
+                const auto t0 = std::chrono::steady_clock::now();
+                for (double ms = 0.0; ms <= L->dauer; ms += 16.0) { saberRechneBis(ms); }
+                best = std::min(best, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+            }
+            saberVergessen();
+            char z[200];
+            std::snprintf(z, sizeof(z), "Knopftest: Spulen %s - Schwerttakte vorwaerts am Stueck bis %.0f ms: %.1f ms (bester von 3)",
+                          name.c_str(), L->dauer, best);
+            diag::detail(z);
+        }));
+    }
+    add(tu("Spulen: Oberflaeche zurueck", [=] {
+        saberObergrenze(0);
+        g_app->bildSummeAn = false;
+        g_app->playing = false;
+        g_app->playMs = 0.0;
+        g_app->leftMode = L->leftMode;
+        g_app->showTracks = L->showTracks;
+        g_app->timelineFrac = L->timelineFrac;
+        g_app->timelineZoom = L->timelineZoom;
+        g_app->timelineViewStartMs = L->timelineStart;
+        g_app->throughCamera = L->throughCamera;
+        g_app->mapDirty = true;
+    }));
+    add(pause(0.3));
+}
+
+// Beim Abspielen klingt jedes Klirren (saberTonEreignisse). Das Serverbild s
+// (Zeit s*50) laeuft im Clientbild, in dessen ((t-1)*8, t*8] es faellt
+// (clientSchritt). Endet ein Abspielfenster zwischen s*50 und diesem
+// Clientbild, war das Klirren beim Abspielen noch nicht gerechnet: bis rc602
+// fiel es aus diesem Fenster und lag im naechsten schon davor - es blieb stumm
+// (die Luecke ist 2, 4 oder 6 ms lang, wenn s kein Vielfaches von 4 ist - bei
+// 60 Bildern je Sekunde im Mittel etwa jedes sechste Klirren). Geprueft mit
+// denselben Fenstern wie die Abspielschleife (von = voriges bis), einmal mit
+// Fensterenden auf den Clientbildern, einmal 1 ms hinter jedem Klirren: beide
+// Male klingen gleich viele Klirrklaenge, und mindestens so viele, wie es
+// Klirren mit Klang gibt.
+void klirrTon(std::vector<Schritt>& s, const std::string& reiter) {
+    s.push_back(pruefe("Spulen: " + reiter + " - jedes Klirren klingt beim Abspielen, auch wenn ein Bild knapp dahinter endet", [=] {
+        const double dauer = std::max(g_app->camTrack.durationMs, std::min(g_app->timeline.practicalEndMs, 600000.0));
+        saberVergessen();
+        saberRechneBis(dauer);
+        const std::vector<SaberKlirren> alle = saberKlirrenBis(dauer);
+        std::set<std::string> namen;
+        int erwartet = 0;   // Klirren mit Klang (leer: G_Sound mit Index 0, still)
+        for (const SaberKlirren& k : alle) {
+            if (!k.klang.empty()) {
+                namen.insert(k.klang);
+                ++erwartet;
+            }
+        }
+        const auto abspielen = [&](bool aufClientbild) {
+            saberVergessen();
+            std::vector<double> enden;
+            for (double t = 16.0; t <= dauer + 16.0; t += 16.0) { enden.push_back(t); }
+            for (const SaberKlirren& k : alle) {
+                enden.push_back(aufClientbild ? std::ceil(k.ms / kSaberClientTaktMs) * kSaberClientTaktMs : k.ms + 1.0);
+            }
+            std::sort(enden.begin(), enden.end());
+            enden.erase(std::unique(enden.begin(), enden.end()), enden.end());
+            klangMitschrift().clear();
+            klangMitschriftAn(true);
+            double von = -1.0;
+            for (const double bis : enden) {
+                g_app->audioUpTo = von;
+                g_app->playMs = bis;
+                saberTonEreignisse(von, bis);
+                von = bis;
+            }
+            int zahl = 0;
+            for (const KlangMitschrift& m : klangMitschrift()) {
+                zahl += (m.art == 'E' && namen.count(m.datei) != 0U) ? 1 : 0;
+            }
+            klangMitschriftAn(false);
+            klangMitschrift().clear();
+            g_app->audio.stopAll();
+            g_app->laufendeSchleifen.clear();
+            tonZuruecksetzen();
+            return zahl;
+        };
+        const int gerade = abspielen(true);
+        const int knapp = abspielen(false);
+        int nichtAufClientbild = 0;
+        for (const SaberKlirren& k : alle) {
+            nichtAufClientbild += std::fmod(k.ms, static_cast<double>(kSaberClientTaktMs)) != 0.0 ? 1 : 0;
+        }
+        saberVergessen();
+        g_app->playMs = 0.0;
+        g_app->audioUpTo = -1.0;
+        g_app->mapDirty = true;
+        diag::detail("Knopftest: Spulen " + reiter + " - " + std::to_string(alle.size()) + " Klirren, " +
+                     std::to_string(erwartet) + " mit Klang (" +
+                     std::to_string(nichtAufClientbild) + " nicht auf einem Clientbild), Klirrklaenge mit Fensterenden auf "
+                     "Clientbildern " + std::to_string(gerade) + ", 1 ms hinter jedem Klirren " + std::to_string(knapp));
+        return erwartet > 0 && gerade == knapp && gerade >= erwartet;
+    }));
+}
+
+}  // namespace spulen
+
+// md_am_sith ist geladen (karteSchritte): intro2_sith (39 Figuren, 30 Effekte).
+std::vector<Schritt> spulenSchritte() {
+    std::vector<Schritt> s;
+    spulen::probe(s, "intro2_sith");
+    return s;
+}
+
+// Modus spulen: danach md_dwtdl_jedi mit cin3_jedi (4,3 s Lichtschwertkampf,
+// SET_SABERCOLLISIONS, Klirren ab 300 ms) und end_jedi (118 s, Klirren,
+// Funken, Wandklang, Brandspuren).
+std::vector<Schritt> spulenSchwertSchritte() {
+    std::vector<Schritt> s;
+    // Zusammenfuehrung rc603: tuerLaufLadenSchritte nimmt seit der Spur t_nav
+    // den Reiterstand vor dem Laden mit (fuer "Mission geladen").
+    for (Schritt& x : tuerLaufLadenSchritte("md_dwtdl_jedi", std::make_shared<int>(0))) { s.push_back(std::move(x)); }
+    spulen::probe(s, "cin3_jedi");
+    spulen::klirrTon(s, "cin3_jedi");
+    spulen::probe(s, "end_jedi");
+    // Dieselbe Szene mit nur 2500 Clientbildern (20 s) im Speicher.
+    spulen::probe(s, "end_jedi", 2500);
     return s;
 }
 
@@ -20365,18 +22523,49 @@ std::vector<Schritt> handbuchSchritte() {
         missionenAusArchiv(archiv);
     }));
     add(pause(0.6));
+    // rc603: die weiteren Missionen des Spiels liest "Load mission" im
+    // Hintergrund - fotografiert wird die fertige Liste.
+    add(warteBis("Handbuch: Missionssuche fertig", [] { return !g_app->missionsSuche; }, 3500));
+    // rc603 Zusammenfuehrung: taspir1 steht in assets0.pk3 so weit unten, dass
+    // nach dem Rollen keine Abschnittsueberschrift mehr im Bild war (Durchsicht
+    // t_mission). Mit dem Filter "tasp" steht die Ueberschrift "Missions in
+    // assets0.pk3" ueber taspir1 - und das Bild zeigt den Filter gleich mit.
+    add(tu("Handbuch: Filter tasp", [] {
+        std::snprintf(g_app->missionsFilter, sizeof(g_app->missionsFilter), "%s", "tasp");
+    }));
+    add(pause(0.3));
     // taspir1 steht weit unten in der Liste - erst dorthin rollen, sonst zeigt
     // die Markierung auf eine Zeile ausserhalb des Bildes.
-    add(tu("Handbuch: taspir1 in der Liste zeigen", [] {
-        const Element* e = finde("taspir1", "##missionpick", 0, false);
-        ImGuiWindow* w = e != nullptr ? ImGui::FindWindowByName(e->innen.c_str()) : nullptr;
-        if (w == nullptr) { return; }
-        const float unten = w->InnerRect.Max.y - e->rect.GetHeight();
-        if (e->rect.Max.y > unten) { ImGui::SetScrollY(w, w->Scroll.y + (e->rect.Max.y - unten) + e->rect.GetHeight() * 3.0F); }
-    }));
+    // rc603: die Liste rollt in einem eigenen Feld; Zeilen ausserhalb werden
+    // nicht angemeldet - also Bild fuer Bild weiterrollen, bis taspir1 mit
+    // drei Zeilen Luft darunter im Bild steht.
+    add({"Handbuch: taspir1 in der Liste zeigen", [](int b) {
+             ImGuiWindow* liste = nullptr;
+             for (ImGuiWindow* w : GImGui->Windows) {
+                 if (std::strstr(w->Name, "##missionpick") != nullptr && std::strstr(w->Name, "##missionliste") != nullptr) {
+                     liste = w;
+                 }
+             }
+             if (liste == nullptr) { return b > 100; }
+             const float zeile = ImGui::GetFrameHeightWithSpacing();
+             const Element* e = finde("taspir1", "##missionpick", 0, false);
+             if (e != nullptr && ganzSichtbar(*e)) {
+                 const float unten = liste->InnerRect.Max.y - zeile * 3.0F;
+                 if (e->rect.Max.y <= unten + 0.5F) { return true; }
+                 // Kurze (gefilterte) Liste: weiter rollen geht nicht.
+                 if (liste->Scroll.y >= liste->ScrollMax.y - 0.5F) { return true; }
+                 ImGui::SetScrollY(liste, liste->Scroll.y + (e->rect.Max.y - unten));
+                 return b > 400;
+             }
+             ImGui::SetScrollY(liste, liste->Scroll.y + zeile * 2.0F);
+             return b > 400;
+         }});
     add(pause(0.4));
     add(hb::fotoTeil("h_mission_wahl", [] { return hb::fensterRect("##missionpick"); }));
-    add(tu("Handbuch: Auswahl zu", [] { g_app->missionPickOpen = false; }));
+    add(tu("Handbuch: Auswahl zu", [] {
+        g_app->missionPickOpen = false;
+        g_app->missionsFilter[0] = 0;
+    }));
     add(pause(0.3));
 
     // --- 1. Die Mission anlegen ------------------------------------------------
@@ -24399,7 +26588,11 @@ void selbsttest() {
     static const bool nurHolo = std::strcmp(modus, "holo") == 0;
     static const bool nurOrt = std::strcmp(modus, "ort") == 0;
     static const bool nurNpcKlasse = std::strcmp(modus, "npcklasse") == 0;   // rc602
+    static const bool nurTuerLauf = std::strcmp(modus, "tuerlauf") == 0;   // rc603 fix603
+    static const bool nurSpulen = std::strcmp(modus, "spulen") == 0;   // rc603 fix603
     static const bool nurGluehen = std::strcmp(modus, "gluehen") == 0;   // rc602
+    static const bool nurFigurLeistung = std::strcmp(modus, "figurleistung") == 0;   // rc603
+    static const bool nurFigurStufen = std::strcmp(modus, "figurstufen") == 0;   // rc603
     static const bool nurKamera = std::strcmp(modus, "kamera") == 0;
     // Nur der Umriss der Auswahl (rc597).
     static const bool nurUmriss = std::strcmp(modus, "umriss") == 0;
@@ -24436,6 +26629,8 @@ void selbsttest() {
     static const bool nurMissionFoto = std::strcmp(modus, "missionfoto") == 0;
     // Zuletzt geoeffnete Missionen (rc599).
     static const bool nurLetzte = std::strcmp(modus, "letzte") == 0;
+    // rc603: Load mission nennt die Missionen des ganzen Spiels.
+    static const bool nurMissionsliste = std::strcmp(modus, "missionsliste") == 0;
     // Missionsbau im Map-Tab: jeder Knopf, Kombinationen, Zufall (11.10.).
     static const bool nurMissionsbau = std::strcmp(modus, "missionsbau") == 0;
     // rc601 ton: der Vorschauton wie im Spiel (Hoerer, PVS, Schleifen, Pegel).
@@ -24502,6 +26697,20 @@ void selbsttest() {
                 a.teil = 2;
             } else if (nurHandbuch) {
                 a.schritte = handbuchSchritte();
+                // rc603: BHED_HB_BIS=<bildname> - nur bis zu diesem Foto (ein
+                // einzelnes Bild neu aufnehmen, etwa h_mission_wahl).
+                if (const char* bis = std::getenv("BHED_HB_BIS")) {
+                    for (std::size_t i = 0; i < a.schritte.size(); ++i) {
+                        if (a.schritte[i].text == std::string("Foto ") + bis) {
+                            a.schritte.resize(i + 1);
+                            break;
+                        }
+                    }
+                }
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurMissionsliste) {
+                a.schritte = missionsListeSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurLetzte) {
@@ -24555,6 +26764,43 @@ void selbsttest() {
                 a.schritte = gegenstaendeModusSchritte();
                 for (Schritt& x : effektGluehenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : festeModelleSchritte()) { a.schritte.push_back(std::move(x)); }
+                a.schritte.push_back(tu("Figurstufen: md_am_sith laden", [] {
+                    g_app->leftMode = 1;
+                    (void)loadMapFromArchive("maps/md_am_sith.bsp");
+                    g_app->mapDirty = true;
+                }));
+                a.schritte.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+                a.schritte.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+                a.schritte.push_back(gezeichnet("md_am_sith"));
+                a.schritte.push_back(pause(0.5));
+                for (Schritt& x : figurStufenSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurAnbauAchsenSchritte("md_am_sith")) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurStufenDurchsichtSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurStufenSpielordnerSchritte()) { a.schritte.push_back(std::move(x)); }   // Zusammenfuehrung rc603
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurFigurStufen) {
+                // rc603: nur die Figurstufen in md_am_sith (Bezugsweg, schneller
+                // Stufenweg, jede Figurenart, geteilte Bilder) - wie im Modus kartenfunde.
+                a.schritte.push_back(tu("Figurstufen: md_am_sith laden", [] {
+                    g_app->leftMode = 1;
+                    (void)loadMapFromArchive("maps/md_am_sith.bsp");
+                    g_app->mapDirty = true;
+                }));
+                a.schritte.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+                a.schritte.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+                a.schritte.push_back(gezeichnet("md_am_sith"));
+                a.schritte.push_back(pause(0.5));
+                for (Schritt& x : figurStufenSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurAnbauAchsenSchritte("md_am_sith")) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurStufenDurchsichtSchritte()) { a.schritte.push_back(std::move(x)); }
+                for (Schritt& x : figurStufenSpielordnerSchritte()) { a.schritte.push_back(std::move(x)); }   // Zusammenfuehrung rc603
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurFigurLeistung) {
+                // rc603: was die Figurstufen kosten - dasselbe Bild ohne Stufen,
+                // im Bezugsweg und im schnellen Stufenweg, abwechselnd.
+                a.schritte = figurLeistungSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
             } else if (nurKartenpruefung) {
@@ -24603,9 +26849,52 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff || nurNpcKlasse || nurGluehen) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff || nurNpcKlasse || nurGluehen || nurTuerLauf || nurSpulen) {
                 a.schritte = karteSchritte();
-                if (nurNpcKlasse) {
+                if (nurSpulen) {
+                    // rc603 fix603: nur laden, dann vor- und zurueckspulen
+                    // (intro2_sith), dann md_dwtdl_jedi mit cin3_jedi.
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    for (Schritt& x : spulenSchritte()) { a.schritte.push_back(std::move(x)); }
+                    for (Schritt& x : spulenSchwertSchritte()) { a.schritte.push_back(std::move(x)); }
+                } else if (nurTuerLauf) {
+                    // rc603 fix603: nur laden, dann die Tuer-Laeufe; mit
+                    // BHED_MISSION=<karte> eine andere Mission, nur die Uebersicht.
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    if (const char* mi = std::getenv("BHED_MISSION")) {
+                        a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 2));
+                        // rc603 fix603: eine Liste oder "alle" - erst nach dem Start
+                        // bekannt (die Spielordner), also als eingefuegte Schritte.
+                        const std::string wunsch = mi;
+                        a.schritte.push_back({"Tuer-Lauf: Missionen " + wunsch, [wunsch](int) {
+                                                  const std::vector<std::string> liste = tuerLaufMissionen(wunsch);
+                                                  std::string namen;
+                                                  for (const std::string& k : liste) { namen += " " + k; }
+                                                  diag::detail("Knopftest: Tuer-Lauf - " + std::to_string(liste.size()) + " Missionen:" + namen);
+                                                  std::vector<Schritt> neu;
+                                                  for (const std::string& karte : liste) {
+                                                      auto ab = std::make_shared<int>(0);
+                                                      for (Schritt& x : tuerLaufLadenSchritte(karte, ab)) { neu.push_back(std::move(x)); }
+                                                      // BHED_PROBE="<reiter> <figur> <x> <y> <bis ms>": ein Weg genau.
+                                                      if (const char* pr = std::getenv("BHED_PROBE")) {
+                                                          std::istringstream is(pr);
+                                                          std::string rt;
+                                                          std::string fg;
+                                                          float px = 0.0F;
+                                                          float py = 0.0F;
+                                                          double pb = 0.0;
+                                                          if (is >> rt >> fg >> px >> py >> pb) { tuerlauf::probe(neu, rt, fg, px, py, pb); }
+                                                      }
+                                                      for (Schritt& x : tuerLaufAlleSchritte(ab, karte, liste.size() > 1)) { neu.push_back(std::move(x)); }
+                                                  }
+                                                  schritteEinfuegen(std::move(neu));
+                                                  return true;
+                                              }});
+                    } else {
+                        for (Schritt& x : tuerLaufSchritte()) { a.schritte.push_back(std::move(x)); }
+                        for (Schritt& x : tuerLaufAlleSchritte(std::make_shared<int>(0), "md_am_sith", false)) { a.schritte.push_back(std::move(x)); }
+                    }
+                } else if (nurNpcKlasse) {
                     // rc602: nur laden, dann der Droide (npcKlasseSchritte).
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
                     for (Schritt& x : npcKlasseSchritte()) { a.schritte.push_back(std::move(x)); }
@@ -24658,6 +26947,10 @@ void selbsttest() {
                     for (Schritt& x : bewegungTeil3Schritte()) { a.schritte.push_back(std::move(x)); }
                     // rc602: NPC-Klassen mit eigenem NPC_type (der Droide in md_am_sith).
                     for (Schritt& x : npcKlasseSchritte()) { a.schritte.push_back(std::move(x)); }
+                    // rc603 fix603: Anakin durch die Tuer (ani_walk, intro2_sith).
+                    for (Schritt& x : tuerLaufSchritte()) { a.schritte.push_back(std::move(x)); }
+                    // rc603 fix603: intro2_sith vor- und zurueckspulen (Bildzeiten, Pruefsummen).
+                    for (Schritt& x : spulenSchritte()) { a.schritte.push_back(std::move(x)); }
                     // rc602: Gluehen auf Brush-Entities/Kartenmodellen/Figuren und
                     // der erste fx_runner-Durchgang - gleich nach dem Laden, bevor
                     // die Kartenfunktionen Entities verschieben und aendern.

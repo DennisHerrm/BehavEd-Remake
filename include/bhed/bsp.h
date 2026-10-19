@@ -73,6 +73,12 @@ void collectNames(MapData& out);
 [[nodiscard]] bool readBsp(const std::string& bytes, MapData& out,
                            std::string* error = nullptr);
 
+// Nur das Entity-Lump (Lump 0) einer .bsp als Text, mit denselben Pruefungen
+// wie readBsp (Kennung RBSP/IBSP/FBSP, Lump innerhalb der Datei). Ohne
+// Protokoll - darf in Arbeitsfaeden laufen (rc603, Missionssuche).
+[[nodiscard]] bool readBspEntityLump(const std::string& bytes, std::string& text,
+                                     std::string* error = nullptr);
+
 // Nur das Entity-Lump als Text zerlegen. Getrennt gehalten, damit es ohne
 // Datei pruefbar ist.
 void parseEntities(const std::string& text, std::vector<MapEntity>& out);

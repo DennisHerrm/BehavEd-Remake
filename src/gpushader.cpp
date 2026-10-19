@@ -789,6 +789,29 @@ std::string figurVertexShaderHlsl(std::uint32_t features) {
     std::string s;
     s += kKonstanten;
     s += kKnochen;
+    // rc602 kartenpruefung: die Shaderstufe einer Figurenflaeche (b3), siehe
+    // bhed/figurstufen.h. gStufe.x Farbe (0 wie bisher, 1 weiss, 2 gStufeFarbe,
+    // 3 schwarz), .y Alpha (0 eins, 1 lightingSpecular, 2 gStufeFarbe.a),
+    // .z tcGen (0 base, 1 environment). Alles 0 = der alte Weg.
+    s += R"(
+cbuffer JeStufe : register(b3) {
+    float4 gStufe;
+    float4 gStufeFarbe;
+    float4 gAuge;
+    float4 gAchse0;
+    float4 gAchse1;
+    float4 gAchse2;
+};
+// rc603 Durchsicht: Q_rsqrt (q_math.c:375 MD / 360 OJ) - 0x5f3759df und EINE
+// Newton-Stufe, bis zu 0.175 Prozent zu klein. RB_CalcSpecularAlpha und
+// VectorNormalizeFast in RB_CalcEnvironmentTexCoords rechnen damit, nicht
+// mit der genauen Wurzel.
+float qRsqrt(float zahl) {
+    float x2 = zahl * 0.5;
+    float y = asfloat(0x5f3759df - (asint(zahl) >> 1));
+    return y * (1.5 - (x2 * y * y));
+}
+)";
     s += R"(
 struct VSIn {
     float3 pos     : POSITION;
@@ -898,6 +921,46 @@ VSOut main(VSIn ein) {
             float3 licht = normalize(float3(0.4, 0.55, 0.72));
             float schatten = 0.22 + 0.78 * abs(dot(n, licht));
             aus.farbe = float4(schatten, schatten, schatten, 1);
+        }
+        // --- rc602 kartenpruefung: die Stufe ---------------------------------
+        // ComputeColors (tr_shade.cpp:1403 MD): die Farbe der Stufe.
+        if (gStufe.x > 0.5 && gStufe.x < 1.5) {
+            aus.farbe.rgb = float3(1.0, 1.0, 1.0);
+        } else if (gStufe.x > 1.5 && gStufe.x < 2.5) {
+            aus.farbe.rgb = gStufeFarbe.rgb;
+        } else if (gStufe.x > 2.5) {
+            aus.farbe.rgb = float3(0.0, 0.0, 0.0);
+        }
+        float3 zumAuge = gAuge.xyz - w4.xyz;
+        // rc603 Durchsicht: 1/|viewer| ueber Q_rsqrt wie die Engine (siehe oben).
+        float il = qRsqrt(dot(zumAuge, zumAuge));
+        if (gStufe.y > 0.5 && gStufe.y < 1.5) {
+            // RB_CalcSpecularAlpha (tr_shade_calc.cpp:994 MD): ein Modell nimmt
+            // die Lichtrichtung der Entity (ent->lightDir, aus dem Gitter).
+            float3 l = (gLichtRichtung.w > 0.5 && gLichtRichtung.w < 1.5)
+                           ? gLichtRichtung.xyz : normalize(float3(0.4, 0.55, 0.72));
+            float d = 2.0 * dot(n, l);
+            float3 r = n * d - l;
+            // ilength = Q_rsqrt(viewer.viewer); l = (reflected . viewer) * ilength;
+            // l = l*l; l = l*l; b = l * 255 (abgeschnitten), hoechstens 255.
+            float sp = dot(r, zumAuge) * il;
+            float sp2 = sp * sp;
+            sp2 = sp2 * sp2;
+            sp = (sp < 0.0) ? 0.0 : min(1.0, floor(sp2 * 255.0) / 255.0);
+            aus.farbe.a = sp;
+        } else if (gStufe.y > 1.5) {
+            aus.farbe.a = gStufeFarbe.a;
+        }
+        if (gStufe.z > 0.5) {
+            // RB_CalcEnvironmentTexCoords (tr_shade_calc.cpp:868 MD) in den
+            // Koordinaten der Entity (backEnd.ori): Normale und Blick auf
+            // ihre Achsen gedreht.
+            // VectorNormalizeFast(viewer): viewer *= Q_rsqrt(viewer.viewer).
+            float3 v = zumAuge * il;
+            float3 nL = float3(dot(n, gAchse0.xyz), dot(n, gAchse1.xyz), dot(n, gAchse2.xyz));
+            float3 vL = float3(dot(v, gAchse0.xyz), dot(v, gAchse1.xyz), dot(v, gAchse2.xyz));
+            float dd = dot(nL, vL);
+            aus.uv = float2(nL.x * dd - 0.5 * vL.x, nL.y * dd - 0.5 * vL.y);
         }
     }
     return aus;

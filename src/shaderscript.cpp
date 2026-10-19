@@ -209,6 +209,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     bool stageHatFound = false;
     std::string stageImage;
     bool stageLightmap = false;
+    bool stageWeiss = false;   // rc603 Durchsicht: map $whiteimage
     std::vector<ShaderInfo::Stage> stages;
     BlendMode stageBlend = BlendMode::Opaque;
     CullMode cull = CullMode::Front;
@@ -237,6 +238,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     float rgbConst[3]{-1.0F, -1.0F, -1.0F};
     // rgbGen vertex/exactVertex/... - siehe ShaderInfo::rgbVertex.
     bool stageRgbVertex = false;
+    RgbGenArt stageRgbArt = RgbGenArt::Keins;   // rc602
     bool rgbVertexImage = false;
     bool stageClamp = false;
     bool clampImage = false;
@@ -334,6 +336,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     ShaderInfo::Stage st;
                     st.image = stageImage;
                     st.lightmap = stageLightmap;
+                    st.weiss = stageWeiss;
                     st.blend = stageBlend;
                     st.alphaTest = stageAlpha;
                     st.alphaConst = stageAlphaConst;
@@ -356,6 +359,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                         st.rgbConst[k] = stageRgbConst[k];
                     }
                     st.rgbVertex = stageRgbVertex;
+                    st.rgbArt = stageRgbArt;
                     st.clamp = stageClamp;
                     st.depthWrite = stageDepthWrite;
                     st.depthFunc = stageDepthFunc;
@@ -369,6 +373,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 }
                 stageImage.clear();
                 stageLightmap = false;
+                stageWeiss = false;
                 stageHatFound = false;
                 inImageStage = false;
                 stageNumTexMods = 0;
@@ -382,6 +387,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageTexGen = TexGen::Base;
                 stageAlphaGen = AlphaGen::FromImage;
                 stageRgbVertex = false;
+                stageRgbArt = RgbGenArt::Keins;
                 stageSrc = BlendFactor::One;
                 stageDst = BlendFactor::Zero;
                 for (int k = 0; k < 3; ++k) {
@@ -481,6 +487,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stages.clear();
                 stageImage.clear();
                 stageLightmap = false;
+                stageWeiss = false;
                 stageHatFound = false;
                 blend = BlendMode::Opaque;
                 cull = CullMode::Front;
@@ -597,6 +604,21 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             const std::string key = lower(firstWord(line));
             if (key == "rgbgen") {
                 std::string rest = secondWord(line);
+                {
+                    // rc602: die Art merken (ParseStage, tr_shader.cpp).
+                    const std::string art = lower(firstWord(rest));
+                    static const std::pair<const char*, RgbGenArt> kArten[] = {
+                        {"identity", RgbGenArt::Identity}, {"identitylighting", RgbGenArt::IdentityLighting},
+                        {"lightingdiffuse", RgbGenArt::LightingDiffuse},
+                        {"lightingdiffuseentity", RgbGenArt::LightingDiffuseEntity}, {"vertex", RgbGenArt::Vertex},
+                        {"exactvertex", RgbGenArt::ExactVertex}, {"oneminusvertex", RgbGenArt::OneMinusVertex},
+                        {"entity", RgbGenArt::Entity}, {"oneminusentity", RgbGenArt::OneMinusEntity},
+                        {"const", RgbGenArt::Const}, {"wave", RgbGenArt::Wave},
+                    };
+                    for (const auto& [wort, wert] : kArten) {
+                        if (art == wort) { stageRgbArt = wert; }
+                    }
+                }
                 if (lower(firstWord(rest)) == "const") {
                     // rgbGen const ( 0.85 0.65 0.65 )
                     //
@@ -713,6 +735,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             istPortal = false;
             rgbVertexImage = false;
             stageRgbVertex = false;
+            stageRgbArt = RgbGenArt::Keins;
             deformWave = Wave{};
             deformSpread = 0.0F;
             deform2 = DeformZusatz{};
@@ -1028,6 +1051,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 // beim Uebereinanderlegen.
                 if (!value.empty() && value[0] == '$') {
                     stageLightmap = (lower(value) == "$lightmap");
+                    stageWeiss = (lower(value) == "$whiteimage");   // rc603 Durchsicht
                     inImageStage = true;
                 }
                 if (!value.empty() && value[0] != '$') {

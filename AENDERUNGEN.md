@@ -1,5 +1,16 @@
 # Änderungen seit rc94
 
+## rc603 — Laufen durch Türen, Zurückspulen ohne Ruckeln, Figuren mit Glanz und Chrom, alle Missionen beim Laden
+
+Gewünscht: „wo Anakin durch die Tür läuft … läuft er nur nach links und rechts“, „wenn ich zurückspule, bricht die Framerate massiv ein“, „beim original Spiel sehe ich keine Mission zum Auswählen“, „die Scripts bei Load mission in der Reihenfolge als Tab öffnen, wie sie ingame abgespielt werden“.
+
+- Vorschau, Laufen: ein NPC, der durch eine Tür geht, pendelt nicht mehr vor einem unsichtbaren Hindernis - eine Figur, die ein Skript erst später versetzt (SET_COPY_ORIGIN, SET_ORIGIN), hält andere erst ab diesem Moment auf, wie im Spiel. Ein NPC, der direkt neben einer anderen Figur losläuft (Dooku nach dem Säbelduell in md_gd_jedi von Movie Duels und rund zwanzig weitere Zwischensequenzen), springt beim ersten Schritt nicht mehr Hunderte Einheiten - jeder Schritt rechnet mit der Bildzeit des Spiels.
+- Vorschau, Zeitleiste: Rückwärtsziehen des Zeitzeigers läuft so flüssig wie vorwärts - die Lichtschwert-Simulation behält, was sie berechnet hat, statt nach jeder Sekunde Rückspulen zehn Sekunden neu zu rechnen. Schwertschläge sehen vorwärts und rückwärts gleich aus, und beim Abspielen geht kein Klirrklang mehr verloren.
+- Figuren zeichnen wieder jede Stufe ihres Shaders wie das Spiel - Glanz, Chrom, eingefärbte Teile wie die Farbe der Kampfdroiden, blinkende und bewegte Stufen - ohne die Verlangsamung von rc602: Figuren teilen sich ihre Texturen (md_am_sith braucht rund 700 MB weniger Speicher und ruckelt weniger). Waffen und Schwertgriffe in der Hand spiegeln ihr Chrom wie im Spiel, die Visiere der Klonkrieger sind wieder schwarz mit Glanz, Glanz und Chrom nutzen die schnelle Wurzel des Spiels.
+- Load mission nennt alle Missionen des Spiels - jedes .pk3 eines Spielordners geht (assets1.pk3 des reinen Jedi Academy nennt t1_sour, kor1, yavin1 ...); die Missionen des gewählten Archivs stehen oben, der Rest wird im Hintergrund gelesen, ein Filter schränkt die Liste ein. Ein Archiv eines anderen Spiels oder einer anderen Installation gilt nur für diese Sitzung. Die Skripte der Mission öffnen sich in der Reihenfolge, in der das Spiel sie startet (spawnscripts, worldspawn, trigger_always, NPC-Spawner, die Ziele der Startposition und alles, was daraus folgt; Entities, die das Spiel beim Spawnen entfernt, starten nichts).
+- Behoben: Load mission las jedes Mal alle Spielordner neu, wenn einer keine .pk3 enthält; das Ändern der Spielordner bei offener Mission mit Kartenmodellen konnte abstürzen.
+- Handbuch: Seite Missionen und ihr Bild in allen vier Sprachen aktualisiert.
+
 ## rc602 — Was im Spiel da ist, ist auch in der Vorschau: NPC-Klassen, Glühen, Gegenstände, Kartenprüfung
 
 Gewünscht: „der NPC droid fehlt … sind bei unserem standard MD mission MD sith alle effecte da? es fühlt sich so an als würde etwas fehlen“ und „er soll einfach alle karten öffnen und checken ob alles da ist“.

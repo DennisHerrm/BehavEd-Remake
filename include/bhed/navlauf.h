@@ -483,6 +483,13 @@ struct LaufTakt {
     NavVec koerperMin{1.0e30F, 1.0e30F, 1.0e30F};   // nur Spuren mit CONTENTS_BODY
     NavVec koerperMax{-1.0e30F, -1.0e30F, -1.0e30F};
     bool kantenGefragt = false;   // is_valid einer Tuer-/Wandkante (oder has_valid_edge) gefragt
+    // rc603 fix603: pml.msec des Pmove dieses Denkbilds (bg_pmove.cpp:
+    // 33781-33789 MD, 14756-14761 OpenJK: ucmd.serverTime -
+    // ps.commandTime, 1..200). NPC_Think
+    // laeuft jedes Bild, also 50; nur NPC_Begin und das erste NPC_Think danach
+    // rechnen 200 (LaufWerte::spawnVorlauf). Der gemeinsame Takt rechnet ein
+    // Denkbild, in dem er abweicht, mit derselben Bildzeit.
+    int msec = 50;
 };
 
 struct LaufPlan {

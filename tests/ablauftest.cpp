@@ -265,6 +265,235 @@ void feste() {
     }
 }
 
+// rc603: der Kartenstart (simuliereKartenstart) und die Reihenfolge der
+// Skripte einer Mission (skripteNachStart). Jede Zeit aus dem Quelltext der
+// Engine: spawnscript beim Spawnen 0 (g_spawn.cpp:1114-1124), worldspawn 100
+// (:1660-1676), trigger_always 300 (g_trigger.cpp:620-624), NPC-Spawner ohne
+// targetname 350 -> NPC_Begin 500 -> erstes Bild 550 (NPC_spawn.cpp:2049),
+// ClientSpawn am Ende dieses Bildes (g_client.cpp:2432-2434; die Intros
+// sprechen dort schon Figuren an, die NPC_Begin erst bei 550 anmeldet).
+void kartenstart() {
+    MapData m;
+    const auto ent = [](const std::string& k, std::vector<std::pair<std::string, std::string>> keys) {
+        MapEntity e;
+        e.classname = k;
+        for (const auto& [a, b] : keys) {
+            if (a == "targetname") { e.targetname = b; }
+            if (a == "origin") { e.origin = b; }
+        }
+        keys.emplace_back("classname", k);
+        e.keys = std::move(keys);
+        return e;
+    };
+    m.entities = {
+        ent("worldspawn", {{"spawnscript", "k/welt"}}),
+        ent("trigger_multiple", {{"usescript", "k/nie"}, {"model", "*1"}}),   // nur der Spieler beim Betreten
+        ent("target_scriptrunner", {{"targetname", "zweit"}, {"usescript", "k/zweit"}}),
+        ent("NPC_spawner", {{"targetname", "spawnwache2"}, {"NPC_targetname", "w2"}, {"NPC_type", "stormtrooper"},
+                            {"deathscript", "k/tod"}, {"origin", "0 0 0"}}),
+        ent("NPC_spawner", {{"NPC_targetname", "wache"}, {"NPC_type", "stormtrooper"}, {"spawnscript", "k/wache"},
+                            {"origin", "64 0 0"}}),
+        ent("info_player_start", {{"target", "start"}, {"origin", "0 0 0"}}),
+        ent("target_scriptrunner", {{"targetname", "start"}, {"usescript", "k/intro"}}),
+        ent("target_scriptrunner", {{"targetname", "start"}, {"usescript", "k/spieler"}}),
+        ent("trigger_always", {{"target", "immer"}}),
+        ent("target_scriptrunner", {{"targetname", "immer"}, {"usescript", "k/immer"}}),
+        ent("func_static", {{"spawnscript", "k/statisch"}, {"model", "*2"}}),
+        ent("func_static", {{"spawnscript", "k/schwer"}, {"spawnflags", "256"}, {"model", "*3"}}),
+        // Ohne NPC_targetname: fuer ICARUS namenlos, das spawnscript laeuft doch.
+        ent("NPC_spawner", {{"NPC_type", "stormtrooper"}, {"spawnscript", "k/namenlos"}, {"origin", "0 64 0"}}),
+        ent("NPC_spawner", {{"targetname", "spn"}, {"NPC_type", "stormtrooper"}, {"spawnscript", "k/spaeter"},
+                            {"origin", "0 128 0"}}),
+    };
+    std::map<std::string, std::shared_ptr<Script>> skripte;
+    skripte["k/intro"] = std::make_shared<Script>(
+        lies("wait ( 2000.000 );\nuse ( \"zweit\" );\nuse ( \"spawnwache2\" );\n"));
+    skripte["k/zweit"] = std::make_shared<Script>(lies("use ( \"spn\" );\nwait ( 500.000 );\nkill ( \"w2\" );\n"));
+    for (const char* n : {"k/welt", "k/nie", "k/tod", "k/wache", "k/spieler", "k/immer", "k/statisch", "k/schwer",
+                          "k/namenlos", "k/spaeter"}) {
+        skripte[n] = std::make_shared<Script>(lies("wait ( 1.000 );\n"));
+    }
+    AblaufWelt w;
+    w.karte = &m;
+    w.skript = [skripte](const std::string& p) -> const Script* {
+        const auto it = skripte.find(p);
+        return it == skripte.end() ? nullptr : it->second.get();
+    };
+    w.spielstufe = 0;   // leicht: spawnflags 256 (NOT_EASY) spawnt nicht
+    const Ablauf a = simuliereKartenstart(w);
+    const auto beginn = [&a](const std::string& p) {
+        for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+            if (a.skripte[i] == p) { return a.skriptBeginn[i]; }
+        }
+        return -2.0;
+    };
+    for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+        std::printf("  Kartenstart: %s ab %.0f ms (Folge %d)\n", a.skripte[i].c_str(), a.skriptBeginn[i], a.skriptFolge[i]);
+    }
+    pruefe(beginn("k/statisch") == 0.0, "Kartenstart: spawnscript einer Entity beim Spawnen (0 ms)");
+    pruefe(beginn("k/welt") == 100.0, "Kartenstart: spawnscript von worldspawn ueber den Skriptstarter (100 ms)");
+    pruefe(beginn("k/immer") == 300.0, "Kartenstart: trigger_always (300 ms)");
+    pruefe(beginn("k/intro") == 550.0 && beginn("k/spieler") == 550.0,
+           "Kartenstart: die Ziele der Startposition beim ClientSpawn (Ende des Bildes 550)");
+    pruefe(beginn("k/wache") == 550.0, "Kartenstart: NPC-Spawner ohne targetname - spawnscript im ersten Bild nach NPC_Begin (550 ms)");
+    pruefe(beginn("k/zweit") == 2600.0, "Kartenstart: use aus dem Intro nach wait ( 2000 ) (2600 ms)");
+    pruefe(beginn("k/tod") == 3150.0, "Kartenstart: kill nach wait ( 500 ) startet das deathscript der gespawnten Figur (3150 ms)");
+    pruefe(beginn("k/namenlos") == 550.0, "Kartenstart: Spawner ohne NPC_targetname - spawnscript trotzdem (550 ms)");
+    pruefe(beginn("k/spaeter") == 2700.0,
+           "Kartenstart: Spawner ohne NPC_targetname per use - spawnscript nach NPC_Begin (use 2600 + 100)");
+    pruefe(beginn("k/nie") == -2.0 && beginn("k/schwer") == -2.0,
+           "Kartenstart: Trigger beim Betreten und eine Entity, die bei dieser Schwierigkeit nicht spawnt, starten nichts");
+    const std::vector<std::string> pfade = {"k/nie", "K/Zweit", "scripts/k/tod.IBI", "k/wache", "k/spieler",
+                                            "k/intro", "k/immer", "k/welt", "k/statisch", "k/schwer"};
+    const std::vector<std::size_t> folge = skripteNachStart(pfade, a);
+    std::string text;
+    for (const std::size_t i : folge) { text += " " + pfade[i]; }
+    std::printf("  Reihenfolge:%s\n", text.c_str());
+    pruefe(folge == std::vector<std::size_t>{8, 7, 6, 3, 5, 4, 1, 2, 0, 9},
+           "Reihenfolge: nach dem ersten Start, bei gleicher Zeit nach der Folge (wache, dann intro vor spieler), nie gestartete hinten");
+    // Mittlere Schwierigkeit: dann spawnt die Entity mit NOT_EASY.
+    w.spielstufe = 1;
+    const Ablauf b = simuliereKartenstart(w);
+    bool schwer = false;
+    for (std::size_t i = 0; i < b.skripte.size(); ++i) { schwer = schwer || (b.skripte[i] == "k/schwer" && b.skriptBeginn[i] == 0.0); }
+    pruefe(schwer, "Kartenstart: bei g_spskill 1 spawnt die Entity mit spawnflags 256 und startet ihr spawnscript");
+    // Ein gewoehnlicher Ablauf: das Startskript beginnt bei 0, was es per
+    // use startet, zur Zeit des use.
+    const Ablauf c = simuliereAblauf(*skripte["k/intro"], "k/intro", w);
+    pruefe(!c.skriptBeginn.empty() && c.skriptBeginn[0] == 0.0, "Ablauf: das Startskript beginnt bei 0");
+}
+
+// rc603 (Durchsicht): Spawner ohne targetname im Kartenstart, wie die Engine
+// sie behandelt.
+//   * Jeder Spawner erzeugt SEINE Figur mit SEINEM spawnscript, auch wenn
+//     mehrere denselben NPC_targetname tragen (t1_fatal: drei NPC_ImpWorker
+//     "npc_corpse1" mit spawncorpse, spawncorpse2, spawncorpse3) - NPC_Begin
+//     ruft G_ActivateBehavior( ent, BSET_SPAWN ) fuer jede Figur.
+//   * NPC_Spawn_Do benutzt die Ziele eines Spawners ohne use-Funktion
+//     (e_UseFunc == useF_NULL, also ohne targetname) gleich beim Spawnen:
+//     G_UseTargets( ent, ent ) (NPC_spawn.cpp:1762-1766 OpenJK, :2805-2811
+//     Movie Duels) - im Bild 400, in dem NPC_Spawn_Go laeuft.
+void kartenstartSpawner() {
+    MapData m;
+    const auto ent = [](const std::string& k, std::vector<std::pair<std::string, std::string>> keys) {
+        MapEntity e;
+        e.classname = k;
+        for (const auto& [a, b] : keys) {
+            if (a == "targetname") { e.targetname = b; }
+            if (a == "origin") { e.origin = b; }
+        }
+        keys.emplace_back("classname", k);
+        e.keys = std::move(keys);
+        return e;
+    };
+    m.entities = {
+        ent("worldspawn", {}),
+        ent("info_player_start", {{"origin", "0 0 0"}}),
+        ent("NPC_ImpWorker", {{"NPC_targetname", "leiche"}, {"spawnscript", "k/leiche1"}, {"origin", "0 256 0"}}),
+        ent("NPC_ImpWorker", {{"NPC_targetname", "leiche"}, {"spawnscript", "k/leiche2"}, {"origin", "64 256 0"}}),
+        ent("NPC_ImpWorker", {{"NPC_targetname", "leiche"}, {"spawnscript", "k/leiche3"}, {"origin", "128 256 0"}}),
+        ent("NPC_spawner", {{"NPC_type", "stormtrooper"}, {"target", "autoziel"}, {"origin", "0 384 0"}}),
+        ent("target_scriptrunner", {{"targetname", "autoziel"}, {"usescript", "k/auto"}}),
+        ent("NPC_spawner", {{"NPC_type", "stormtrooper"}, {"NPC_targetname", "mitziel"}, {"spawnscript", "k/mitziel"},
+                            {"target", "autoziel2"}, {"origin", "0 512 0"}}),
+        ent("target_scriptrunner", {{"targetname", "autoziel2"}, {"usescript", "k/auto2"}}),
+    };
+    std::map<std::string, std::shared_ptr<Script>> skripte;
+    for (const char* n : {"k/leiche1", "k/leiche2", "k/leiche3", "k/auto", "k/mitziel", "k/auto2"}) {
+        skripte[n] = std::make_shared<Script>(lies("wait ( 1.000 );\n"));
+    }
+    AblaufWelt w;
+    w.karte = &m;
+    w.skript = [skripte](const std::string& p) -> const Script* {
+        const auto it = skripte.find(p);
+        return it == skripte.end() ? nullptr : it->second.get();
+    };
+    w.spielstufe = 1;
+    const Ablauf a = simuliereKartenstart(w);
+    const auto beginn = [&a](const std::string& p) {
+        for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+            if (a.skripte[i] == p) { return a.skriptBeginn[i]; }
+        }
+        return -2.0;
+    };
+    for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+        std::printf("  Kartenstart (Spawner): %s ab %.0f ms\n", a.skripte[i].c_str(), a.skriptBeginn[i]);
+    }
+    pruefe(beginn("k/leiche1") == 550.0 && beginn("k/leiche2") == 550.0 && beginn("k/leiche3") == 550.0,
+           "Kartenstart: drei Spawner mit demselben NPC_targetname - jedes spawnscript im Bild 550 (t1_fatal npc_corpse1)");
+    pruefe(beginn("k/auto") == 400.0,
+           "Kartenstart: Spawner ohne targetname benutzt sein target beim Spawnen (NPC_Spawn_Do, Bild 400)");
+    pruefe(beginn("k/auto2") == 400.0 && beginn("k/mitziel") == 550.0,
+           "Kartenstart: Spawner mit NPC_targetname und target - Ziel bei 400, spawnscript bei 550");
+}
+
+// rc603 (Durchsicht): Entities, deren Spawnfunktion sie gleich wieder
+// freigibt, starten kein spawnscript. G_SpawnGEntityFromSpawnVars fragt
+// ValidEntity NACH G_CallSpawn (g_spawn.cpp:1108-1114 OpenJK); G_FreeEntity
+// hat die Entity da schon geleert (memset, g_utils.cpp:988), behaviorSet ist
+// leer. SP_waypoint / SP_waypoint_small / SP_waypoint_navgoal geben immer
+// frei (g_nav.cpp:172-300 OpenJK, :162-283 Movie Duels), SP_info_null (auch
+// func_group) mit spawnflags 1, sonst erst bei START_TIME_REMOVE_ENTS
+// (g_misc.cpp:54-65), SP_light ohne targetname (g_misc.cpp:164-169).
+// t1_fatal: der waypoint_navgoal "riposte1" mit spawnscript
+// t1_fatal/riposte1 stand als erster Reiter vorn (@0); vjun1 ebenso
+// common/nav_goto (waypoint_navgoal "haztroopernav").
+void kartenstartFreigegeben() {
+    MapData m;
+    const auto ent = [](const std::string& k, std::vector<std::pair<std::string, std::string>> keys) {
+        MapEntity e;
+        e.classname = k;
+        for (const auto& [a, b] : keys) {
+            if (a == "targetname") { e.targetname = b; }
+            if (a == "origin") { e.origin = b; }
+        }
+        keys.emplace_back("classname", k);
+        e.keys = std::move(keys);
+        return e;
+    };
+    m.entities = {
+        ent("worldspawn", {}),
+        ent("info_player_start", {{"origin", "0 0 0"}}),
+        ent("waypoint_navgoal", {{"targetname", "riposte1"}, {"spawnscript", "k/navziel"}, {"origin", "0 64 0"}}),
+        ent("waypoint", {{"spawnscript", "k/wegpunkt"}, {"origin", "0 128 0"}}),
+        ent("waypoint_small", {{"spawnscript", "k/wegpunktklein"}, {"origin", "0 192 0"}}),
+        ent("info_null", {{"spawnflags", "1"}, {"spawnscript", "k/nullweg"}, {"origin", "0 256 0"}}),
+        ent("func_group", {{"spawnflags", "1"}, {"spawnscript", "k/gruppeweg"}}),
+        ent("info_null", {{"targetname", "bleibt"}, {"spawnscript", "k/nullbleibt"}, {"origin", "0 320 0"}}),
+        ent("light", {{"spawnscript", "k/lichtweg"}, {"origin", "0 384 0"}}),
+        ent("light", {{"targetname", "lampe"}, {"spawnscript", "k/licht"}, {"origin", "0 448 0"}}),
+        ent("func_static", {{"spawnscript", "k/statisch"}, {"model", "*1"}}),
+    };
+    std::map<std::string, std::shared_ptr<Script>> skripte;
+    for (const char* n : {"k/navziel", "k/wegpunkt", "k/wegpunktklein", "k/nullweg", "k/gruppeweg", "k/nullbleibt",
+                          "k/lichtweg", "k/licht", "k/statisch"}) {
+        skripte[n] = std::make_shared<Script>(lies("wait ( 1.000 );\n"));
+    }
+    AblaufWelt w;
+    w.karte = &m;
+    w.skript = [skripte](const std::string& p) -> const Script* {
+        const auto it = skripte.find(p);
+        return it == skripte.end() ? nullptr : it->second.get();
+    };
+    w.spielstufe = 1;
+    const Ablauf a = simuliereKartenstart(w);
+    const auto beginn = [&a](const std::string& p) {
+        for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+            if (a.skripte[i] == p) { return a.skriptBeginn[i]; }
+        }
+        return -2.0;
+    };
+    for (std::size_t i = 0; i < a.skripte.size(); ++i) {
+        std::printf("  Kartenstart (freigegeben): %s ab %.0f ms\n", a.skripte[i].c_str(), a.skriptBeginn[i]);
+    }
+    pruefe(beginn("k/navziel") < 0.0 && beginn("k/wegpunkt") < 0.0 && beginn("k/wegpunktklein") < 0.0,
+           "Kartenstart: waypoint, waypoint_small, waypoint_navgoal geben sich beim Spawnen frei - kein spawnscript");
+    pruefe(beginn("k/nullweg") < 0.0 && beginn("k/gruppeweg") < 0.0 && beginn("k/lichtweg") < 0.0,
+           "Kartenstart: info_null/func_group mit spawnflags 1 und light ohne targetname - kein spawnscript");
+    pruefe(beginn("k/nullbleibt") == 0.0 && beginn("k/licht") == 0.0 && beginn("k/statisch") == 0.0,
+           "Kartenstart: info_null ohne spawnflags 1, light mit targetname, func_static - spawnscript bei 0");
+}
+
 std::string slurp(const std::filesystem::path& p) {
     std::ifstream f(p, std::ios::binary);
     std::ostringstream s;
@@ -394,6 +623,9 @@ int main(int argc, char** argv) {
         return werkzeug(argc, argv);
     }
     feste();
+    kartenstart();   // rc603
+    kartenstartSpawner();   // rc603 (Durchsicht)
+    kartenstartFreigegeben();   // rc603 (Durchsicht)
     std::printf("%s\n", fehler == 0 ? "alle Proben bestanden" : "FEHLGESCHLAGEN");
     return fehler == 0 ? 0 : 1;
 }

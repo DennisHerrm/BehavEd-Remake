@@ -200,21 +200,19 @@ void parseEntities(const std::string& text, std::vector<MapEntity>& out) {
     }
 }
 
-bool readBsp(const std::string& bytes, MapData& out, std::string* error) {
-    out = MapData{};
+bool readBspEntityLump(const std::string& bytes, std::string& text, std::string* error) {
+    text.clear();
     // Kopf: Kennung (4) + Fassung (4) + Lumpverzeichnis. Lump 0 ist das
     // Entity-Lump, bei RBSP wie bei IBSP.
     if (bytes.size() < 16) {
         if (error != nullptr) { *error = "zu kurz fuer eine .bsp"; }
         return false;
     }
-    out.magic = bytes.substr(0, 4);
-    if (out.magic != "RBSP" && out.magic != "IBSP" && out.magic != "FBSP") {
-        if (error != nullptr) { *error = "unbekannte Kennung: " + out.magic; }
+    const std::string magic = bytes.substr(0, 4);
+    if (magic != "RBSP" && magic != "IBSP" && magic != "FBSP") {
+        if (error != nullptr) { *error = "unbekannte Kennung: " + magic; }
         return false;
     }
-    out.version = readInt(bytes, 4);
-
     const std::int32_t offset = readInt(bytes, 8);
     const std::int32_t length = readInt(bytes, 12);
     if (offset < 0 || length < 0 ||
@@ -222,10 +220,30 @@ bool readBsp(const std::string& bytes, MapData& out, std::string* error) {
         if (error != nullptr) { *error = "Entity-Lump liegt ausserhalb der Datei"; }
         return false;
     }
+    text = bytes.substr(static_cast<std::size_t>(offset), static_cast<std::size_t>(length));
+    return true;
+}
 
-    parseEntities(bytes.substr(static_cast<std::size_t>(offset),
-                               static_cast<std::size_t>(length)),
-                  out.entities);
+bool readBsp(const std::string& bytes, MapData& out, std::string* error) {
+    out = MapData{};
+    // rc603: Kennung, Lumpverzeichnis und Lump 0 liest readBspEntityLump -
+    // dieselbe Pruefung fuer die Missionssuche in Arbeitsfaeden (ohne
+    // Protokoll, das hier nicht fadensicher ist).
+    // Kennung und Fassung stehen wie bisher auch nach einem Fehlschlag im
+    // Ergebnis, soweit sie lesbar waren.
+    std::string text;
+    const bool lesbar = readBspEntityLump(bytes, text, error);
+    if (bytes.size() >= 16) {
+        out.magic = bytes.substr(0, 4);
+        if (out.magic == "RBSP" || out.magic == "IBSP" || out.magic == "FBSP") {
+            out.version = readInt(bytes, 4);
+        }
+    }
+    if (!lesbar) {
+        return false;
+    }
+
+    parseEntities(text, out.entities);
 
     collectNames(out);
     // Was wirklich in der Karte steht - nicht nur, dass das Lesen klappte.

@@ -30,6 +30,7 @@
 #include "bhed/ablauf.h"
 
 #include "bhed/clock.h"
+#include "bhed/gegenstaende.h"   // rc603: spawntBeiSchwierigkeit (Kartenstart)
 #include "bhed/scene.h"
 
 #include <algorithm>
@@ -42,6 +43,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -93,6 +95,23 @@ std::string skriptSchluessel(std::string p) {
 
 bool istNpcSpawner(const MapEntity& e) { return e.classname.rfind("NPC_", 0) == 0; }
 
+// rc603: Kartenstart, Zeiten relativ zum Start der Karte (sv.time 1000).
+// SV_SpawnServer laesst die Spiellogik fuenf Bilder zu 100 ms laufen (0, 100,
+// 200, 300, 400; sv_init.cpp:313-318 und 350-352 OpenJK, :321-325 und 360-362
+// Movie Duels), danach steht sv.time auf 1500, und SV_Frame erhoeht VOR jedem
+// Bild um frameMsec (sv_main.cpp:507-513): das erste Bild im Spiel ist 550.
+constexpr double kLetztesLadebildMs = 400.0;
+constexpr double kErstesSpielbildMs = 550.0;
+// Wann der Spieler ins Spiel kommt (ClientBegin -> ClientSpawn -> G_UseTargets
+// der Startposition), haengt am Laden des Clients - frueher als nach dem
+// ersten Bild im Spiel aber nicht: die Intros sprechen gleich zu Beginn
+// Figuren an, die erst NPC_Begin bei ICARUS anmeldet (InitEntity,
+// NPC_spawn.cpp:1245), und das Ziel eines affect sucht ICARUS schon beim Run
+// (ParseAffect, Sequencer.cpp:693). t2_trip: intro -> affect "introjaden",
+// ein NPC_Player ohne targetname (Kartenstart-Spawner, NPC_Begin bei 550).
+// Also: am Ende des Bildes 550.
+constexpr double kSpielerBeginnMs = kErstesSpielbildMs;
+
 double zahl(const std::string& t, double vorgabe = 0.0) {
     if (t.empty()) {
         return vorgabe;
@@ -128,6 +147,34 @@ const std::string* schluessel(const MapEntity& e, const char* key) {
 std::string wertVon(const MapEntity& e, const char* key) {
     const std::string* v = schluessel(e, key);
     return (v == nullptr) ? std::string{} : *v;
+}
+
+// rc603 (Durchsicht): gibt die Spawnfunktion die Entity gleich wieder frei?
+// Dann startet sie kein spawnscript: G_SpawnGEntityFromSpawnVars fragt
+// ValidEntity erst NACH G_CallSpawn (g_spawn.cpp:1108-1114 OpenJK,
+// :1271-1278 Movie Duels), und G_FreeEntity hat die Entity da schon geleert
+// (memset, g_utils.cpp:988) - kein behaviorSet, kein script_targetname.
+//   * SP_waypoint, SP_waypoint_small, SP_waypoint_navgoal: immer
+//     (g_nav.cpp:172-300 OpenJK, :162-283 Movie Duels; NAV::SpawnedPoint,
+//     dann G_FreeEntity).
+//   * SP_info_null (auch "func_group"): mit spawnflags 1 sofort, sonst erst
+//     bei START_TIME_REMOVE_ENTS - dann laeuft das spawnscript
+//     (g_misc.cpp:54-65 OpenJK, :50-63 Movie Duels).
+//   * SP_light ohne targetname (g_misc.cpp:164-169 OpenJK, :165-172 MD).
+// In den Daten: t1_fatal waypoint_navgoal "riposte1" (t1_fatal/riposte1),
+// vjun1 waypoint_navgoal "haztroopernav" (common/nav_goto).
+bool freiBeimSpawnen(const MapEntity& e) {
+    const std::string& cn = e.classname;
+    if (gleich(cn, "waypoint") || gleich(cn, "waypoint_small") || gleich(cn, "waypoint_navgoal")) {
+        return true;
+    }
+    if (gleich(cn, "info_null") || gleich(cn, "func_group")) {
+        return (std::atoi(wertVon(e, "spawnflags").c_str()) & 1) != 0;
+    }
+    if (gleich(cn, "light")) {
+        return e.targetname.empty();
+    }
+    return false;
 }
 
 // Die Aufgabenfaecher einer Entity (taskID_t, g_public.h). Ein neuer
@@ -279,6 +326,11 @@ struct Wesen {
     double schnitt = -1.0e300;   // dort endete er (wegAnhalten)
     double totMs = 1.0e300;
     std::vector<std::pair<double, NavVec>> orteLog;
+    // rc603 fix603: der Ort aus der Karte (origin des Spawners/der Entity),
+    // falls bekannt - dort steht eine Figur ohne Plan, bis orteLog sie
+    // versetzt. Der echte Spieler hat keinen.
+    bool anfangBekannt = false;
+    NavVec anfang{};
 };
 
 struct Geplant {
@@ -301,8 +353,13 @@ public:
     std::set<std::string> vermisst;
 
     void lauf(const Script& start, const std::string& startPfad);
+    // rc603: die Karte vom Laden an (simuliereKartenstart).
+    void kartenstartLauf();
 
 private:
+    void takte();
+    void spielerBeginnt();
+    bool kartenstartGeplant() const;
     const AblaufWelt& welt_;
     Ablauf& aus_;
     // rc601 (bewegung, Wege): Wegnetz und Spuren, beim ersten Laufziel geholt.
@@ -329,6 +386,10 @@ private:
     double jetzt_ = 0.0;
     int traeger_ = -1;
     int tiefe_ = 0;
+    // rc603: Kartenstart (simuliereKartenstart) statt eines Startskripts.
+    bool kartenstart_ = false;
+    bool spielerDa_ = false;   // ClientSpawn ist gelaufen
+    int startFolge_ = 0;
 
     void hinweis(const std::string& h) {
         if (hinweisGesehen_.insert(h).second && aus_.hinweise.size() < 200) {
@@ -344,9 +405,71 @@ private:
         }
         const int i = static_cast<int>(aus_.skripte.size());
         aus_.skripte.push_back(pfad);
+        aus_.skriptBeginn.push_back(-1.0);   // rc603
+        aus_.skriptFolge.push_back(-1);
         geladen_.push_back(s);
         skriptNach_[k] = i;
         return i;
+    }
+
+    // rc603: eine Figur ohne NPC_targetname (nur im Kartenstart): fuer ICARUS
+    // namenlos, ihr spawnscript laeuft aber (ValidEntity). Der Name ist nur
+    // die Kennung hier - kein Skript kann ihn ansprechen.
+    std::string namenloseFigur(const MapEntity& e) {
+        const std::string name = "\x02npc" + std::to_string(reiheVon(&e));
+        if (wesenNach_.find(klein(name)) == wesenNach_.end()) {
+            auto f = std::make_unique<Wesen>();
+            f->name = name;
+            f->ent = &e;
+            f->reihe = reiheVon(&e);
+            f->figur = true;
+            f->istClient = true;
+            f->gibt = false;
+            bereite(*f, e);
+            wesenNach_[klein(name)] = static_cast<int>(wesen_.size());
+            wesen_.push_back(std::move(f));
+        }
+        return name;
+    }
+
+    // rc603 (Durchsicht): die Figur eines weiteren Spawners, der denselben
+    // NPC_targetname traegt wie ein frueherer (nur im Kartenstart). Jeder
+    // Spawner erzeugt seine eigene Figur, und NPC_Begin startet IHR
+    // spawnscript (G_ActivateBehavior( ent, BSET_SPAWN ), NPC_spawn.cpp:1290
+    // OpenJK, :2038 Movie Duels) - t1_fatal: drei NPC_ImpWorker "npc_corpse1"
+    // mit spawncorpse, spawncorpse2 und spawncorpse3. Vorher bekam der zweite
+    // und dritte die Figur des ersten, ihr Skript startete nie.
+    // Den Namen behaelt bei ICARUS die zuletzt angemeldete Figur:
+    // AssociateEntity schreibt m_EntityList[name] = s.number ueber
+    // (Q3_Interface.cpp:7605 OpenJK, :8135 Movie Duels). Alle melden sich im
+    // selben Bild an (NPC_Begin bei 550, in der Reihenfolge der Spawner) -
+    // affect und kill treffen danach die des spaeteren Spawners.
+    int weitereFigur(const MapEntity& e, const std::string& name) {
+        auto f = std::make_unique<Wesen>();
+        f->name = name;
+        f->ent = &e;
+        f->reihe = reiheVon(&e);
+        f->figur = true;
+        f->istClient = true;
+        f->gibt = false;   // erst ab NPC_Begin (Geplant::Art::Spawn)
+        bereite(*f, e);
+        drehrateVorgabe(*f);
+        const int i = static_cast<int>(wesen_.size());
+        wesen_.push_back(std::move(f));
+        wesenNach_[klein(name)] = i;
+        return i;
+    }
+
+    // rc603: das Skript `idx` laeuft jetzt los - der erste Start zaehlt (die
+    // Reihenfolge der Reiter beim Laden einer Mission, skripteNachStart).
+    void notiereStart(int idx) {
+        if (idx < 0 || static_cast<std::size_t>(idx) >= aus_.skriptBeginn.size()) {
+            return;
+        }
+        if (aus_.skriptBeginn[static_cast<std::size_t>(idx)] < 0.0) {
+            aus_.skriptBeginn[static_cast<std::size_t>(idx)] = jetzt_;
+            aus_.skriptFolge[static_cast<std::size_t>(idx)] = startFolge_++;
+        }
     }
 
     const Script* ladeSkript(const std::string& pfad, int* index) {
@@ -471,6 +594,8 @@ private:
     static void bereite(Wesen& w, const MapEntity& e) {
         if (!e.origin.empty()) {
             w.ortBekannt = leseVek(e.origin, w.ort);
+            w.anfangBekannt = w.ortBekannt;   // rc603 fix603
+            w.anfang = {w.ort[0], w.ort[1], w.ort[2]};
         }
         // rc601 (bewegung): Startwinkel ("angles" oder "angle", der spaetere
         // gewinnt - G_ParseField) und der Verhaltenszustand beim Spawnen.
@@ -554,6 +679,12 @@ private:
             // erst, wenn er benutzt wird - es sei denn, das geschah schon
             // VOR dieser Zwischensequenz (vorhanden_, zweiter Lauf).
             w->gibt = e->targetname.empty() || vorhanden_.count(k) != 0;
+            // rc603: im Kartenstart gibt es sie erst, wenn ihr Spawner
+            // gedacht hat (NPC_spawn.cpp:2049 OpenJK: START_TIME_REMOVE_ENTS
+            // + 50) - dann laeuft auch ihr spawnscript (kartenstartLauf).
+            if (kartenstart_ && vorhanden_.count(k) == 0) {
+                w->gibt = false;
+            }
         }
         if (e != nullptr) {
             bereite(*w, *e);
@@ -752,7 +883,12 @@ private:
         // Figuren ohne Plan stehen den anderen auch im Weg: ihr Ort.
         for (const auto& wp : wesen_) {
             Wesen& w = *wp;
-            if (w.koerperNr >= 0 || !w.istClient || !w.ortBekannt || !w.gibt) { continue; }
+            // rc603 fix603: nicht w.ort - das ist ihr Ort am ENDE des Ablaufs
+            // (etwa nach einem SET_COPY_ORIGIN), und er galt ab Beginn. Im
+            // Spiel steht ihr Kasten bis zum Versetzen (G_SetOrigin +
+            // linkentity, Q3_SetOrigin Q3_Interface.cpp:1309) am Ort aus der
+            // Karte; ohne den (echter Spieler) erst ab dem ersten Versetzen.
+            if (w.koerperNr >= 0 || !w.istClient || !w.gibt || (!w.anfangBekannt && w.orteLog.empty())) { continue; }
             NavFigurKoerper f;
             f.reihe = w.reihe;
             f.halbBreite = welt_.halbBreite ? welt_.halbBreite(w.name) : 16.0F;
@@ -761,7 +897,7 @@ private:
             f.daAbMs = it != aus_.erscheint.end() ? it->second : -1.0e300;
             f.daBisMs = w.totMs;
             f.orte = w.orteLog;
-            f.orte.insert(f.orte.begin(), {-1.0e299, NavVec{w.ort[0], w.ort[1], w.ort[2]}});
+            if (w.anfangBekannt) { f.orte.insert(f.orte.begin(), {-1.0e299, w.anfang}); }
             w.koerperNr = static_cast<int>(aus_.laufFiguren.size());
             aus_.laufFiguren.push_back(std::move(f));
             aus_.laufFigurNamen.push_back(w.name);
@@ -796,6 +932,7 @@ private:
                 for (int a = 0; a < 3; ++a) { w.ort[a] = w.zielOrt[a]; }
                 w.ortBekannt = true;
                 w.zielGesetzt = false;
+                w.orteLog.push_back({t, NavVec{w.ort[0], w.ort[1], w.ort[2]}});   // rc603 fix603: erst ab hier dort
             }
             return;
         }
@@ -1053,6 +1190,7 @@ private:
         if (s == nullptr) {
             return;
         }
+        notiereStart(idx);   // rc603
         // Startet sich ein Skript auf derselben Entity immer wieder selbst
         // (md_toaj cin3_race: am Ende "race_time_up" -> derselbe
         // Skriptstarter), ist das eine Endlosschleife ueber use.
@@ -1166,16 +1304,25 @@ private:
             }
             if (w.zaehler > 0) { --w.zaehler; }
             const double delay = std::ceil(1000.0 * zahl(wertVon(e, "delay")));
+            std::string figurName = npc;
             if (npc.empty()) {
-                return;
+                // rc603: ohne NPC_targetname ist die Figur fuer ICARUS
+                // namenlos, ihr spawnscript laeuft aber doch - ValidEntity
+                // (Q3_Interface.cpp:7581-7588 OpenJK) nimmt jede Entity mit
+                // einem Verhaltensskript. Im Kartenstart (Reihenfolge der
+                // Skripte) zaehlt dieser Start; ansprechen kann sie keiner.
+                if (!kartenstart_ || wertVon(e, "spawnscript").empty()) {
+                    return;
+                }
+                figurName = namenloseFigur(e);
             }
-            const int fi = wesen(npc);
-            gespawnt.insert(klein(npc));
+            const int fi = wesen(figurName);
+            gespawnt.insert(klein(figurName));
             // NPC_Spawn_Do legt die Figur unsichtbar an (EF_NODRAW) und
             // ruft NPC_Begin ein FRAMETIME (100 ms, g_local.h:48) spaeter:
             // erst dort meldet InitEntity sie bei ICARUS an, und erst dort
             // laeuft das spawnscript (NPC_spawn.cpp:1910, 1956).
-            plane(Geplant{jetzt_ + delay + 100.0, 0, Geplant::Art::Spawn, npc, fi, ausloeser});
+            plane(Geplant{jetzt_ + delay + 100.0, 0, Geplant::Art::Spawn, figurName, fi, ausloeser});
             return;
         }
         if (cn == "target_relay") {
@@ -1695,6 +1842,7 @@ private:
                 if (q2 != std::string::npos && ortVon(x.substr(q1 + 1, q2 - q1 - 1), o)) {
                     for (int a = 0; a < 3; ++a) { w.ort[a] = o[a]; }
                     w.ortBekannt = true;
+                    w.orteLog.push_back({navDenkbildAb(t), NavVec{o[0], o[1], o[2]}});   // rc603 fix603
                 }
             }
             if (w.zielGesetzt || hatte) {
@@ -1714,6 +1862,9 @@ private:
             if (zi >= 0 && wesen_[static_cast<std::size_t>(zi)]->ortBekannt) {
                 ortJetzt(*wesen_[static_cast<std::size_t>(zi)], t, w.ort);
                 w.ortBekannt = true;
+                // rc603 fix603: G_SetOrigin + linkentity zur Zeit des Befehls -
+                // erst ab hier steht ihr Kasten dort (navKoerperLauf).
+                w.orteLog.push_back({navDenkbildAb(t), NavVec{w.ort[0], w.ort[1], w.ort[2]}});
             }
             if (w.zielGesetzt) {
                 wegPlanen(w, t, false);
@@ -2122,6 +2273,7 @@ private:
                 if (s == nullptr) {
                     continue;
                 }
+                notiereStart(idx);   // rc603
                 Rahmen neu;
                 neu.liste = &s->nodes;
                 neu.skript = idx;
@@ -2291,13 +2443,21 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
         w->gibt = true;
         if (w->ent != nullptr && !w->ent->origin.empty()) {
             w->ortBekannt = leseVek(w->ent->origin, w->ort);
+            w->anfangBekannt = w->ortBekannt;   // rc603 fix603
+            w->anfang = {w->ort[0], w->ort[1], w->ort[2]};
         }
         traeger_ = static_cast<int>(wesen_.size());
         wesenNach_[klein(w->name)] = traeger_;
         wesen_.push_back(std::move(w));
     }
     schiebeEin(traeger_, start.nodes, s0, Path{}, true);
+    notiereStart(s0);   // rc603: das Startskript laeuft bei 0 los
+    takte();
+}
 
+// rc603: die Schleife des Taktgebers - aus lauf herausgezogen, damit der
+// Kartenstart (kartenstartLauf) dieselbe benutzt. Fuer lauf unveraendert.
+void Nachbau::takte() {
     const double bild = welt_.bildMs;
     double ende = -1.0;
     double t = 0.0;
@@ -2347,6 +2507,8 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
                     aus_.erscheint[f.name] = t;
                     if (f.ent != nullptr && !f.ent->origin.empty()) {
                         f.ortBekannt = leseVek(f.ent->origin, f.ort);
+                        f.anfangBekannt = f.ortBekannt;   // rc603 fix603
+                        f.anfang = {f.ort[0], f.ort[1], f.ort[2]};
                     }
                     const auto it = f.verhalten.find("spawnscript");
                     if (it != f.verhalten.end()) {
@@ -2364,13 +2526,23 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
         for (const int wi : reihe) {
             aktualisiere(wi, t);
         }
+        // rc603: Kartenstart - der Spieler kommt ins Spiel (ClientBegin ->
+        // ClientSpawn -> G_UseTargets der Startposition, g_client.cpp:2432-
+        // 2434), am Ende des ersten Bildes im Spiel (kSpielerBeginnMs).
+        if (kartenstart_ && !spielerDa_ && t >= kSpielerBeginnMs - 1e-6) {
+            spielerBeginnt();
+        }
         // Ende des Startskripts?
         const Wesen& tr = *wesen_[static_cast<std::size_t>(traeger_)];
         if (ende < 0.0 && tr.stapel.empty() && tr.warte == Wesen::kNichts) {
             ende = t;
         }
         // Schluss, wenn nur noch Endloses laeuft - nach dem Nachlauf.
-        if (aktivEndlich()) {
+        // rc603: im Kartenstart erst, wenn der Spieler da ist und nichts mehr
+        // geplant (Verzoegerungen, Spawns) - vorher tut sich oft noch nichts.
+        if (kartenstart_ && (!spielerDa_ || kartenstartGeplant())) {
+            ruhe = -1.0;
+        } else if (aktivEndlich()) {
             ruhe = -1.0;
         } else {
             if (ruhe < 0.0) { ruhe = t; }
@@ -2400,7 +2572,13 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
             hinweis("Grenze von " + std::to_string(static_cast<int>(stopp / 1000.0)) + " s erreicht - noch taetig:" + wer);
             break;
         }
-        if (bild > 0.0) {
+        if (kartenstart_ && t < kLetztesLadebildMs - 1e-6) {
+            // rc603: die Bilder des Ladens zu 100 ms (sv_init.cpp:316, 351).
+            t += 100.0;
+        } else if (kartenstart_ && t < kLetztesLadebildMs + 1e-6) {
+            // Nach dem letzten Ladebild das erste Bild im Spiel.
+            t = kErstesSpielbildMs;
+        } else if (bild > 0.0) {
             t += bild;
         } else {
             // Ohne Takt: zum naechsten Zeitpunkt, an dem sich etwas tut.
@@ -2424,6 +2602,163 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
     koerperAbschliessen();   // rc601 (bewegung, teil 3)
     flachen();
 }
+
+// --- rc603: die Karte vom Laden an (Reihenfolge der Skripte einer Mission) ----
+//
+// Gewuenscht: "kann er die scripts bei load mission in der Reihenfolge als Tab
+// oeffnen, wie sie ingame abgespielt werden?" Dafuer laeuft hier kein
+// Startskript, sondern das, was die Engine beim Laden einer Karte selbst
+// anstoesst - Zeiten relativ zum Start der Karte (sv.time 1000, sv_init.cpp:288):
+//
+//   0     G_SpawnGEntityFromSpawnVars: jede Entity ausser NPC_*, die fuer ICARUS
+//         gilt, startet ihr spawnscript (g_spawn.cpp:1114-1124 OpenJK,
+//         :1278-1289 Movie Duels). Ausgelassen, was bei dieser Schwierigkeit
+//         nicht spawnt (SpawnForCurrentDifficultySetting, "notsingle").
+//   100   das spawnscript von worldspawn ueber einen eigenen Skriptstarter
+//         (g_spawn.cpp:1660-1676 / :1870-1885): nextthink = level.time + 100.
+//   300   trigger_always feuert seine Ziele (g_trigger.cpp:620-624 / :692-697).
+//   350   NPC-Spawner ohne targetname denken (NPC_spawn.cpp:2049 / :3101):
+//         NPC_Spawn_Go ohne "delay" (das gilt nur fuer use), NPC_Begin ein
+//         FRAMETIME spaeter mit dem spawnscript.
+//   550   ClientSpawn: G_UseTargets/G_UseTargets2 der Startposition
+//         (g_client.cpp:2432-2434 / :4092-4094), am Ende des ersten Bildes im
+//         Spiel (kSpielerBeginnMs - nach den spawnscripts der Spawner).
+//
+// Alles Weitere - run, use, Relais, Zaehler, Spawner, kill mit deathscript -
+// rechnet der Nachbau wie bei jedem Ablauf. Was nur der Spieler ausloest
+// (Trigger beim Betreten, ein Kampf), startet hier nicht.
+void Nachbau::kartenstartLauf() {
+    kartenstart_ = true;
+    aus_.traeger.clear();
+    aus_.traegerIstFigur = false;
+    {
+        // Ein Traeger ohne Ablauf: die Schleife braucht einen.
+        auto w = std::make_unique<Wesen>();
+        w->name = "(Karte)";
+        w->reihe = 1 << 21;
+        w->gibt = true;
+        traeger_ = static_cast<int>(wesen_.size());
+        wesenNach_[klein(w->name)] = traeger_;
+        wesen_.push_back(std::move(w));
+    }
+    jetzt_ = 0.0;
+    if (welt_.karte == nullptr) {
+        spielerDa_ = true;
+        takte();
+        return;
+    }
+    const int stufe = welt_.spielstufe;
+    const auto spawnt = [stufe](const MapEntity& e) { return stufe < 0 || spawntBeiSchwierigkeit(e, stufe); };
+    const std::vector<MapEntity>& ents = welt_.karte->entities;
+    for (std::size_t i = 0; i < ents.size(); ++i) {
+        const MapEntity& e = ents[i];
+        if (e.classname == "worldspawn") {
+            // SP_worldspawn laeuft NICHT ueber G_SpawnGEntityFromSpawnVars -
+            // sein spawnscript startet der Skriptstarter bei 100.
+            const std::string ws = wertVon(e, "spawnscript");
+            if (!ws.empty()) {
+                auto w = std::make_unique<Wesen>();
+                w->name = "(worldspawn)";
+                w->reihe = static_cast<int>(ents.size()) + 1;   // G_Spawn nach allen anderen
+                w->gibt = true;
+                const int wi = static_cast<int>(wesen_.size());
+                wesenNach_[klein(w->name)] = wi;
+                wesen_.push_back(std::move(w));
+                plane(Geplant{100.0, 0, Geplant::Art::Skript, ws, wi, -1});
+            }
+            continue;
+        }
+        if (!spawnt(e)) {
+            continue;
+        }
+        // rc603 (Durchsicht): von der eigenen Spawnfunktion gleich wieder
+        // freigegeben - fuer ICARUS gibt es sie nicht (freiBeimSpawnen).
+        if (freiBeimSpawnen(e)) {
+            continue;
+        }
+        if (istNpcSpawner(e)) {
+            if (!e.targetname.empty()) {
+                continue;   // wartet auf use
+            }
+            // rc603 (Durchsicht): ein Spawner ohne use-Funktion (ohne
+            // targetname) benutzt seine Ziele gleich beim Spawnen -
+            // NPC_Spawn_Do: if ( ent->e_UseFunc == useF_NULL ) { if (
+            // ent->target ) G_UseTargets( ent, ent ); } (NPC_spawn.cpp:
+            // 1765-1770 OpenJK, :2805-2811 Movie Duels), im Bild 400, in dem
+            // NPC_Spawn_Go laeuft. Unabhaengig von NPC_targetname und
+            // spawnscript; der Ausloeser ist der Spawner selbst.
+            const std::string ziel = wertVon(e, "target");
+            if (!ziel.empty()) {
+                plane(Geplant{400.0, 0, Geplant::Art::Benutzen, ziel, -1, wesenFuer(e)});
+            }
+            // NPC_Spawn_Go bei 350, also im Bild 400; NPC_Begin bei 500 -
+            // im ersten Bild danach (550) laeuft das spawnscript.
+            std::string name = wertVon(e, "NPC_targetname");
+            if (name.empty()) {
+                if (wertVon(e, "spawnscript").empty()) {
+                    continue;
+                }
+                name = namenloseFigur(e);
+            }
+            int fi = wesen(name);
+            // rc603 (Durchsicht): gehoert der Name schon der Figur eines
+            // ANDEREN Spawners, erzeugt dieser trotzdem seine eigene
+            // (weitereFigur) - mit seinem spawnscript.
+            if (wesen_[static_cast<std::size_t>(fi)]->ent != &e) {
+                fi = weitereFigur(e, name);
+            }
+            gespawnt.insert(klein(name));
+            plane(Geplant{400.0 + 100.0, 0, Geplant::Art::Spawn, name, fi, -1});
+            continue;
+        }
+        if (e.classname == "trigger_always") {
+            // G_UseTargets( ent, ent ): der Ausloeser ist der Trigger selbst.
+            const std::string t = wertVon(e, "target");
+            if (!t.empty()) {
+                const int wi = wesenFuer(e);
+                plane(Geplant{300.0, 0, Geplant::Art::Benutzen, t, -1, wi});
+            }
+        }
+        const std::string sp = wertVon(e, "spawnscript");
+        if (sp.empty()) {
+            continue;
+        }
+        // ValidEntity (Q3_Interface.cpp:7572-7592 OpenJK): jede Entity mit
+        // einem Verhaltensskript bekommt ICARUS, auch ohne Namen.
+        const int wi = wesenFuer(e);
+        wesen_[static_cast<std::size_t>(wi)]->gibt = true;
+        starteSkript(wi, sp, -1);
+    }
+    takte();
+}
+
+// ClientSpawn: die Startposition waehlen und ihre Ziele benutzen. Ohne
+// spawntarget nimmt SelectRandomDeathmatchSpawnPoint (g_client.cpp:229-280)
+// eine Startposition OHNE targetname, per Zufall unter allen - hier die erste
+// (die Missionen haben eine).
+void Nachbau::spielerBeginnt() {
+    spielerDa_ = true;
+    if (welt_.karte == nullptr) {
+        return;
+    }
+    const int stufe = welt_.spielstufe;
+    const MapEntity* punkt = nullptr;
+    for (const MapEntity& e : welt_.karte->entities) {
+        if ((e.classname == "info_player_start" || e.classname == "info_player_deathmatch") && e.targetname.empty() &&
+            (stufe < 0 || spawntBeiSchwierigkeit(e, stufe))) {
+            punkt = &e;
+            break;
+        }
+    }
+    if (punkt == nullptr) {
+        return;
+    }
+    const int spieler = wesen("player");
+    benutzeZiele(*punkt, spieler, "target");
+    benutzeZiele(*punkt, spieler, "target2");
+}
+
+bool Nachbau::kartenstartGeplant() const { return !geplant_.empty(); }
 
 void Nachbau::flachen() {
     // Je Entity eine Spur, in der Reihenfolge der Ausfuehrung. Kamerabefehle
@@ -2641,6 +2976,53 @@ Ablauf simuliereAblauf(const Script& start, const std::string& startPfad, const 
     Nachbau n2(welt, b, vorher);
     n2.lauf(start, startPfad);
     return b;
+}
+
+Ablauf simuliereKartenstart(const AblaufWelt& welt) {
+    Ablauf a;
+    Nachbau n(welt, a, {});
+    n.kartenstartLauf();
+    return a;
+}
+
+std::vector<std::size_t> skripteNachStart(const std::vector<std::string>& pfade, const Ablauf& a) {
+    // Erster Start je Skript (ohne Gross/Klein, Endung und "scripts/").
+    std::map<std::string, std::pair<double, int>> beginn;
+    for (std::size_t i = 0; i < a.skripte.size() && i < a.skriptBeginn.size() && i < a.skriptFolge.size(); ++i) {
+        if (a.skriptBeginn[i] >= 0.0) {
+            beginn.emplace(skriptSchluessel(a.skripte[i]), std::make_pair(a.skriptBeginn[i], a.skriptFolge[i]));
+        }
+    }
+    struct Platz {
+        std::size_t index;
+        double ms;
+        int folge;
+    };
+    std::vector<Platz> gestartet;
+    std::vector<std::size_t> nie;
+    for (std::size_t i = 0; i < pfade.size(); ++i) {
+        const auto it = beginn.find(skriptSchluessel(pfade[i]));
+        if (it != beginn.end()) {
+            gestartet.push_back(Platz{i, it->second.first, it->second.second});
+        } else {
+            nie.push_back(i);
+        }
+    }
+    // Nach der Zeit, bei gleicher Zeit (dasselbe Bild) nach der Folge der
+    // Starts im Nachbau; nie gestartete in ihrer Reihenfolge dahinter.
+    std::stable_sort(gestartet.begin(), gestartet.end(), [](const Platz& x, const Platz& y) {
+        if (x.ms != y.ms) {
+            return x.ms < y.ms;
+        }
+        return x.folge < y.folge;
+    });
+    std::vector<std::size_t> out;
+    out.reserve(pfade.size());
+    for (const Platz& p : gestartet) {
+        out.push_back(p.index);
+    }
+    out.insert(out.end(), nie.begin(), nie.end());
+    return out;
 }
 
 // --- rc601 (bewegung, teil 3): alle Figuren im selben Takt ---------------------

@@ -136,6 +136,17 @@ struct FigurLicht {
     float gerichtet[3]{};
     float richtung[3]{0.0F, 0.0F, 1.0F};
     bool gitter = false;
+    // rc602 kartenpruefung, fuer die Shaderstufen (ModelTextures::stufen):
+    // das Auge (Welt), die Achsen der Entity (ent->e.axis, Zeilen: vorn,
+    // links, oben - fuer tcGen environment in Entity-Koordinaten) und die
+    // Zeit fuer rgbGen wave/animMap. Ohne Achsen gelten die Spalten von welt.
+    float auge[3]{};
+    float achsen[3][3]{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}};
+    bool achsenGesetzt = false;
+    float zeit = 0.0F;
+    // rc603 Durchsicht, nur fuer den Selbsttest (figurAchsenProbe): zu welcher
+    // Figur der Aufruf gehoert (Index in Scene::actors, -1: keiner).
+    int besitzer = -1;
 };
 int zeichneFigur(const GlmModel& model, const ModelTextures* textures,
                  const std::vector<BoneMatrix>& knochen, const float* welt,
@@ -220,6 +231,34 @@ int gluehenEffektAufrufe();
 // keine); gluehenKlingenAufrufe zaehlt, wie viele gezeichnet wurden.
 void gluehenKlingen(const std::vector<KlingenQuad>* klingen);
 int gluehenKlingenAufrufe();
+// rc602 kartenpruefung: die Shaderstufen der Figuren (ModelTextures::stufen).
+// Wie viele Stufenaufrufe das letzte Bild gezeichnet hat; figurStufenAus
+// zeichnet zum Vergleich wie vorher nur das Bild (Selbsttest).
+int figurStufenAufrufe();
+void figurStufenAus(bool aus);
+// rc603: der schnelle Stufenweg - dieselben Aufrufe wie rc602, die Werte
+// einer Flaeche mit einem Map im Ring, die Zustaende gemerkt.
+// figurStufenSchnellAufrufe: seine Stufenaufrufe im letzten Hauptbild;
+// figurStufenBezugsweg(true) zeichnet zum Vergleich wie rc602 (Selbsttest:
+// Bildpunkt fuer Bildpunkt gleich).
+int figurStufenSchnellAufrufe();
+void figurStufenBezugsweg(bool bezug);
+// rc603 Durchsicht, Selbsttest: je zeichneFigur-Aufruf Modell, Besitzer
+// (FigurLicht::besitzer), ob eine Stufe tcGen environment traegt, und die
+// Achsen, mit denen b3 rechnet (gAchse0..2). nullptr schaltet ab.
+struct FigurAchsenEintrag {
+    const GlmModel* model = nullptr;
+    int besitzer = -1;
+    bool umgebung = false;
+    float achsen[3][3]{};
+};
+void figurAchsenProbe(std::vector<FigurAchsenEintrag>* ziel);
+// rc603: Figurenbilder nach Inhalt teilen (gleiche Bildpunkte = eine
+// Textur). figurBilderTeilen verwirft alle hochgeladenen Figurenbilder und
+// schaltet das Teilen an/aus (Selbsttest: gleiches Bild); figurBilderZahlen:
+// seit dem Start hochgeladen / statt dessen geteilt.
+void figurBilderTeilen(bool an);
+void figurBilderZahlen(int& hochgeladen, int& geteilt);
 // rc602: Figuren geben ihre Leuchtstufen (ModelTextures::gluehStufen) dem
 // Gluehen. Vor den Figuren des Hauptbildes `gluehenFigurenBeginnen(true)`:
 // legt den Gluehpuffer an und loescht ihn; zeichneFigur schreibt dann jede

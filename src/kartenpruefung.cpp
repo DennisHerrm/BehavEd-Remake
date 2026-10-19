@@ -222,43 +222,21 @@ std::vector<std::string> fehlendeMerkmale(const ShaderAnweisungen& s, Zusammenha
         if (stufen > 1) { dazu(fehlt, "effekt: weitere stufe"); }
         return fehlt;
     }
-    // Figur (zeichneFigurIn): Grundstufe mit Bild, Mischart, Alphatest, Cull;
-    // dazu die glow-Stufen (rc602). Zeitabhaengiges der Grundstufe steht
-    // (batchStateFor(..., 0.0F)). Alles andere fehlt.
+    // Figur (zeichneFigurIn): seit rc602 ALLE Stufen des Skripts (Skript vor
+    // Bild, rgbGen/alphaGen nach ComputeColors, tcGen environment, animMap,
+    // glow) - bhed/figurstufen.h. Es fehlen tcMod, deformVertexes, videoMap
+    // und die seltenen alphaGen dot/oneMinusDot/portal/entity.
+    (void)hautName;
     for (const std::string& k : s.oben) {
         if (k.rfind("deformvertexes", 0) == 0) { dazu(fehlt, "figur: " + k); }
     }
-    bool grundstufe = true;
-    for (std::size_t i = 0; i < s.stufen.size(); ++i) {
-        const auto& st = s.stufen[i];
-        if (istGlowStufe(st) && !grundstufe) { continue; }
-        if (grundstufe) {
-            grundstufe = false;
-            // R_FindShader nimmt das Skript vor dem gleichnamigen Bild - die
-            // Grundstufe kann ein ANDERES Bild zeigen als der Hautname.
-            const std::string bild = i < s.stufenBild.size() ? s.stufenBild[i] : std::string();
-            if (!hautName.empty() && !bild.empty() && bild[0] != '$' && bild != hautName) {
-                dazu(fehlt, "figur: grundstufe anderes bild");
-            }
-            for (const std::string& k : st) {
-                if (k == "rgbgen wave" || k == "rgbgen const" || k.rfind("tcmod", 0) == 0 ||
-                    k.find("animmap") != std::string::npos || k == "tcgen environment" ||
-                    k == "alphagen lightingspecular" || k == "videomap") {
-                    dazu(fehlt, "figur: grundstufe " + k);
-                }
-            }
-            continue;
-        }
-        // Eine weitere Stufe ohne glow: Glanz, Chrom, Detail, ...
-        std::string art = "weitere stufe";
+    for (const auto& st : s.stufen) {
         for (const std::string& k : st) {
-            if (k == "tcgen environment" || k == "alphagen lightingspecular" || k == "detail" ||
-                k == "rgbgen wave" || k == "rgbgen const" || k.find("animmap") != std::string::npos) {
-                art = "stufe " + k;
-                break;
+            if (k.rfind("tcmod", 0) == 0 || k == "videomap" || k == "alphagen dot" || k == "alphagen oneminusdot" ||
+                k == "alphagen portal" || k == "alphagen entity" || k == "alphagen oneminusentity") {
+                dazu(fehlt, "figur: " + k);
             }
         }
-        dazu(fehlt, "figur: " + art);
     }
     return fehlt;
 }

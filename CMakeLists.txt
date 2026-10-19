@@ -97,6 +97,8 @@ add_library(bhed_core STATIC
   src/kartenpruefung.cpp
   # rc602: Gegenstaende der Karte (items.dat, G_CallSpawn, FinishSpawningItem).
   src/gegenstaende.cpp
+  # rc602: Shaderstufen der Figuren (ComputeColors/ComputeTexCoords).
+  src/figurstufen.cpp
   # Waffe und Lichtschwerter einer Figur ueber die Zeit (SET_WEAPON,
   # SET_SABER*, Handmodelle). Siehe den Kopf der Datei.
   src/ausruestung.cpp
@@ -418,7 +420,7 @@ if(BEHAVED_TESTS)
   # Die Proben des GPU-Wegs und des Gluehens. Sie lagen in tests/, wurden
   # aber nicht gebaut - Aenderungen an Konstantenlagen, Shadertext und
   # Zeichenliste liefen damit ungeprueft durch (rc568, gDeformSpread).
-  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren npcklasse kartenpruefung)
+  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren npcklasse kartenpruefung figurstufen)
     add_executable(${t}_probe tests/${t}.cpp)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)

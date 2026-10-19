@@ -8,11 +8,13 @@
 
 #include "bhed/bspgeo.h"
 #include "bhed/shaderscript.h"
+#include "bhed/figurstufen.h"   // rc602 kartenpruefung
 #include "bhed/gla.h"
 #include "bhed/glm.h"
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -433,6 +435,27 @@ struct ModelTextures {
     // die Augen der MagnaGuards, die Lichter der Superkampfdroiden.
     // Glanz- (lightingSpecular) und Umgebungsstufen sind nicht dabei.
     std::vector<std::vector<TextureSet::Tex>> gluehStufen;
+    // rc602 kartenpruefung: ALLE Stufen des Shaderskripts je Flaeche (Index
+    // wie bySurface, leer = kein Skript - dann Bild + gluehStufen wie vorher).
+    // bilder: eins, bei animMap alle (Wechsel nach Zeit wie
+    // R_BindAnimatedImage) - Groesse und Zustand der Stufe (Mischart, Tiefe,
+    // Keulen, glow), OHNE Bildpunkte.
+    // rc603: pixel - die Bildpunkte dazu (Index wie bilder), einmal je Bild
+    // fuer alle Figuren geteilt (App::figurStufenBilder). Vorher trug jede
+    // Figur je Stufe eine Kopie: in md_am_sith (20 Kampfdroiden, je 15
+    // Flaechen mit bis zu vier Stufen) rund 200 MB mehr Arbeitsspeicher.
+    struct FigurStufe {
+        FigurStufenArt art;
+        std::vector<TextureSet::Tex> bilder;
+        std::vector<std::shared_ptr<const TextureSet::Tex>> pixel;
+        float animFreq = 0.0F;
+        bool animEinmal = false;
+    };
+    std::vector<std::vector<FigurStufe>> stufen;
+    // rc603: was der Zeichner je Flaeche mit Stufen einmal ableitet
+    // (gpumap_win32.cpp, StufenSpeicher: Zustaende, Werte, Bilder) - lebt und
+    // stirbt mit diesen Texturen, damit nichts an einer alten Adresse haengt.
+    mutable std::shared_ptr<void> zeichenSpeicher;
     int found = 0;
     int missing = 0;
 };
