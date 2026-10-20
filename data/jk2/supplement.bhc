@@ -1,0 +1,13 @@
+/*
+        Nachtrag zur behaved.bhc
+
+        Formen, die Ravens eigene Skripte benutzen, in behaved.bhc aber
+        auskommentiert sind. Beleg fuer die Kurzform von if, behaved.bhc:
+
+            //[I_IF] if ( $test expression =,<,>,! xxx$ ) {}
+
+        Sie kommt in den JAscripts vor, z. B.
+            if ( $random( 0, 1 ) > 0.500000$ )
+        Ohne diesen Nachtrag meldet der Pruefer 84 Fehlalarme.
+*/
+[I_IF] if ( $condition$ ) {}

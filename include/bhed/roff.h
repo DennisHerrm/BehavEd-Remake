@@ -44,6 +44,13 @@ struct RoffBild {
     // Nur Fassung 2: mStartNote / mNumNotes. -1/0 heisst: keine Notiz.
     int ersteNotiz = -1;
     int notizen = 0;
+    // rc604 (A2 Rest, nur OpenJK): ein Bild der ausgerollten Schleife
+    // (roffMitSchleife). nullen: vor dem Bild steht die Entity bei 0 0 0 /
+    // 0 0 0 (loop rof absolute; bei Figuren immer, s.origin2 bleibt dort 0).
+    // sprung*: was der innere G_Roff-Aufruf (Bild 0) vorher schon anwandte.
+    bool nullen = false;
+    float sprungOrt[3]{};
+    float sprungWinkel[3]{};
 };
 
 struct Roff {
@@ -163,7 +170,11 @@ struct RoffAusloesung {
     double ms = 0.0;        // nach dem play-Befehl
     std::size_t notiz = 0;  // Index in Roff::notizen
 };
-[[nodiscard]] std::vector<RoffAusloesung> roffAusloesungen(const Roff& r);
+// rc604 fix604b (A2): alleNotizen = OpenJK - "if ( data->mStartNote != -1 )"
+// und dann JEDE der mNumNotes Notizen ab mStartNote (code/game/g_roff.cpp:
+// 746-752 OpenJK). Movie Duels (g_roff.cpp:555-557 MD) und Jedi Outcast
+// (codeJK2/game/g_roff.cpp:510-513) nehmen nur die erste.
+[[nodiscard]] std::vector<RoffAusloesung> roffAusloesungen(const Roff& r, bool alleNotizen = false);
 
 // Eine Notiz, zerlegt wie in G_RoffNotetrackCallback (g_roff.cpp:37 ff.):
 //
@@ -180,6 +191,10 @@ struct RoffNotizBefehl {
         Effekt,      // G_PlayEffect
         Klang,       // cgi_S_StartSound auf CHAN_BODY
         Unbekannt,   // "is an invalid ROFF notetrack function"
+        // rc604 fix604b (A2): nur OpenJK (g_roff.cpp:308-438 OpenJK; Movie
+        // Duels und Jedi Outcast melden sie als unbekannt).
+        Skript,      // "USE <skript>": RunScript(ent, argument)
+        Schleife,    // "loop rof absolute|relative" / "loop sfx <sound/...>|kill"
     };
     Art art = Art::Keine;
     std::string typ;
@@ -189,8 +204,28 @@ struct RoffNotizBefehl {
     float versatz[3]{};        // vorn, rechts, oben - in den Achsen der Winkel
     bool eigeneWinkel = false; // sonst die Winkel der Entity
     float winkel[3]{};
+    // rc604 fix604b (A2) "loop": schleife "rof" oder "sfx", zusatz das
+    // weitere Argument ("absolute"/"relative" bzw. der Klang); schleifeAus
+    // bei "loop sfx kill" (s.loopSound = 0). datei: der Klang fuer s.loopSound.
+    std::string schleife;
+    std::string zusatz;
+    bool schleifeAus = false;
 };
-[[nodiscard]] RoffNotizBefehl zerlegeRoffNotiz(const std::string& text);
+// openJk: "USE" und "loop" kennen (G_RoffNotetrackCallback OpenJK).
+[[nodiscard]] RoffNotizBefehl zerlegeRoffNotiz(const std::string& text, bool openJk = false);
+
+// rc604 (A2 Rest): "loop rof absolute|relative" wie OpenJK. Die Notiz setzt
+// roff_ctr = 0 und ruft G_Roff rekursiv (code/game/g_roff.cpp:320-366): das
+// Bild 0 wird mit seinen Notizen angewandt (roff_ctr 1), dann wendet der
+// aeussere Aufruf SEIN Bild an - den Versatz las er vor den Notizen
+// (:742-744) - und zaehlt weiter (:841, roff_ctr 2). absolute leert pos1/pos2
+// und trBase, relative setzt trBase = s.origin2 (Mover fahren ab pos1
+// weiter, :815; Figuren ab trBase, s.origin2 ist bei NPCs 0 0 0).
+// Gibt die Bilder so zurueck, wie G_Roff sie nacheinander anwendet, bis die
+// Bahn endet oder `maxBilder` erreicht ist (endlos = true: sie endet nie,
+// die Aufgabe TID_MOVE_NAV bleibt offen). Ohne Schleifennotiz (oder unter
+// einer Schleife in Bild 0, die sich ohne Ende selbst ruft) unveraendert.
+[[nodiscard]] Roff roffMitSchleife(const Roff& r, bool figur, std::size_t maxBilder, bool* endlos = nullptr);
 
 // Wo und wie ein Effekt spielt: der Ursprung plus Versatz entlang
 // AngleVectors der benutzten Winkel (g_roff.cpp:268 ff.).

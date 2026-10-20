@@ -135,8 +135,9 @@ void pruefeGlm(const std::vector<GamePath>& pfade, const std::string& name,
         }
         if (glaZahl < 0) {
             auffaellig(b, "Skelett (.gla) nicht gefunden oder nicht lesbar: " + m.animFile, name);
-        } else if (glaZahl != m.numBones && m.jk2Umgewandelt) {
-            fehler(b, name, "JK2-Modell umgelegt, aber die .gla hat " + std::to_string(glaZahl) + " Knochen");
+        } else if (glaZahl != m.numBones && (m.jk2Umgewandelt || m.jkaUmgewandelt)) {
+            fehler(b, name, std::string(m.jkaUmgewandelt ? "JKA-Modell auf JK2 umgelegt" : "JK2-Modell umgelegt") +
+                                ", aber die .gla hat " + std::to_string(glaZahl) + " Knochen");
         } else if (glaZahl != m.numBones) {
             // Die Engine laedt so ein Modell gar nicht (R_LoadMDXM:
             // "has different bones than anim") - ein Fehler der Datei, nicht
@@ -456,6 +457,9 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--nur") == 0 && i + 1 < argc) {
             nur = argv[++i];
+        } else if (std::strcmp(argv[i], "--jk2") == 0) {
+            // rc604: Ghoul2 wie unter JK2_MODE (Regelwerk Jedi Outcast).
+            setzeGhoul2Jk2(true);
         } else {
             ordner.emplace_back(argv[i]);
         }

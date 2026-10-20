@@ -126,10 +126,14 @@ def _zeitstempel():
 
 def zip_bauen(exe, ziel, wurzel, handbuch=None):
     eintraege = [(OBER + "/behaved.exe", exe)]
-    daten = os.path.join(wurzel, "data", "base")
-    for n in sorted(os.listdir(daten)):
-        if os.path.isfile(os.path.join(daten, n)):
-            eintraege.append((OBER + "/data/base/" + n, os.path.join(daten, n)))
+    # rc604: data/jk2 (Befehlssatz fuer Jedi Outcast) neben data/base.
+    for ordner in ("base", "jk2"):
+        daten = os.path.join(wurzel, "data", ordner)
+        if not os.path.isdir(daten):
+            continue
+        for n in sorted(os.listdir(daten)):
+            if os.path.isfile(os.path.join(daten, n)):
+                eintraege.append((OBER + "/data/" + ordner + "/" + n, os.path.join(daten, n)))
     if handbuch is None:
         handbuch = handbuch_dateien(wurzel)
     if not handbuch:
@@ -289,25 +293,28 @@ def pruefe(zip_pfad, rc, wurzel, exe_pfad=None, ausgabe=print):
                   "schon die neue Fassung, und der Rest bleibt halb alt (zip_bauen legt sie zuletzt)")
         else:
             gut("behaved.exe ist der letzte Eintrag (ein abgebrochenes Update laesst die alte Fassung)")
-        daten_ordner = os.path.join(wurzel, "data", "base")
-        daten = []
-        for n in sorted(os.listdir(daten_ordner)):
-            p = os.path.join(daten_ordner, n)
-            if not os.path.isfile(p):
+        for ordner in ("base", "jk2"):   # rc604: auch data/jk2 (Jedi Outcast)
+            daten_ordner = os.path.join(wurzel, "data", ordner)
+            if ordner != "base" and not os.path.isdir(daten_ordner):
                 continue
-            with open(p, "rb") as f:
-                daten.append((n, f.read()))
-        abweichend = []
-        for n, b in daten:
-            drin = lies("data/base/" + n)
-            if drin is None:
-                melde("data/base/%s fehlt" % n)
-            elif drin != b:
-                abweichend.append(n)
-        if abweichend:
-            melde("data/base weicht vom Repo ab: %s" % ", ".join(abweichend))
-        elif daten and all(nach_name.get(OBER + "/data/base/" + n) for n, _ in daten):
-            gut("data/base: %d Dateien, Byte fuer Byte wie im Repo" % len(daten))
+            daten = []
+            for n in sorted(os.listdir(daten_ordner)):
+                p = os.path.join(daten_ordner, n)
+                if not os.path.isfile(p):
+                    continue
+                with open(p, "rb") as f:
+                    daten.append((n, f.read()))
+            abweichend = []
+            for n, b in daten:
+                drin = lies("data/%s/%s" % (ordner, n))
+                if drin is None:
+                    melde("data/%s/%s fehlt" % (ordner, n))
+                elif drin != b:
+                    abweichend.append(n)
+            if abweichend:
+                melde("data/%s weicht vom Repo ab: %s" % (ordner, ", ".join(abweichend)))
+            elif daten and all(nach_name.get(OBER + "/data/%s/%s" % (ordner, n)) for n, _ in daten):
+                gut("data/%s: %d Dateien, Byte fuer Byte wie im Repo" % (ordner, len(daten)))
         seiten = ["handbuch/index.html"] + ["handbuch/%s/index.html" % s for s in SPRACHEN]
         fehlen = [s for s in seiten if OBER + "/" + s not in nach_name]
         if fehlen:

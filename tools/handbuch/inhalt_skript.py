@@ -70,7 +70,7 @@ FENSTER = {
                "メッセージ、エラーと注意の件数(クリックで一覧)、元に戻す履歴、最後にコンパイルした時刻。")],
         ]),
         ("h2", "teilen", T("Two scripts side by side", "Zwei Skripte nebeneinander", "并排显示两个脚本", "2 つのスクリプトを並べる")),
-        ("p", T("**{{MenuFile}} → {{SplitToggle}}** shows up to four scripts beside each other in Events mode - for comparing and for copying commands across. Drag a command from one pane into another to copy it; click into a pane to work in it.", "**{{MenuFile}} → {{SplitToggle}}** zeigt im Events-Modus bis zu vier Skripte nebeneinander - zum Vergleichen und zum Herüberkopieren von Befehlen. Einen Befehl von einem Feld ins andere ziehen kopiert ihn; in ein Feld klicken, um darin zu arbeiten.", "**{{MenuFile}} → {{SplitToggle}}** 在事件模式下最多并排显示四个脚本——用于比较和跨脚本复制命令。把命令从一个窗格拖到另一个即可复制;单击某个窗格即可在其中编辑。", "**{{MenuFile}} → {{SplitToggle}}** で、イベントモードでは最大 4 つのスクリプトを並べて表示できます。比較やコマンドのコピーに便利です。ペイン間でコマンドをドラッグするとコピーされ、ペインをクリックするとそこで作業できます。")),
+        ("p", T("**{{MenuFile}} → {{SplitToggle}}** shows up to four scripts beside each other in Events mode - for comparing and for copying commands across. Drag a command from one pane into another to copy it; click into a pane to work in it.", "**{{MenuFile}} → {{SplitToggle}}** zeigt im Modus **{{ViewEvents}}** bis zu vier Skripte nebeneinander - zum Vergleichen und zum Herüberkopieren von Befehlen. Einen Befehl von einem Feld ins andere ziehen kopiert ihn; in ein Feld klicken, um darin zu arbeiten.", "**{{MenuFile}} → {{SplitToggle}}** 在事件模式下最多并排显示四个脚本——用于比较和跨脚本复制命令。把命令从一个窗格拖到另一个即可复制;单击某个窗格即可在其中编辑。", "**{{MenuFile}} → {{SplitToggle}}** で、イベントモードでは最大 4 つのスクリプトを並べて表示できます。比較やコマンドのコピーに便利です。ペイン間でコマンドをドラッグするとコピーされ、ペインをクリックするとそこで作業できます。")),
         ("h2", "groesse", T("Size, look and layout", "Größe, Aussehen und Aufteilung", "大小、外观与布局", "サイズ・外観・レイアウト")),
         ("list", [
             T("<kbd>Ctrl</kbd> + mouse wheel scales the whole interface (50 - 300 %); **{{MenuView}} → {{ViewDpiScale}}** does the same.",
@@ -105,7 +105,7 @@ SKRIPTE = {
     "bloecke": [
         ("img", "h_skriptbaum", T(
             "Events mode: the commands on the left, the script tree in the middle, the action buttons on the right.",
-            "Events-Modus: links die Befehle, in der Mitte der Skriptbaum, rechts die Aktionsknöpfe.",
+            "Modus {{ViewEvents}}: links die Befehle, in der Mitte der Skriptbaum, rechts die Aktionsknöpfe.",
             "事件模式:左侧是命令,中间是脚本树,右侧是操作按钮。",
             "イベントモード。左にコマンド、中央にスクリプトツリー、右に操作ボタン。"), "breit"),
         ("h2", "grundlagen", T("How a script is built", "Wie ein Skript aufgebaut ist", "脚本的结构", "スクリプトの構造")),
@@ -129,7 +129,7 @@ SKRIPTE = {
               "右键单击某行可在子菜单中使用相同的列表,另有编辑、复制和 **{{ActFindSimilar}}**。",
               "行を右クリックすると、同じ一覧がサブメニューとして表示され、編集・コピー・**{{ActFindSimilar}}** も使えます。"),
         ]),
-        ("h2", "editor", T("The event editor", "Der Event-Editor", "事件编辑器", "イベントエディター")),
+        ("h2", "editor", T("The event editor", "Der Ereignis-Editor", "事件编辑器", "イベントエディター")),
         ("p", T(
             "Double-click a line (or press <kbd>Enter</kbd>) to open the **{{EditorTitle}}**. The help text of the command stands on top, each value has its own field below: lists for fixed choices, number and text fields, file fields with **{{EditorBrowse}}** to browse and **{{EditorPlay}}** to play a sound or open a script. When a map is loaded, an arrow next to name fields picks a name from the map.",
             "Ein Doppelklick auf eine Zeile (oder <kbd>Enter</kbd>) öffnet den **{{EditorTitle}}**. Oben steht der Hilfetext des Befehls, darunter hat jeder Wert sein Feld: Listen für feste Auswahl, Zahlen- und Textfelder, Dateifelder mit **{{EditorBrowse}}** zum Suchen und **{{EditorPlay}}** zum Abspielen eines Klangs oder Öffnen eines Skripts. Ist eine Karte geladen, wählt ein Pfeil neben Namensfeldern einen Namen aus der Karte.",
@@ -137,7 +137,7 @@ SKRIPTE = {
             "行をダブルクリック(または <kbd>Enter</kbd>)すると **{{EditorTitle}}** が開きます。上にコマンドのヘルプ、下に値ごとの欄があります。固定の選択肢はリスト、数値とテキストの欄、ファイル欄には参照用の **{{EditorBrowse}}** と、サウンド再生やスクリプトを開く **{{EditorPlay}}** があります。マップを読み込んでいれば、名前欄の横の矢印でマップから名前を選べます。")),
         ("img", "h_editor", T(
             "The event editor for a camera command.",
-            "Der Event-Editor für einen Kamerabefehl.",
+            "Der Ereignis-Editor für einen Kamerabefehl.",
             "摄像机命令的事件编辑器。",
             "カメラコマンドのイベントエディター。")),
         ("list", [

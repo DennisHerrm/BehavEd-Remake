@@ -39,6 +39,25 @@ const char* const kItmMD[] = {
     "ITM_MEDPAK_PICKUP", "ITM_SHIELD_SM_PICKUP", "ITM_SHIELD_LRG_PICKUP", "ITM_GOODIE_KEY_PICKUP",
     "ITM_SECURITY_KEY_PICKUP"
 };
+// rc604 jk2: Jedi Outcast (codeJK2/game/g_items.h, itemNum_e) - andere
+// Reihenfolge, ohne die JKA-Waffen.
+const char* const kItmJk2[] = {
+    "ITM_NONE", "ITM_SABER_PICKUP", "ITM_BRYAR_PISTOL_PICKUP", "ITM_BLASTER_PICKUP", "ITM_DISRUPTOR_PICKUP",
+    "ITM_BOWCASTER_PICKUP", "ITM_REPEATER_PICKUP", "ITM_DEMP2_PICKUP", "ITM_FLECHETTE_PICKUP",
+    "ITM_ROCKET_LAUNCHER_PICKUP", "ITM_THERMAL_DET_PICKUP", "ITM_TRIP_MINE_PICKUP", "ITM_DET_PACK_PICKUP",
+    "ITM_STUN_BATON_PICKUP", "ITM_BOT_LASER_PICKUP", "ITM_EMPLACED_GUN_PICKUP", "ITM_TURRET_PICKUP",
+    "ITM_MELEE", "ITM_ATST_MAIN_PICKUP", "ITM_ATST_SIDE_PICKUP", "ITM_TIE_FIGHTER_PICKUP",
+    "ITM_RAPID_FIRE_CONC_PICKUP", "ITM_BLASTER_PISTOL_PICKUP", "ITM_AMMO_FORCE_PICKUP",
+    "ITM_AMMO_BLASTER_PICKUP", "ITM_AMMO_POWERCELL_PICKUP", "ITM_AMMO_METAL_BOLTS_PICKUP",
+    "ITM_AMMO_ROCKETS_PICKUP", "ITM_AMMO_EMPLACED_PICKUP", "ITM_AMMO_THERMAL_PICKUP",
+    "ITM_AMMO_TRIPMINE_PICKUP", "ITM_AMMO_DETPACK_PICKUP", "ITM_FORCE_HEAL_PICKUP",
+    "ITM_FORCE_LEVITATION_PICKUP", "ITM_FORCE_SPEED_PICKUP", "ITM_FORCE_PUSH_PICKUP", "ITM_FORCE_PULL_PICKUP",
+    "ITM_FORCE_TELEPATHY_PICKUP", "ITM_FORCE_GRIP_PICKUP", "ITM_FORCE_LIGHTNING_PICKUP",
+    "ITM_FORCE_SABERTHROW_PICKUP", "ITM_BATTERY_PICKUP", "ITM_SEEKER_PICKUP", "ITM_SHIELD_PICKUP",
+    "ITM_BACTA_PICKUP", "ITM_DATAPAD_PICKUP", "ITM_BINOCULARS_PICKUP", "ITM_SENTRY_GUN_PICKUP",
+    "ITM_LA_GOGGLES_PICKUP", "ITM_MEDPAK_PICKUP", "ITM_SHIELD_SM_PICKUP", "ITM_SHIELD_LRG_PICKUP",
+    "ITM_GOODIE_KEY_PICKUP", "ITM_SECURITY_KEY_PICKUP",
+};
 // OpenJK (code/game/g_items.h).
 const char* const kItmOpenJK[] = {
     "ITM_NONE", "ITM_SABER_PICKUP", "ITM_BLASTER_PISTOL_PICKUP", "ITM_BLASTER_PICKUP",
@@ -134,10 +153,14 @@ const Gegenstand* Gegenstandsliste::spawnbar(const std::string& klasse) const {
     return nullptr;
 }
 
-Gegenstandsliste leseGegenstaende(const std::string& itemsDat, bool movieDuels) {
+Gegenstandsliste leseGegenstaende(const std::string& itemsDat, bool movieDuels, bool jediOutcast) {
     Gegenstandsliste l;
-    const char* const* namen = movieDuels ? kItmMD : kItmOpenJK;
-    const std::size_t zahl = movieDuels ? std::size(kItmMD) : std::size(kItmOpenJK);
+    // rc604 jk2: IT_Name sucht in der itemNum_e von JK2 (g_itemLoad.cpp,
+    // dieselben Schluessel itemname ... worldmodel, codeJK2 :60-69).
+    const char* const* namen = jediOutcast ? kItmJk2 : movieDuels ? kItmMD : kItmOpenJK;
+    const std::size_t zahl = jediOutcast  ? std::size(kItmJk2)
+                             : movieDuels ? std::size(kItmMD)
+                                          : std::size(kItmOpenJK);
     l.plaetze.resize(zahl);
     for (std::size_t i = 0; i < zahl; ++i) { l.plaetze[i].itemname = namen[i]; }
     Leser r{itemsDat};

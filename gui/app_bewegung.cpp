@@ -23,6 +23,7 @@
 #include "app_internal.h"
 
 #include "bhed/bspgeo.h"
+#include "bhed/gegenstaende.h"   // rc604: spawntBeiSchwierigkeit
 #include "bhed/gpuskin.h"
 #include "bhed/kollision.h"
 #include "bhed/navlauf.h"
@@ -31,10 +32,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -42,6 +45,9 @@
 #include <vector>
 
 namespace bhed::gui {
+// rc604 fix604: Raster, Matrix- und Stellungsspeicher der Schwerkraft mit
+// Movern (aus: der alte Weg, fuer den Vergleich im Selbsttest).
+std::atomic<bool> gSchwerkraftSchnell{true};
 namespace {
 
 // Ein Brush-Modell, das tragen kann: sein Netz im eigenen Raum.
@@ -50,6 +56,7 @@ struct BodenModell {
     std::size_t entity = 0;
     BspMesh netz;
     float radius = 0.0F;   // um den eigenen Nullpunkt, fuer Drehungen
+    NetzRaster raster;     // rc604 fix604: senkrechte Strahlen (netzTrefferRaster)
 };
 
 // Was nur von der Geometrie der Karte abhaengt - einmal je Karte gebaut.
@@ -99,6 +106,11 @@ BodenWelt& bodenWelt() {
         if (k.rfind("func_", 0) != 0 || k == "func_group") {
             continue;
         }
+        // rc604: notsingle/Schwierigkeit - die Entity gibt es im Spiel nicht
+        // (G_SpawnGEntityFromSpawnVars, code/game/g_spawn.cpp:1096-1101 OpenJK).
+        if (!spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) {
+            continue;
+        }
         const int nr = std::atoi(mdl->c_str() + 1);
         if (nr <= 0 || static_cast<std::size_t>(nr) >= geo.models.size() || w.netze[static_cast<std::size_t>(nr)]) {
             continue;
@@ -115,6 +127,9 @@ BodenWelt& bodenWelt() {
             r2 = std::max(r2, v.xyz[0] * v.xyz[0] + v.xyz[1] * v.xyz[1] + v.xyz[2] * v.xyz[2]);
         }
         bm->radius = std::sqrt(r2);
+        // rc604 fix604: ein Strahl, den modellTreffer fragt, liegt hoechstens
+        // radius + 1 vom Nullpunkt (im Raum des Modells, ungekippt) - etwas Luft.
+        bm->raster = baueNetzRaster(bm->netz, w.fest, 32.0F, bm->radius + 4.0F);
         w.netze[static_cast<std::size_t>(nr)] = std::move(bm);
         ++brushes;
     }
@@ -298,16 +313,40 @@ BodenLage bodenLage(const BodenWelt& w, double endeMs, bool mitMovern) {
 // Ein senkrechter Strahl gegen ein Brush-Modell in seiner Stellung: den
 // Strahl in den Raum des Modells drehen (die Umkehrung von baueMoverWelt),
 // dort treffen, zurueckdrehen.
+// rc604 fix604: die Matrix einer Stellung (baueMoverWelt) - gleiche Stellung
+// (Bit fuer Bit), gleiche Matrix; die fuenf Strahlen einer Frage und ein
+// stehender Mover fragen sie sonst immer neu.
+struct MatrixMerk {
+    bool da = false;
+    float ort[3]{};
+    float winkel[3]{};
+    float m[16]{};
+};
+
 bool modellTreffer(const BodenModell& bm, const std::vector<bool>& fest, const Stellung& s,
-                   const std::array<float, 3>& von, const std::array<float, 3>& bis, float& z) {
+                   const std::array<float, 3>& von, const std::array<float, 3>& bis, float& z,
+                   MatrixMerk* merk = nullptr) {
     const float dx = von[0] - s.ort[0];
     const float dy = von[1] - s.ort[1];
     if (dx * dx + dy * dy > (bm.radius + 1.0F) * (bm.radius + 1.0F)) {
         return false;
     }
-    float m[16];
-    const bool taumelt = s.winkel[0] != 0.0F || s.winkel[2] != 0.0F;
-    gpu::baueMoverWelt(nullptr, s.ort, s.winkel[1], s.winkel[0], s.winkel[2], taumelt, m);
+    float eigen[16];
+    float* m = eigen;
+    if (merk != nullptr && merk->da && std::memcmp(merk->ort, s.ort, sizeof(s.ort)) == 0 &&
+        std::memcmp(merk->winkel, s.winkel, sizeof(s.winkel)) == 0) {
+        m = merk->m;
+    } else {
+        const bool taumelt = s.winkel[0] != 0.0F || s.winkel[2] != 0.0F;
+        gpu::baueMoverWelt(nullptr, s.ort, s.winkel[1], s.winkel[0], s.winkel[2], taumelt, m);
+        if (merk != nullptr) {
+            merk->da = true;
+            std::memcpy(merk->ort, s.ort, sizeof(s.ort));
+            std::memcpy(merk->winkel, s.winkel, sizeof(s.winkel));
+            std::memcpy(merk->m, m, sizeof(eigen));
+            m = merk->m;
+        }
+    }
     float a[3];
     float b[3];
     for (int c = 0; c < 3; ++c) {
@@ -319,7 +358,12 @@ bool modellTreffer(const BodenModell& bm, const std::vector<bool>& fest, const S
         }
     }
     float t[3];
-    if (!netzTreffer(bm.netz, fest, a, b, t)) {
+    // rc604 fix604: senkrecht im Raum des Modells (keine Kippung) ueber das
+    // Raster, sonst wie bisher - Bit fuer Bit dasselbe (netzTrefferRaster).
+    const bool getroffen = (merk != nullptr && gSchwerkraftSchnell.load(std::memory_order_relaxed))
+                               ? netzTrefferRaster(bm.netz, bm.raster, fest, a, b, t)
+                               : netzTreffer(bm.netz, fest, a, b, t);
+    if (!getroffen) {
         return false;
     }
     z = m[8] * t[0] + m[9] * t[1] + m[10] * t[2] + s.ort[2];
@@ -346,8 +390,19 @@ void schwerkraftVorschau(bool mitMovern) {
     long long strahlen = 0;
     SchwerkraftHilfe h;
     h.endeMs = ende;
-    h.strahl = [&w, lage, &strahlen](const std::array<float, 3>& von, const std::array<float, 3>& bis, double ms,
-                                     std::array<float, 3>& treffer) {
+    // rc604 fix604: je Modell die Matrix der letzten Stellung und die Stellung
+    // der letzten Zeit (die fuenf Strahlen einer Frage haben dieselbe).
+    const bool schnell = gSchwerkraftSchnell.load(std::memory_order_relaxed);
+    auto matrizen = std::make_shared<std::vector<MatrixMerk>>(w.netze.size());
+    struct StellungMerk {
+        double ms = 0.0;
+        bool da = false;
+        Stellung s;
+    };
+    auto stellungen = std::make_shared<std::vector<StellungMerk>>(w.netze.size());
+    h.strahl = [&w, lage, &strahlen, schnell, matrizen, stellungen](const std::array<float, 3>& von,
+                                                                   const std::array<float, 3>& bis, double ms,
+                                                                   std::array<float, 3>& treffer) {
         ++strahlen;
         bool gefunden = false;
         float best = bis[2];
@@ -360,9 +415,21 @@ void schwerkraftVorschau(bool mitMovern) {
             if (!w.netze[nr]) { continue; }
             const std::array<float, 4>& hu = lage->huelle[nr];
             if (von[0] < hu[0] || von[1] < hu[1] || von[0] > hu[2] || von[1] > hu[3]) { continue; }
-            const Stellung s = stellungBei(*lage, w, static_cast<int>(nr), ms);
+            Stellung s;
+            if (schnell) {
+                StellungMerk& sm = (*stellungen)[nr];
+                if (!sm.da || std::memcmp(&sm.ms, &ms, sizeof(ms)) != 0) {
+                    sm.s = stellungBei(*lage, w, static_cast<int>(nr), ms);
+                    sm.ms = ms;
+                    sm.da = true;
+                }
+                s = sm.s;
+            } else {
+                s = stellungBei(*lage, w, static_cast<int>(nr), ms);
+            }
             if (!s.da) { continue; }
-            if (modellTreffer(*w.netze[nr], w.fest, s, von, bis, z) && z <= von[2] + 0.01F && z >= bis[2] - 0.01F &&
+            if (modellTreffer(*w.netze[nr], w.fest, s, von, bis, z, schnell ? &(*matrizen)[nr] : nullptr) &&
+                z <= von[2] + 0.01F && z >= bis[2] - 0.01F &&
                 (!gefunden || z > best)) {
                 best = z;
                 gefunden = true;
@@ -434,6 +501,7 @@ namespace {
 struct KollisionsSpeicher {
     std::string karte;
     std::shared_ptr<const KollisionsKarte> k;
+    bool jk2 = false;   // rc604 fix604: mit den Regeln von Jedi Outcast gelesen (SURF_SLICK)
 };
 KollisionsSpeicher& kollisionsSpeicher() {
     static KollisionsSpeicher s;
@@ -547,6 +615,8 @@ std::uint64_t navWeltSchluessel() {
         }
     }
     h ^= static_cast<std::uint64_t>(g_app->geo.surfaces.size()) * 0x9e3779b97f4a7c15ULL;
+    // rc604 fix604 (JK2 Stufe 3): mit den Regeln von Jedi Outcast ein anderes Netz.
+    if (navJk2Regeln()) { dazu("jk2"); }
     return h | 1ULL;
 }
 
@@ -557,6 +627,7 @@ void kollisionLaden(const std::string& bsp, const std::string& karte) {
     const auto t0 = std::chrono::steady_clock::now();
     KollisionsSpeicher& s = kollisionsSpeicher();
     s.karte = karte;
+    s.jk2 = regelwerkJediOutcast();
     if (leseKollision(bsp, *k)) {
         s.k = std::move(k);
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -569,7 +640,25 @@ void kollisionLaden(const std::string& bsp, const std::string& karte) {
 
 // rc601 integ: die Lichtschwerter (Paket saber) luden die Karte vorher ein
 // zweites Mal (saberKollisionLaden) - jetzt teilen sie diese.
+namespace {
+// rc604 fix604 (JK2 Stufe 3): leseKollision haengt am Regelwerk (SURF_SLICK
+// unter Jedi Outcast nicht fest, code/qcommon/cm_load.cpp:272-278) - wechselt
+// es, wird die Karte neu gelesen.
+void kollisionRegelwerkPruefen() {
+    KollisionsSpeicher& s = kollisionsSpeicher();
+    if (!s.k || s.jk2 == regelwerkJediOutcast() || s.karte != g_app->map.path) { return; }
+    std::string bsp;
+    if (!kartenBytes(s.karte, bsp)) { bsp = slurp(s.karte); }
+    if (bsp.empty()) {
+        s.jk2 = regelwerkJediOutcast();
+        return;
+    }
+    kollisionLaden(bsp, s.karte);
+}
+}  // namespace
+
 std::shared_ptr<const KollisionsKarte> geladeneKollision(const std::string& karte) {
+    kollisionRegelwerkPruefen();
     const KollisionsSpeicher& s = kollisionsSpeicher();
     return (s.k && s.karte == karte) ? s.k : nullptr;
 }
@@ -587,6 +676,7 @@ std::shared_ptr<const NavWelt> navWeltBasis() {
     sp.karte.reset();
     sp.brushes.reset();
     const auto t0 = std::chrono::steady_clock::now();
+    kollisionRegelwerkPruefen();   // rc604 fix604
     const KollisionsSpeicher& ks = kollisionsSpeicher();
     // Entities ohne worldspawn vorn gehoeren nicht zu dieser .bsp (erfundene
     // Karten der Selbsttests) - dann keine Spuren gegen ihre Brushes.
@@ -608,6 +698,7 @@ std::shared_ptr<const NavWelt> navWeltBasis() {
         if (mdl == nullptr || mdl->size() < 2 || (*mdl)[0] != '*') { continue; }
         const std::string& kl = e.classname;
         if (kl.rfind("func_", 0) != 0 || kl == "func_group") { continue; }
+        if (!spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) { continue; }   // rc604, wie in bodenWelt
         const std::string* sf = e.find("spawnflags");
         const int flags = sf != nullptr ? std::atoi(sf->c_str()) : 0;
         const int nr = std::atoi(mdl->c_str() + 1);
@@ -741,6 +832,23 @@ std::shared_ptr<const NavWelt> navWeltBasis() {
     welt->istTuer = [ents](int e) {
         return e >= 0 && e < static_cast<int>(ents->size()) && (*ents)[static_cast<std::size_t>(e)] == "func_door";
     };
+    // rc604 fix604 (JK2 Stufe 3): Jedi Outcast laedt maps/<karte>.nav, wenn die
+    // Pruefsumme zur .bsp passt (codeJK2/game/g_main.cpp:690, CNavigator::Load).
+    if (navJk2Regeln()) {
+        std::string bsp;
+        if (!kartenBytes(g_app->map.path, bsp)) { bsp = slurp(g_app->map.path); }
+        std::string name = g_app->map.path;
+        const std::size_t schnitt = name.find_last_of("/\\");
+        if (schnitt != std::string::npos) { name = name.substr(schnitt + 1); }
+        if (name.size() > 4 && (name.compare(name.size() - 4, 4, ".bsp") == 0 || name.compare(name.size() - 4, 4, ".BSP") == 0)) {
+            name.resize(name.size() - 4);
+        }
+        if (!bsp.empty() && !name.empty() && readFromArchives("maps/" + name + ".nav", bau.jk2Nav)) {
+            bau.jk2SummeDa = true;
+            bau.jk2KartenSumme = navBlockPruefsumme(bsp);
+        }
+        welt->pvs = bau.pvs;
+    }
     welt->netz = baueNavNetz(g_app->map.entities, bau);
     welt->kennung = schluessel;
     sp.basis = welt;
@@ -748,6 +856,11 @@ std::shared_ptr<const NavWelt> navWeltBasis() {
     sp.brushes = brushes;
     sp.schluessel = schluessel;
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (welt->netz->jk2) {
+        diag::detail("Wege: Jedi-Outcast-Netz - " + std::to_string(welt->netz->jk2->knoten.size()) + " Knoten" +
+                     (welt->netz->jk2->ausDatei ? " aus der .nav" : " aus den Wegpunkten") + ", " +
+                     std::to_string(welt->netz->jk2->fehl.size()) + " gesperrte Verbindungen");
+    }
     diag::detail("Wege: Wegnetz mit Spuren - " + std::to_string(welt->netz->knoten.size() - 1U) + " Knoten, " +
                  std::to_string(welt->netz->zahlKanten()) + " Kanten, " + std::to_string(brushes->size()) +
                  " Brush-Entities, " + std::to_string(static_cast<int>(ms)) + " ms");
@@ -815,9 +928,41 @@ bool navMoverPlanAusSim(double endeMs) {
                 bewegt[static_cast<std::size_t>(mv.modell)] = 1;
             }
         }
+        // rc604 fix604: Brush-Entities, die ein Skript bewegt (move/rotate:
+        // CQuake3GameInterface::Lerp2Pos setzt die Trajektorie und linkt die
+        // Entity, Q3_Interface.cpp:8561-8669 MD / 8034 OpenJK; G_RunMover
+        // bewegt sie jedes Bild) oder entfernt (remove: Q3_RemoveEnt, bei einer
+        // Entity ohne client G_FreeEntity 100 ms spaeter, :7180-7224 MD /
+        // 6751 OpenJK - danach keine contents). Die Szene fuehrt sie als
+        // Figur mit brushModel; die Mover-Simulation kennt nur die use der
+        // Karte. Bis fix604 standen sie fuer die Wege am Spawnort und blieben
+        // nach remove fest: md_dd_sith end_sith - emperor2 lief zwei Minuten
+        // gegen wall_chunk, den das Skript weggeworfen und entfernt hatte.
+        struct SzenenBrush {
+            const Actor* a = nullptr;
+            bool bewegt = false;     // Ort/Winkel aus der Szene
+            bool entfernt = false;   // irgendwann unsichtbar (remove)
+        };
+        std::map<int, SzenenBrush> szene;
+        for (const Actor& a : g_app->scene.actors) {
+            if (a.brushModel <= 0 || !a.haveStart) { continue; }
+            SzenenBrush sb;
+            sb.a = &a;
+            const ActorState a0 = a.at(0.0);
+            for (std::size_t f = 0; f < takte; ++f) {
+                const ActorState st = a.at(static_cast<double>(f) * kNavDenkMs);
+                for (int q = 0; q < 3; ++q) {
+                    sb.bewegt = sb.bewegt || st.pos[q] != a0.pos[q] || st.angles[q] != a0.angles[q];
+                }
+                sb.entfernt = sb.entfernt || !st.visible;
+            }
+            if (sb.bewegt || sb.entfernt) { szene[a.brushModel] = sb; }
+        }
         for (const NavBrush& b : *sp.brushes) {
             const MoverSim::Stand s0 = ms.at(b.modell, 0.0);
-            if (!s0.bekannt) { continue; }   // die Mover-Simulation kennt ihn nicht: steht
+            const auto si = szene.find(b.modell);
+            const SzenenBrush* sb = si != szene.end() ? &si->second : nullptr;
+            if (!s0.bekannt && sb == nullptr) { continue; }   // die Mover-Simulation kennt ihn nicht: steht
             const MapEntity& e = g_app->map.entities[static_cast<std::size_t>(b.entity)];
             const bool tuer = e.classname == "func_door";
             NavMoverPlan::Mover m;
@@ -843,6 +988,19 @@ bool navMoverPlanAusSim(double endeMs) {
                 x.ort = {s.origin[0], s.origin[1], s.origin[2]};
                 x.winkel = {s.angles[0], s.angles[1], s.angles[2]};
                 x.fest = s.sichtbar;   // func_wall START_OFF bis zum use, func_breakable nach dem Bruch: keine contents
+                if (!s.bekannt) {
+                    x.ort = m.anfang.ort;
+                    x.winkel = m.anfang.winkel;
+                    x.fest = m.anfang.fest;
+                }
+                if (sb != nullptr) {   // rc604 fix604
+                    const ActorState st = sb->a->at(t);
+                    if (sb->bewegt) {
+                        x.ort = {st.pos[0], st.pos[1], st.pos[2]};
+                        x.winkel = {st.angles[0], st.angles[1], st.angles[2]};
+                    }
+                    if (sb->entfernt && !st.visible && !sb->a->at(t - 100.0).visible) { x.fest = false; }
+                }
                 bool riegel = m.anfang.verriegelt;
                 const int z = tuer ? ms.tuerZustand(b.modell, t, &riegel) : -1;
                 x.zustand = static_cast<signed char>(z < 0 ? 0 : z);
@@ -850,7 +1008,8 @@ bool navMoverPlanAusSim(double endeMs) {
                 return x;
             };
             bool anders = false;
-            const bool jeTakt = static_cast<std::size_t>(b.modell) < bewegt.size() && bewegt[static_cast<std::size_t>(b.modell)] != 0;
+            const bool jeTakt = (static_cast<std::size_t>(b.modell) < bewegt.size() && bewegt[static_cast<std::size_t>(b.modell)] != 0) ||
+                                sb != nullptr;
             const std::size_t zahl = jeTakt ? takte : 1U;
             m.takte.reserve(zahl);
             for (std::size_t f = 0; f < zahl; ++f) {

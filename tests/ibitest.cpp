@@ -69,6 +69,28 @@ int main(int argc,char**argv){
   const std::string src=bhed::writeScript(sc);
   expect("ergibt use ( \"cin2\" );", src.find("use ( \"cin2\" );")!=std::string::npos);
 
+  // --- 1b) rc604 (JK2): ein Float, den die gerundete Schreibweise verfehlt ---
+  // cinematics/cinematic24.ibi aus Jedi Outcast: wait ( 0x3D4CCCCD ). Aus
+  // "0.050000001" baut IBIze 0x3D4CCCCC (Nachkommastellen in float,
+  // codeJK2/icarus/Tokenizer.cpp:2413-2431) - erst "0.050000002" trifft.
+  {
+    bhed::IbiBlock w; w.id=bhed::ID_WAIT;
+    bhed::IbiMember m; m.id=bhed::TK_FLOAT; m.data=std::string("\xcd\xcc\x4c\x3d",4);
+    w.members.push_back(m);
+    const std::vector<bhed::IbiBlock> ein{w};
+    bhed::Script s1; std::vector<bhed::Diag> d1;
+    (void)bhed::decompile(ein,db,s1,d1);
+    const std::string text=bhed::writeScript(s1);
+    bhed::Script s2; std::vector<bhed::Diag> d2;
+    (void)bhed::readScript(text,s2,d2);
+    std::vector<bhed::IbiBlock> aus; std::vector<bhed::Diag> d3;
+    (void)bhed::compile(s2,db,aus,d3);
+    const std::size_t wz=text.find("wait");
+    std::printf("        JK2 cinematic24: %s\n",wz==std::string::npos?"(kein wait)":text.substr(wz,text.find('\n',wz)-wz).c_str());
+    expect("JK2 cinematic24: 0x3D4CCCCD kommt ueber den Text bitgleich zurueck",
+           bhed::writeIbi(aus)==bhed::writeIbi(ein));
+  }
+
   // --- 2) alle 1510 Skripte: uebersetzen, zurueck, wieder uebersetzen ---
   int files=0,compiled=0,stable=0,nodiag=0,blocks=0;
   std::map<std::string,int> why;

@@ -65,6 +65,26 @@ struct FigurStufenArt {
 // schwarz durchsichtig.
 [[nodiscard]] std::vector<FigurStufenArt> figurStufen(const ShaderInfo& s);
 
+// rc604: ein Bild fehlt. ParseStage bricht beim ersten Bild ab, das
+// R_FindImageFile nicht findet (map/clampmap/animMap, tr_shader.cpp:1265-1269,
+// 1290-1294, 1331-1335 OJ), ParseShader gibt qfalse (:2205-2209), R_FindShader
+// setzt defaultShader und baut den Shader mit den Stufen DAVOR (:3489-3493,
+// FinishShader); ohne Stufe ist er ein reiner Nebelshader (numUnfoggedPasses
+// 0, SS_FOG, :3265-3270) und zeichnet nichts. Ueber die Haut (.skin,
+// tr_skin.cpp:327) gilt genau dieser Shader; ohne Haut nimmt R_LoadMDXM einen
+// defaultShader nicht (tr_ghoul2.cpp:3760-3763) - die Flaeche behaelt
+// shaderIndex 0, tr.defaultShader mit dem Kasten "*default".
+struct FigurShaderErsatz {
+    std::size_t stufen = 0;    // so viele Stufen des Skripts bleiben
+    bool ersatzbild = false;   // tr.defaultShader (figurErsatzbild) statt des Skripts
+    bool unsichtbar = false;   // keine Stufe: nichts gezeichnet
+};
+[[nodiscard]] FigurShaderErsatz figurShaderMitFehlendemBild(std::size_t ersteFehlende, std::size_t anzahl,
+                                                            bool ausHaut) noexcept;
+// R_CreateDefaultImage (tr_image.cpp:1282-1310 OJ): 16 x 16 RGBA, alle Bytes
+// 32, der Rand 255 - "a box, to allow you to see the mapping coordinates".
+[[nodiscard]] std::vector<unsigned char> figurErsatzbild();
+
 // RB_CalcSpecularAlpha (tr_shade_calc.cpp:994 MD) fuer EINE Ecke, 0..1:
 // reflected = n * 2 (n.l) - l; a = (reflected . zumAuge / |zumAuge|)^4,
 // unter 0 -> 0, ueber 1 -> 1 (b = l * 255, auf 255 begrenzt).

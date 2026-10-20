@@ -2055,24 +2055,32 @@ S = [
      "preview follows the chosen one: how fast some NPC classes turn on each difficulty, the default difficulty "
      "(Jedi Knight instead of Padawan), when lightsabers clash and which sounds and effects that makes, "
      "cg_fovAspectAdjust and the game window (desktop resolution instead of 800x600), and whether a ROFF "
-     "sound stays where it started or goes with the figure. Automatic: Movie Duels when a Movie Duels folder "
-     "is among the game folders, otherwise OpenJK.",
+     "sound stays where it started or goes with the figure. Jedi Outcast uses its own game folders and command "
+     "set, the JK2 skeleton, NPCs.cfg and JK2 lightsabers. Automatic: Movie Duels when a Movie Duels folder "
+     "is among the game folders, Jedi Outcast when only Jedi Outcast folders are set up or a Jedi Outcast "
+     "mission is loaded, otherwise OpenJK.",
      "Welches Spiel die Szenenvorschau nachahmt. Movie Duels ändert Teile des Spielcodes von Jedi Academy, und "
      "die Vorschau folgt dem gewählten: wie schnell sich manche NPC-Klassen je Schwierigkeit drehen, die "
      "vorgegebene Schwierigkeit (Jedi-Ritter statt Padawan), wann Lichtschwerter klirren und mit welchen "
      "Klängen und Effekten, cg_fovAspectAdjust und das Spielfenster (Desktopauflösung statt 800x600) und ob "
-     "ein ROFF-Klang an seinem Startort bleibt oder mit der Figur mitgeht. Automatisch: Movie Duels, wenn ein "
-     "Movie-Duels-Ordner unter den Spielordnern ist, sonst OpenJK.",
+     "ein ROFF-Klang an seinem Startort bleibt oder mit der Figur mitgeht. Jedi Outcast nimmt eigene Spielordner und einen eigenen "
+     "Befehlssatz, das JK2-Skelett, NPCs.cfg und JK2-Lichtschwerter. Automatisch: Movie Duels, wenn ein "
+     "Movie-Duels-Ordner unter den Spielordnern ist, Jedi Outcast, wenn nur Jedi-Outcast-Ordner eingerichtet "
+     "sind oder eine Jedi-Outcast-Mission geladen ist, sonst OpenJK.",
      "过场动画预览模仿哪一个游戏。Movie Duels 修改了 Jedi Academy 的部分游戏代码,预览遵循所选的规则:"
      "某些 NPC 类别在各难度下的转身速度、默认难度(绝地武士而非学徒)、光剑何时相撞以及产生的声音和效果、"
      "cg_fovAspectAdjust 和游戏窗口(桌面分辨率而非 800x600),以及 ROFF 声音是停在起点还是随角色移动。"
-     "自动:游戏文件夹中有 Movie Duels 文件夹时为 Movie Duels,否则为 OpenJK。",
+     "Jedi Outcast 使用自己的游戏文件夹和命令集、JK2 骨架、NPCs.cfg 和 JK2 光剑。"
+     "自动:游戏文件夹中有 Movie Duels 文件夹时为 Movie Duels;只设置了 Jedi Outcast 文件夹或已加载 "
+     "Jedi Outcast 任务时为 Jedi Outcast;否则为 OpenJK。",
      "カットシーンのプレビューがどちらのゲームをまねるか。Movie Duels は Jedi Academy のゲームコードの一部を"
      "変更しており、プレビューは選んだ方に従います: 一部の NPC クラスが難易度ごとに振り向く速さ、既定の難易度"
      "(パダワンではなくジェダイ・ナイト)、ライトセーバーがいつぶつかり、どんな音とエフェクトが出るか、"
      "cg_fovAspectAdjust とゲームウィンドウ(800x600 ではなくデスクトップ解像度)、そして ROFF の音が"
-     "開始位置に留まるかキャラクターと一緒に動くか。自動: ゲームフォルダーに Movie Duels のフォルダーがあれば "
-     "Movie Duels、なければ OpenJK。"),
+     "開始位置に留まるかキャラクターと一緒に動くか。Jedi Outcast は専用のゲームフォルダーとコマンドセット、"
+     "JK2 のスケルトン、NPCs.cfg、JK2 のライトセーバーを使います。自動: ゲームフォルダーに Movie Duels "
+     "のフォルダーがあれば Movie Duels、Jedi Outcast のフォルダーだけが設定されているか Jedi Outcast の"
+     "ミッションを読み込んでいれば Jedi Outcast、それ以外は OpenJK。"),
     ("PrefsDifficultyAuto", "Game default (%s)", "Vorgabe des Spiels (%s)", "游戏默认 (%s)", "ゲームの既定 (%s)"),
     ("RegelStatusAutoMd", "Game rules: %s (detected from the game folder)",
      "Spielregeln: %s (am Spielordner erkannt)", "游戏规则: %s (根据游戏文件夹检测)",
@@ -2083,6 +2091,36 @@ S = [
      "ゲームルール: %s (ゲームフォルダーに Movie Duels のフォルダーがありません)"),
     ("RegelStatusFest", "Game rules: %s (chosen in Preferences)", "Spielregeln: %s (in den Einstellungen gewählt)",
      "游戏规则: %s (在首选项中选择)", "ゲームルール: %s (設定で選択)"),
+    # --- rc604 Jedi Outcast (drittes Regelwerk) ---
+    ("PrefsRegelJk2", "Jedi Outcast (JK2)", "Jedi Outcast (JK2)", "Jedi Outcast(JK2)", "Jedi Outcast(JK2)"),
+    ("RegelStatusAutoJk2", "Game rules: %s (Jedi Outcast detected in the game folders)",
+     "Spielregeln: %s (Jedi Outcast in den Spielordnern erkannt)",
+     "游戏规则: %s (在游戏文件夹中检测到 Jedi Outcast)",
+     "ゲームルール: %s (ゲームフォルダーで Jedi Outcast を検出)"),
+    ("MsgBefehlssatzJk2", "Command set: Jedi Outcast (data/jk2) - lists for animations, objectives and SET_ fields from JK2",
+     "Befehlssatz: Jedi Outcast (data/jk2) - Listen für Animationen, Missionsziele und SET_-Felder aus JK2",
+     "命令集: Jedi Outcast (data/jk2) - 动画、任务目标和 SET_ 字段列表来自 JK2",
+     "コマンドセット: Jedi Outcast (data/jk2) - アニメーション、ミッション目標、SET_ フィールドの一覧は JK2 のもの"),
+    ("MsgBefehlssatzJka", "Command set: Jedi Academy (data/base)", "Befehlssatz: Jedi Academy (data/base)",
+     "命令集: Jedi Academy (data/base)", "コマンドセット: Jedi Academy (data/base)"),
+    ("PathsJk2", "Jedi Outcast folders (.pk3)", "Spielordner von Jedi Outcast (.pk3)",
+     "Jedi Outcast 游戏文件夹 (.pk3)", "Jedi Outcast のゲームフォルダー (.pk3)"),
+    ("PathsJk2Note",
+     "Kept apart from the folders above: both games have files with the same name but different content "
+     "(the skeleton _humanoid.gla has 72 bones in Jedi Outcast, 53 in Jedi Academy). The list of the active game "
+     "rules is used. 'Add game folder...' puts a Jedi Outcast folder (jk2sp.exe next to it, or JK2 maps such as "
+     "kejim_post) here by itself.",
+     "Getrennt von den Ordnern oben: beide Spiele haben gleich benannte Dateien mit anderem Inhalt (das Skelett "
+     "_humanoid.gla hat in Jedi Outcast 72 Knochen, in Jedi Academy 53). Es gilt die Liste der aktiven "
+     "Spielregeln. „Spielordner hinzufügen...“ legt einen Jedi-Outcast-Ordner (jk2sp.exe daneben oder JK2-Karten wie "
+     "kejim_post) von selbst hierher.",
+     "与上面的文件夹分开:两个游戏有同名但内容不同的文件(骨架 _humanoid.gla 在 Jedi Outcast 中有 72 根骨骼,"
+     "在 Jedi Academy 中有 53 根)。使用当前游戏规则的列表。“添加游戏目录…”会自动把 Jedi Outcast 文件夹"
+     "(旁边有 jk2sp.exe,或含有 kejim_post 等 JK2 地图)放到这里。",
+     "上のフォルダーとは別に保存されます: 両方のゲームに同じ名前で中身の違うファイルがあります(スケルトン "
+     "_humanoid.gla は Jedi Outcast では 72 本、Jedi Academy では 53 本のボーン)。有効なゲームルールの"
+     "一覧が使われます。「ゲームフォルダーを追加…」は Jedi Outcast のフォルダー(隣に jk2sp.exe がある、または "
+     "kejim_post などの JK2 マップを含む)を自動的にここへ入れます。"),
     ("GameScreenAuto43", "Like the game: 4:3 (OpenJK, 800x600)", "Wie das Spiel: 4:3 (OpenJK, 800x600)",
      "与游戏相同: 4:3(OpenJK,800x600)", "ゲームと同じ: 4:3(OpenJK、800x600)"),
     # --- rc602 NPC-Klassen ---

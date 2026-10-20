@@ -260,6 +260,17 @@ double roffLaufzeitMs(const Roff& r) {
     return r.bilder.empty() ? roffBildZeitMs(r, 0) : roffBildZeitMs(r, r.bilder.size() - 1);
 }
 
+// rc604 (A2 Rest): der Stand, auf den ein Bild seinen Versatz legt - bei
+// einem Schleifenbild nach dem Ruecksetzen und dem inneren Bild 0.
+static RoffStand roffBasisVor(const RoffBild& bild, const RoffStand& davor) {
+    RoffStand s = bild.nullen ? RoffStand{} : davor;
+    for (int a = 0; a < 3; ++a) {
+        s.ort[a] += bild.sprungOrt[a];
+        s.winkel[a] += bild.sprungWinkel[a];
+    }
+    return s;
+}
+
 RoffBahn roffBahn(const Roff& r, const float startOrt[3], const float startWinkel[3]) {
     RoffBahn b;
     b.stand.resize(r.bilder.size() + 1U);
@@ -268,10 +279,11 @@ RoffBahn roffBahn(const Roff& r, const float startOrt[3], const float startWinke
         b.stand[0].winkel[a] = startWinkel[a];
     }
     for (std::size_t k = 0; k < r.bilder.size(); ++k) {
+        const RoffStand basis = roffBasisVor(r.bilder[k], b.stand[k]);
         for (int a = 0; a < 3; ++a) {
             // VectorAdd: in float, Bild fuer Bild.
-            b.stand[k + 1].ort[a] = b.stand[k].ort[a] + r.bilder[k].ort[a];
-            b.stand[k + 1].winkel[a] = b.stand[k].winkel[a] + r.bilder[k].winkel[a];
+            b.stand[k + 1].ort[a] = basis.ort[a] + r.bilder[k].ort[a];
+            b.stand[k + 1].winkel[a] = basis.winkel[a] + r.bilder[k].winkel[a];
         }
     }
     return b;
@@ -313,7 +325,7 @@ RoffStand roffStand(const Roff& r, const RoffBahn& bahn, double msSeitPlay, bool
     if (k + 1U >= n) {
         return bahn.stand[n - 1U];
     }
-    const RoffStand& basis = bahn.stand[k];
+    const RoffStand basis = roffBasisVor(r.bilder[k], bahn.stand[k]);
     // EvaluateTrajectory, TR_LINEAR (bg_misc.cpp):
     //     deltaTime = ( atTime - tr->trTime ) * 0.001;
     //     result = trBase + deltaTime * trDelta
@@ -349,10 +361,25 @@ RoffStand roffStandVorBild(const Roff& r, const RoffBahn& bahn, std::size_t k, b
     return bahn.stand[(k == 0) ? 0 : std::min(k - 1U, n)];
 }
 
-std::vector<RoffAusloesung> roffAusloesungen(const Roff& r) {
+std::vector<RoffAusloesung> roffAusloesungen(const Roff& r, bool alleNotizen) {
     std::vector<RoffAusloesung> out;
     for (std::size_t k = 0; k < r.bilder.size(); ++k) {
         const RoffBild& b = r.bilder[k];
+        if (alleNotizen) {
+            // rc604 fix604b (A2): "if ( data->mStartNote != -1 ) for ( int n =
+            // 0; n < data->mNumNotes; n++ ) G_RoffNotetrackCallback(ent,
+            // mNoteTrackIndexes[data->mStartNote + n])" (code/game/g_roff.cpp:
+            // 746-752 OpenJK).
+            if (b.ersteNotiz == -1) { continue; }
+            for (int n = 0; n < b.notizen; ++n) {
+                const long long i = static_cast<long long>(b.ersteNotiz) + n;
+                if (i < 0 || static_cast<std::size_t>(i) >= r.notizen.size()) {
+                    continue;   // die Engine laese hier fremden Speicher
+                }
+                out.push_back(RoffAusloesung{k, roffBildZeitMs(r, k), static_cast<std::size_t>(i)});
+            }
+            continue;
+        }
         // if ( data->mStartNote != -1 || data->mNumNotes )   (g_roff.cpp:515)
         if (b.ersteNotiz == -1 && b.notizen == 0) {
             continue;
@@ -365,7 +392,7 @@ std::vector<RoffAusloesung> roffAusloesungen(const Roff& r) {
     return out;
 }
 
-RoffNotizBefehl zerlegeRoffNotiz(const std::string& text) {
+RoffNotizBefehl zerlegeRoffNotiz(const std::string& text, bool openJk) {
     RoffNotizBefehl out;
     std::size_t i = 0;
     // Der Typ: bis zum ersten Leerzeichen.
@@ -483,8 +510,122 @@ RoffNotizBefehl zerlegeRoffNotiz(const std::string& text) {
         out.datei = argument;
         return out;
     }
+    if (openJk && out.typ == "USE") {
+        // rc604 fix604b (A2): PrecacheScript + RunScript(ent, argument)
+        // (code/game/g_roff.cpp:308-319 OpenJK).
+        out.art = RoffNotizBefehl::Art::Skript;
+        out.datei = argument;
+        return out;
+    }
+    if (openJk && out.typ == "loop") {
+        // rc604 fix604b (A2): g_roff.cpp:320-438 OpenJK.
+        out.schleife = argument;
+        out.zusatz = rest;
+        if (argument == "rof") {
+            if (rest != "absolute" && rest != "relative") { return out; }   // "Invalid additional argument"
+            out.art = RoffNotizBefehl::Art::Schleife;
+            return out;
+        }
+        if (argument == "sfx") {
+            // teststr: der erste Ordner (ohne fuehrendes '/'); "kill" haelt
+            // die Schleife an, "sound" setzt s.loopSound auf addlArg.
+            std::size_t r = zeichen(rest, 0) == '/' ? 1 : 0;
+            std::string test;
+            while (zeichen(rest, r) != '\0' && zeichen(rest, r) != '/') {
+                test += rest[r];
+                ++r;
+            }
+            if (!test.empty() && test.find("kill") != std::string::npos) {
+                out.art = RoffNotizBefehl::Art::Schleife;
+                out.schleifeAus = true;
+            } else if (!test.empty() && test.find("sound") != std::string::npos) {
+                out.art = RoffNotizBefehl::Art::Schleife;
+                out.datei = rest;
+            }
+            return out;
+        }
+        return out;   // "Invalid argument <%s> for type 'loop' notetrack."
+    }
     out.art = RoffNotizBefehl::Art::Unbekannt;
     out.datei = argument;
+    return out;
+}
+
+namespace {
+// Die Stelle der Notiz "loop rof absolute|relative" unter den Notizen von
+// Bild k (OpenJK: alle ab mStartNote, g_roff.cpp:746-752), sonst -1.
+int schleifeImBild(const Roff& r, std::size_t k, bool* absolut) {
+    const RoffBild& b = r.bilder[k];
+    if (b.ersteNotiz == -1) { return -1; }
+    for (int n = 0; n < b.notizen; ++n) {
+        const long long i = static_cast<long long>(b.ersteNotiz) + n;
+        if (i < 0 || static_cast<std::size_t>(i) >= r.notizen.size()) { continue; }
+        const RoffNotizBefehl c = zerlegeRoffNotiz(r.notizen[static_cast<std::size_t>(i)], true);
+        if (c.art == RoffNotizBefehl::Art::Schleife && c.schleife == "rof") {
+            *absolut = (c.zusatz == "absolute");
+            return n;
+        }
+    }
+    return -1;
+}
+
+void notizenAnhaengen(const Roff& r, std::size_t k, int von, int bis, Roff& out) {
+    const RoffBild& b = r.bilder[k];
+    for (int n = von; n < bis; ++n) {
+        const long long i = static_cast<long long>(b.ersteNotiz) + n;
+        if (i < 0 || static_cast<std::size_t>(i) >= r.notizen.size()) { continue; }
+        out.notizen.push_back(r.notizen[static_cast<std::size_t>(i)]);
+    }
+}
+}  // namespace
+
+Roff roffMitSchleife(const Roff& r, bool figur, std::size_t maxBilder, bool* endlos) {
+    if (endlos != nullptr) { *endlos = false; }
+    const std::size_t n = r.bilder.size();
+    bool absolut = false;
+    bool gibt = false;
+    for (std::size_t k = 1; k < n; ++k) {
+        gibt = gibt || schleifeImBild(r, k, &absolut) >= 0;
+    }
+    // Eine Schleife schon in Bild 0 ruft G_Roff ohne Ende in sich selbst.
+    if (!gibt || schleifeImBild(r, 0, &absolut) >= 0) {
+        return r;
+    }
+    Roff out = r;
+    out.bilder.clear();
+    std::size_t ctr = 0;   // ent->roff_ctr
+    while (out.bilder.size() < maxBilder) {
+        const RoffBild& b = r.bilder[ctr];
+        const int s = schleifeImBild(r, ctr, &absolut);
+        if (s < 0) {
+            out.bilder.push_back(b);
+            ++ctr;
+        } else {
+            const RoffBild& b0 = r.bilder[0];
+            RoffBild v;
+            for (int a = 0; a < 3; ++a) {
+                v.ort[a] = b.ort[a];
+                v.winkel[a] = b.winkel[a];
+                v.sprungOrt[a] = b0.ort[a];
+                v.sprungWinkel[a] = b0.winkel[a];
+            }
+            v.nullen = figur || absolut;
+            // Notizen in der Reihenfolge, in der sie feuern: die des Bilds
+            // bis zur Schleife, dann die von Bild 0 (innerer Aufruf), dann
+            // der Rest des Bilds.
+            v.ersteNotiz = static_cast<int>(out.notizen.size());
+            notizenAnhaengen(r, ctr, 0, s + 1, out);
+            if (b0.ersteNotiz != -1) { notizenAnhaengen(r, 0, 0, b0.notizen, out); }
+            notizenAnhaengen(r, ctr, s + 1, b.notizen, out);
+            v.notizen = static_cast<int>(out.notizen.size()) - v.ersteNotiz;
+            out.bilder.push_back(v);
+            ctr = 2;   // innen ++roff_ctr (1), aussen ++roff_ctr (2)
+        }
+        if (ctr >= n) {
+            return out;   // g_roff.cpp:841-852: die Bahn ist zu Ende
+        }
+    }
+    if (endlos != nullptr) { *endlos = true; }
     return out;
 }
 

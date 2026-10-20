@@ -900,6 +900,22 @@ void tonBild() {
         for (int i = 0; i < 3; ++i) { q.ort[i] = st.pos[i]; }
         quellen.push_back(std::move(q));
     }
+    // rc604: misc_trip_mine - s.loopSound hum_loop.wav ab dem Scharfmachen
+    // (laserTrapThink, wp_trip_mine.cpp:140-146 OpenJK), gespielt von
+    // CG_EntityEffects fuer die Falle, solange sie im Snapshot ist (PVS).
+    for (const KartenKlang& kk : g_app->fallenKlaenge) {
+        if (!kk.schleife || kk.datei.empty() || kk.ms > jetzt || (kk.bisMs >= 0.0 && kk.bisMs <= jetzt)) {
+            continue;
+        }
+        if (!tonKastenSichtbar(ohr, kk.ort, kPunkt, kPunkt)) {
+            continue;
+        }
+        SchleifenQuelle q;
+        q.datei = kk.datei;
+        q.quelle = "misc_trip_mine #" + std::to_string(kk.entity);
+        for (int i = 0; i < 3; ++i) { q.ort[i] = kk.ort[i]; }
+        quellen.push_back(std::move(q));
+    }
     // target_speaker mit spawnflags 1/2: s.loopSound am Lautsprecher bzw. am
     // Ausloeser (Use_Target_Speaker, g_target.cpp:208 ff. MD) - gespielt von
     // CG_EntityEffects (cg_ents.cpp:198 ff. MD) fuer jede Entity im Snapshot,
@@ -954,6 +970,32 @@ void tonBild() {
         g_app->moverSim.klangOrt(mk.modell, jetzt, q.ort);
         quellen.push_back(std::move(q));
     }
+    // rc604 fix604b (A2): ROFF-Notiz "loop sfx <sound/...>" setzt s.loopSound
+    // der Entity, "loop sfx kill" loescht ihn (code/game/g_roff.cpp:380-430
+    // OpenJK) - gespielt von CG_EntityEffects fuer die Entity im Snapshot.
+    // Je Entity gilt die letzte Notiz bis jetzt (nur OpenJK erzeugt sie).
+    {
+        std::map<std::string, const RoffEreignis*> letzte;
+        for (const RoffEreignis& re : g_app->scene.roffEreignisse) {
+            if (re.ms > jetzt) { break; }
+            if (re.befehl.art == RoffNotizBefehl::Art::Schleife && re.befehl.schleife == "sfx") { letzte[re.figur] = &re; }
+        }
+        for (const auto& [name, re] : letzte) {
+            if (re->befehl.schleifeAus || re->befehl.datei.empty()) { continue; }
+            SchleifenQuelle q;
+            q.datei = re->befehl.datei;
+            q.quelle = name;
+            for (int i = 0; i < 3; ++i) { q.ort[i] = re->ort[i]; }
+            bool sichtbar = tonKastenSichtbar(ohr, re->ort, kPunkt, kPunkt);
+            if (const Actor* a = g_app->scene.find(name); a != nullptr) {
+                const ActorState st = a->at(jetzt);
+                for (int i = 0; i < 3; ++i) { q.ort[i] = st.pos[i]; }
+                sichtbar = st.visible && !st.removed &&
+                           (istSpieler(name) || tonKastenSichtbar(ohr, st.pos, kFigurMin, kFigurMax));
+            }
+            if (sichtbar) { quellen.push_back(std::move(q)); }
+        }
+    }
     tonSchleifen(ohr, rechts, quellen);
 }
 
@@ -1000,6 +1042,25 @@ void tonEreignisse(double vonMs, double bisMs) {
             }
         } else if (!tonKastenSichtbar(ohr, kk.ort, kPunkt, kPunkt)) {
             // EV_GENERAL_SOUND am Lautsprecher: nur, wenn er im Snapshot ist.
+            klangMitschreiben('E', w.quelle, w.datei, 0.0F, 0.0F, 0);
+            continue;
+        }
+        (void)tonStarte(w);
+    }
+
+    // --- rc604: misc_trip_mine wird scharf - G_Sound(warning.wav), eine
+    //     Temp-Entity EV_GENERAL_SOUND an der Falle (laserTrapThink,
+    //     wp_trip_mine.cpp:143 OpenJK), nur im Snapshot zu hoeren. ----------
+    for (const KartenKlang& kk : g_app->fallenKlaenge) {
+        if (kk.schleife || kk.datei.empty() || kk.ms <= vonMs || kk.ms > bisMs) {
+            continue;
+        }
+        KlangWunsch w;
+        w.datei = kk.datei;
+        w.quelle = "misc_trip_mine #" + std::to_string(kk.entity);
+        w.kanal = sound::Kanal::Auto;
+        for (int i = 0; i < 3; ++i) { w.ort[i] = kk.ort[i]; }
+        if (!tonKastenSichtbar(ohr, kk.ort, kPunkt, kPunkt)) {
             klangMitschreiben('E', w.quelle, w.datei, 0.0F, 0.0F, 0);
             continue;
         }
@@ -1058,7 +1119,10 @@ void tonEreignisse(double vonMs, double bisMs) {
         // Andere Nicht-Mover ohne Figur (misc_model u. a.) kennt der Ton nicht
         // als bewegte Quelle - sie bleiben am Ort des Ereignisses.
         const bool figur = g_app->scene.find(re.figur) != nullptr;
-        if (figur && roffKlangFolgtEntity(regelwerkMovieDuels(), false)) {
+        // rc604 fix604 (JK2 Stufe 3): Jedi Outcast spielt ihn wie Movie Duels
+        // fest am Ort, cgi_S_StartSound(cent->s.pos.trBase, ...) (codeJK2/game/
+        // g_roff.cpp:242-246) - und nur die erste Notiz eines Bilds (:510-513).
+        if (figur && roffKlangFolgtEntity(regelwerkMovieDuels() || regelwerkJediOutcast(), false)) {
             w.figur = re.figur;
             w.schluessel = tonKanalSchluessel(re.figur, sound::Kanal::Body);
             w.amHoerer = istSpieler(re.figur);
@@ -1218,6 +1282,7 @@ void tonVorladen() {
         }
     }
     for (const KartenKlang& kk : g_app->moverSim.lautsprecher()) { dateien.insert(kk.datei); }
+    for (const KartenKlang& kk : g_app->fallenKlaenge) { dateien.insert(kk.datei); }   // rc604
     for (const KartenKlang& bk : g_app->moverSim.bruchKlaenge()) { dateien.insert(bk.datei); }
     for (const MoverKlang& mk : g_app->moverKlaenge) {
         const auto set = g_app->bmodelSets.find(tonKlein(mk.soundSet));

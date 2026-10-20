@@ -53,6 +53,129 @@ float readNum(const std::string& w) {
     return v;
 }
 
+// Die Woerter einer Zeile (COM_ParseExt mit allowLineBreaks = qfalse).
+std::vector<std::string> ssWoerter(const std::string& rest) {
+    std::vector<std::string> w;
+    std::string cur;
+    for (const char c : rest) {
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            if (!cur.empty()) { w.push_back(cur); cur.clear(); }
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) { w.push_back(cur); }
+    return w;
+}
+
+std::string ssKlein(std::string s) {
+    for (char& c : s) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    return s;
+}
+
+// ParseSurfaceSprites, tr_shader.cpp:706-838 (Movie Duels rd-vanilla).
+void lesSurfaceSprites(const std::string& rest, SurfaceSprite& ss) {
+    const std::vector<std::string> w = ssWoerter(rest);
+    if (w.empty()) { return; }                       // :716 missing params
+    int typ = 0;
+    const std::string t = ssKlein(w[0]);
+    if (t == "vertical") { typ = 1; }                // :722 SURFSPRITE_VERTICAL
+    else if (t == "oriented") { typ = 2; }           // :726
+    else if (t == "effect") { typ = 3; }             // :730
+    else if (t == "flattened") { typ = 5; }          // :734
+    else { return; }                                 // :738 invalid type
+    if (w.size() < 2) { return; }
+    const float width = readNum(w[1]);               // atof
+    if (width <= 0.0F) { return; }                   // :754
+    if (w.size() < 3) { return; }
+    const float height = readNum(w[2]);
+    if (height <= 0.0F) { return; }                  // :770
+    if (w.size() < 4) { return; }
+    const float density = readNum(w[3]);
+    if (density <= 0.0F) { return; }                 // :786
+    if (w.size() < 5) { return; }
+    const float fadedist = readNum(w[4]);
+    if (fadedist < 32.0F) { return; }                // :802 fadedist < 32
+    // :814-837 - die Zeile setzt alles, auch was ss*-Zeilen davor setzten.
+    ss.typ = typ;
+    ss.width = width;
+    ss.height = height;
+    ss.density = density;
+    ss.fadeDist = fadedist;
+    ss.fadeMax = static_cast<float>(fadedist * 1.33);   // :821
+    ss.fadeScale = 0.0F;
+    ss.wind = 0.0F;
+    ss.windIdle = 0.0F;
+    ss.variance[0] = 0.0F;
+    ss.variance[1] = 0.0F;
+    ss.facing = 0;                                   // SURFSPRITE_FACING_NORMAL
+    ss.vertSkew = 0.0F;
+    ss.fxDuration = 1000.0F;                         // :833 "1 second"
+    ss.fxGrow[0] = 0.0F;
+    ss.fxGrow[1] = 0.0F;
+    ss.fxAlphaStart = 1.0F;
+    ss.fxAlphaEnd = 0.0F;
+}
+
+// ParseSurfaceSpritesOptional, tr_shader.cpp:863-1158 (MD). Eine fehlende
+// oder ungueltige Zahl bricht ab - was davor gesetzt wurde, bleibt.
+void lesSurfaceSpritesZusatz(const std::string& name, const std::string& rest, SurfaceSprite& ss) {
+    const std::vector<std::string> w = ssWoerter(rest);
+    const auto zahl = [&](std::size_t i, float& v) {
+        if (i >= w.size()) { return false; }
+        v = readNum(w[i]);
+        return true;
+    };
+    float v = 0.0F;
+    if (name == "ssfademax") {                       // :876
+        if (!zahl(0, v) || v <= ss.fadeDist) { return; }
+        ss.fadeMax = v;
+    } else if (name == "ssfadescale") {              // :897
+        if (!zahl(0, v)) { return; }
+        ss.fadeScale = v;
+    } else if (name == "ssvariance") {               // :913
+        if (!zahl(0, v) || v < 0.0F) { return; }
+        ss.variance[0] = v;
+        if (!zahl(1, v) || v < 0.0F) { return; }
+        ss.variance[1] = v;
+    } else if (name == "sshangdown") {               // :948
+        if (ss.facing != 0) { return; }
+        ss.facing = 2;                               // SURFSPRITE_FACING_DOWN
+    } else if (name == "ssanyangle") {               // :962
+        if (ss.facing != 0) { return; }
+        ss.facing = 3;                               // SURFSPRITE_FACING_ANY
+    } else if (name == "ssfaceup") {                 // :976
+        if (ss.facing != 0) { return; }
+        ss.facing = 1;                               // SURFSPRITE_FACING_UP
+    } else if (name == "sswind") {                   // :990
+        if (!zahl(0, v) || v < 0.0F) { return; }
+        ss.wind = v;
+        if (ss.windIdle <= 0.0F) { ss.windIdle = v; }   // :1005
+    } else if (name == "sswindidle") {               // :1015
+        if (!zahl(0, v) || v < 0.0F) { return; }
+        ss.windIdle = v;
+    } else if (name == "ssvertskew") {               // :1036
+        if (!zahl(0, v) || v < 0.0F) { return; }
+        ss.vertSkew = v;
+    } else if (name == "ssfxduration") {             // :1057
+        if (!zahl(0, v) || v <= 0.0F) { return; }
+        ss.fxDuration = v;
+    } else if (name == "ssfxgrow") {                 // :1078
+        if (!zahl(0, v) || v < 0.0F) { return; }
+        ss.fxGrow[0] = v;
+        if (!zahl(1, v) || v < 0.0F) { return; }
+        ss.fxGrow[1] = v;
+    } else if (name == "ssfxalpharange") {           // :1113
+        if (!zahl(0, v) || v < 0.0F || v > 1.0F) { return; }
+        ss.fxAlphaStart = v;
+        if (!zahl(1, v) || v < 0.0F || v > 1.0F) { return; }
+        ss.fxAlphaEnd = v;
+    } else if (name == "ssfxweather") {              // :1148
+        if (ss.typ != 3) { return; }                 // nur SURFSPRITE_EFFECT
+        ss.typ = 4;                                  // SURFSPRITE_WEATHERFX
+    }
+}
+
 }  // namespace
 
 namespace {
@@ -234,6 +357,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     TexGen stageTexGen = TexGen::Base;
     TexGen texGen = TexGen::Base;
     AlphaGen stageAlphaGen = AlphaGen::FromImage;
+    bool stageAlphaEntity = false;   // rc604: alphaGen entity
     float stageRgbConst[3]{-1.0F, -1.0F, -1.0F};
     float rgbConst[3]{-1.0F, -1.0F, -1.0F};
     // rgbGen vertex/exactVertex/... - siehe ShaderInfo::rgbVertex.
@@ -244,9 +368,11 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
     bool clampImage = false;
     bool stageDepthWrite = false;
     DepthFunc stageDepthFunc = DepthFunc::LEqual;
+    SurfaceSprite stageSS;   // rc604: surfaceSprites der Stufe
     bool depthWriteImage = false;
     DepthFunc depthFuncImage = DepthFunc::LEqual;
     AlphaGen alphaGenImage = AlphaGen::FromImage;
+    bool alphaEntityImage = false;   // rc604
 
     for (std::size_t i = 0; i < lines.size(); ++i) {
         const std::string& line = lines[i];
@@ -263,6 +389,9 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageRgb = Wave{};
                 stageAlphaWave = Wave{};
                 stagePortalWeite = 0.0F;
+                // rc604: jede Stufe beginnt ohne surfaceSprites
+                // (shaderStage_t::ss ist NULL, tr_shader.cpp ParseStage).
+                stageSS = SurfaceSprite{};
             }
             continue;
         }
@@ -320,6 +449,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     depthWriteImage = stageDepthWrite;
                     depthFuncImage = stageDepthFunc;
                     alphaGenImage = stageAlphaGen;
+                    alphaEntityImage = stageAlphaEntity;
                 }
                 // Die STUFENLISTE sammelt dagegen ALLE.
                 //
@@ -353,6 +483,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     st.glow = stageGlow;
                     st.texGen = stageTexGen;
                     st.alphaGen = stageAlphaGen;
+                    st.alphaEntity = stageAlphaEntity;
                     st.srcFactor = stageSrc;
                     st.dstFactor = stageDst;
                     for (int k = 0; k < 3; ++k) {
@@ -363,6 +494,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     st.clamp = stageClamp;
                     st.depthWrite = stageDepthWrite;
                     st.depthFunc = stageDepthFunc;
+                    st.ss = stageSS;
                     stages.push_back(std::move(st));
                 }
                 if (stageGlow) {
@@ -386,6 +518,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageGlow = false;
                 stageTexGen = TexGen::Base;
                 stageAlphaGen = AlphaGen::FromImage;
+                stageAlphaEntity = false;
                 stageRgbVertex = false;
                 stageRgbArt = RgbGenArt::Keins;
                 stageSrc = BlendFactor::One;
@@ -466,6 +599,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                     }
                     info.clamp = clampImage;
                     info.alphaGen = alphaGenImage;
+                    info.alphaEntity = alphaEntityImage;
                     info.depthWrite = depthWriteImage;
                     info.depthFunc = depthFuncImage;
                     out[lower(name)] = info;
@@ -497,6 +631,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageTexGen = TexGen::Base;
                 texGen = TexGen::Base;
                 stageAlphaGen = AlphaGen::FromImage;
+                stageAlphaEntity = false;
                 stageSrc = BlendFactor::One;
                 stageDst = BlendFactor::Zero;
                 srcFactor = BlendFactor::One;
@@ -508,6 +643,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageClamp = false;
                 clampImage = false;
                 alphaGenImage = AlphaGen::FromImage;
+                alphaEntityImage = false;
                 stageDepthWrite = false;
                 stageDepthFunc = DepthFunc::LEqual;
                 depthWriteImage = false;
@@ -809,6 +945,22 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 stageGlow = true;
                 continue;
             }
+            // --- surfaceSprites <typ> <breite> <hoehe> <dichte> <fadedist> --
+            //
+            // ParseSurfaceSprites (tr_shader.cpp:706 MD, gleich in OpenJK):
+            // jede ungueltige Angabe bricht mit einer Warnung ab, OHNE die
+            // Stufe zu aendern - sie bleibt dann eine gewoehnliche Schicht.
+            if (key == "surfacesprites" && depth >= 2) {
+                lesSurfaceSprites(secondWord(line), stageSS);
+                continue;
+            }
+            // ss<Name> ... - tr_shader.cpp:1689 MD vergleicht nur die
+            // ersten zwei Buchstaben ("NOTE ONLY COMPARING FIRST TWO
+            // LETTERS"), ParseSurfaceSpritesOptional:863 den Rest.
+            if (depth >= 2 && key.size() >= 2 && key[0] == 's' && key[1] == 's') {
+                lesSurfaceSpritesZusatz(key, secondWord(line), stageSS);
+                continue;
+            }
             if (key == "alphafunc" && depth >= 2) {
                 const std::string w = lower(secondWord(line));
                 AlphaTest at = AlphaTest::None;
@@ -831,6 +983,7 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
             // geratene Form waere schlimmer als keine.
             if (key == "alphagen" && depth >= 2) {
                 const std::string rest = lower(secondWord(line));
+                stageAlphaEntity = false;   // rc604: das letzte alphaGen gilt
                 // Das LETZTE alphaGen einer Stufe gilt - Reste eines frueheren
                 // (Welle, fester Wert) duerfen nicht stehen bleiben.
                 stageAlphaWave = Wave{};
@@ -858,6 +1011,12 @@ void parseShaderScript(const std::string& text, ShaderMap& out) {
                 } else if (firstWord(rest) == "entity") {
                     stageAlphaConst = 1.0F;
                     stageAlphaGen = AlphaGen::Const;
+                    // rc604: AGEN_ENTITY (ParseStage, tr_shader.cpp OpenJK) liest
+                    // backEnd.currentEntity->e.shaderRGBA[3] (RB_CalcAlphaFromEntity,
+                    // tr_shade_calc.cpp). Ohne Entity bleibt es die 1 von oben;
+                    // ein Effektteilchen setzt die Ansicht auf seinen Alphawert
+                    // (effektAlphaEntity, bhed/mapview.h).
+                    stageAlphaEntity = true;
                 } else if (firstWord(rest) == "wave") {
                     std::string w = secondWord(rest);
                     Wave wv;

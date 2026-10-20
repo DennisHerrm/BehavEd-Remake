@@ -43,6 +43,10 @@ struct Settings {
     std::string lastDir;
     std::string mapPath;   // zuletzt geladene .bsp
     std::vector<std::string> gamePaths;   // Ordner mit .pk3, z. B. GameData/base
+    // rc604: die Spielordner von Jedi Outcast - getrennt, damit gleich
+    // benannte Dateien beider Spiele (_humanoid.gla: JK2 72 Knochen, JKA 53)
+    // sich nie ueberdecken. Es gilt die Liste des Regelwerks.
+    std::vector<std::string> gamePathsJk2;
 
     // unsere Zutaten
     // LEER heisst "der Benutzer hat noch nichts gewaehlt - nimm das

@@ -16,6 +16,7 @@
 #define BHED_REGELWERK_H
 
 #include <string>
+#include <vector>
 
 namespace bhed {
 
@@ -23,6 +24,12 @@ namespace bhed {
 inline constexpr int kRegelwerkAuto = 0;         // "auto": nach den Spielordnern
 inline constexpr int kRegelwerkOpenJK = 1;       // "openjk"
 inline constexpr int kRegelwerkMovieDuels = 2;   // "movieduels"
+// rc604: das echte Jedi Outcast (JK2) - Vorlage ist der JK2-Spielcode in
+// OpenJK (codeJK2/). Eigene Befehlsliste (data/jk2), eigene Spielordner,
+// das JK2-Skelett (72 Knochen), ext_data/NPCs.cfg, Schwerter ohne .sab und
+// die SP_NPC_*-Klassen von codeJK2. Laufen, Wege und Kamera rechnen
+// vorerst wie OpenJK (Stufe 3 - siehe NOTIZEN_jk2.md).
+inline constexpr int kRegelwerkJediOutcast = 3;  // "jedioutcast"
 
 // "auto", "openjk", "movieduels" - so steht es in behaved.cfg.
 [[nodiscard]] const char* regelwerkSchluessel(int wahl) noexcept;
@@ -32,13 +39,33 @@ inline constexpr int kRegelwerkMovieDuels = 2;   // "movieduels"
 // Die Wahl aufloesen: true = Movie Duels. "auto" folgt der Erkennung des
 // Spielordners; ist keiner erkannt (unklar), gilt OpenJK.
 [[nodiscard]] bool regelwerkAufloesen(int wahl, bool movieDuelsErkannt) noexcept;
+// rc604: dasselbe mit drei Spielen - kRegelwerkOpenJK, kRegelwerkMovieDuels
+// oder kRegelwerkJediOutcast. "auto": Movie Duels vor Jedi Outcast (ein
+// Movie-Duels-Ordner ist nie JK2), unklar = OpenJK.
+[[nodiscard]] int regelwerkSpiel(int wahl, bool movieDuelsErkannt, bool jediOutcastErkannt) noexcept;
+
+// rc604: ist ein Spielordner Jedi Outcast? `dateien` sind die Dateinamen
+// (klein, ohne Pfad) im Ordner UND im Ordner darueber (GameData), `jk2Karte`:
+// eine .pk3 des Ordners hat eine Karte, die es nur in JK2 gibt
+// (maps/kejim_post.bsp). Ein Programm von JK2 (jk2sp.exe, jk2mp.exe,
+// openjo_sp.*) entscheidet; eines von Jedi Academy (jasp.exe, jamp.exe,
+// openjk_sp.*, openjk.*) schliesst JK2 aus - eine JKA-Installation mit
+// nachgebauten JK2-Karten bleibt JKA. Sonst die Karte.
+[[nodiscard]] bool jediOutcastHinweis(const std::vector<std::string>& dateien, bool jk2Karte);
 
 // Der aktive Stand. Ohne Aufruf von regelwerkAnwenden: Movie Duels (die
 // Unit-Tests der Pakete rechnen damit).
 [[nodiscard]] bool regelwerkMovieDuels() noexcept;
 // Setzt das Regelwerk fuer alle Pakete (saber, bewegung) und die wirksame
 // Schwierigkeit (g_spskill, siehe schwierigkeitWirksam) zugleich.
+// rc604: setzt Jedi Outcast zurueck (siehe regelwerkAnwendenSpiel).
 void regelwerkAnwenden(bool movieDuels, int schwierigkeitEinstellung) noexcept;
+// rc604: mit dem aufgeloesten Spiel (regelwerkSpiel). Jedi Outcast rechnet
+// in den Paketen wie OpenJK (JK2_MODE-Unterschiede: Stufe 3) und schaltet
+// das Ghoul2-Skelett auf JK2 (setzeGhoul2Jk2, bhed/glm.h).
+void regelwerkAnwendenSpiel(int spiel, int schwierigkeitEinstellung) noexcept;
+// rc604: gilt gerade Jedi Outcast? Ohne regelwerkAnwendenSpiel: nein.
+[[nodiscard]] bool regelwerkJediOutcast() noexcept;
 // g_spskill, wie es gerade gilt (0..3).
 [[nodiscard]] int regelwerkSpielstufe() noexcept;
 
@@ -64,6 +91,10 @@ void regelwerkAnwenden(bool movieDuels, int schwierigkeitEinstellung) noexcept;
 // MD). OpenJK nur fuer Mover (ET_MOVER, g_roff.cpp:298-302), sonst
 // G_SoundOnEnt (g_roff.cpp:305) - der Klang geht mit der Entity.
 [[nodiscard]] bool roffKlangFolgtEntity(bool movieDuels, bool mover) noexcept;
+// rc604 fix604b (A2): ROFF-Notizen wie OpenJK - alle Notizen eines Bilds, dazu
+// "USE" und "loop" (code/game/g_roff.cpp:308-438, 746-752 OpenJK). Movie Duels
+// und Jedi Outcast feuern nur die erste und kennen nur effect/sound.
+[[nodiscard]] bool roffNotizenOpenJk() noexcept;
 
 }  // namespace bhed
 

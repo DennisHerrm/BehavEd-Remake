@@ -7,6 +7,7 @@
 // ICARUS-Nachbau (dowait auf eine Bahn).
 #include "bhed/ablauf.h"
 #include "bhed/bsp.h"
+#include "bhed/regelwerk.h"
 #include "bhed/roff.h"
 #include "bhed/scene.h"
 #include "bhed/script.h"
@@ -15,6 +16,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -475,6 +477,137 @@ void probeAblauf() {
     pruefe(t2 >= 500.0 && t2 <= 700.0, "Nachbau: move ersetzt die Bahn im Fach TID_MOVE_NAV");
 }
 
+// --- rc604 fix604b (A2): OpenJK feuert ALLE Notizen eines Bilds ------------
+// G_Roff (code/game/g_roff.cpp:746-752 OpenJK): "if ( data->mStartNote != -1 )
+// for ( n < data->mNumNotes ) G_RoffNotetrackCallback(..., mNoteTrackIndexes[
+// mStartNote + n])"; Movie Duels nur mNoteTrackIndexes[mStartNote] unter
+// "mStartNote != -1 || mNumNotes" (g_roff.cpp:555-557 MD). Dazu kennt OpenJK
+// "USE" und "loop" (g_roff.cpp:308-438).
+void probeOpenJkNotizen() {
+    std::vector<Bild> bilder = {Bild{{1, 0, 0}, {0, 0, 0}, 0, 2}, Bild{{2, 0, 0}, {0, 0, 0}, -1, 1},
+                                Bild{{3, 0, 0}, {0, 0, 0}, 2, 1}};
+    const std::string d = fassung2(50, bilder, {"sound sound/a.wav", "USE shuttlemap/shuttletakeoff", "loop sfx sound/vehicles/tie/loop.wav"});
+    Roff r;
+    pruefe(leseRoff(d, r, nullptr), "A2: Fassung 2 mit drei Notizen liest sich");
+    const std::vector<RoffAusloesung> md = roffAusloesungen(r);
+    pruefe(md.size() == 2 && md[0].notiz == 0 && md[1].notiz == 2, "A2 Movie Duels/JK2: je Bild nur die erste Notiz");
+    const std::vector<RoffAusloesung> oj = roffAusloesungen(r, true);
+    pruefe(oj.size() == 3 && oj[0].notiz == 0 && oj[1].notiz == 1 && oj[1].bild == 0 && oj[2].notiz == 2,
+           "A2 OpenJK: alle Notizen eines Bilds, mStartNote -1 feuert nicht");
+    const RoffNotizBefehl useMd = zerlegeRoffNotiz("USE shuttlemap/shuttletakeoff");
+    const RoffNotizBefehl useOj = zerlegeRoffNotiz("USE shuttlemap/shuttletakeoff", true);
+    pruefe(useMd.art == RoffNotizBefehl::Art::Unbekannt && useOj.art == RoffNotizBefehl::Art::Skript &&
+               useOj.datei == "shuttlemap/shuttletakeoff",
+           "A2 USE: unter OpenJK ein Skript (RunScript), sonst unbekannt");
+    const RoffNotizBefehl sfx = zerlegeRoffNotiz("loop sfx sound/vehicles/tie/loop.wav", true);
+    const RoffNotizBefehl kill = zerlegeRoffNotiz("loop sfx kill", true);
+    const RoffNotizBefehl rof = zerlegeRoffNotiz("loop rof relative", true);
+    const RoffNotizBefehl falsch = zerlegeRoffNotiz("loop sfx music/x.mp3", true);
+    pruefe(sfx.art == RoffNotizBefehl::Art::Schleife && sfx.schleife == "sfx" && sfx.datei == "sound/vehicles/tie/loop.wav" &&
+               kill.art == RoffNotizBefehl::Art::Schleife && kill.schleifeAus && kill.datei.empty() &&
+               rof.art == RoffNotizBefehl::Art::Schleife && rof.schleife == "rof" && rof.zusatz == "relative" &&
+               falsch.art == RoffNotizBefehl::Art::Keine,
+           "A2 loop: sfx mit Datei, sfx kill, rof relative; ein Pfad ohne \"sound\" ist ungueltig");
+    pruefe(zerlegeRoffNotiz("loop sfx kill").art == RoffNotizBefehl::Art::Unbekannt, "A2 loop unter Movie Duels unbekannt");
+    // Die Szene fragt das Regelwerk (roffNotizenOpenJk).
+    MapData karte;
+    MapEntity schiff;
+    schiff.classname = "func_static";
+    schiff.targetname = "schiff";
+    schiff.origin = "0 0 0";
+    schiff.keys = {{"classname", "func_static"}, {"targetname", "schiff"}, {"model", "*3"}, {"origin", "0 0 0"}};
+    karte.entities = {schiff};
+    auto bahn = std::make_shared<Roff>(r);
+    SzenenHilfe hilfe;
+    hilfe.roff = [bahn](const std::string& n) -> std::shared_ptr<const Roff> { return (n == "test/noten") ? bahn : nullptr; };
+    const Script sk = lies("affect ( \"schiff\", FLUSH )\n{\n\tplay ( \"PLAY_ROFF\", \"test/noten\" );\n}\n");
+    regelwerkAnwenden(false, -1);   // OpenJK
+    const Scene scOj = buildScene(sk, karte, &hilfe);
+    regelwerkAnwenden(true, -1);    // Movie Duels (Vorgabe der Tests)
+    const Scene scMd = buildScene(sk, karte, &hilfe);
+    const bool ojSkript = scOj.roffEreignisse.size() == 3 && scOj.roffEreignisse[1].befehl.art == RoffNotizBefehl::Art::Skript &&
+                          scOj.roffEreignisse[2].befehl.art == RoffNotizBefehl::Art::Schleife;
+    pruefe(ojSkript && scMd.roffEreignisse.size() == 2 && scMd.roffEreignisse[1].befehl.art == RoffNotizBefehl::Art::Unbekannt,
+           "A2 Szene: OpenJK 3 Ereignisse (sound, USE, loop), Movie Duels 2 (sound, unbekanntes loop)");
+}
+
+// --- rc604 (A2 Rest): "loop rof" und "USE" wie OpenJK ----------------------
+// g_roff.cpp:320-366 OpenJK: die Schleifennotiz setzt roff_ctr = 0 und ruft
+// G_Roff rekursiv (Bild 0), danach wendet der aeussere Aufruf sein Bild an
+// und zaehlt auf 2 - Bild 1 kommt in der Schleife nie wieder.
+void probeOpenJkSchleife() {
+    std::vector<Bild> bilder = {Bild{{1, 0, 0}, {0, 0, 0}, -1, 0}, Bild{{10, 0, 0}, {0, 0, 0}, 0, 1},
+                                Bild{{100, 0, 0}, {0, 0, 0}, -1, 0}, Bild{{1000, 0, 0}, {0, 0, 0}, 1, 1}};
+    Roff r;
+    pruefe(leseRoff(fassung2(50, bilder, {"USE t/lauf", "loop rof relative"}), r, nullptr), "A2 Rest: Fassung 2 mit Schleife liest sich");
+    bool endlos = false;
+    const Roff m = roffMitSchleife(r, false, 20, &endlos);
+    std::printf("   schleife: %zu Bilder, endlos %d, [3] %.0f+%.0f nullen %d, [4] %.0f, [5] %.0f\n", m.bilder.size(),
+                endlos ? 1 : 0, m.bilder.size() > 3 ? m.bilder[3].sprungOrt[0] : -1.0F,
+                m.bilder.size() > 3 ? m.bilder[3].ort[0] : -1.0F, m.bilder.size() > 3 && m.bilder[3].nullen ? 1 : 0,
+                m.bilder.size() > 4 ? m.bilder[4].ort[0] : -1.0F, m.bilder.size() > 5 ? m.bilder[5].ort[0] : -1.0F);
+    pruefe(endlos && m.bilder.size() == 20 && m.bilder[3].sprungOrt[0] == 1.0F && m.bilder[3].ort[0] == 1000.0F &&
+               !m.bilder[3].nullen && m.bilder[4].ort[0] == 100.0F && m.bilder[5].ort[0] == 1000.0F,
+           "A2 Rest loop rof relative: Bild 0 und 3 im selben Spielbild, dann 2, 3, 2, 3 ... ohne Ende");
+    std::size_t useZahl = 0;
+    for (const RoffAusloesung& a : roffAusloesungen(m, true)) {
+        useZahl += zerlegeRoffNotiz(m.notizen[a.notiz], true).art == RoffNotizBefehl::Art::Skript ? 1U : 0U;
+    }
+    pruefe(useZahl == 1, "A2 Rest: das USE in Bild 1 feuert nur im ersten Durchgang");
+    // Mover relative: pos1 bleibt, die Bahn faehrt weiter (1+10+100, dann +1+1000).
+    const float o[3] = {0, 0, 0};
+    const RoffBahn b = roffBahn(m, o, o);
+    pruefe(std::fabs(b.stand[4].ort[0] - 1112.0F) < 0.01F, "A2 Rest relative (Mover): weiter ab pos1");
+    const Roff fig = roffMitSchleife(r, true, 20);
+    const RoffBahn bf = roffBahn(fig, o, o);
+    pruefe(fig.bilder.size() > 3 && fig.bilder[3].nullen && std::fabs(bf.stand[4].ort[0] - 1001.0F) < 0.01F,
+           "A2 Rest Figur: trBase = s.origin2 (0 0 0), dann Bild 0 und 3");
+    // Ablauf: die Aufgabe bleibt offen, das USE startet sein Skript auf der Entity.
+    AblaufWelt w;
+    w.roffDauer = [](const std::string&) { return kRoffEndlos; };
+    w.roffSkripte = [](const std::string&) { return std::vector<std::pair<double, std::string>>{{100.0, "t/lauf"}}; };
+    auto lauf = std::make_shared<Script>(lies("print ( \"lauf\" );\n"));
+    w.skript = [lauf](const std::string& p) -> const Script* { return p == "t/lauf" ? lauf.get() : nullptr; };
+    const Script sk = lies("affect ( \"schiff\", FLUSH )\n{\n	task ( \"flug\" )\n	{\n		play ( \"PLAY_ROFF\", \"t/x\" );\n	}\n"
+                           "	dowait ( \"flug\" );\n	print ( \"nach\" );\n}\nwait ( 2000.000 );\n");
+    const Ablauf a = simuliereAblauf(sk, "", w);
+    bool lief = false;
+    bool nach = false;
+    const std::function<void(const std::vector<Node>&)> such = [&](const std::vector<Node>& ns) {
+        for (const Node& n : ns) {
+            if (n.name == "print" && !n.args.empty()) {
+                lief = lief || n.args[0].text.find("lauf") != std::string::npos;
+                nach = nach || n.args[0].text.find("nach") != std::string::npos;
+            }
+            such(n.children);
+        }
+    };
+    such(a.flach.nodes);
+    pruefe(lief && !nach, "A2 Rest Ablauf: USE startet das Skript, dowait auf die endlose Bahn haengt");
+    // rc604: ein spaeteres play ersetzt ent->roff und setzt roff_ctr = 0
+    // (CQuake3GameInterface::Play, Q3_Interface.cpp:9760-9784 OpenJK) - die
+    // Notizen der alten Bahn feuern nie mehr. Fehlt die neue Datei
+    // (G_LoadRoff schlaegt fehl), laeuft die alte weiter.
+    const auto zweitesPlay = [&](const char* zweite) {
+        AblaufWelt w2;
+        w2.roffDauer = [](const std::string& d) { return d == "t/fehlt" ? kRoffFehlt : 2000.0; };
+        w2.roffSkripte = [](const std::string& d) {
+            return d == "t/x" ? std::vector<std::pair<double, std::string>>{{1000.0, "t/lauf"}}
+                              : std::vector<std::pair<double, std::string>>{};
+        };
+        w2.skript = w.skript;
+        const Script s2 = lies(std::string("affect ( \"schiff\", FLUSH )\n{\n\tplay ( \"PLAY_ROFF\", \"t/x\" );\n"
+                                           "\twait ( 500.000 );\n\tplay ( \"PLAY_ROFF\", \"") +
+                               zweite + "\" );\n}\nwait ( 3000.000 );\n");
+        const Ablauf a2 = simuliereAblauf(s2, "", w2);
+        lief = false;
+        such(a2.flach.nodes);
+        return lief;
+    };
+    pruefe(!zweitesPlay("t/y"), "rc604: ein zweites play bricht das geplante USE der alten Bahn ab");
+    pruefe(zweitesPlay("t/fehlt"), "rc604: play mit fehlender Datei laesst die alte Bahn und ihr USE weiterlaufen");
+}
+
 }  // namespace
 
 int main() {
@@ -484,6 +617,8 @@ int main() {
     probeKaputt();
     probeSzene();
     probeAblauf();
+    probeOpenJkNotizen();   // rc604 fix604b (A2)
+    probeOpenJkSchleife();  // rc604 (A2 Rest)
     std::printf("%s\n", fehler == 0 ? "alle Proben bestanden" : "FEHLGESCHLAGEN");
     return fehler == 0 ? 0 : 1;
 }

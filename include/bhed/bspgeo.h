@@ -67,6 +67,9 @@ struct BspSurface {
     // nimmt sie ParseFace (tr_bsp.cpp:435 OJ) fuer srfSurfaceFace_t::plane,
     // die R_MarkFragments (Brandspuren) prueft.
     float ebenenNormale[3]{};
+    // rc604 surfaceSprites: bei einem Patch lightmapVecs[0] und [1] - die
+    // Grenzen, aus denen ParseMesh (tr_bsp.cpp MD) lodOrigin/lodRadius macht.
+    float patchLod[2][3]{};
     // --- Lightmap-Stile (rc592) ------------------------------------------
     //
     // dsurface_t traegt vier Lichtstufen: lightmapStyles[4],

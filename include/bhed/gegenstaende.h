@@ -42,7 +42,8 @@ struct Gegenstandsliste {
 // items.dat lesen (Inhalt der Datei, die das Spiel nimmt: die des Mods vor
 // base). movieDuels: die ITM_*-Aufzaehlung von Movie Duels (g_items.h MD,
 // 80 Plaetze) statt der von OpenJK (61).
-[[nodiscard]] Gegenstandsliste leseGegenstaende(const std::string& itemsDat, bool movieDuels);
+[[nodiscard]] Gegenstandsliste leseGegenstaende(const std::string& itemsDat, bool movieDuels,
+                                                bool jediOutcast = false);
 
 // --- Wo der Gegenstand liegt (FinishSpawningItem, g_items.cpp) -------------
 //

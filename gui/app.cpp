@@ -3050,10 +3050,13 @@ void drawPrefs() {
         std::string error;
         CommandDb fresh;
         std::vector<LoadDiag> ld;
+        // rc604: ohne eigene .bhc der Befehlssatz des Regelwerks (data/jk2 bei
+        // Jedi Outcast, befehlssatzFuerRegelwerk).
+        const std::string satz = g_app->befehlssatzOrdner.empty() ? g_app->dataDir : g_app->befehlssatzOrdner;
         const std::string bhc = st.commandFile.empty()
-                                    ? g_app->dataDir + "/behaved.bhc"
+                                    ? satz + "/behaved.bhc"
                                     : st.commandFile;
-        const std::string dir = st.sourcePath.empty() ? g_app->dataDir : st.sourcePath;
+        const std::string dir = st.sourcePath.empty() ? satz : st.sourcePath;
         if (loadCommandDb(bhc, dir, fresh, ld)) {
             (void)loadCommandDb(directoryOf(bhc) + "/supplement.bhc", dir, fresh, ld);
             g_app->db = std::move(fresh);
@@ -3104,14 +3107,18 @@ void drawPrefs() {
     {
         // rc601 integ: die Spielregeln (OpenJK / Movie Duels), automatisch nach
         // den Spielordnern. regelwerkPruefen (jedes Bild) baut die Szene neu.
-        const bool erkannt = regelwerkOrdnerErkannt();
+        // rc604: dazu Jedi Outcast (eigene Spielordner, Befehlssatz data/jk2).
+        const int erkannt = regelwerkSpiel(kRegelwerkAuto, regelwerkOrdnerErkannt(), regelwerkJediOutcast());
         char autoName[160];
         std::snprintf(autoName, sizeof(autoName), tr(Str::PrefsRegelAuto),
-                      erkannt ? tr(Str::PrefsRegelMd) : tr(Str::PrefsRegelOpenJK));
-        const char* const regeln[3] = {autoName, tr(Str::PrefsRegelOpenJK), tr(Str::PrefsRegelMd)};
-        int r = std::clamp(st.regelwerk, 0, 2);
+                      erkannt == kRegelwerkMovieDuels    ? tr(Str::PrefsRegelMd)
+                      : erkannt == kRegelwerkJediOutcast ? tr(Str::PrefsRegelJk2)
+                                                         : tr(Str::PrefsRegelOpenJK));
+        const char* const regeln[4] = {autoName, tr(Str::PrefsRegelOpenJK), tr(Str::PrefsRegelMd),
+                                       tr(Str::PrefsRegelJk2)};
+        int r = std::clamp(st.regelwerk, 0, 3);
         ImGui::SetNextItemWidth(w * 0.5F);
-        if (ImGui::Combo(tr(Str::PrefsRegelwerk), &r, regeln, 3)) {
+        if (ImGui::Combo(tr(Str::PrefsRegelwerk), &r, regeln, 4)) {
             st.regelwerk = r;
             (void)regelwerkPruefen();
         }
@@ -3303,89 +3310,103 @@ void drawGamePaths() {
         }
     }
     const bool sitzung = !g_app->sitzungsSpielordner.empty();
+    // rc604: zwei Listen - Jedi Academy / Movie Duels und Jedi Outcast. Es
+    // gilt die des Regelwerks (eingerichteteSpielordner); "Add folder" legt
+    // einen JK2-Ordner von selbst in die zweite (addGamePathDirectory).
+    const auto zeichneListe = [&](std::vector<std::string>& liste, bool aktiv) {
+        // Die Reihenfolge ist keine Kosmetik.
+        //
+        // Movie Duels ERSETZT Dateien des Originalspiels unter demselben Namen -
+        // models/players/_humanoid/_humanoid.gla gibt es zweimal, mit 21376 und
+        // mit 30384 Bildern. Wer die Ordner falsch herum stehen hat, laedt die
+        // falsche, und ihm fehlt jede Animation jenseits der 21376. Deshalb
+        // steht hier, WER GEWINNT, und deshalb laesst sich die Reihenfolge in
+        // beide Richtungen aendern.
+        for (std::size_t i = 0; i < liste.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i));
+            const bool letzter = (i + 1 == liste.size());
+
+            ImGui::BeginDisabled(i == 0);
+            if (ImGui::SmallButton(tr(Str::PrefsUp))) {
+                std::swap(liste[i], liste[i - 1]);
+                g_app->sitzungsSpielordner.clear();   // rc603
+                rescanGamePaths();
+                refreshPk3List();
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                break;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            // Nach unten: fehlte bisher. Wer den letzten Ordner nach oben
+            // bringen wollte, musste alle anderen einzeln hochschieben.
+            ImGui::BeginDisabled(letzter);
+            if (ImGui::SmallButton(tr(Str::PrefsDown))) {
+                std::swap(liste[i], liste[i + 1]);
+                g_app->sitzungsSpielordner.clear();   // rc603
+                rescanGamePaths();
+                refreshPk3List();
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                break;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr(Str::PrefsRemove))) {
+                liste.erase(liste.begin() + static_cast<std::ptrdiff_t>(i));
+                g_app->sitzungsSpielordner.clear();   // rc603
+                rescanGamePaths();
+                refreshPk3List();
+                ImGui::PopID();
+                break;
+            }
+            ImGui::SameLine();
+            // Den Ordner im Explorer zeigen. Ein Pfad in einer Zeile sagt nicht,
+            // ob wirklich das drinsteht, was man erwartet - ein Blick hinein
+            // schon. openWithDefaultApp oeffnet bei einem Ordner den Explorer.
+            if (ImGui::SmallButton(tr(Str::PrefsOpenFolder))) {
+                platform::openWithDefaultApp(liste[i]);
+            }
+            ImGui::SameLine();
+            ImGui::TextUnformatted(liste[i].c_str());
+
+            // Was in diesem Ordner gefunden wurde - sonst raet man, ob er stimmt.
+            // rc603: nur, wenn die eingerichteten gelten (sonst gehoeren die
+            // eingelesenen Ordner zur Sitzung).
+            if (aktiv && i < g_app->gamePaths.size()) {
+                const GamePath& gp = g_app->gamePaths[i];
+                ImGui::SameLine();
+                if (gp.archives.empty()) {
+                    // Ein Ordner ohne Archive ist fast immer ein Tippfehler im
+                    // Pfad. Das soll auffallen.
+                    ImGui::TextColored(ImVec4{0.90F, 0.75F, 0.35F, 1.0F}, "%s",
+                                       tr(Str::PrefsEmptyPath));
+                } else {
+                    ImGui::TextDisabled(tr(Str::PrefsArchives),
+                                        static_cast<int>(gp.archives.size()),
+                                        gp.fileCount);
+                }
+            }
+            // Und wer bei Namensgleichheit gewinnt.
+            if (letzter && liste.size() > 1) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4{0.45F, 0.80F, 0.45F, 1.0F}, "- %s",
+                                   tr(Str::PrefsWins));
+            }
+            ImGui::PopID();
+        }
+    };
+    const bool jk2Liste = &eingerichteteSpielordner() == &st.gamePathsJk2;
     ImGui::SeparatorText(tr(Str::PrefsGamePaths));
     ImGui::TextDisabled("%s", tr(Str::PrefsGamePathsNote));
-    // Die Reihenfolge ist keine Kosmetik.
-    //
-    // Movie Duels ERSETZT Dateien des Originalspiels unter demselben Namen -
-    // models/players/_humanoid/_humanoid.gla gibt es zweimal, mit 21376 und
-    // mit 30384 Bildern. Wer die Ordner falsch herum stehen hat, laedt die
-    // falsche, und ihm fehlt jede Animation jenseits der 21376. Deshalb
-    // steht hier, WER GEWINNT, und deshalb laesst sich die Reihenfolge in
-    // beide Richtungen aendern.
-    for (std::size_t i = 0; i < st.gamePaths.size(); ++i) {
-        ImGui::PushID(static_cast<int>(i));
-        const bool letzter = (i + 1 == st.gamePaths.size());
-
-        ImGui::BeginDisabled(i == 0);
-        if (ImGui::SmallButton(tr(Str::PrefsUp))) {
-            std::swap(st.gamePaths[i], st.gamePaths[i - 1]);
-            g_app->sitzungsSpielordner.clear();   // rc603
-            rescanGamePaths();
-            refreshPk3List();
-            ImGui::EndDisabled();
-            ImGui::PopID();
-            break;
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        // Nach unten: fehlte bisher. Wer den letzten Ordner nach oben
-        // bringen wollte, musste alle anderen einzeln hochschieben.
-        ImGui::BeginDisabled(letzter);
-        if (ImGui::SmallButton(tr(Str::PrefsDown))) {
-            std::swap(st.gamePaths[i], st.gamePaths[i + 1]);
-            g_app->sitzungsSpielordner.clear();   // rc603
-            rescanGamePaths();
-            refreshPk3List();
-            ImGui::EndDisabled();
-            ImGui::PopID();
-            break;
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (ImGui::SmallButton(tr(Str::PrefsRemove))) {
-            st.gamePaths.erase(st.gamePaths.begin() + static_cast<std::ptrdiff_t>(i));
-            g_app->sitzungsSpielordner.clear();   // rc603
-            rescanGamePaths();
-            refreshPk3List();
-            ImGui::PopID();
-            break;
-        }
-        ImGui::SameLine();
-        // Den Ordner im Explorer zeigen. Ein Pfad in einer Zeile sagt nicht,
-        // ob wirklich das drinsteht, was man erwartet - ein Blick hinein
-        // schon. openWithDefaultApp oeffnet bei einem Ordner den Explorer.
-        if (ImGui::SmallButton(tr(Str::PrefsOpenFolder))) {
-            platform::openWithDefaultApp(st.gamePaths[i]);
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(st.gamePaths[i].c_str());
-
-        // Was in diesem Ordner gefunden wurde - sonst raet man, ob er stimmt.
-        // rc603: nur, wenn die eingerichteten gelten (sonst gehoeren die
-        // eingelesenen Ordner zur Sitzung).
-        if (!sitzung && i < g_app->gamePaths.size()) {
-            const GamePath& gp = g_app->gamePaths[i];
-            ImGui::SameLine();
-            if (gp.archives.empty()) {
-                // Ein Ordner ohne Archive ist fast immer ein Tippfehler im
-                // Pfad. Das soll auffallen.
-                ImGui::TextColored(ImVec4{0.90F, 0.75F, 0.35F, 1.0F}, "%s",
-                                   tr(Str::PrefsEmptyPath));
-            } else {
-                ImGui::TextDisabled(tr(Str::PrefsArchives),
-                                    static_cast<int>(gp.archives.size()),
-                                    gp.fileCount);
-            }
-        }
-        // Und wer bei Namensgleichheit gewinnt.
-        if (letzter && st.gamePaths.size() > 1) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4{0.45F, 0.80F, 0.45F, 1.0F}, "- %s",
-                               tr(Str::PrefsWins));
-        }
-        ImGui::PopID();
-    }
+    zeichneListe(st.gamePaths, !sitzung && !jk2Liste);
+    ImGui::SeparatorText(tr(Str::PathsJk2));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetFontSize() * 38.0F);
+    ImGui::TextDisabled("%s", tr(Str::PathsJk2Note));
+    ImGui::PopTextWrapPos();
+    ImGui::PushID("jk2");
+    zeichneListe(st.gamePathsJk2, !sitzung && jk2Liste);
+    ImGui::PopID();
     if (ImGui::Button(tr(Str::Pk3AddPath))) { addGamePath(); }
 
     ImGui::End();
@@ -4230,6 +4251,9 @@ void clearMap() {
     g_app->geo = BspGeometry{};
     g_app->mesh = BspMesh{};
     g_app->textures = TextureSet{};
+    g_app->grasStufen.clear();   // rc604 surfaceSprites
+    g_app->grasNetz = BspMesh{};
+    ++g_app->grasStand;
     gpu::vergissKarte();
     g_app->effectShaders.clear();
     g_app->effectRunners.clear();
@@ -4286,6 +4310,8 @@ void parkActive(bool layoutMerken = true) {
     if (t.ownMap) {
         t.mapPath = g_app->settings.mapPath;
         t.mapId = g_app->map.path;
+        t.spielordner = g_app->sitzungsSpielordner;   // rc604
+        t.spielordnerGemerkt = true;
     }
     // Die Sicht mitparken.
     for (int k = 0; k < 3; ++k) {
@@ -4379,6 +4405,11 @@ void takeTab(int index, bool rollen = true, bool layout = true) {
     // Verglichen wird die KENNUNG, nicht der Plattenpfad: eine Mission aus
     // einem .pk3 hat gar keinen.
     const std::string karteVorher = g_app->map.path;
+    // rc604: erst die Spielordner seines Spiels (setzeSitzungsSpielordner liest
+    // nur neu ein, wenn sie andere sind), dann seine Karte aus ihnen.
+    if (t.spielordnerGemerkt && !t.mapId.empty()) {
+        setzeSitzungsSpielordner(t.spielordner);
+    }
     if (!t.mapId.empty() && t.mapId != g_app->map.path) {
         char zeile[300];
         std::snprintf(zeile, sizeof(zeile),
@@ -4528,6 +4559,8 @@ void addTab(bool inheritMap) {
     if (inheritMap) {
         frisch.mapPath = g_app->settings.mapPath;
         frisch.mapId = g_app->map.path;
+        frisch.spielordner = g_app->sitzungsSpielordner;   // rc604
+        frisch.spielordnerGemerkt = true;
     }
     g_app->tabs.push_back(frisch);
     g_app->activeTab = static_cast<int>(g_app->tabs.size()) - 1;
@@ -11146,11 +11179,16 @@ ComboEditResult comboEdit(const char* id, std::string& value,
 // rc603: nur noch auf ausdruecklichen Wunsch (Spielordner-Fenster) - "Load
 // mission" nimmt nichts mehr dauerhaft auf. Wer die eingerichteten Ordner
 // aendert, will mit ihnen arbeiten: die Ordner einer Sitzung enden dann.
+//
+// rc604: ein Ordner von Jedi Outcast (jediOutcastOrdner) kommt in die eigene
+// Liste (gamePathsJk2) - nie zu den Ordnern von Jedi Academy.
 void addGamePathDirectory(const std::string& dir) {
     if (dir.empty()) {
         return;
     }
-    for (const std::string& g : g_app->settings.gamePaths) {
+    std::vector<std::string>& liste =
+        jediOutcastOrdner(dir) ? g_app->settings.gamePathsJk2 : g_app->settings.gamePaths;
+    for (const std::string& g : liste) {
         if (g == dir) {
             if (!g_app->sitzungsSpielordner.empty()) {
                 setzeSitzungsSpielordner({});
@@ -11158,14 +11196,15 @@ void addGamePathDirectory(const std::string& dir) {
             return;
         }
     }
-    g_app->settings.gamePaths.push_back(dir);
+    liste.push_back(dir);
     g_app->sitzungsSpielordner.clear();
     rescanGamePaths();
     refreshPk3List();
 }
 
 const std::vector<std::string>& aktiveSpielordner() {
-    return g_app->sitzungsSpielordner.empty() ? g_app->settings.gamePaths : g_app->sitzungsSpielordner;
+    // rc604: die eingerichteten des Regelwerks (JK2 oder JKA/Movie Duels).
+    return g_app->sitzungsSpielordner.empty() ? eingerichteteSpielordner() : g_app->sitzungsSpielordner;
 }
 
 void setzeSitzungsSpielordner(std::vector<std::string> ordner) {
@@ -11181,7 +11220,7 @@ void setzeSitzungsSpielordner(std::vector<std::string> ordner) {
         }
         return true;
     };
-    if (gleich(ordner, g_app->settings.gamePaths)) {
+    if (gleich(ordner, eingerichteteSpielordner())) {   // rc604: die des Regelwerks
         ordner.clear();
     }
     g_app->sitzungsSpielordner = std::move(ordner);
@@ -11923,6 +11962,10 @@ void setStatus(const char* fmt, int a, int b) {
 
 void rescanGamePaths() {
     diag::Step step("Spielordner durchsuchen");
+    // rc604: zuerst das Regelwerk - es bestimmt, welche Spielordner gelten
+    // (Jedi Outcast hat eigene) und wie Ghoul2-Modelle gelesen werden
+    // (JK2-Skelett); die Zwischenspeicher unten werden dafuer geleert.
+    regelwerkAnwendenJetzt();
     g_app->gamePaths.clear();
 
     // Alles verwerfen, was AUS den Spielordnern stammt.
@@ -12756,6 +12799,228 @@ void wolkenLaden(const ShaderInfo& info, const std::string& name, TextureSet::Te
     }
 }
 
+// rc604 fix604b (B1): EINE Zusatzstufe eines Shaders laden und an `t` haengen
+// (Rumpf aus loadMapTextures herausgezogen, damit die Effektshader dieselben
+// Stufen bekommen - RB_IterateStagesGeneric zeichnet jede Stufe, tr_shade.cpp).
+void zusatzstufeLaden(const ShaderInfo& info, const ShaderInfo::Stage& st, const std::string& shaderName,
+                      TextureSet::Tex& t) {
+    if (st.alphaGen == AlphaGen::Unsupported) {
+        diag::detail("Stufe \"" + st.image + "\" von " +
+                     shaderName +
+                     ": alphaGen nicht nachgebaut - bleibt"
+                     " weg statt falsch");
+        return;
+    }
+    TextureSet::Tex zusatz;
+    if (!loadTextureFor(st.image, zusatz)) {
+        diag::detail("Stufe \"" + st.image +
+                     "\" von " + shaderName +
+                     " nicht ladbar - wird uebersprungen");
+        return;
+    }
+    // Die Stufe bringt ihre EIGENE Mischart mit, nicht die
+    // des Shaders - darum geht es ja gerade.
+    zusatz.blend = st.blend;
+    zusatz.alphaTest = st.alphaTest;
+    // --- `depthFunc equal` auf einer alphagetesteten Grundstufe
+    //
+    // shank, 02.10.: die Geonosier im Publikum der Arena
+    // (textures/md_ga/geonosian1) standen in einem schwarzen
+    // Viereck. Der Shader: Bild mit `alphaFunc GE128`, dann
+    // DASSELBE Bild noch einmal multiplizierend mit
+    // `depthFunc equal`. Im Spiel scheitert diese Stufe genau
+    // dort, wo die erste den Bildpunkt verworfen und keine
+    // Tiefe geschrieben hat. Unser Zeichner rechnet "equal"
+    // als LESS_EQUAL (siehe gpumap_win32.cpp, holeTiefe) - die
+    // Stufe lag VOR der Wand dahinter, bestand den Test und
+    // multiplizierte die Wand mit dem schwarzen Rand des
+    // Bildes. Mit demselben Bild ist der Alphatest der
+    // Grundstufe genau die Maske, die das Spiel ueber die
+    // Tiefe bekommt.
+    if (st.depthFunc == DepthFunc::Equal && zusatz.alphaTest == AlphaTest::None &&
+        t.alphaTest != AlphaTest::None &&
+        image::mappingName(st.image) == image::mappingName(info.image)) {
+        zusatz.alphaTest = t.alphaTest;
+    }
+    zusatz.alphaConst = st.alphaConst;
+    for (int k = 0; k < st.numTexMods; ++k) {
+        zusatz.texMods[k] = st.texMods[k];
+    }
+    zusatz.numTexMods = st.numTexMods;
+    zusatz.rgbWave = st.rgbWave;
+    zusatz.alphaWave = st.alphaWave;
+    zusatz.portalWeite = st.portalWeite;
+    // Die Stufe bringt ihr EIGENES glow mit. Bei
+    // `table_blue` glueht genau diese dritte Stufe,
+    // die beiden darunter nicht.
+    zusatz.glow = st.glow;
+    zusatz.texGen = st.texGen;
+    zusatz.clamp = st.clamp;
+    zusatz.depthWrite = st.depthWrite;
+    zusatz.depthFunc = st.depthFunc;
+    zusatz.alphaGen = st.alphaGen;
+    for (int k = 0; k < 3; ++k) {
+        zusatz.rgbConst[k] = st.rgbConst[k];
+    }
+    // Eine Zusatzstufe ist immer geskriptet und bringt nie
+    // die Lightmap mit - die gehoert der Grundstufe.
+    zusatz.ausSkript = true;
+    zusatz.lightmapStufe = false;
+    zusatz.rgbVertex = st.rgbVertex;
+    // --- deformVertexes gilt fuer den GANZEN Shader -------
+    //
+    // Es steht vor den Stufen, nicht in ihnen
+    // (RB_DeformTessGeometry laeuft EINMAL je Flaeche, bevor
+    // die Stufen gezeichnet werden). Bis hierher bekam nur
+    // der Basiseintrag die Verformung.
+    //
+    // Die Folge war schwerer zu finden als der Fehler:
+    // die Basisstufe verschob die Ecken entlang ihrer
+    // Normalen, die Zusatzstufe nicht - also lagen ihre
+    // Bildpunkte auf einer ANDEREN Tiefe und fielen durch
+    // den Tiefenvergleich.
+    //
+    // Gemessen an textures/plasma_mustafar/lava
+    // (`deformVertexes wave 180 sin 11 13 0 .4`):
+    //
+    //     mit Tiefentest        193 Bildpunkte
+    //     ohne Tiefentest   103 059 Bildpunkte
+    //
+    // Gemeldet als "beim Magmafall sind es im Spiel zwei
+    // Texturanimationen und bei uns nur eine" - die zweite
+    // Stufe wurde schlicht nie sichtbar.
+    zusatz.deformWave = info.deformWave;
+    zusatz.deformSpread = info.deformSpread;
+    zusatz.deform2 = info.deform2;
+    zusatz.srcFactor = st.srcFactor;
+    zusatz.dstFactor = st.dstFactor;
+    // --- animMap: die uebrigen Bilder dazuladen ---------
+    //
+    // Jedes Bild bekommt einen VOLLSTAENDIGEN Eintrag mit
+    // denselben Eigenschaften; der Zeichner tauscht dann
+    // nur den Zeiger. Das kostet ein paar Zahlen je Bild
+    // und spart dem Zeichner jede Sonderbehandlung.
+    //
+    // Das erste Bild ist `zusatz` selbst - deshalb steht
+    // sein eigener Index als erster in animFrames, und
+    // deshalb wird er VOR den uebrigen abgelegt.
+    const int eigenerIndex =
+        static_cast<int>(g_app->textures.byShader.size());
+    zusatz.animFreq = st.animFreq;
+    zusatz.animOneShot = st.animOneShot;
+    if (st.animImages.size() > 1) {
+        zusatz.animFrames.push_back(eigenerIndex);
+    }
+    t.extraStages.push_back(eigenerIndex);
+    g_app->textures.byShader.push_back(std::move(zusatz));
+    if (st.animImages.size() > 1) {
+        for (std::size_t bi = 1; bi < st.animImages.size();
+             ++bi) {
+            TextureSet::Tex bild =
+                g_app->textures.byShader[
+                    static_cast<std::size_t>(eigenerIndex)];
+            bild.rgba.clear();
+            bild.mips.clear();
+            if (!loadTextureFor(st.animImages[bi], bild)) {
+                continue;
+            }
+            // Die Eigenschaften der Stufe uebernehmen, das
+            // Bild ist das einzig Neue.
+            TextureSet::Tex& erst =
+                g_app->textures.byShader[
+                    static_cast<std::size_t>(eigenerIndex)];
+            bild.blend = erst.blend;
+            bild.alphaTest = erst.alphaTest;
+            bild.alphaConst = erst.alphaConst;
+            bild.numTexMods = erst.numTexMods;
+            for (int k = 0; k < erst.numTexMods; ++k) {
+                bild.texMods[k] = erst.texMods[k];
+            }
+            bild.rgbWave = erst.rgbWave;
+            bild.alphaWave = erst.alphaWave;
+            bild.portalWeite = erst.portalWeite;
+            bild.glow = erst.glow;
+            bild.texGen = erst.texGen;
+            bild.clamp = erst.clamp;
+            bild.alphaGen = erst.alphaGen;
+            for (int k = 0; k < 3; ++k) {
+                bild.rgbConst[k] = erst.rgbConst[k];
+            }
+            bild.ausSkript = erst.ausSkript;
+            bild.lightmapStufe = erst.lightmapStufe;
+            bild.rgbVertex = erst.rgbVertex;
+            bild.srcFactor = erst.srcFactor;
+            bild.dstFactor = erst.dstFactor;
+            bild.animFrames.clear();
+            bild.animFreq = 0.0F;
+            erst.animFrames.push_back(static_cast<int>(
+                g_app->textures.byShader.size()));
+            g_app->textures.byShader.push_back(
+                std::move(bild));
+        }
+    }
+}
+
+// rc604 fix604b (B1): animMap auf der BASISSTUFE - die uebrigen Bilder laden
+// (aus loadMapTextures herausgezogen; die Effektshader brauchen es ebenso:
+// gfx/exp/explosion1 ist eine oneshotanimmap, RB_CalcAnimMap/R_BindAnimatedImage
+// waehlt das Bild nach tess.shaderTime, tr_shade.cpp). eigenerIndex: der Platz
+// von `t` in byShader.
+void basisBildfolgeLaden(const ShaderInfo& info, int eigenerIndex, const std::string& shaderName,
+                         TextureSet::Tex& t) {
+    if (info.animImages.size() <= 1) { return; }
+    t.animFreq = info.animFreq;
+    t.animOneShot = info.animOneShot;
+    t.animFrames.push_back(eigenerIndex);
+    for (std::size_t bi = 1;
+         bi < info.animImages.size(); ++bi) {
+        TextureSet::Tex bild;
+        if (!loadTextureFor(info.animImages[bi],
+                            bild)) {
+            continue;
+        }
+        bild.blend = t.blend;
+        bild.alphaTest = t.alphaTest;
+        bild.alphaConst = t.alphaConst;
+        bild.autosprite = t.autosprite;
+        bild.cull = t.cull;
+        bild.rgbWave = t.rgbWave;
+        bild.alphaWave = t.alphaWave;
+        bild.portalWeite = t.portalWeite;
+        bild.deformWave = t.deformWave;
+        bild.deformSpread = t.deformSpread;
+        bild.deform2 = t.deform2;
+        bild.polygonOffset = t.polygonOffset;
+        bild.glow = t.glow;
+        bild.clamp = t.clamp;
+        bild.alphaGen = t.alphaGen;
+        bild.numTexMods = t.numTexMods;
+        for (int k = 0; k < t.numTexMods; ++k) {
+            bild.texMods[k] = t.texMods[k];
+        }
+        for (int k = 0; k < 3; ++k) {
+            bild.rgbConst[k] = t.rgbConst[k];
+        }
+        bild.ausSkript = t.ausSkript;
+        bild.lightmapStufe = t.lightmapStufe;
+        bild.rgbVertex = t.rgbVertex;
+        bild.srcFactor = t.srcFactor;
+        bild.dstFactor = t.dstFactor;
+        // Die Zusatzstufen gehoeren an die BASIS, nicht an
+        // jedes Bild der Folge - sonst wuerden sie mehrfach
+        // gezeichnet.
+        t.animFrames.push_back(static_cast<int>(
+            g_app->textures.byShader.size()));
+        g_app->textures.byShader.push_back(std::move(bild));
+    }
+    diag::detail("Shader \"" + shaderName + "\": Bildfolge mit " +
+                 std::to_string(t.animFrames.size()) +
+                 " Bildern, " +
+                 std::to_string(
+                     static_cast<int>(info.animFreq)) +
+                 " je Sekunde");
+}
+
 void loadMapTextures() {
     diag::Step step("Texturen suchen");
     // Was die vorige Karte benutzt hat - aufgeraeumt wird am Ende, wenn
@@ -12763,6 +13028,11 @@ void loadMapTextures() {
     const std::unordered_set<std::string> alteKartenBilder = std::move(g_app->kartenBilder);
     g_app->kartenBilder.clear();
     g_app->textures = TextureSet{};
+    // rc604 surfaceSprites: die Stufen haengen an den Textureintraegen.
+    g_app->grasStufen.clear();
+    g_app->grasNetz = BspMesh{};
+    g_app->grasFlachSchichten = 0;
+    ++g_app->grasStand;
     // Die hochgeladenen Bilder hingen an den alten Nummern.
     gpu::vergissKarte();
     g_app->fehlendeTexturen.clear();
@@ -13010,7 +13280,25 @@ void loadMapTextures() {
                     }
                     if (ersteEchte) {
                         ersteEchte = false;
+                        if (st.ss.aktiv()) {
+                            // Die Grundstufe selbst traegt surfaceSprites
+                            // (Platz 0 zeichnet die Engine gar nicht,
+                            // tr_shade.cpp:2149) - bleibt wie bisher.
+                            ++g_app->grasFlachSchichten;
+                        }
                         continue;   // die steckt schon in `t`
+                    }
+                    // --- rc604: surfaceSprites NIE als Schicht -------
+                    //
+                    // RB_StageIteratorGeneric ueberspringt die Stufe
+                    // (tr_shade.cpp:1888 MD, "We check for surfacesprites
+                    // AFTER drawing everything else") und zeichnet sie
+                    // danach als Halme (RB_DrawSurfaceSprites). Bis rc604
+                    // lag hier das Bild der Halme flach auf dem Boden.
+                    if (st.ss.aktiv()) {
+                        grasStufeLaden(si->second, st,
+                                       static_cast<std::size_t>(&st - si->second.stages.data()), sh.name, i);
+                        continue;
                     }
                     // --- NUR ADDITIVE Stufen -------------------------
                     //
@@ -13094,161 +13382,7 @@ void loadMapTextures() {
                     // 647 Bildstufen. Darunter die eigentliche
                     // Saeulentextur von textures/jeditemple/pillar, die im
                     // Spiel sichtbar ist und bei uns fehlte.
-                    if (st.alphaGen == AlphaGen::Unsupported) {
-                        diag::detail("Stufe \"" + st.image + "\" von " +
-                                     sh.name +
-                                     ": alphaGen nicht nachgebaut - bleibt"
-                                     " weg statt falsch");
-                        continue;
-                    }
-                    TextureSet::Tex zusatz;
-                    if (!loadTextureFor(st.image, zusatz)) {
-                        diag::detail("Stufe \"" + st.image +
-                                     "\" von " + sh.name +
-                                     " nicht ladbar - wird uebersprungen");
-                        continue;
-                    }
-                    // Die Stufe bringt ihre EIGENE Mischart mit, nicht die
-                    // des Shaders - darum geht es ja gerade.
-                    zusatz.blend = st.blend;
-                    zusatz.alphaTest = st.alphaTest;
-                    // --- `depthFunc equal` auf einer alphagetesteten Grundstufe
-                    //
-                    // shank, 02.10.: die Geonosier im Publikum der Arena
-                    // (textures/md_ga/geonosian1) standen in einem schwarzen
-                    // Viereck. Der Shader: Bild mit `alphaFunc GE128`, dann
-                    // DASSELBE Bild noch einmal multiplizierend mit
-                    // `depthFunc equal`. Im Spiel scheitert diese Stufe genau
-                    // dort, wo die erste den Bildpunkt verworfen und keine
-                    // Tiefe geschrieben hat. Unser Zeichner rechnet "equal"
-                    // als LESS_EQUAL (siehe gpumap_win32.cpp, holeTiefe) - die
-                    // Stufe lag VOR der Wand dahinter, bestand den Test und
-                    // multiplizierte die Wand mit dem schwarzen Rand des
-                    // Bildes. Mit demselben Bild ist der Alphatest der
-                    // Grundstufe genau die Maske, die das Spiel ueber die
-                    // Tiefe bekommt.
-                    if (st.depthFunc == DepthFunc::Equal && zusatz.alphaTest == AlphaTest::None &&
-                        t.alphaTest != AlphaTest::None &&
-                        image::mappingName(st.image) == image::mappingName(si->second.image)) {
-                        zusatz.alphaTest = t.alphaTest;
-                    }
-                    zusatz.alphaConst = st.alphaConst;
-                    for (int k = 0; k < st.numTexMods; ++k) {
-                        zusatz.texMods[k] = st.texMods[k];
-                    }
-                    zusatz.numTexMods = st.numTexMods;
-                    zusatz.rgbWave = st.rgbWave;
-                    zusatz.alphaWave = st.alphaWave;
-                    zusatz.portalWeite = st.portalWeite;
-                    // Die Stufe bringt ihr EIGENES glow mit. Bei
-                    // `table_blue` glueht genau diese dritte Stufe,
-                    // die beiden darunter nicht.
-                    zusatz.glow = st.glow;
-                    zusatz.texGen = st.texGen;
-                    zusatz.clamp = st.clamp;
-                    zusatz.depthWrite = st.depthWrite;
-                    zusatz.depthFunc = st.depthFunc;
-                    zusatz.alphaGen = st.alphaGen;
-                    for (int k = 0; k < 3; ++k) {
-                        zusatz.rgbConst[k] = st.rgbConst[k];
-                    }
-                    // Eine Zusatzstufe ist immer geskriptet und bringt nie
-                    // die Lightmap mit - die gehoert der Grundstufe.
-                    zusatz.ausSkript = true;
-                    zusatz.lightmapStufe = false;
-                    zusatz.rgbVertex = st.rgbVertex;
-                    // --- deformVertexes gilt fuer den GANZEN Shader -------
-                    //
-                    // Es steht vor den Stufen, nicht in ihnen
-                    // (RB_DeformTessGeometry laeuft EINMAL je Flaeche, bevor
-                    // die Stufen gezeichnet werden). Bis hierher bekam nur
-                    // der Basiseintrag die Verformung.
-                    //
-                    // Die Folge war schwerer zu finden als der Fehler:
-                    // die Basisstufe verschob die Ecken entlang ihrer
-                    // Normalen, die Zusatzstufe nicht - also lagen ihre
-                    // Bildpunkte auf einer ANDEREN Tiefe und fielen durch
-                    // den Tiefenvergleich.
-                    //
-                    // Gemessen an textures/plasma_mustafar/lava
-                    // (`deformVertexes wave 180 sin 11 13 0 .4`):
-                    //
-                    //     mit Tiefentest        193 Bildpunkte
-                    //     ohne Tiefentest   103 059 Bildpunkte
-                    //
-                    // Gemeldet als "beim Magmafall sind es im Spiel zwei
-                    // Texturanimationen und bei uns nur eine" - die zweite
-                    // Stufe wurde schlicht nie sichtbar.
-                    zusatz.deformWave = si->second.deformWave;
-                    zusatz.deformSpread = si->second.deformSpread;
-                    zusatz.deform2 = si->second.deform2;
-                    zusatz.srcFactor = st.srcFactor;
-                    zusatz.dstFactor = st.dstFactor;
-                    // --- animMap: die uebrigen Bilder dazuladen ---------
-                    //
-                    // Jedes Bild bekommt einen VOLLSTAENDIGEN Eintrag mit
-                    // denselben Eigenschaften; der Zeichner tauscht dann
-                    // nur den Zeiger. Das kostet ein paar Zahlen je Bild
-                    // und spart dem Zeichner jede Sonderbehandlung.
-                    //
-                    // Das erste Bild ist `zusatz` selbst - deshalb steht
-                    // sein eigener Index als erster in animFrames, und
-                    // deshalb wird er VOR den uebrigen abgelegt.
-                    const int eigenerIndex =
-                        static_cast<int>(g_app->textures.byShader.size());
-                    zusatz.animFreq = st.animFreq;
-                    zusatz.animOneShot = st.animOneShot;
-                    if (st.animImages.size() > 1) {
-                        zusatz.animFrames.push_back(eigenerIndex);
-                    }
-                    t.extraStages.push_back(eigenerIndex);
-                    g_app->textures.byShader.push_back(std::move(zusatz));
-                    if (st.animImages.size() > 1) {
-                        for (std::size_t bi = 1; bi < st.animImages.size();
-                             ++bi) {
-                            TextureSet::Tex bild =
-                                g_app->textures.byShader[
-                                    static_cast<std::size_t>(eigenerIndex)];
-                            bild.rgba.clear();
-                            bild.mips.clear();
-                            if (!loadTextureFor(st.animImages[bi], bild)) {
-                                continue;
-                            }
-                            // Die Eigenschaften der Stufe uebernehmen, das
-                            // Bild ist das einzig Neue.
-                            TextureSet::Tex& erst =
-                                g_app->textures.byShader[
-                                    static_cast<std::size_t>(eigenerIndex)];
-                            bild.blend = erst.blend;
-                            bild.alphaTest = erst.alphaTest;
-                            bild.alphaConst = erst.alphaConst;
-                            bild.numTexMods = erst.numTexMods;
-                            for (int k = 0; k < erst.numTexMods; ++k) {
-                                bild.texMods[k] = erst.texMods[k];
-                            }
-                            bild.rgbWave = erst.rgbWave;
-                            bild.alphaWave = erst.alphaWave;
-                            bild.portalWeite = erst.portalWeite;
-                            bild.glow = erst.glow;
-                            bild.texGen = erst.texGen;
-                            bild.clamp = erst.clamp;
-                            bild.alphaGen = erst.alphaGen;
-                            for (int k = 0; k < 3; ++k) {
-                                bild.rgbConst[k] = erst.rgbConst[k];
-                            }
-                            bild.ausSkript = erst.ausSkript;
-                            bild.lightmapStufe = erst.lightmapStufe;
-                            bild.rgbVertex = erst.rgbVertex;
-                            bild.srcFactor = erst.srcFactor;
-                            bild.dstFactor = erst.dstFactor;
-                            bild.animFrames.clear();
-                            bild.animFreq = 0.0F;
-                            erst.animFrames.push_back(static_cast<int>(
-                                g_app->textures.byShader.size()));
-                            g_app->textures.byShader.push_back(
-                                std::move(bild));
-                        }
-                    }
+                    zusatzstufeLaden(si->second, st, sh.name, t);   // rc604 fix604b (B1)
                 }
                 if (!t.extraStages.empty()) {
                     diag::detail("Shader \"" + sh.name + "\": " +
@@ -13266,58 +13400,8 @@ void loadMapTextures() {
                 // Index von `t` selbst zuerst in die Liste. Den kennt man
                 // hier: es ist `i`, der Platz in byShader, an den `t`
                 // gleich wandert.
-                if (si != g_app->shaderMap.end() &&
-                    si->second.animImages.size() > 1) {
-                    t.animFreq = si->second.animFreq;
-                    t.animOneShot = si->second.animOneShot;
-                    t.animFrames.push_back(static_cast<int>(i));
-                    for (std::size_t bi = 1;
-                         bi < si->second.animImages.size(); ++bi) {
-                        TextureSet::Tex bild;
-                        if (!loadTextureFor(si->second.animImages[bi],
-                                            bild)) {
-                            continue;
-                        }
-                        bild.blend = t.blend;
-                        bild.alphaTest = t.alphaTest;
-                        bild.alphaConst = t.alphaConst;
-                        bild.autosprite = t.autosprite;
-                        bild.cull = t.cull;
-                        bild.rgbWave = t.rgbWave;
-                        bild.alphaWave = t.alphaWave;
-                        bild.portalWeite = t.portalWeite;
-                        bild.deformWave = t.deformWave;
-                        bild.deformSpread = t.deformSpread;
-                        bild.deform2 = t.deform2;
-                        bild.polygonOffset = t.polygonOffset;
-                        bild.glow = t.glow;
-                        bild.clamp = t.clamp;
-                        bild.alphaGen = t.alphaGen;
-                        bild.numTexMods = t.numTexMods;
-                        for (int k = 0; k < t.numTexMods; ++k) {
-                            bild.texMods[k] = t.texMods[k];
-                        }
-                        for (int k = 0; k < 3; ++k) {
-                            bild.rgbConst[k] = t.rgbConst[k];
-                        }
-                        bild.ausSkript = t.ausSkript;
-                        bild.lightmapStufe = t.lightmapStufe;
-                        bild.rgbVertex = t.rgbVertex;
-                        bild.srcFactor = t.srcFactor;
-                        bild.dstFactor = t.dstFactor;
-                        // Die Zusatzstufen gehoeren an die BASIS, nicht an
-                        // jedes Bild der Folge - sonst wuerden sie mehrfach
-                        // gezeichnet.
-                        t.animFrames.push_back(static_cast<int>(
-                            g_app->textures.byShader.size()));
-                        g_app->textures.byShader.push_back(std::move(bild));
-                    }
-                    diag::detail("Shader \"" + sh.name + "\": Bildfolge mit " +
-                                 std::to_string(t.animFrames.size()) +
-                                 " Bildern, " +
-                                 std::to_string(
-                                     static_cast<int>(si->second.animFreq)) +
-                                 " je Sekunde");
+                if (si != g_app->shaderMap.end()) {
+                    basisBildfolgeLaden(si->second, static_cast<int>(i), sh.name, t);   // rc604 fix604b (B1)
                 }
             }
             g_app->textures.byShader[i] = std::move(t);
@@ -13888,9 +13972,20 @@ void reopenLastIfWanted(App* a, const std::string& kommandozeile) {
     const bool zuletztSauber = a->settings.legalExit;
     a->settings.legalExit = false;
     saveSettings(a);
-    if (!a->settings.gamePaths.empty()) {
+    if (!a->settings.gamePaths.empty() || !a->settings.gamePathsJk2.empty()) {
         App* keepGp = g_app;
         g_app = a;
+        // rc604: ein Ordner von Jedi Outcast in der Liste von Jedi Academy
+        // (aus einer Fassung vor rc604 oder von Hand) kommt in die eigene -
+        // sonst ueberdeckten sich gleich benannte Dateien beider Spiele.
+        for (std::size_t i = a->settings.gamePaths.size(); i > 0; --i) {
+            const std::string o = a->settings.gamePaths[i - 1];
+            if (jediOutcastOrdner(o)) {
+                a->settings.gamePaths.erase(a->settings.gamePaths.begin() + static_cast<std::ptrdiff_t>(i - 1));
+                a->settings.gamePathsJk2.insert(a->settings.gamePathsJk2.begin(), o);
+                diag::info("Spielordner von Jedi Outcast in die eigene Liste: " + o);
+            }
+        }
         rescanGamePaths();
         g_app = keepGp;
     }
@@ -14024,7 +14119,18 @@ bool loadModel(App* a, const std::string& dataDir, std::string* error) {
                    a->settings.commandFile);
     }
     std::vector<LoadDiag> ld;
-    if (!loadCommandDb(dataDir + "/behaved.bhc", dataDir, a->db, ld)) {
+    // rc604: der Quelldateipfad gilt auch ohne eigene .bhc - vorher nur
+    // zusammen mit ihr (der Knopf "Reload" nahm ihn schon immer).
+    std::string kopf = a->settings.sourcePath.empty() ? dataDir : a->settings.sourcePath;
+    bool geladen = loadCommandDb(dataDir + "/behaved.bhc", kopf, a->db, ld);
+    if (!geladen && kopf != dataDir) {
+        diag::warn("Quelldateipfad nicht nutzbar, nehme die mitgelieferten Kopfdateien: " + kopf);
+        a->db = CommandDb{};
+        ld.clear();
+        kopf = dataDir;
+        geladen = loadCommandDb(dataDir + "/behaved.bhc", kopf, a->db, ld);
+    }
+    if (!geladen) {
         if (error != nullptr) {
             // rc601 release: in der eingestellten Sprache und mit dem, was zu
             // tun ist. Vorher englisch und technisch ("behaved.bhc not found
@@ -14037,7 +14143,7 @@ bool loadModel(App* a, const std::string& dataDir, std::string* error) {
         }
         return false;
     }
-    (void)loadCommandDb(dataDir + "/supplement.bhc", dataDir, a->db, ld);
+    (void)loadCommandDb(dataDir + "/supplement.bhc", kopf, a->db, ld);
     char msg[200];
     std::snprintf(msg, sizeof(msg), tr(Str::MsgModelLoaded),
                   static_cast<int>(a->db.commands.size()),

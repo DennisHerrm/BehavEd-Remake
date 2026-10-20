@@ -141,7 +141,7 @@ struct Netzpuffer {
 // mit. Ein Platz je Mover waere bei zwoelf Modellen zwoelfmal derselbe
 // Aufwand fuer Netze, die sich nie aendern.
 // Platz 0 = Karte, Platz 1 = Effektnetz. Platz 2 wird NICHT mehr benutzt.
-Netzpuffer g_netz[2];
+Netzpuffer g_netz[3];   // Karte, Effekte, Gras (rc604)
 
 // --- Ein Puffer JE MOVER-NETZ ------------------------------------------
 //
@@ -201,6 +201,8 @@ int g_figurGluehen = 0;             // Aufrufe in diesem Bild
 // und je Stapel nur ein Versatz (VSSetConstantBuffers1). DISCARD nur, wenn
 // der Ring voll ist. Ohne D3D11.1 (oder ohne die beiden Merkmale) bleibt
 // der alte Weg.
+// rc604: die Werte einer Figurstufe in b3 (JeStufe) - 13 float4.
+constexpr UINT kStufeFloats = 52;
 constexpr UINT kRingEintrag = 256;              // 16 Konstanten, die Teilung von *SetConstantBuffers1
 constexpr UINT kRingGroesse = 1024U * 1024U;    // 4096 Stapel bis zum naechsten DISCARD
 ID3D11Buffer* g_cbRing = nullptr;
@@ -2914,6 +2916,14 @@ int g_figurStufenAufrufe = 0;
 int figurStufenAufrufe() { return g_figurStufenAufrufe; }
 bool g_figurStufenAus = false;
 void figurStufenAus(bool aus) { g_figurStufenAus = aus; }
+int g_figurTexModAufrufe = 0;   // rc604 fix604b (B4)
+int figurTexModAufrufe() { return g_figurTexModAufrufe; }
+bool g_figurTexModAus = false;
+void figurTexModAus(bool aus) { g_figurTexModAus = aus; }
+int g_figurDeformAufrufe = 0;   // rc604: deformVertexes an Figuren
+int figurDeformAufrufe() { return g_figurDeformAufrufe; }
+bool g_figurDeformAus = false;
+void figurDeformAus(bool aus) { g_figurDeformAus = aus; }
 // rc603: der schnelle Stufenweg (StufenFlaeche) - Aufrufe des letzten
 // Hauptbildes; figurStufenBezugsweg(true) zeichnet wie rc602 (Selbsttest).
 int g_figurStufenSchnell = 0;
@@ -2954,6 +2964,8 @@ int gluehenFigurAufrufe() { return g_figurGluehen; }
 
 void gluehenFigurenBeginnen(bool an, int breite, int hoehe) {
     g_figurStufenAufrufe = 0;   // rc602: je Hauptbild
+    g_figurTexModAufrufe = 0;   // rc604 fix604b (B4)
+    g_figurDeformAufrufe = 0;   // rc604
     g_figurStufenSchnell = 0;   // rc603
     g_figurGluehenAn = false;
     g_glowVollVorbelegt = false;
@@ -3873,7 +3885,7 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
     c->PSSetConstantBuffers(0, 1, &g_cbBild);
     c->VSSetConstantBuffers(2, 1, &g_cbFigur);
     // rc602 kartenpruefung: b3, die Stufe - Vorgabe alles 0 (der alte Weg).
-    float stufenDaten[24] = {};
+    float stufenDaten[kStufeFloats] = {};
     float achsen[3][3];
     if (licht != nullptr && licht->achsenGesetzt) {
         std::memcpy(achsen, licht->achsen, sizeof(achsen));
@@ -3906,7 +3918,7 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
     auto schreibeStufe = [&](const float* daten) {
         if (g_cbStufe == nullptr) {
             D3D11_BUFFER_DESC bd{};
-            bd.ByteWidth = 24U * 4U;
+            bd.ByteWidth = kStufeFloats * 4U;   // rc604 fix604b (B4): + tcMod; rc604: + deformVertexes
             bd.Usage = D3D11_USAGE_DYNAMIC;
             bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
             bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -3914,13 +3926,13 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
         }
         D3D11_MAPPED_SUBRESOURCE ms{};
         if (FAILED(c->Map(g_cbStufe, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) { return false; }
-        std::memcpy(ms.pData, daten, 24U * sizeof(float));
+        std::memcpy(ms.pData, daten, kStufeFloats * sizeof(float));
         c->Unmap(g_cbStufe, 0);
         c->VSSetConstantBuffers(3, 1, &g_cbStufe);
         return true;
     };
     (void)schreibeStufe(stufenDaten);
-    float letzteDaten[24] = {};
+    float letzteDaten[kStufeFloats] = {};
     const PipelineState* letzteStufe = nullptr;
     PipelineState stufenZustand;
     // rc603: der schnelle Stufenweg (StufenFlaeche). Er bindet b3 als Versatz
@@ -4070,6 +4082,56 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                 }
                 sd[2] = art.umgebung ? 1.0F : 0.0F;
             };
+            // rc604 fix604b (B4): tcMod der Stufe - [3] an, [24..31] gTexMatrix und
+            // gTexOffTurb aus packeKonstanten (dieselbe Kette wie an der Karte, zur
+            // Zeit der Stufe: tess.shaderTime, an Figuren refdef.floatTime).
+            auto texModWerte = [&](const TextureSet::Tex& tex, float* sd) {
+                if (tex.numTexMods <= 0 || g_figurTexModAus) { return; }
+                ++g_figurTexModAufrufe;
+                float k[kKonstFloats + 8] = {};
+                packeKonstanten(batchStateFor(tex, zeitS), k, zeitS);
+                sd[3] = 1.0F;
+                for (int q = 0; q < 8; ++q) { sd[24 + q] = k[q]; }
+            };
+            // rc604: deformVertexes des Shaders (RB_DeformTessGeometry,
+            // code/rd-vanilla/tr_shade_calc.cpp OpenJK) - [32..35] wave base,
+            // amplitude, phase, frequency; [36] deformationSpread, [37] Tabelle
+            // (WaveFunc), [38] an; [40..42] bulge width, height, speed, [43]
+            // Tabelle der move-Welle; [44..46] moveVector, [47] refdef.floatTime;
+            // [48..51] die move-Welle. noise (RB_CalcDeformNormals) und die
+            // autosprites bleiben aussen vor.
+            auto deformWerte = [&](const TextureSet::Tex& tex, float* sd) {
+                if (g_figurDeformAus) { return; }
+                bool an = false;
+                const Wave& w = tex.deformWave;
+                if (w.active() && w.func != WaveFunc::Noise) {
+                    sd[32] = w.base;
+                    sd[33] = w.amplitude;
+                    sd[34] = w.phase;
+                    sd[35] = w.frequency;
+                    sd[36] = tex.deformSpread;
+                    sd[37] = static_cast<float>(w.func);
+                    an = true;
+                }
+                if (tex.deform2.bulgeAn()) {
+                    for (int q = 0; q < 3; ++q) { sd[40 + q] = tex.deform2.bulge[q]; }
+                    an = true;
+                }
+                const Wave& mw = tex.deform2.moveWave;
+                if (mw.active() && mw.func != WaveFunc::Noise) {
+                    for (int q = 0; q < 3; ++q) { sd[44 + q] = tex.deform2.move[q]; }
+                    sd[43] = static_cast<float>(mw.func);
+                    sd[48] = mw.base;
+                    sd[49] = mw.amplitude;
+                    sd[50] = mw.phase;
+                    sd[51] = mw.frequency;
+                    an = true;
+                }
+                if (!an) { return; }
+                sd[38] = 1.0F;
+                sd[47] = static_cast<float>(zeitS);
+                ++g_figurDeformAufrufe;
+            };
             // --- rc603: der schnelle Stufenweg ------------------------------
             //
             // Dieselben Aufrufe, Zustaende, Werte und Bilder wie der
@@ -4103,7 +4165,8 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                         st.ds = tiefeAn() ? holeTiefe(z) : nullptr;
                         st.features = z.features;
                         st.glow = fs.bilder.front().glow;
-                        st.zeitabh = fs.art.farbe == FigurFarbe::Welle || fs.art.alpha == FigurAlpha::Welle;
+                        st.zeitabh = fs.art.farbe == FigurFarbe::Welle || fs.art.alpha == FigurAlpha::Welle ||
+                                     fs.bilder.front().numTexMods > 0;   // rc604 fix604b (B4)
                         if (!st.zeitabh) { stufenWerte(fs.art, st.sd); }
                         const std::size_t nb = fs.bilder.size();
                         st.bildTex.assign(nb, nullptr);
@@ -4119,12 +4182,14 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                     // b3 je Stufe wie im Bezugsweg: [0..7] stufenWerte, [8..10]
                     // Auge, [12..23] die drei Achsen.
                     for (std::size_t k = 0; k < stufen.size(); ++k) {
-                        float sd[24] = {};
+                        float sd[kStufeFloats] = {};
                         if (sf.stufen[k].zeitabh) {
                             stufenWerte(stufen[k].art, sd);
+                            texModWerte(stufen[k].bilder.front(), sd);   // rc604 fix604b (B4)
                         } else {
                             std::memcpy(sd, sf.stufen[k].sd, sizeof(sf.stufen[k].sd));
                         }
+                        deformWerte(stufen[k].bilder.front(), sd);   // rc604
                         if (licht != nullptr) {
                             for (int q = 0; q < 3; ++q) { sd[8 + q] = licht->auge[q]; }
                         }
@@ -4236,8 +4301,10 @@ int zeichneFigurIn(const GlmModel& model, const ModelTextures* textures,
                     }
                     umrissUeberschreiben(c);
                 }
-                float sd[24] = {};
+                float sd[kStufeFloats] = {};
                 stufenWerte(fs.art, sd);
+                texModWerte(tex, sd);   // rc604 fix604b (B4)
+                deformWerte(tex, sd);   // rc604
                 if (licht != nullptr) {
                     for (int q = 0; q < 3; ++q) { sd[8 + q] = licht->auge[q]; }
                 }
@@ -4826,7 +4893,7 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
                  const float* viewProj, float zeitSekunden, const float* kamera,
                  const std::vector<NebelGpu>& nebel,
                  const std::vector<FigurSchatten>& figuren, std::string* fehler,
-                 const float* welt, int objektNebel) {
+                 const float* welt, int objektNebel, int grasLage) {
     ID3D11DeviceContext* c = ctx();
     if (c == nullptr || nebel.empty() || viewProj == nullptr || kamera == nullptr ||
         g_zielRtv == nullptr || g_tiefeDsv == nullptr || geo == nullptr) {
@@ -4861,6 +4928,9 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
     std::memcpy(daten, viewProj, 16U * sizeof(float));
     Netzpuffer* npp = &g_netz[0];
     bool kartenNetz = true;
+    if (grasLage != 0) {
+        npp = &g_netz[2];   // rc604: die Halme, je Bild neu (zeichneKarte netzId 3)
+    }
     if (welt != nullptr) {
         const auto it = g_moverNetze.find(&mesh);
         if (it == g_moverNetze.end()) {
@@ -4945,9 +5015,15 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
             // (GeneratePermanentShader: fogPass = FP_EQUAL). Durchscheinendes
             // bleibt in der Engine ungenebelt - ausser den Nebelflaechen
             // selbst, die hier gar nicht gezeichnet werden.
-            if (call.zusatzstufe || call.state.blend != Blend::Opaque ||
-                (call.state.features & (kSky | kBewegteEcken)) != 0U ||
+            if (call.zusatzstufe || (call.state.features & (kSky | kBewegteEcken)) != 0U ||
                 call.batch >= mesh.batches.size()) {
+                continue;
+            }
+            // rc604: die gemischten Halme mit depthWrite bekommen ihren Nebel
+            // im zweiten Durchgang (nach dem Zeichnen) - ueber GLS_DEPTHFUNC_EQUAL
+            // trifft er nur, wo sie die Tiefe geschrieben haben.
+            const bool deckend = (call.state.blend == Blend::Opaque);
+            if (grasLage == 2 ? (deckend || !call.state.depthWrite) : !deckend) {
                 continue;
             }
             const BspMesh::Batch& bt = mesh.batches[call.batch];
@@ -6073,13 +6149,15 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
     // Kartenwechsel. Innerhalb einer Karte aendert sich das Netz nicht.
     // netzId 2 heisst: ein Mover, Puffer nach Netz. Sonst Karte oder
     // Effektnetz.
+    // netzId 3 (rc604): die Halme der surfaceSprites, je Bild neu wie die
+    // Effekte - ein eigener Puffer, damit sich beide nicht verdraengen.
     Netzpuffer& np = (netzId == 2) ? g_moverNetze[&mesh]
-                                   : g_netz[(netzId == 1) ? 1 : 0];
+                                   : g_netz[(netzId == 1) ? 1 : (netzId == 3) ? 2 : 0];
     // Das Effektnetz aendert sich jedes Bild - DYNAMIC und ueberschreiben.
     // Die Karte aendert sich nur beim Kartenwechsel - IMMUTABLE.
     // Nur das Effektnetz ist dynamisch. Mover-Netze aendern sich nicht -
     // nur ihre Stellung, und die steht in der Matrix.
-    const bool dyn = (netzId == 1);
+    const bool dyn = (netzId == 1 || netzId == 3);
     // --- Die Ecken VOR dem if -------------------------------------------
     //
     // Sie werden in beiden Zweigen gebraucht: beim Anlegen als Startinhalt,
@@ -6266,6 +6344,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
         // RenderDoc. Ohne ihn heisst der Puffer dort `<unnamed>`.
         benenne(np.vb, netzId == 0   ? "Ecken: Karte"
                        : netzId == 1 ? "Ecken: Effekte"
+                       : netzId == 3 ? "Ecken: Gras"
                                      : "Ecken: Mover");
         np.dynamisch = dyn;
     }
@@ -6304,6 +6383,7 @@ int zeichneKarte(const BspMesh& mesh, const TextureSet* textures,
         np.ibGroesse = dyn ? ibPlatz : ibBytes;
         benenne(np.ib, netzId == 0   ? "Indizes: Karte"
                        : netzId == 1 ? "Indizes: Effekte"
+                       : netzId == 3 ? "Indizes: Gras"
                                      : "Indizes: Mover");
     }
     np.quelleVerts = mesh.verts.data();
@@ -6792,6 +6872,8 @@ void gluehenKlingen(const std::vector<KlingenQuad>*) {}
 int gluehenKlingenAufrufe() { return 0; }
 int figurStufenAufrufe() { return 0; }
 void figurStufenAus(bool) {}
+int figurTexModAufrufe() { return 0; }   // rc604 fix604b (B4)
+void figurTexModAus(bool) {}
 int figurStufenSchnellAufrufe() { return 0; }
 void figurStufenBezugsweg(bool) {}
 void figurAchsenProbe(std::vector<FigurAchsenEintrag>*) {}
@@ -6811,7 +6893,7 @@ int zeichneGluehen(const BspMesh&, const TextureSet*, const BspGeometry*,
 }
 int zeichneNebel(const BspMesh&, const TextureSet*, const BspGeometry*, const float*, float,
                  const float*, const std::vector<NebelGpu>&,
-                 const std::vector<FigurSchatten>&, std::string* fehler, const float*, int) {
+                 const std::vector<FigurSchatten>&, std::string* fehler, const float*, int, int) {
     if (fehler != nullptr) { *fehler = "ohne Direct3D gebaut"; }
     return 0;
 }

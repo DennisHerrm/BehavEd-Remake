@@ -85,7 +85,19 @@ int main(int argc, char** argv) {
             namen.push_back(e.path().filename().string());
         }
     }
+    // rc604: data/jk2 (Befehlssatz fuer Jedi Outcast) steckt als "jk2/<name>"
+    // mit im Programm und wird neben data/base ausgepackt.
+    const fs::path quelleJk2 = quelle.parent_path() / "jk2";
+    for (const auto& e : fs::directory_iterator(quelleJk2, ec)) {
+        if (e.is_regular_file()) {
+            namen.push_back("jk2/" + e.path().filename().string());
+        }
+    }
     std::sort(namen.begin(), namen.end());
+    // Quelle bzw. ausgepackter Ort eines Namens.
+    const auto ort = [](const fs::path& basis, const std::string& n) {
+        return n.rfind("jk2/", 0) == 0 ? basis.parent_path() / "jk2" / n.substr(4) : basis / n;
+    };
 
     // --- Was im Programm steckt ------------------------------------------
     const std::vector<bhed::eingebaut::Datei> alle = bhed::eingebaut::dateien();
@@ -95,7 +107,7 @@ int main(int argc, char** argv) {
     for (const std::string& n : namen) {
         const auto it = std::find_if(alle.begin(), alle.end(),
                                      [&](const bhed::eingebaut::Datei& d) { return n == d.name; });
-        const std::string soll = lies(quelle / n);
+        const std::string soll = lies(ort(quelle, n));
         expect("eingebaut, Byte fuer Byte gleich: " + n,
                it != alle.end() && it->groesse == soll.size() &&
                    (soll.empty() || std::memcmp(it->daten, soll.data(), soll.size()) == 0));
@@ -115,7 +127,7 @@ int main(int argc, char** argv) {
            ok && geschrieben == static_cast<int>(namen.size()));
     bool gleich = !namen.empty();
     for (const std::string& n : namen) {
-        if (lies(ziel / n) != lies(quelle / n)) {
+        if (lies(ort(ziel, n)) != lies(ort(quelle, n))) {
             gleich = false;
             std::printf("        anders: %s\n", n.c_str());
         }
@@ -125,6 +137,29 @@ int main(int argc, char** argv) {
     const Zahlen a = lade(quelle);
     const Zahlen b = lade(ziel);
     std::printf("        data/base:   %s\n        ausgepackt:  %s\n", text(a).c_str(), text(b).c_str());
+    const Zahlen aJk2 = lade(quelleJk2);
+    const Zahlen bJk2 = lade(ziel.parent_path() / "jk2");
+    std::printf("        data/jk2:    %s\n        ausgepackt:  %s\n", text(aJk2).c_str(), text(bJk2).c_str());
+    {
+        // Die JK2-Listen sind wirklich die aus codeJK2: ein JK2-Missionsziel
+        // (codeJK2/game/objectives.h) steht in OBJECTIVES, in JKA nicht.
+        const auto hatZiel = [](const fs::path& ordner, const char* wert) {
+            bhed::CommandDb db;
+            std::vector<bhed::LoadDiag> diag;
+            (void)bhed::loadCommandDb((ordner / "behaved.bhc").string(), ordner.string(), db, diag);
+            const auto it = db.typesets.find("OBJECTIVES");
+            if (it == db.typesets.end()) { return false; }
+            for (const auto& e : it->second.entries) {
+                if (e.name == wert) { return true; }
+            }
+            return false;
+        };
+        expect("data/jk2: OBJECTIVES kennt ARTUS_DETENTION_OBJ1 (JK2), data/base nicht",
+               hatZiel(quelleJk2, "ARTUS_DETENTION_OBJ1") && !hatZiel(quelle, "ARTUS_DETENTION_OBJ1"));
+    }
+    expect("loadCommandDb: data/jk2 laedt, ausgepackt dasselbe Modell",
+           aJk2.ok && bJk2.ok && aJk2.befehle > 0 && aJk2.befehle == bJk2.befehle &&
+               aJk2.typmengen == bJk2.typmengen && aJk2.meldungen == bJk2.meldungen);
     expect("loadCommandDb: aus der ausgepackten Kopie dasselbe Modell wie aus data/base",
            a.ok && b.ok && a.befehle > 0 && a.befehle == b.befehle && a.typmengen == b.typmengen &&
                a.makros == b.makros && a.meldungen == b.meldungen);

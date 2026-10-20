@@ -7,6 +7,7 @@
 #include "bhed/ibi.h"
 #include "bhed/settings.h"
 #include "bhed/regelwerk.h"
+#include "bhed/glm.h"
 #include "bhed/saberkontakt.h"
 #include "bhed/navlauf.h"
 #include "bhed/bsp.h"
@@ -449,12 +450,15 @@ int main(int argc, char** argv) {
     expect("V004 Wert nicht in der Auswahlliste",
            has(HDR "set ( /*@SET_TYPES*/ \"SET_GIBTESNICHT\", \"1\" );\r\n", "V004"), true);
 
-    // --- "Meintest du ...?" fuer die sechs Umbenennungen seit JK2 --------
+    // --- "Meintest du ...?" fuer die sechs Schreibweisen des Handbuchs ----
     //
     // Das ICARUS_Manual.doc ist aelter als Jedi Academy und nennt diese
     // sechs Felder ohne Unterstrich. Wer nach dem Handbuch arbeitet -
     // und es ist die einzige Anleitung - schreibt die linke Spalte.
-    // Gemessen gegen das Original-Q3_Interface.h (261 Felder).
+    // Gemessen gegen das Original-Q3_Interface.h (261 Felder). rc604: auch
+    // der JK2-Spielcode (codeJK2/game/Q3_Interface.h, data/jk2) schreibt
+    // schon die rechte Spalte - es ist das Handbuch, keine Umbenennung
+    // zwischen JK2 und JKA.
     expect("Vorschlag SET_BEHAVIORSTATE",
            schlaegtVor("SET_BEHAVIORSTATE", "SET_BEHAVIOR_STATE"), true);
     expect("Vorschlag SET_COPYORIGIN",
@@ -989,17 +993,52 @@ int main(int argc, char** argv) {
         {
             expect("Regelwerk: Vorgabe automatisch", bhed::Settings{}.regelwerk == bhed::kRegelwerkAuto, true);
             bool alle = true;
-            for (const int w : {bhed::kRegelwerkAuto, bhed::kRegelwerkOpenJK, bhed::kRegelwerkMovieDuels}) {
+            for (const int w : {bhed::kRegelwerkAuto, bhed::kRegelwerkOpenJK, bhed::kRegelwerkMovieDuels,
+                                bhed::kRegelwerkJediOutcast}) {
                 bhed::Settings ein;
                 ein.regelwerk = w;
                 const std::string text = bhed::writeSettings(ein);
                 bhed::Settings zurueck;
-                zurueck.regelwerk = (w + 1) % 3;
+                zurueck.regelwerk = (w + 1) % 4;
                 (void)bhed::readSettings(text, zurueck);
                 alle = alle && zurueck.regelwerk == w &&
                        text.find(std::string("regelwerk=") + bhed::regelwerkSchluessel(w)) != std::string::npos;
             }
-            expect("Regelwerk: auto/openjk/movieduels ueberstehen den Rundlauf (als Text)", alle, true);
+            expect("Regelwerk: auto/openjk/movieduels/jedioutcast ueberstehen den Rundlauf (als Text)", alle, true);
+            // rc604: Jedi Outcast - eigene Spielordner, Aufloesen, Erkennung.
+            {
+                bhed::Settings ein;
+                ein.gamePaths = {"C:/JA/base"};
+                ein.gamePathsJk2 = {"C:/JK2/GameData/base", "C:/JK2/GameData/mod"};
+                bhed::Settings zurueck;
+                (void)bhed::readSettings(bhed::writeSettings(ein), zurueck);
+                expect("Regelwerk JK2: Spielordner beider Spiele getrennt im Rundlauf",
+                       zurueck.gamePaths == ein.gamePaths && zurueck.gamePathsJk2 == ein.gamePathsJk2, true);
+            }
+            expect("Regelwerk JK2: automatisch, nur JK2 erkannt = Jedi Outcast",
+                   bhed::regelwerkSpiel(bhed::kRegelwerkAuto, false, true) == bhed::kRegelwerkJediOutcast, true);
+            expect("Regelwerk JK2: automatisch, Movie Duels geht vor (nie JK2)",
+                   bhed::regelwerkSpiel(bhed::kRegelwerkAuto, true, true) == bhed::kRegelwerkMovieDuels, true);
+            expect("Regelwerk JK2: automatisch, unklar = OpenJK",
+                   bhed::regelwerkSpiel(bhed::kRegelwerkAuto, false, false) == bhed::kRegelwerkOpenJK, true);
+            expect("Regelwerk JK2: gewaehlt gilt immer",
+                   bhed::regelwerkSpiel(bhed::kRegelwerkJediOutcast, true, false) == bhed::kRegelwerkJediOutcast &&
+                       bhed::regelwerkSpiel(bhed::kRegelwerkOpenJK, false, true) == bhed::kRegelwerkOpenJK, true);
+            expect("Regelwerk JK2: jk2sp.exe im Ordner darueber = Jedi Outcast",
+                   bhed::jediOutcastHinweis({"assets0.pk3", "jk2sp.exe"}, false), true);
+            expect("Regelwerk JK2: OpenJO (openjo_sp.x86_64.exe) = Jedi Outcast",
+                   bhed::jediOutcastHinweis({"openjo_sp.x86_64.exe"}, false), true);
+            expect("Regelwerk JK2: JK2-Karte ohne Programm = Jedi Outcast",
+                   bhed::jediOutcastHinweis({"assets0.pk3"}, true), true);
+            expect("Regelwerk JK2: JKA mit nachgebauter kejim_post (jasp.exe daneben) bleibt JKA",
+                   !bhed::jediOutcastHinweis({"jasp.exe", "assets1.pk3"}, true), true);
+            expect("Regelwerk JK2: ohne Hinweis kein JK2", !bhed::jediOutcastHinweis({"assets1.pk3"}, false), true);
+            bhed::regelwerkAnwendenSpiel(bhed::kRegelwerkJediOutcast, -1);
+            const bool jk2An = bhed::regelwerkJediOutcast() && bhed::ghoul2Jk2() && !bhed::regelwerkMovieDuels() &&
+                               bhed::regelwerkSpielstufe() == 0;
+            bhed::regelwerkAnwenden(false, -1);
+            expect("Regelwerk JK2: Anwenden schaltet das JK2-Skelett (JK2_MODE) und g_spskill 0; zurueck aus",
+                   jk2An && !bhed::regelwerkJediOutcast() && !bhed::ghoul2Jk2(), true);
             bhed::Settings unsinn;
             unsinn.regelwerk = bhed::kRegelwerkOpenJK;
             (void)bhed::readSettings("regelwerk=quake3\n", unsinn);

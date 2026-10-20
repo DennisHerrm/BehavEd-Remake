@@ -56,6 +56,10 @@ struct NpcKlassenTyp {
                                           bool movieDuels);
 // Dasselbe aus einer Entity der Karte.
 [[nodiscard]] NpcKlassenTyp npcKlassenTyp(const MapEntity& e, bool movieDuels);
+// rc604 jk2: mit dem Spiel (kRegelwerkOpenJK/MovieDuels/JediOutcast,
+// bhed/regelwerk.h) - Jedi Outcast hat eine eigene Tabelle (codeJK2).
+[[nodiscard]] NpcKlassenTyp npcKlassenTypSpiel(const std::string& classname, int spawnflags,
+                                               const std::string& schluesselTyp, bool hatMessage, int spiel);
 // ... mit dem aktiven Regelwerk (regelwerkMovieDuels()).
 [[nodiscard]] NpcKlassenTyp npcKlassenTyp(const MapEntity& e);
 
@@ -67,6 +71,14 @@ struct NpcKlassenTyp {
 // spawnt (NPC_spawn.cpp:2037 ff. OpenJK, :3087 ff. Movie Duels), mit
 // targetname wartet er auf use. NPC_Vehicle genauso (:2126 / :3205).
 [[nodiscard]] bool npcSpawntBeimKartenstart(const MapEntity& e);
+
+// rc604 fix604: eine Darstellerin fuer Zwischensequenzen - ein Spawner mit
+// NPC_targetname und SFB_CINEMATIC (spawnflags 32): die Figur beginnt in
+// BS_CINEMATIC und tut nichts von selbst, bis ein Skript sie fuehrt
+// (NPC_spawn.cpp, SFB_CINEMATIC -> behaviorSet BS_CINEMATIC). Nennt der
+// Ablauf eines Reiters sie nicht, gehoert sie zu einer anderen Szene
+// (Ablauf::fremdeDarsteller).
+[[nodiscard]] bool kinoDarsteller(const MapEntity& e);
 
 }  // namespace bhed
 

@@ -149,6 +149,9 @@ std::string writeSettings(const Settings& s) {
     for (const std::string& g : s.gamePaths) {
         put(o, "gamePath", g);
     }
+    for (const std::string& g : s.gamePathsJk2) {   // rc604
+        put(o, "gamePathJk2", g);
+    }
     // "key=MoveUp 4194643" - Aktionsname und ImGuiKeyChord als Zahl.
     // Warum die Zahl und nicht der Name der Taste, steht bei
     // Settings::KeyBinding.
@@ -165,6 +168,7 @@ bool readSettings(const std::string& text, Settings& out) {
     out.recent.clear();
     out.recentMissions.clear();
     out.gamePaths.clear();
+    out.gamePathsJk2.clear();
     out.keyBindings.clear();
     std::string line;
     std::istringstream in(text);
@@ -371,6 +375,9 @@ bool readSettings(const std::string& text, Settings& out) {
             // Keine Obergrenze: der Dialog nimmt beliebig viele Ordner, und
             // was gespeichert wurde, muss auch wieder geladen werden.
             out.gamePaths.push_back(value);
+        }
+        else if (key == "gamePathJk2") {   // rc604: Spielordner von Jedi Outcast
+            out.gamePathsJk2.push_back(value);
         }
         else if (key == "key") {
             const std::size_t sp = value.find(' ');

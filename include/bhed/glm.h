@@ -99,6 +99,9 @@ struct GlmModel {
     // Ein JK2-Modell (72 Knochen), dessen Verweise beim Lesen auf das
     // JKA-Skelett umgelegt wurden - siehe readGlm.
     bool jk2Umgewandelt = false;
+    // rc604: unter Jedi Outcast (setzeGhoul2Jk2) umgekehrt - ein JKA-Modell
+    // (53 Knochen), auf das JK2-Skelett (72) umgelegt.
+    bool jkaUmgewandelt = false;
     std::vector<GlmSurface> surfaces;
 
     float mins[3]{};
@@ -151,6 +154,15 @@ void applySkin(const std::string& skinText, GlmModel& model);
 // Skelett hat, das sich bewegt. Rechnet direkt mit den Vertexkoordinaten.
 [[nodiscard]] bool boltMatrixRigid(const GlmModel& model, int surface,
                                    BoneMatrix& out);
+
+// rc604: Ghoul2 wie unter JK2_MODE (OpenJK baut das JK2-Spiel mit diesem
+// Schalter): das Skelett _humanoid.gla von Jedi Outcast hat 72 Knochen, ein
+// JK2-Modell bleibt, wie es ist, und ein JKA-Modell (53 Knochen) wird ueber
+// NewToOldRemapTable auf 72 umgelegt (tr_ghoul2.cpp:3663-3667, 3879-3893).
+// Ohne Aufruf: Jedi Academy (tr_ghoul2.cpp:3656-3661, 3862-3876). Gesetzt
+// von regelwerkAnwendenSpiel (bhed/regelwerk.h).
+void setzeGhoul2Jk2(bool jk2) noexcept;
+[[nodiscard]] bool ghoul2Jk2() noexcept;
 
 }  // namespace bhed
 #endif

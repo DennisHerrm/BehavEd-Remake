@@ -215,6 +215,13 @@ void GlaAnimation::worldMatricesLerp(int frameA, int frameB, float t,
 void GlaAnimation::worldMatricesLerp(int frameA, int frameB, float t,
                                      const std::vector<BoneFrameOverride>& over,
                                      std::vector<BoneMatrix>& out) const {
+    worldMatricesLerp(frameA, frameB, t, over, {}, out);
+}
+
+void GlaAnimation::worldMatricesLerp(int frameA, int frameB, float t,
+                                     const std::vector<BoneFrameOverride>& over,
+                                     const std::vector<std::pair<int, BoneMatrix>>& nachMal,
+                                     std::vector<BoneMatrix>& out) const {
     const std::size_t n = bones.size();
     out.assign(n, BoneMatrix::identity());
     std::vector<int> ordnung;
@@ -275,6 +282,10 @@ void GlaAnimation::worldMatricesLerp(int frameA, int frameB, float t,
         } else {
             const auto up = static_cast<std::size_t>(bone.parent);
             out[ub] = out[up] * bones[up].basePoseInv * a * bone.basePose;
+        }
+        // rc605 FU4: BONE_ANGLES_POSTMULT (siehe gla.h).
+        for (const auto& [nb, m] : nachMal) {
+            if (nb == b) { out[ub] = out[ub] * m; }
         }
     }
 }

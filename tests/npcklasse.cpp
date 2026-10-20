@@ -6,9 +6,12 @@
 // NPC_type-Schluessel und ohne Namen. Im Spiel setzt SP_NPC_Droid_R2D2 den
 // Typ "r2d2" und spawnt die Figur beim Laden der Karte.
 #include "bhed/npcklasse.h"
+#include "bhed/regelwerk.h"
 #include "bhed/scene.h"
 
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -133,6 +136,186 @@ int main() {
     {
         const Scene s = szene(skript, m, false);
         pruefe(s.actors.size() == 2, "Szene ohne kartenFiguren: nur die Figuren der Skripte");
+    }
+    // rc604: G_SpawnGEntityFromSpawnVars entfernt JEDE Entity mit "notsingle"
+    // oder dem Bit der Schwierigkeit (spawnflags & (1 << (8 + g_spskill)),
+    // code/game/g_spawn.cpp:1064-1075, 1096-1101 OpenJK) - auch NPC-Spawner.
+    {
+        const MapData sm = karte("{\n\"classname\" \"NPC_Stormtrooper\"\n\"origin\" \"0 0 0\"\n\"spawnflags\" \"1024\"\n}\n"
+                                 "{\n\"classname\" \"NPC_Stormtrooper\"\n\"origin\" \"64 0 0\"\n\"notsingle\" \"1\"\n}\n");
+        regelwerkAnwenden(true, 2);    // Movie Duels, g_spskill 2: Bit 1024 entfernt
+        const Scene schwer = szene("", sm, true);
+        regelwerkAnwenden(false, 0);   // OpenJK, g_spskill 0: Bit 256 - der erste bleibt
+        const Scene leicht = szene("", sm, true);
+        regelwerkAnwenden(true, -1);
+        pruefe(schwer.actors.empty() && leicht.actors.size() == 1 && figur(leicht, "NPC_Stormtrooper#0") != nullptr,
+               "Kartenfiguren: Schwierigkeit und notsingle wie G_SpawnGEntityFromSpawnVars (" +
+                   std::to_string(schwer.actors.size()) + "/" + std::to_string(leicht.actors.size()) + ")");
+    }
+    // rc604: ein Skriptname, dessen Spawner G_SpawnGEntityFromSpawnVars wegen der
+    // Schwierigkeit freigibt (g_spawn.cpp:1064-1075 OpenJK): kein NPC_spawner,
+    // kein NPC - affect findet niemanden (findSpawner wie findNamed).
+    {
+        const MapData sm = karte("{\n\"classname\" \"NPC_Stormtrooper\"\n\"origin\" \"32 0 0\"\n\"NPC_targetname\" "
+                                 "\"wache\"\n\"spawnflags\" \"1024\"\n}\n");
+        const std::string sk = "affect ( \"wache\", FLUSH )\r\n{\r\n\twait ( 500.000 );\r\n}\r\n";
+        regelwerkAnwenden(true, 2);    // Movie Duels, g_spskill 2: Bit 1024 entfernt
+        const Scene schwer = szene(sk, sm, true);
+        regelwerkAnwenden(false, 0);   // OpenJK, g_spskill 0: der Spawner bleibt
+        const Scene leicht = szene(sk, sm, true);
+        regelwerkAnwenden(true, -1);
+        const Actor* ws = figur(schwer, "wache");
+        const Actor* wl = figur(leicht, "wache");
+        pruefe((ws == nullptr || !ws->haveStart) && wl != nullptr && wl->haveStart && wl->start[0] == 32.0F,
+               std::string("Skriptfigur: entfernter Spawner spawnt nicht (findSpawner mit der Schwierigkeit) - schwer ") +
+                   (ws == nullptr ? "keine" : (ws->haveStart ? "mit Ort" : "ohne Ort")));
+    }
+    // rc604: misc_atst_drivable (SP_misc_atst_drivable, code/game/g_misc.cpp
+    // OpenJK): models/players/atst/model.glm mit NPC_type "atst", BOTH_STAND2
+    // mit BONE_ANIM_OVERRIDE_FREEZE ab dem Spawnen.
+    {
+        const MapData at = karte("{\n\"classname\" \"misc_atst_drivable\"\n\"origin\" \"100 200 8\"\n\"angle\" \"90\"\n}\n");
+        const Scene s = szene("", at, true);
+        const Actor* a = figur(s, "misc_atst_drivable#0");
+        bool stand2 = false;
+        bool friert = false;
+        if (a != nullptr) {
+            for (const ActorStep& st : a->steps) {
+                stand2 = stand2 || (st.kind == ActorStep::Kind::Anim && st.text == "BOTH_STAND2" && st.startMs == 0.0);
+                friert = friert || (st.kind == ActorStep::Kind::Hold && st.value < 0.0F);
+            }
+        }
+        pruefe(a != nullptr && a->npcType == "atst" && a->kartenEntity == 0 && a->haveStart && a->start[1] == 200.0F &&
+                   a->startAngles[1] == 90.0F && stand2 && friert,
+               "misc_atst_drivable: AT-ST als Kartenfigur, BOTH_STAND2 eingefroren");
+    }
+    // --- rc604 jk2: die Klassen von Jedi Outcast (codeJK2/game/NPC_spawn.cpp) ---
+    {
+        const auto j = [](const char* k, int sf = 0, const char* schl = "") {
+            return npcKlassenTypSpiel(k, sf, schl, false, kRegelwerkJediOutcast);
+        };
+        pruefe(j("NPC_Jedi").typ == "Jedi" && j("NPC_Jedi").zufall.size() == 2 && j("NPC_Jedi", 1).typ == "jeditrainer" &&
+                   j("NPC_Jedi", 4).typ == "Jedi",
+               "JK2: NPC_Jedi - Flag 1 jeditrainer, sonst Jedi/Jedi2 (:1901; JKA: jedi_hf1 bei Flag 4)");
+        pruefe(j("NPC_Rebel").zufall.size() == 2 && j("NPC_Rebel").typ == "Rebel", "JK2: NPC_Rebel wuerfelt Rebel/Rebel2 (:1964)");
+        pruefe(j("NPC_Galak").spawnt && j("NPC_Galak").typ == "Galak" && j("NPC_Galak", 1).typ == "Galak_Mech",
+               "JK2: NPC_Galak spawnt Galak/Galak_Mech (:1828; OpenJK JKA leer)");
+        pruefe(j("NPC_Kyle", 1).typ == "Kyle", "JK2: NPC_Kyle immer Kyle (:1722; JKA: Kyle_boss bei Flag 1)");
+        pruefe(j("NPC_Droid_Remote").typ == "remote", "JK2: NPC_Droid_Remote = remote (:2619; JKA: remote_sp)");
+        pruefe(j("NPC_ImpWorker", 0, "myworker").typ == "myworker" && j("NPC_ImpWorker").zufall.size() == 3,
+               "JK2: NPC_ImpWorker laesst den Schluessel gelten und wuerfelt drei (:2269)");
+        pruefe(!j("NPC_Player").bekannt && !j("NPC_Cultist").bekannt && !j("NPC_Rosh_Penin").bekannt,
+               "JK2: Klassen nur aus Jedi Academy gibt es nicht (spawns[], g_spawn.cpp:622-671)");
+        const char* const alle[] = {"NPC_Kyle", "NPC_Lando", "NPC_Jan", "NPC_Luke", "NPC_MonMothma", "NPC_Tavion",
+            "NPC_Reelo", "NPC_Galak", "NPC_Desann", "NPC_Bartender", "NPC_MorganKatarn", "NPC_Jedi", "NPC_Prisoner",
+            "NPC_Rebel", "NPC_Stormtrooper", "NPC_StormtrooperOfficer", "NPC_Tie_Pilot", "NPC_Ugnaught", "NPC_Gran",
+            "NPC_Rodian", "NPC_Weequay", "NPC_Trandoshan", "NPC_SwampTrooper", "NPC_Imperial", "NPC_ImpWorker",
+            "NPC_BespinCop", "NPC_Reborn", "NPC_ShadowTrooper", "NPC_Monster_Murjj", "NPC_Monster_Swamp",
+            "NPC_Monster_Howler", "NPC_MineMonster", "NPC_Monster_Claw", "NPC_Monster_Glider", "NPC_Monster_Flier2",
+            "NPC_Monster_Lizard", "NPC_Monster_Fish", "NPC_Droid_Interrogator", "NPC_Droid_Probe", "NPC_Droid_Mark1",
+            "NPC_Droid_Mark2", "NPC_Droid_ATST", "NPC_Droid_Seeker", "NPC_Droid_Remote", "NPC_Droid_Sentry",
+            "NPC_Droid_Gonk", "NPC_Droid_Mouse", "NPC_Droid_R2D2", "NPC_Droid_R5D2", "NPC_Droid_Protocol"};
+        int bekannt = 0;
+        for (const char* k : alle) { bekannt += j(k).spawnt && !j(k).typ.empty() ? 1 : 0; }
+        pruefe(bekannt == 50, "JK2: alle 50 Klassen aus spawns[] spawnen mit Typ (" + std::to_string(bekannt) + ")");
+    }
+    // --- rc604 jk2: NPCs.cfg und das Schwert ohne .sab ----------------------
+    {
+        const char* cfg =
+            "Kyle\n{\n\tplayerModel\tkyle\n\tsaberColor\tblue\n\tplayerTeam\tplayer\n\tclass\t\tkyle\n}\n"
+            "Desann\n{\n\tplayerModel\tdesann\n\tsaberColor\tred\n\tclass\tdesann\n\tplayerTeam\tenemy\n}\n"
+            "Reborn\n{\n\tplayerModel\treborn\n\tclass\treborn\n\tplayerTeam\tenemy\n}\n"
+            "Kyle\n{\n\tplayerModel\tzweiter\n}\n";
+        NpcMap m;
+        parseNpcFile(cfg, m, true);
+        pruefe(m.count("kyle") == 1 && m["kyle"].playerModel == "kyle",
+               "JK2 NPCs.cfg: der erste Eintrag gewinnt (NPC_ParseParms sucht von vorn)");
+        pruefe(m["kyle"].klasse == "CLASS_KYLE" && m["kyle"].team == "TEAM_PLAYER" && m["desann"].team == "TEAM_ENEMY",
+               "JK2 NPCs.cfg: class kyle -> CLASS_KYLE, playerTeam player -> TEAM_PLAYER (TranslateClassName/TeamName)");
+        pruefe(jk2KlassenName("galak_mech") == "CLASS_GALAKMECH" && jk2KlassenName("quatsch") == "CLASS_NONE",
+               "JK2: ClassNames in der Reihenfolge von class_t, Unbekanntes CLASS_NONE");
+        const auto schwert = [&](const char* typ) {
+            Actor a;
+            a.name = typ;
+            a.npcType = typ;
+            const int art = saberArtJk2(a, &m[typ]);
+            const SaberArt& s = a.saberArten[static_cast<std::size_t>(art)];
+            return a.modelle[static_cast<std::size_t>(s.modell)] + "|" + std::to_string(static_cast<int>(s.klinge[0].max)) +
+                   "|" + s.klinge[0].farbe;
+        };
+        pruefe(schwert("desann") == "models/weapons2/saber_desann/saber_w.glm|48|red",
+               "JK2 Schwert Desann: eigener Griff, 48, rot (" + schwert("desann") + ")");
+        pruefe(schwert("reborn") == "models/weapons2/saber_reborn/saber_w.glm|32|red",
+               "JK2 Schwert Reborn: saber_reborn, 32, ohne saberColor rot (" + schwert("reborn") + ")");
+        pruefe(schwert("kyle") == "models/weapons2/saber/saber_w.glm|40|blue",
+               "JK2 Schwert Kyle: saber, 40, blau (" + schwert("kyle") + ")");
+        // rc604 fix604 (JK2 Stufe 3): die Waffe kommt in Jedi Outcast nur aus
+        // NPC_WeaponsForTeam (Anfaenge mit Gross/klein, "remote" ganz, kein
+        // "elder"); NPC_type "kyle" nimmt die Waffe des Spielers.
+        const auto waffe = [](const std::string& typ, const std::string& team) {
+            Actor a;
+            a.name = typ;
+            a.npcType = typ;
+            NpcDef d;
+            d.team = team;
+            ausstattungBeimSpawnen(a, &d, nullptr, 0);
+            return a.startWaffe;
+        };
+        if (std::getenv("BHED_JK2_ALT") == nullptr) { regelwerkAnwendenSpiel(kRegelwerkJediOutcast, -1); }
+        pruefe(waffe("reborn", "TEAM_ENEMY") == "WP_SABER" && waffe("Reborn", "TEAM_ENEMY") == "WP_BLASTER",
+               "JK2 Waffe: \"reborn\" Schwert, \"Reborn\" Blaster (Q_strncmp) (" + waffe("Reborn", "TEAM_ENEMY") + ")");
+        pruefe(waffe("remote_sp", "TEAM_ENEMY") == "WP_BLASTER" && waffe("elder", "TEAM_PLAYER") == "WP_BLASTER",
+               "JK2 Waffe: remote_sp und elder kennt JK2 nicht (" + waffe("remote_sp", "TEAM_ENEMY") + ", " +
+                   waffe("elder", "TEAM_PLAYER") + ")");
+        pruefe(waffe("kyle", "TEAM_PLAYER") == "WP_SABER",
+               "JK2 Waffe: NPC kyle nimmt die des Spielers (NPCAI_MATCHPLAYERWEAPON) (" + waffe("kyle", "TEAM_PLAYER") + ")");
+        regelwerkAnwenden(false, -1);
+        // rc604 fix604 (JK2 Stufe 3): SET_SABERACTIVE wechselt in JK2 nicht zum
+        // Schwert (Q3_SetSaberActive, codeJK2/game/Q3_Interface.cpp:6258-6278);
+        // SET_ANGLES auf eine Entity ohne client aendert nichts Sichtbares
+        // (Q3_SetAngles :1125-1150).
+        const auto schalte = [](bool jk2) {
+            if (jk2) {
+                if (std::getenv("BHED_JK2_ALT") == nullptr) { regelwerkAnwendenSpiel(kRegelwerkJediOutcast, -1); }
+            } else {
+                regelwerkAnwenden(false, -1);
+            }
+            Actor a;
+            a.name = "x";
+            ActorState st;
+            st.waffe = "WP_BLASTER";
+            st.hatSaber = true;
+            ActorStep step;
+            step.kind = ActorStep::Kind::Saber;
+            step.value = 1.0F;
+            step.startMs = 100.0;
+            step.endMs = 100.0;
+            ausruestungSchritt(a, st, step);
+            return st.waffe;
+        };
+        const std::string jkaWaffe = schalte(false);
+        const std::string jk2Waffe = schalte(true);
+        const MapData tm = karte("{\n\"classname\" \"worldspawn\"\n}\n{\n\"classname\" \"func_static\"\n\"targetname\" \"tuer\"\n"
+                                 "\"model\" \"*1\"\n\"origin\" \"0 0 0\"\n}\n");
+        const std::string winkelSkript = "affect ( \"tuer\", /*@AFFECT_TYPE*/ FLUSH )\n{\n\tset ( \"SET_ANGLES\", \"0 90 0\" );\n}\n";
+        const auto gier = [&](bool jk2) {
+            if (jk2) {
+                if (std::getenv("BHED_JK2_ALT") == nullptr) { regelwerkAnwendenSpiel(kRegelwerkJediOutcast, -1); }
+            } else {
+                regelwerkAnwenden(false, -1);
+            }
+            const Scene sc = szene(winkelSkript, tm, false);
+            const Actor* t = figur(sc, "tuer");
+            return t != nullptr ? t->at(1000.0).angles[1] : -999.0F;
+        };
+        const float jkaGier = gier(false);
+        const float jk2Gier = gier(true);
+        regelwerkAnwenden(false, -1);
+        pruefe(jkaWaffe == "WP_SABER" && jk2Waffe == "WP_BLASTER",
+               "JK2 SET_SABERACTIVE: OpenJK wechselt zum Schwert, Jedi Outcast nicht (" + jkaWaffe + " / " + jk2Waffe + ")");
+        pruefe(std::fabs(jkaGier - 90.0F) < 0.01F && std::fabs(jk2Gier) < 0.01F,
+               "JK2 SET_ANGLES ohne client: OpenJK dreht (90), Jedi Outcast nicht (" + std::to_string(jkaGier) + " / " +
+                   std::to_string(jk2Gier) + ")");
     }
     std::printf("%s (%d Fehler)\n", g_fehler == 0 ? "npcklasse: alles gut" : "npcklasse: FEHLER", g_fehler);
     return g_fehler == 0 ? 0 : 1;

@@ -80,6 +80,16 @@ std::atomic<long> gPlaeneKalt{0};
 std::atomic<long> gPlaeneWarm{0};
 std::atomic<long long> gPlaeneKaltUs{0};
 
+// rc604 fix604 (JK2 Stufe 3): navJk2Regeln und die Werte von Jedi Outcast.
+std::atomic<bool> gJk2Nav{false};
+constexpr std::uint32_t kJk2MaskNpcSolid = kNavSolid | kNavMonsterClip | kNavBody;   // codeJK2 bg_public.h:632
+constexpr std::uint32_t kJk2MaskDeadSolid = kNavSolid | kNavPlayerClip;              // :633
+constexpr int kJk2Unendlich = 16777216;          // Q3_INFINITE (g_local.h:42)
+constexpr float kJk2SlowdownDist = 128.0F;       // SLOWDOWN_DIST (g_active.cpp:37)
+constexpr float kJk2MinNpcSpeed = 16.0F;         // MIN_NPC_SPEED (g_active.cpp:38)
+constexpr int kJk2Beschleunigung = 15;           // stats.acceleration (NPC_stats.cpp:1117; NPCs.cfg setzt nur 15)
+constexpr int kJk2WegpunktZeitMitte = 1000;      // Q_irand(500, 1500) - fest die Mitte
+
 // --- Vektoren (Ravl/CVec.cpp, q_math) ------------------------------------------
 NavVec plus(const NavVec& a, const NavVec& b) { return {a[0] + b[0], a[1] + b[1], a[2] + b[2]}; }
 NavVec minus(const NavVec& a, const NavVec& b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
@@ -487,10 +497,13 @@ struct Akteur {
     const NavMoverPlan* mover = nullptr;
     double t = 0.0;
     bool* gefragt = nullptr;
+    bool springen = false;    // rc605: SCF_NAV_CAN_JUMP (LaufWerte::kannSpringen)
 };
 bool kanteGueltig(const NavKante& k, const Akteur& akt, int endpunkt) {
     if (akt.da && k.hat(NavKante::Fliegen)) { return false; }    // ohne SCF_NAV_CAN_FLY
-    if (akt.da && k.hat(NavKante::Springen)) { return false; }   // Spruenge rechnet behaved nicht
+    // rc605: ohne SCF_NAV_CAN_JUMP ist eine Sprungkante ungueltig
+    // (is_valid, g_navigator.cpp:551-556 MD).
+    if (akt.da && k.hat(NavKante::Springen) && !akt.springen) { return false; }
     if (akt.da && k.groesse() < akt.groesse && endpunkt != -1) { return false; }
     if (k.entity != kNavKeineEntity) {
         if (k.hat(NavKante::TuerSperrt) || k.hat(NavKante::WandSperrt)) {
@@ -589,7 +602,9 @@ bool gleicheRegionKante(const NavNetz& n, int a, int b, const Akteur& akt) {
     if (akt.gefragt != nullptr) { *akt.gefragt = true; }
     const bool wieAnfang = akt.mover == nullptr || akt.mover->kantenUnveraendert(akt.t);
     if (wieAnfang && gSchnellwege.load(std::memory_order_relaxed) && n.regionGueltig && ra < r && rb < r) {
-        const int art = akt.da ? std::clamp(akt.groesse, 1, 2) : 0;
+        // rc605: mit SCF_NAV_CAN_JUMP gelten Sprungkanten (is_valid) - eigene
+        // Eintraege 3/4.
+        const int art = akt.da ? std::clamp(akt.groesse, 1, 2) + (akt.springen ? 2 : 0) : 0;
         const std::size_t i = (static_cast<std::size_t>(art) * static_cast<std::size_t>(r) + static_cast<std::size_t>(ra)) *
                                   static_cast<std::size_t>(r) +
                               static_cast<std::size_t>(rb);
@@ -610,9 +625,16 @@ bool gleicheRegionKante(const NavNetz& n, int a, int b, const Akteur& akt) {
 // =============================================================================
 // baueNavNetz
 // =============================================================================
+namespace {
+std::array<std::uint32_t, 4> md4(const std::string& daten);
+std::shared_ptr<NavNetzJk2> baueNavNetzJk2(const std::vector<MapEntity>& ents, const NavBauHilfe& h);
+}  // namespace
+
 std::shared_ptr<NavNetz> baueNavNetz(const std::vector<MapEntity>& ents, const NavBauHilfe& h) {
     auto netz = std::make_shared<NavNetz>();
     NavNetz& n = *netz;
+    // rc604 fix604 (JK2 Stufe 3): mit den Regeln von Jedi Outcast auch dessen Netz.
+    if (gJk2Nav.load(std::memory_order_relaxed)) { n.jk2 = baueNavNetzJk2(ents, h); }
     n.knoten.resize(1);
     n.kanten.resize(1);
     n.kanteBenutzt.assign(1, false);
@@ -1162,7 +1184,452 @@ std::shared_ptr<NavNetz> baueNavNetz(const std::vector<MapEntity>& ents, const N
     // rc601 (bewegung, Durchsicht 2): das Gedaechtnis fuer has_valid_edge.
     if (n.regionZahl > 0) {
         const auto r = static_cast<std::size_t>(n.regionZahl);
-        n.regionGueltig = std::make_shared<std::vector<std::atomic<signed char>>>(3U * r * r);
+        n.regionGueltig = std::make_shared<std::vector<std::atomic<signed char>>>(5U * r * r);   // rc605: 5 Arten
+    }
+    return netz;
+}
+
+namespace {
+// =============================================================================
+// rc604 fix604 (JK2 Stufe 3): das Wegnetz von Jedi Outcast (CNavigator)
+// =============================================================================
+// Q_stricmp
+bool sameNameJk2(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) { return false; }
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) { return false; }
+    }
+    return true;
+}
+
+// G_EntIsUnlockedDoor (codeJK2/game/g_mover.cpp:1328-1390) mit dem Stand beim
+// Spawnen: der Meister des Teams (G_FindTeams: der erste mit demselben
+// "team"), mit targetname nur, wenn ein trigger_multiple ihn per target/
+// target2 ausloest und G_TriggerActive ist (g_trigger.cpp:340-376: nicht
+// INACTIVE 128, nicht PLAYERONLY 1); sonst nicht INACTIVE (128), ohne
+// health, nicht PLAYER_USE (64), FORCE_ACTIVATE (2), LOCKED (16).
+std::vector<signed char> jk2TuerFrei(const std::vector<MapEntity>& ents) {
+    std::vector<signed char> frei(ents.size(), 0);
+    for (std::size_t i = 0; i < ents.size(); ++i) {
+        if (klein(ents[i].classname) != "func_door") { continue; }
+        std::size_t m = i;
+        const std::string team = text(ents[i], "team");
+        if (!team.empty()) {
+            for (std::size_t j = 0; j < i; ++j) {
+                if (text(ents[j], "team") == team) {
+                    m = j;
+                    break;
+                }
+            }
+        }
+        const MapEntity& d = ents[m];
+        if (!d.targetname.empty()) {
+            bool ja = false;
+            for (const MapEntity& o : ents) {
+                if (klein(o.classname) != "trigger_multiple") { continue; }
+                if (!sameNameJk2(text(o, "target"), d.targetname) && !sameNameJk2(text(o, "target2"), d.targetname)) { continue; }
+                const int sf = ganz(o, "spawnflags");
+                if ((sf & 128) == 0 && (sf & 1) == 0) {
+                    ja = true;
+                    break;
+                }
+            }
+            frei[i] = ja ? 1 : 0;
+            continue;
+        }
+        const int sf = ganz(d, "spawnflags");
+        frei[i] = ((sf & 128) == 0 && ganz(d, "health") == 0 && (sf & 64) == 0 && (sf & 2) == 0 && (sf & 16) == 0) ? 1 : 0;
+    }
+    return frei;
+}
+
+// CNode::AddEdge (g_navigator.cpp:128-162)
+void jk2KanteDazu(NavNetzJk2::Knoten& k, int id, int kosten, unsigned char flags) {
+    for (NavNetzJk2::Kante& e : k.kanten) {
+        if (e.id == id) {
+            e.kosten = kosten;
+            e.flags = flags;
+            return;
+        }
+    }
+    k.kanten.push_back(NavNetzJk2::Kante{id, kosten, flags});
+}
+
+// CNavigator::CalculatePath (g_navigator.cpp:779-842) mit CPriorityQueue
+// (std::push_heap/pop_heap, NodeTotalGreater, :2640-2735).
+void jk2Pfad(NavNetzJk2& n, int start) {
+    struct CEdge {
+        int first;
+        int second;
+        int cost;
+    };
+    const auto groesser = [](const CEdge& a, const CEdge& b) { return a.cost > b.cost; };
+    NavNetzJk2::Knoten& node = n.knoten[static_cast<std::size_t>(start)];
+    int rang = 0;
+    std::vector<CEdge> heap;
+    std::vector<unsigned char> geprueft(n.knoten.size(), 0);
+    geprueft[static_cast<std::size_t>(start)] = 1;
+    node.raenge[static_cast<std::size_t>(start)] = rang++;
+    for (const NavNetzJk2::Kante& e : node.kanten) {
+        geprueft[static_cast<std::size_t>(e.id)] = 1;
+        heap.push_back(CEdge{e.id, e.id, e.kosten});
+        std::push_heap(heap.begin(), heap.end(), groesser);
+    }
+    while (!heap.empty()) {
+        std::pop_heap(heap.begin(), heap.end(), groesser);
+        const CEdge t = heap.back();
+        heap.pop_back();
+        node.raenge[static_cast<std::size_t>(t.first)] = rang++;
+        for (const NavNetzJk2::Kante& e : n.knoten[static_cast<std::size_t>(t.first)].kanten) {
+            if (geprueft[static_cast<std::size_t>(e.id)] != 0) { continue; }
+            heap.push_back(CEdge{e.id, t.second, t.cost + e.kosten});
+            std::push_heap(heap.begin(), heap.end(), groesser);
+            geprueft[static_cast<std::size_t>(e.id)] = 1;
+        }
+    }
+}
+
+// Com_BlockChecksum (md4.c): MD4 nach RFC 1320.
+std::array<std::uint32_t, 4> md4(const std::string& daten) {
+    std::string m = daten;
+    const std::uint64_t bits = static_cast<std::uint64_t>(daten.size()) * 8U;
+    m.push_back(static_cast<char>(0x80));
+    while (m.size() % 64U != 56U) { m.push_back(static_cast<char>(0)); }
+    for (int i = 0; i < 8; ++i) { m.push_back(static_cast<char>((bits >> (8 * i)) & 0xffU)); }
+    std::uint32_t a = 0x67452301U;
+    std::uint32_t b = 0xefcdab89U;
+    std::uint32_t c = 0x98badcfeU;
+    std::uint32_t d = 0x10325476U;
+    const auto rol = [](std::uint32_t v, int s) { return (v << s) | (v >> (32 - s)); };
+    const auto f = [](std::uint32_t u, std::uint32_t v, std::uint32_t w) { return (u & v) | (~u & w); };
+    const auto g = [](std::uint32_t u, std::uint32_t v, std::uint32_t w) { return (u & v) | (u & w) | (v & w); };
+    const auto h = [](std::uint32_t u, std::uint32_t v, std::uint32_t w) { return u ^ v ^ w; };
+    static const int r1[4] = {3, 7, 11, 19};
+    static const int r2[4] = {3, 5, 9, 13};
+    static const int r3[4] = {3, 9, 11, 15};
+    static const int i2[16] = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
+    static const int i3[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+    for (std::size_t o = 0; o < m.size(); o += 64U) {
+        std::uint32_t x[16];
+        for (int i = 0; i < 16; ++i) {
+            const auto* p = reinterpret_cast<const unsigned char*>(m.data() + o + static_cast<std::size_t>(i) * 4U);
+            x[i] = static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8) |
+                   (static_cast<std::uint32_t>(p[2]) << 16) | (static_cast<std::uint32_t>(p[3]) << 24);
+        }
+        const std::uint32_t aa = a;
+        const std::uint32_t bb = b;
+        const std::uint32_t cc = c;
+        const std::uint32_t dd = d;
+        for (int k = 0; k < 16; ++k) {
+            const int s = r1[k % 4];
+            switch (k % 4) {
+                case 0: a = rol(a + f(b, c, d) + x[k], s); break;
+                case 1: d = rol(d + f(a, b, c) + x[k], s); break;
+                case 2: c = rol(c + f(d, a, b) + x[k], s); break;
+                default: b = rol(b + f(c, d, a) + x[k], s); break;
+            }
+        }
+        for (int k = 0; k < 16; ++k) {
+            const int s = r2[k % 4];
+            const std::uint32_t v = x[i2[k]] + 0x5a827999U;
+            switch (k % 4) {
+                case 0: a = rol(a + g(b, c, d) + v, s); break;
+                case 1: d = rol(d + g(a, b, c) + v, s); break;
+                case 2: c = rol(c + g(d, a, b) + v, s); break;
+                default: b = rol(b + g(c, d, a) + v, s); break;
+            }
+        }
+        for (int k = 0; k < 16; ++k) {
+            const int s = r3[k % 4];
+            const std::uint32_t v = x[i3[k]] + 0x6ed9eba1U;
+            switch (k % 4) {
+                case 0: a = rol(a + h(b, c, d) + v, s); break;
+                case 1: d = rol(d + h(a, b, c) + v, s); break;
+                case 2: c = rol(c + h(d, a, b) + v, s); break;
+                default: b = rol(b + h(c, d, a) + v, s); break;
+            }
+        }
+        a += aa;
+        b += bb;
+        c += cc;
+        d += dd;
+    }
+    return {a, b, c, d};
+}
+
+// SP_waypoint / SP_waypoint_small (codeJK2/game/g_nav.cpp:1251-1340) mit
+// NAV_StoreWaypoint, dann NAV_CalculatePaths (:1725-1829: HardConnect je
+// target..target4, CheckBlockedEdges) und CNavigator::CalculatePaths
+// (g_navigator.cpp:848-886). Gerechnet zur Zeit NAV_CheckCalcPaths
+// (START_TIME_NAV_CALC = 4 Bilder nach dem Start, g_main.cpp:704/1214-1237):
+// alle Entities gespawnt, START_OPEN-Tueren auf pos1, func_wall/func_usable
+// mit START_OFF ohne contents. Mit einer passenden maps/<karte>.nav gilt
+// stattdessen die Datei (g_main.cpp:690, CNavigator::Load).
+std::shared_ptr<NavNetzJk2> baueNavNetzJk2(const std::vector<MapEntity>& ents, const NavBauHilfe& h) {
+    std::vector<signed char> tuerFrei = jk2TuerFrei(ents);
+    if (!h.jk2Nav.empty() && h.jk2SummeDa) {
+        int summe = 0;
+        std::shared_ptr<NavNetzJk2> geladen = navJk2Laden(h.jk2Nav, summe);
+        if (geladen && summe == h.jk2KartenSumme) {
+            geladen->tuerFrei = std::move(tuerFrei);
+            // rc605: G_InitGame loescht die gescheiterten Kanten, die Load aus der
+            // Datei las (ClearAllFailedEdges, codeJK2/game/g_main.cpp:716-719, nur
+            // ein geladener Spielstand behaelt sie) - CheckBlockedEdges laeuft mit
+            // einer .nav nicht (nur in NAV_CalculatePaths, g_nav.cpp:1802).
+            geladen->fehl.clear();
+            return geladen;
+        }
+    }
+    auto netz = std::make_shared<NavNetzJk2>();
+    NavNetzJk2& n = *netz;
+    n.tuerFrei = std::move(tuerFrei);
+    const bool mitSpur = static_cast<bool>(h.spur);
+    const bool zeitgenau = mitSpur && static_cast<bool>(h.spurVersetzt) && static_cast<bool>(h.tuerStellungen);
+    std::vector<int> pinselEnts;
+    NavVersetzt startOffen;
+    std::vector<int> startAus;
+    if (zeitgenau) {
+        for (std::size_t i = 0; i < ents.size(); ++i) {
+            const std::string mdl = text(ents[i], "model");
+            if (mdl.size() < 2 || mdl[0] != '*') { continue; }
+            pinselEnts.push_back(static_cast<int>(i));
+            const std::string kl = klein(ents[i].classname);
+            if ((ganz(ents[i], "spawnflags") & 1) == 0) { continue; }
+            NavVec p1{};
+            NavVec p2{};
+            if (kl == "func_door" && h.tuerStellungen(static_cast<int>(i), p1, p2)) {
+                startOffen.push_back(NavVersetztEintrag{static_cast<int>(i), p1, true});
+            } else if (kl == "func_wall" || kl == "func_usable") {
+                startAus.push_back(static_cast<int>(i));
+            }
+        }
+    }
+    const auto spurBis = [&](int ich) -> NavSpurFn {
+        if (!zeitgenau) { return h.spur; }
+        NavVersetzt v;
+        for (const int b : pinselEnts) {
+            if (b > ich) { v.push_back(NavVersetztEintrag{b, {}, false}); }
+        }
+        for (const NavVersetztEintrag& o : startOffen) {
+            if (o.entity < ich) { v.push_back(o); }
+        }
+        for (const int w : startAus) {
+            if (w < ich) { v.push_back(NavVersetztEintrag{w, {}, false}); }
+        }
+        return [&h, v](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int ign, std::uint32_t m) {
+            return h.spurVersetzt(a, mi, ma, b, ign, m, v);
+        };
+    };
+    // G_CheckInSolid (codeJK2/game/g_utils.cpp:1075-1111), clipmask MASK_DEADSOLID
+    const auto imFesten = [&](NavVec& ort, const NavVec& mins, const NavVec& maxs, int ich) {
+        if (!mitSpur) { return false; }
+        NavVec m0 = mins;
+        m0[2] = 0.0F;
+        NavVec ende = ort;
+        ende[2] += mins[2];
+        const NavSpurFn spur = spurBis(ich);
+        NavSpur s = spur(ort, m0, maxs, ende, ich, kJk2MaskDeadSolid);
+        if (s.allsolid || s.startsolid) { return true; }
+        if (s.fraction < 1.0F) {
+            ort = s.endpos;
+            ort[2] -= mins[2];
+            ende = ort;
+            ende[2] += mins[2];
+            s = spur(ort, m0, maxs, ende, ich, kJk2MaskDeadSolid);
+            return s.allsolid || s.startsolid || s.fraction < 1.0F;
+        }
+        return false;
+    };
+    struct Gespeichert {
+        std::string name;
+        std::array<std::string, 4> ziele;
+        int id = 0;
+    };
+    std::vector<Gespeichert> liste;
+    for (std::size_t i = 0; i < ents.size(); ++i) {
+        const MapEntity& e = ents[i];
+        const std::string k = klein(e.classname);
+        const bool klein2 = k == "waypoint_small";
+        if ((k != "waypoint" && !klein2) || e.origin.empty()) { continue; }
+        NavVec ort{};
+        {
+            std::istringstream is(e.origin);
+            is >> ort[0] >> ort[1] >> ort[2];
+        }
+        const int sf = ganz(e, "spawnflags");
+        const int ich = static_cast<int>(i);
+        const float b = klein2 ? 2.0F : kDefaultMaxs0;
+        const NavVec mins{-b, -b, kDefaultMins2};
+        NavVec maxs{b, b, kDefaultMaxs2};
+        if ((sf & 1) == 0 && imFesten(ort, mins, maxs, ich)) {
+            maxs[2] = kCrouchMaxs2;
+            if (imFesten(ort, mins, maxs, ich)) { continue; }   // "Waypoint ... in solid!", G_FreeEntity
+        }
+        int radius = 2;
+        if (!klein2) {
+            // waypoint_getRadius / waypoint_testDirection (g_nav.cpp:1198-1240)
+            unsigned int minDist = static_cast<unsigned int>(kMaxRadiusCheck) + 1U;
+            if (mitSpur) {
+                const NavSpurFn spur = spurBis(ich);
+                const NavVec tmins{-kDefaultMaxs0, -kDefaultMaxs0, kDefaultMins2 + kStepSize};
+                const NavVec tmaxs{kDefaultMaxs0, kDefaultMaxs0, kDefaultMaxs2};
+                for (int y = 0; y < kYawIterations; ++y) {
+                    NavVec vorn{};
+                    NavVec rechts{};
+                    qAchsen((360.0F / static_cast<float>(kYawIterations)) * static_cast<float>(y), vorn, rechts);
+                    const auto md = static_cast<float>(minDist);
+                    const NavVec ziel{ort[0] + vorn[0] * md, ort[1] + vorn[1] * md, ort[2] + vorn[2] * md};
+                    const NavSpur s = spur(ort, tmins, tmaxs, ziel, kNavKeineEntity, kNavSolid | kNavMonsterClip | kNavBotClip);
+                    const auto dist = static_cast<unsigned int>(md * s.fraction);
+                    if (dist < minDist) { minDist = dist; }
+                }
+            }
+            radius = static_cast<int>(minDist);
+        }
+        NavNetzJk2::Knoten kn;
+        kn.punkt = ort;
+        kn.flags = sf;
+        kn.radius = radius;
+        n.knoten.push_back(std::move(kn));
+        Gespeichert g;
+        g.name = e.targetname;
+        g.ziele = {text(e, "target"), text(e, "target2"), text(e, "target3"), text(e, "target4")};
+        g.id = static_cast<int>(n.knoten.size()) - 1;
+        liste.push_back(std::move(g));
+    }
+    const NavSpurFn spaet = spurBis(static_cast<int>(ents.size()));
+    const NavVec wpMins{-16.0F, -16.0F, -24.0F + kStepSize};   // g_navigator.cpp:41-42
+    const NavVec wpMaxs{16.0F, 16.0F, 32.0F};
+    const std::uint32_t wpMaske = kNavSolid | kNavBotClip | kNavMonsterClip;
+    // NAV_GetStoredWaypoint (g_nav.cpp:1706-1723): der erste mit dem Namen
+    const auto gespeichert = [&liste](const std::string& name) {
+        if (name.empty()) { return -1; }
+        for (std::size_t i = 0; i < liste.size(); ++i) {
+            if (!liste[i].name.empty() && sameNameJk2(liste[i].name, name)) { return static_cast<int>(i); }
+        }
+        return -1;
+    };
+    for (const Gespeichert& g : liste) {
+        for (const std::string& z : g.ziele) {
+            const int t = gespeichert(z);
+            if (t < 0) { continue; }
+            // CNavigator::HardConnect (g_navigator.cpp:1083-1114)
+            const int b2 = liste[static_cast<std::size_t>(t)].id;
+            const NavVec p1 = n.knoten[static_cast<std::size_t>(g.id)].punkt;
+            const NavVec p2 = n.knoten[static_cast<std::size_t>(b2)].punkt;
+            const NavSpur s = spurDurch(spaet, p1, wpMins, wpMaxs, p2, kNavKeineEntity, wpMaske);
+            const int kosten = static_cast<int>(abstand(p1, p2));
+            const unsigned char flags = (s.fraction != 1.0F || s.startsolid || s.allsolid) ? 1U : 0U;
+            jk2KanteDazu(n.knoten[static_cast<std::size_t>(g.id)], b2, kosten, flags);
+            jk2KanteDazu(n.knoten[static_cast<std::size_t>(b2)], g.id, kosten, flags);
+        }
+    }
+    // CheckBlockedEdges (g_navigator.cpp:1006-1078) - AddFailedEdge vor
+    // CalculatePaths aendert keine Kosten.
+    for (std::size_t a = 0; a < n.knoten.size(); ++a) {
+        for (const NavNetzJk2::Kante& e : n.knoten[a].kanten) {
+            if ((e.flags & 1U) == 0U) { continue; }
+            const NavSpur s = spurDurch(spaet, n.knoten[a].punkt, wpMins, wpMaxs, n.knoten[static_cast<std::size_t>(e.id)].punkt,
+                                        kNavKeineEntity, wpMaske);
+            if (s.entity < 0 || s.entity >= static_cast<int>(ents.size()) || !(s.fraction < 1.0F || s.startsolid || s.allsolid)) {
+                continue;
+            }
+            const MapEntity& x = ents[static_cast<std::size_t>(s.entity)];
+            const std::string kl = klein(x.classname);
+            bool fehl = false;
+            if (kl == "func_door") {
+                fehl = n.tuerFrei[static_cast<std::size_t>(s.entity)] == 0;
+            } else if (kl == "func_breakable" || kl == "func_glass" || kl == "misc_model_breakable" || kl == "misc_maglock") {
+                fehl = true;   // G_EntIsBreakable (g_breakable.cpp:1107-1133)
+            } else if (kl == "func_usable" && (ganz(x, "spawnflags") & 8) == 0 && !x.targetname.empty()) {
+                fehl = true;   // G_EntIsRemovableUsable (g_usable.cpp:83-94)
+            }
+            if (!fehl) { continue; }
+            const int ia = static_cast<int>(a);
+            if (n.kanteFehl(ia, e.id) >= 0) { continue; }
+            if (n.fehl.size() < 32U) { n.fehl.push_back(NavNetzJk2::Fehl{ia, e.id, 1023}); }
+        }
+    }
+    for (NavNetzJk2::Knoten& k : n.knoten) { k.raenge.assign(n.knoten.size(), -1); }
+    for (std::size_t i = 0; i < n.knoten.size(); ++i) { jk2Pfad(n, static_cast<int>(i)); }
+    return netz;
+}
+}  // namespace
+
+// --- rc604 fix604 (JK2 Stufe 3) ------------------------------------------------
+// CNavigator::EdgeFailed (codeJK2/game/g_navigator.cpp:1837-1884): erst die
+// Eintraege mit startID == a, dann die mit startID == b.
+int NavNetzJk2::kanteFehl(int a, int b) const {
+    for (std::size_t j = 0; j < fehl.size(); ++j) {
+        if (fehl[j].a == a && fehl[j].b == b) { return static_cast<int>(j); }
+    }
+    for (std::size_t j = 0; j < fehl.size(); ++j) {
+        if (fehl[j].a == b && fehl[j].b == a) { return static_cast<int>(j); }
+    }
+    return -1;
+}
+
+int navBlockPruefsumme(const std::string& bytes) {
+    // Com_BlockChecksum (md4.c): digest[0] ^ digest[1] ^ digest[2] ^ digest[3]
+    const std::array<std::uint32_t, 4> d = md4(bytes);
+    const std::uint32_t v = d[0] ^ d[1] ^ d[2] ^ d[3];
+    int r = 0;
+    std::memcpy(&r, &v, sizeof r);
+    return r;
+}
+
+std::shared_ptr<NavNetzJk2> navJk2Laden(const std::string& bytes, int& summe) {
+    // CNavigator::Load / CNode::Load (g_navigator.cpp:398-446, 567-628), wie
+    // Raven sie unter Win32 schrieb: long/int 4 Byte, edge_t 12 Byte (int ID,
+    // int cost, unsigned char flags, 3 Fuellbytes), failedEdges 32 x 16 Byte.
+    std::size_t pos = 0;
+    const auto lies = [&bytes, &pos](void* ziel, std::size_t n) {
+        if (pos + n > bytes.size()) { return false; }
+        std::memcpy(ziel, bytes.data() + pos, n);
+        pos += n;
+        return true;
+    };
+    const auto int4 = [&lies](int& v) { return lies(&v, 4); };
+    constexpr int kNavKopf = ('J' << 24) | ('N' << 16) | ('V' << 8) | '5';    // NAV_HEADER_ID (g_navigator.h:43)
+    constexpr int kKnotenKopf = ('N' << 24) | ('O' << 16) | ('D' << 8) | 'E';  // NODE_HEADER_ID (:44)
+    int kopf = 0;
+    int zahl = 0;
+    if (!int4(kopf) || kopf != kNavKopf || !int4(summe) || !int4(zahl) || zahl < 0 || zahl > 4096) { return nullptr; }
+    auto netz = std::make_shared<NavNetzJk2>();
+    netz->ausDatei = true;
+    netz->knoten.resize(static_cast<std::size_t>(zahl));
+    for (int i = 0; i < zahl; ++i) {
+        NavNetzJk2::Knoten& k = netz->knoten[static_cast<std::size_t>(i)];
+        int nk = 0;
+        int id = 0;
+        int kanten = 0;
+        int raenge = 0;
+        if (!int4(nk) || nk != kKnotenKopf || !lies(k.punkt.data(), 12) || !int4(k.flags) || !int4(id) || !int4(k.radius) ||
+            !int4(kanten) || kanten < 0 || kanten > 64) {
+            return nullptr;
+        }
+        for (int e = 0; e < kanten; ++e) {
+            unsigned char roh[12];
+            if (!lies(roh, 12)) { return nullptr; }
+            NavNetzJk2::Kante kante;
+            std::memcpy(&kante.id, roh, 4);
+            std::memcpy(&kante.kosten, roh + 4, 4);
+            kante.flags = roh[8];
+            if (kante.id < 0 || kante.id >= zahl) { return nullptr; }
+            k.kanten.push_back(kante);
+        }
+        if (!int4(raenge) || raenge != zahl) { return nullptr; }
+        k.raenge.resize(static_cast<std::size_t>(raenge));
+        for (int r = 0; r < raenge; ++r) {
+            if (!int4(k.raenge[static_cast<std::size_t>(r)])) { return nullptr; }
+        }
+    }
+    for (int j = 0; j < 32; ++j) {
+        NavNetzJk2::Fehl f;
+        int pruefzeit = 0;
+        if (!int4(f.a) || !int4(f.b) || !int4(pruefzeit) || !int4(f.entity)) { return nullptr; }
+        if (f.a < 0 || f.a >= zahl || f.b < 0 || f.b >= zahl) { continue; }   // WAYPOINT_NONE: frei
+        netz->fehl.push_back(f);
     }
     return netz;
 }
@@ -1305,13 +1772,14 @@ std::vector<int> aStern(const NavNetz& n, int start, int ende, const Akteur& akt
 }
 }  // namespace
 
-bool navAStar(const NavNetz& n, int a, int b, std::vector<int>* pfad) {
+bool navAStar(const NavNetz& n, int a, int b, std::vector<int>* pfad, bool springen) {
     if (a <= 0 || b <= 0 || a >= static_cast<int>(n.knoten.size()) || b >= static_cast<int>(n.knoten.size())) {
         return false;
     }
     Akteur akt;
     akt.da = true;
     akt.groesse = 1;
+    akt.springen = springen;   // rc605: is_valid fuer Springer (g_navigator.cpp:551-556 MD)
     if (static_cast<int>(n.region.size()) > 0 && n.regionZahl > 0 && !gleicheRegionKante(n, a, b, akt)) { return false; }
     std::vector<int> r = aStern(n, a, b, akt);
     if (r.empty()) { return false; }
@@ -1475,6 +1943,7 @@ struct Lauf {
         mins = {-w.halbBreite, -w.halbBreite, kDefaultMins2};
         maxs = {w.halbBreite, w.halbBreite, w.hoeheOben};
         akt.da = true;
+        akt.springen = w.kannSpringen;   // rc605
         // NAV::ClassifyEntSize (g_navigator.cpp:3654)
         akt.groesse = (w.halbBreite > kScMediumRadius || w.hoeheOben > kScMediumHeight) ? 2 : 1;
     }
@@ -1947,9 +2416,413 @@ struct Lauf {
         pfadLoeschen();
         stueck = 0;
         seek(w.ziel, w.zielRadius * 4.0F);   // Persue: tempGoal hat keinen client
-        (void)ausweichen();
+        // rc605: "if (avoidResult != 0.0f) Blocked(actor, target)"
+        // (g_navigator.cpp:4462-4468 MD) - target ist das tempGoal.
+        if (ausweichen() != 0.0F) { blockiertZiel(); }
         return true;
     }
+    // --- rc605: STEER::Blocked (g_navigator.cpp:4563-4585 MD) ----------------
+    // suser.mBlocked gilt fuer dieses Denkbild (STEER::Activate loescht es,
+    // 3981); STEER::DeActivate macht daraus NPCAI_BLOCKED.
+    bool blockJetzt = false;
+    bool blockJetztEnt = false;
+    NavVec blockJetztOrt{};
+    void blockiertZiel() {
+        blockJetzt = true;
+        blockJetztEnt = true;   // mBlockedTgtEntity = target->s.number (das tempGoal)
+        blockJetztOrt = w.ziel;
+    }
+    void blockiertBei(const NavVec& ort) {
+        blockJetzt = true;
+        blockJetztEnt = false;   // ENTITYNUM_NONE
+        blockJetztOrt = ort;
+    }
+    // NAV::NextPosition(actor): der naechste Punkt des Pfads.
+    [[nodiscard]] NavVec naechsterPfadOrt() const {
+        return z.pfadGroesse > 0 ? pfadPunkt(z.pfadGroesse - 1).punkt : w.ziel;
+    }
+    // STEER::HasBeenBlockedFor (g_navigator.cpp:4588-4592 MD)
+    [[nodiscard]] bool blockiertFuer(int dauer) const {
+        return z.sprung.blockiert && jetzt - z.sprung.blockiertSeit > dauer;
+    }
+
+    // --- rc605: NPC-Spruenge (NPC_move.cpp MD; OpenJK gleich bis auf die
+    // Animation, code/game/NPC_move.cpp:59-616) ----------------------------------
+    bool sprungJetzt = false;     // NPC_Jump gelang in diesem Denkbild
+    NavVec sprungTempo{};
+    // NPC_CanTryJump (NPC_move.cpp:327-342): Knockdown und Rolle kommen in
+    // einem Weg nicht vor. rc605: SCF_NO_ACROBATICS (Zeile 330, "If Can't Jump
+    // At All").
+    [[nodiscard]] bool sprungMoeglich() const {
+        return w.kannSpringen && !w.keineAkrobatik && !(jetzt < z.sprung.zurueckBis) && !(jetzt < z.sprung.naechsterAb) && !z.sprung.laeuft &&
+               z.amBoden;
+    }
+    // NPC_TryJump(const vec3_t& pos, 0, 0) (NPC_move.cpp:344-381). Q_irand(1000,
+    // 2000) fuer jumpNextCheckTime: die Mitte (1500) - nur ein zweiter Versuch
+    // haengt daran.
+    bool versucheSprungPos(const NavVec& pos) {
+        if (!sprungMoeglich()) { return false; }
+        z.sprung.naechsterAb = jetzt + 1500;
+        z.sprung.ziel = pos;
+        // "Can't Try To Jump At A Point In The Air"
+        NavVec unten = pos;
+        unten[2] += mins[2] * 3.0F;
+        const NavSpur boden = spurDurch(spurF, z.sprung.ziel, NavVec{0, 0, 0}, NavVec{0, 0, 0}, unten, kNavKeineEntity, pmMaske());
+        if (boden.fraction >= 1.0F) { return false; }
+        // jumpTarget = 0; CLASS_ROCKETTROOPER (1200/-1000) fliegt - behaved
+        // rechnet keine Flieger (LaufWerte::fallen).
+        z.sprung.maxXY = 750.0F;
+        z.sprung.maxZ = -450.0F;
+        z.sprung.laeuft = false;
+        z.sprung.zurueckBis = 0;
+        return versucheSprung(false);
+    }
+    // NPC_TryJump(gentity_t* goal, 0, 0) (NPC_move.cpp:383-411) mit dem tempGoal
+    // (blockedTargetEntity) - es hat keinen client. Q_irand(1000, 3000): 2000.
+    bool versucheSprungZiel() {
+        if (!sprungMoeglich()) { return false; }
+        z.sprung.naechsterAb = jetzt + 2000;
+        z.sprung.ziel = w.ziel;
+        z.sprung.maxXY = 750.0F;
+        z.sprung.maxZ = -400.0F;
+        z.sprung.laeuft = false;
+        z.sprung.zurueckBis = 0;
+        return versucheSprung(true);
+    }
+    // NPC_TryJump() (NPC_move.cpp:536-718)
+    bool versucheSprung(bool mitZiel) {
+        NavVec ri = minus(z.sprung.ziel, z.ort);
+        ri[2] = 0.0F;
+        const float abstandXY = vektorNorm(ri);
+        const float abstandZ = z.sprung.ziel[2] - z.ort[2];
+        if (abstandXY > z.sprung.maxXY || abstandZ < z.sprung.maxZ) { return false; }
+        // "Test To See If There Is A Wall Directly In Front Of Actor, If So,
+        // Backup Some": NPC_JumpBackingUp laeuft fuer BS_CINEMATIC nicht
+        // (OpenJK NPC_RunBehavior prueft BS_CINEMATIC zuerst, NPC.cpp:1855-1867;
+        // Movie Duels ruft es gar nicht mehr, NPC.cpp:1710-1745) - die Figur
+        // wartet nur jumpBackupTime ab.
+        if (timerDone(z.sprung.zurueckSperreBis, jetzt) != 0) {
+            const NavVec vor = plus(z.ort, mal(ri, 34.0F));   // NPC_JUMP_PREP_BACKUP_DIST
+            const NavSpur tr = spurDurch(spurF, z.ort, NavVec{0, 0, 0}, NavVec{0, 0, 0}, vor, kNavKeineEntity, pmMaske());
+            if (tr.fraction < 1.0F || tr.allsolid || tr.startsolid) {
+                z.sprung.zurueckBis = jetzt + 1000;
+                z.sprung.zurueckSperreBis = jetzt + 5000;
+                return true;
+            }
+        }
+        const bool imSprungBereich = std::fabs(abstandZ) > 0.0F || abstandXY > 128.0F;
+        if (!imSprungBereich) { return false; }
+        // "If There Is Any Chance That This Jump Will Land On An Enemy, Try 8
+        // Different Traces Around The Target": minSafeRadius = NPC->maxs[0] *
+        // 1.5 + jumpTarget->maxs[0] * 1.5 - das tempGoal traegt als maxs die
+        // mins der Figur (NPC_SetMoveGoal, g_nav.cpp:66-68 MD), also 0: der
+        // Abstand ist nie kleiner, die acht Versuche kommen nicht vor.
+        if (mitZiel) {
+            const float r = maxs[0] * 1.5F + mins[0] * 1.5F;
+            (void)(abstand2(z.sprung.ziel, w.ziel) < r * r);
+        }
+        if (sprungBahn(z.sprung.ziel)) {
+            // NPC_JumpAnimation/NPC_JumpSound zeigt die Szene (LaufTakt::sprung).
+            // rc605 FU4: NPC_JumpAnimation = NPC_SetAnim(SETANIM_BOTH, jumpAnim,
+            // SETANIM_FLAG_OVERRIDE | SETANIM_FLAG_HOLD) (NPC_move.cpp:506-511 MD,
+            // 343-368 OpenJK): beide Timer auf die Laenge (PM_SetAnimFinal,
+            // bg_panimate.cpp:6835-6838 MD).
+            animSetzen(kSaSprung, true, w.sprungAnimMs);
+            z.sprung.zStart = z.ort[2];
+            z.sprung.springt = true;   // PMF_JUMPING
+            ucmdVor = 0;
+            z.sprung.laeuft = true;    // jumpTime = 1
+            zBewegung = {0.0F, 0.0F, 0.0F};
+            sprungJetzt = true;
+            sprungTempo = z.tempoVek;
+            return true;
+        }
+        return false;
+    }
+    // NPC_Jump (NPC_move.cpp:109-322): bis zu 10 Bahnen, jede in Stuecken von
+    // 250 ms mit dem Kasten der Figur gespurt (clipmask | CONTENTS_BOTCLIP).
+    bool sprungBahn(const NavVec& ziel) {
+        constexpr float kMinShot = 30.0F;
+        constexpr float kMaxShot = 500.0F;
+        constexpr int kMaxHits = 10;
+        constexpr int kSchritt = 250;
+        float besterTreffer = 16777216.0F;   // Q3_INFINITE
+        bool untenZu = false;
+        bool obenZu = false;
+        int treffer = 0;
+        int obenVersuche = 0;
+        int untenVersuche = 0;
+        NavVec ri = minus(ziel, z.ort);
+        const float abstandZiel = vektorNorm(ri);
+        const float ersteGeschw = std::clamp(abstandZiel, kMinShot, kMaxShot);
+        float geschw = ersteGeschw;
+        NavVec schuss{};
+        const std::uint32_t maske = pmMaske() | kNavBotClip;
+        while (treffer < kMaxHits) {
+            schuss = mal(ri, geschw);
+            float flugZeit = abstandZiel / geschw;
+            // "shotVel[2] += travelTime * 0.5 * NPC->client->ps.gravity" (double)
+            schuss[2] = static_cast<float>(static_cast<double>(schuss[2]) +
+                                           static_cast<double>(flugZeit) * 0.5 * static_cast<double>(w.schwerkraft));
+            NavVec letzter = z.ort;
+            bool blockiert = false;
+            flugZeit *= 1000.0F;
+            const float ende = std::floor(flugZeit);
+            for (int t = kSchritt; static_cast<float>(t) < ende + static_cast<float>(kSchritt); t += kSchritt) {
+                if (static_cast<float>(t) > flugZeit) { t = static_cast<int>(ende); }
+                // EvaluateTrajectory TR_GRAVITY mit g_gravity (bg_misc.cpp:323-327)
+                const float dt = static_cast<float>(t) * 0.001F;
+                NavVec test{z.ort[0] + dt * schuss[0], z.ort[1] + dt * schuss[1], z.ort[2] + dt * schuss[2]};
+                test[2] -= 0.5F * w.weltSchwerkraft * dt * dt;
+                NavSpur tr = spurDurch(spurF, letzter, mins, maxs, test, kNavKeineEntity, maske);
+                if (tr.allsolid || tr.startsolid) { return false; }   // "you're hosed, dude"
+                if (tr.fraction < 1.0F) {
+                    // trace.entityNum == goalEntNum: das tempGoal (ohne
+                    // contents) oder die Figur selbst - trifft die Spur nie.
+                    if ((tr.contents & kNavBotClip) != 0U) {
+                        blockiert = true;
+                        break;
+                    }
+                    if (tr.normal[2] > 0.7F && abstand2(tr.endpos, ziel) < 4096.0F) { break; }   // "close enough!"
+                    const float d = abstand2(tr.endpos, ziel);
+                    if (d < besterTreffer) { besterTreffer = d; }
+                    blockiert = true;
+                    break;
+                }
+                if (static_cast<float>(t) == ende) {
+                    // "hmm, make sure we'll land on the ground..."
+                    NavVec unten = tr.endpos;
+                    unten[2] -= 128.0F;
+                    tr = spurDurch(spurF, tr.endpos, mins, maxs, unten, kNavKeineEntity, pmMaske());
+                    if (tr.fraction >= 1.0F) { blockiert = true; }   // "would fall too far"
+                    break;
+                }
+                letzter = test;
+            }
+            if (!blockiert) { break; }   // "made it!"
+            ++treffer;
+            if ((treffer % 2) != 0 && !untenZu) {
+                ++untenVersuche;
+                geschw = ersteGeschw - static_cast<float>(untenVersuche) * 50.0F;
+            } else if (!obenZu) {
+                ++obenVersuche;
+                geschw = ersteGeschw + static_cast<float>(obenVersuche) * 50.0F;
+            } else {
+                treffer = kMaxHits;
+                break;
+            }
+            if (geschw > kMaxShot) {
+                geschw = kMaxShot;
+                obenZu = true;
+            } else if (geschw < kMinShot) {
+                geschw = kMinShot;
+                untenZu = true;
+            }
+        }
+        if (treffer >= kMaxHits) { return false; }
+        z.tempoVek = schuss;
+        return true;
+    }
+    // --- rc605: NPC_BSJump (NPC_behavior.cpp:717-962 MD; OpenJK gleich ohne
+    // die Animationsstile) ------------------------------------------------------
+    // jumpState: JS_WAITING 0, JS_FACING 1, JS_CROUCHING 2, JS_JUMPING 3,
+    // JS_LANDING 4. Ruft selbst NPC_UpdateAngles (drehen). Gibt true zurueck,
+    // wenn UpdateGoal das Ziel erreicht sieht (NPC_ReachedGoal -> TID_MOVE_NAV).
+    void bsAnimSetzen(int a) {
+        z.sprung.bsAnim = a;
+        z.sprung.bsAnimAb = jetzt;
+        // rc605 FU4: dieselben Aufrufe auf der Sprungkette - BOTH_CROUCH1 nur
+        // SETANIM_LEGS (NPC_behavior.cpp:750 MD), BOTH_INAIR1 SETANIM_BOTH ohne
+        // HOLD (899-911), BOTH_LAND1 SETANIM_BOTH mit HOLD (859-884); den Timer
+        // der Beine stellt bsSprung selbst (beinTimer).
+        if (a == 1) {
+            animSetzen(kSaCrouch1, false, -1);
+        } else if (a == 2) {
+            animSetzen(kSaInAir1, true, 0);
+        } else if (a == 3) {
+            animSetzen(kSaLand1, true, w.landMs);
+        } else {
+            z.sprung.beinAnim = kSaKeine;   // "danach waehlt PM_Footsteps"
+            z.sprung.beinAnimAb = jetzt;
+        }
+    }
+    // rc605 FU4: PM_SetAnim auf der Sprungkette (PM_SetAnimFinal, bg_panimate.cpp:
+    // 6790-6900 MD): dieselbe Animation beginnt ohne SETANIM_FLAG_RESTART nicht
+    // neu; HOLD stellt den Timer auf (numFrames - 1) * |frameLerp| (holdMs),
+    // ohne HOLD auf 0 (holdMs 0). holdMs < 0: den Timer der Beine nicht anfassen.
+    // beide: SETANIM_BOTH, der Oberkoerper zeigt dieselbe Animation (0 = folgt).
+    void animSetzen(int code, bool beide, int holdMs) {
+        LaufZustand::Sprung& s = z.sprung;
+        if (s.beinAnim != code) {
+            s.beinAnim = code;
+            s.beinAnimAb = jetzt;
+        }
+        if (holdMs >= 0) { s.beinTimer = holdMs; }
+        if (beide) {
+            if (holdMs > 0 && code == kSaSprung) {
+                // Ein eigener Oberkoerper, solange PM_JumpForDir die Beine aendern kann.
+                if (s.torsoAnim != code) { s.torsoAnimAb = jetzt; }
+                s.torsoAnim = code;
+            } else {
+                s.torsoAnim = kSaKeine;
+            }
+            s.torsoTimer = std::max(0, holdMs);
+        }
+    }
+    // rc605 FU4: PM_ForceJumpingAnim (bg_pmove.cpp:10161-10200 MD) fuer die
+    // Animationen der Kette: BOTH_JUMP1, BOTH_INAIR1, BOTH_FORCEJUMP1 - nicht die
+    // Flips (BOTH_FLIP_F, BOTH_ALORA_FLIP_*).
+    [[nodiscard]] bool kraftSprungAnim(int code) const {
+        return code == kSaJump1 || code == kSaInAir1 || (code == kSaSprung && w.sprungAnimArt != 1);
+    }
+    // rc605 FU4: nach den Bewegungen des Pmove PM_Footsteps (bg_pmove.cpp:
+    // 34374-34378 MD) und PM_TorsoAnimation (34391-34395). PM_Footsteps laesst
+    // Beine in der Luft stehen ("airborne leaves position in cycle intact"); am
+    // Boden spielt seine Stand-/Laufanimation ohne OVERRIDE, sobald der Timer
+    // der Beine abgelaufen ist (PM_SetAnimFinal: !legsAnimTimer). Im Stand von
+    // BS_JUMP (leerer ucmd) ist das BOTH_STAND1, sonst waehlt die Szene den Gang.
+    // PM_TorsoAnimation: mit abgelaufenem Timer folgt der Oberkoerper den Beinen
+    // (PM_SetAnim(pm, SETANIM_TORSO, pm->ps->legsAnim, SETANIM_FLAG_NORMAL) fuer
+    // PM_JumpingAnim(legsAnim), bg_panimate.cpp:10445-10449, 10492-10496 MD).
+    void footstepsTorso() {
+        LaufZustand::Sprung& s = z.sprung;
+        if (z.amBoden && s.beinAnim != kSaKeine && s.beinTimer <= 0) {
+            const int neu = (w.bsJump && ucmdVor == 0 && ucmdSeit == 0) ? kSaStand1 : kSaKeine;
+            if (s.beinAnim != neu) {
+                s.beinAnim = neu;
+                s.beinAnimAb = jetzt;
+            }
+        }
+        if (s.torsoAnim != kSaKeine && s.torsoTimer <= 0) {
+            s.torsoAnim = kSaKeine;
+            s.torsoAnimAb = jetzt;
+        }
+    }
+    // rc605 FU4: der Landeteil von PM_CrashLand (bg_pmove.cpp:5835-6125 MD;
+    // OpenJK 3967 ff. gleich, ohne die Animationsstile) nach einem Absprung ueber
+    // den "kickoff"-Zweig: jumpZStart blieb 0 (nur der Uebergang in
+    // PM_GroundTraceMissed setzt es, 7395-7397), also delta =
+    // PM_CrashLandDelta(previous_velocity) = |vz| / 10 (5018-5037, waterlevel 0).
+    // Kein PMF_DUCKED (upmove 0), also keine Rolle; FP_LEVITATION ist aktiv,
+    // solange NPC_TryJump springt (forcePowersActive, NPC_move.cpp:707 MD).
+    void landeAnim() {
+        LaufZustand::Sprung& s = z.sprung;
+        if (!s.abgehoben) { return; }
+        s.abgehoben = false;
+        const float delta = std::fabs(vorherTempo[2]) / 10.0F;
+        if (delta < 1.0F) { return; }   // "delta < 1": nur AddSoundEvent
+        const bool schweben = s.laeuft;   // forcePowersActive & (1 << FP_LEVITATION)
+        if (!(delta > 10.0F || schweben)) { return; }   // PMF_BACKWARDS_JUMP kommt nicht vor
+        // PM_GetLandingAnim (5039-5420 MD / 3588 ff. OpenJK): BOTH_FORCEJUMP1 ->
+        // BOTH_FORCELAND1, BOTH_JUMP1/BOTH_INAIR1 -> BOTH_LAND1, alles andere
+        // (die Flips, BOTH_CROUCH1) ueber "default" -> BOTH_LAND1; jedes Mal
+        // "stick landings some": velocity x/y halb (g_allowBunnyhopping 0,
+        // g_main.cpp:857 MD; OpenJK ohne Cvar).
+        const bool kraft = s.beinAnim == kSaSprung && w.sprungAnimArt == 0;
+        const int anim = kraft ? kSaForceLand1 : kSaLand1;
+        const int halten = kraft ? w.forceLandMs : w.landMs;
+        z.tempoVek[0] *= 0.5F;
+        z.tempoVek[1] *= 0.5F;
+        const int torso = s.torsoAnim == kSaKeine ? s.beinAnim : s.torsoAnim;
+        // "PM_FlippingAnim(torsoAnim) ... interrupt these": torsoAnimTimer = 0
+        if (torso == kSaSprung && w.sprungAnimArt == 1) { s.torsoTimer = 0; }
+        if (kraftSprungAnim(s.beinAnim) && torso == s.beinAnim) {
+            animSetzen(anim, true, halten);   // SETANIM_BOTH, OVERRIDE | HOLD
+        } else {
+            animSetzen(anim, false, halten);  // SETANIM_LEGS, OVERRIDE | HOLD
+        }
+    }
+
+    bool bsSprung() {
+        LaufZustand::Sprung& s = z.sprung;
+        if (s.bsZustand != 3 && s.bsZustand != 4) {
+            const NavVec d = minus(w.ziel, z.ort);
+            z.wunschGier = winkel360(gierVon(d));   // vectoangles(dir)[YAW]
+        }
+        drehen();
+        // yaw_error = AngleDelta(viewangles[YAW], desiredYaw) - mit Vorzeichen
+        const float fehler = winkelDelta(z.gier, z.wunschGier);
+        switch (s.bsZustand) {
+        case 1:   // JS_FACING
+            if (fehler < kMinAngleErr) {
+                bsAnimSetzen(1);   // NPC_SetAnim(SETANIM_LEGS, BOTH_CROUCH1, OVERRIDE | HOLD)
+                s.beinTimer = w.hockeMs;
+                s.bsZustand = 2;
+            }
+            break;
+        case 2: {   // JS_CROUCHING
+            if (s.beinTimer > 0) { return false; }
+            NavVec p1 = z.ort;
+            NavVec p2 = w.ziel;
+            if (z.ort[2] < w.ziel[2]) {
+                p1 = w.ziel;
+                p2 = z.ort;
+            }
+            NavVec dir = minus(p2, p1);
+            dir[2] = 0.0F;
+            float xy = vektorNorm(dir);
+            float hz = p1[2] - p2[2];
+            constexpr float kApexHoehe = 200.0F / 2.0F;   // APEX_HEIGHT / 2
+            hz = std::sqrt(kApexHoehe + hz) - std::sqrt(kApexHoehe);
+            if (xy > 0.0F) {
+                xy -= hz;
+                xy *= 0.5F;
+            }
+            NavVec apex = plus(p1, mal(dir, xy));
+            apex[2] += kApexHoehe;
+            const float hoehe = apex[2] - z.ort[2];
+            if (w.schwerkraft <= 0.0F || hoehe <= 0.0F) { return false; }
+            const auto zeit = static_cast<float>(std::sqrt(static_cast<double>(hoehe) / (0.5 * static_cast<double>(w.schwerkraft))));
+            if (zeit == 0.0F) { return false; }
+            NavVec v = minus(apex, z.ort);
+            v[2] = 0.0F;
+            const float weit = vektorNorm(v);
+            v = mal(v, weit / zeit);
+            v[2] = zeit * w.schwerkraft;
+            z.tempoVek = v;
+            s.bsZustand = 3;
+            sprungJetzt = true;
+            sprungTempo = v;
+            break;
+        }
+        case 3:   // JS_JUMPING
+            if (z.amBoden) {
+                z.tempoVek = {0.0F, 0.0F, 0.0F};
+                bsAnimSetzen(3);   // BOTH_LAND1, OVERRIDE | HOLD
+                s.beinTimer = w.landMs;
+                s.bsZustand = 4;
+            } else if (s.beinTimer > 0) {
+            } else if (s.bsAnim != 2) {
+                bsAnimSetzen(2);   // BOTH_INAIR1, OVERRIDE (dieselbe Animation beginnt nicht neu)
+            }
+            break;
+        case 4:   // JS_LANDING
+            if (s.beinTimer > 0) { return false; }
+            s.bsZustand = 0;
+            bsAnimSetzen(0);   // danach waehlt PM_Footsteps
+            // UpdateGoal: erreicht -> NPC_ReachedGoal (TID_MOVE_NAV fertig);
+            // sonst bleibt TID_MOVE_NAV offen und sie springt noch einmal.
+            return erreicht(w.ziel, w.zielRadius);
+        default:   // JS_WAITING
+            s.bsZustand = 1;
+            break;
+        }
+        return false;
+    }
+
+    // NPC_Jumping (NPC_move.cpp:719-743): in der Luft schaut sie zum Ziel
+    // (NPC_FacePosition, von Ursprung zu Ursprung wie NPC_FaceEntity unten).
+    bool springtNoch() {
+        if (!z.sprung.laeuft) { return false; }
+        if (!z.sprung.springt) {   // PMF_TRIGGER_PUSHED kommt in einem Weg nicht vor
+            z.sprung.laeuft = false;   // "landed"
+            return false;
+        }
+        const NavVec d = minus(z.sprung.ziel, z.ort);
+        if (d[0] != 0.0F || d[1] != 0.0F) { z.wunschGier = winkel360(gierVon(d)); }
+        return true;
+    }
+
     // STEER::Path (g_navigator.cpp:4931)
     float steerPfad() {
         if (!hatPfad(0)) { return 0.0F; }
@@ -1957,11 +2830,10 @@ struct Lauf {
         const int cur = figurKnoten(false, 0);
         const int e = cur > 0 ? netz->kanteZwischen(cur, next.knoten) : -cur;
         const bool springen = e > 0 && kante(e).hat(NavKante::Springen);
-        if (springen) {
-            // NPC_TryJump rechnet behaved nicht: wie ein misslungener Sprung.
-            stop();
-            return 0.0F;
-        }
+        // rc605: "Start Jumping If Next Point Is A Jump" (g_navigator.cpp:
+        // 4963-4972 MD): gelingt NPC_TryJump(NextPosition), ist das Stueck
+        // getan; sonst geht sie auf den Punkt zu wie sonst.
+        if (springen && versucheSprungPos(next.punkt)) { return 1.0F; }
         stueck = next.knoten;
         return seek(next.punkt, next.abbremsRadius);
     }
@@ -1969,14 +2841,24 @@ struct Lauf {
     bool navHin() {
         int zn = zielKnoten(true);
         if (zn == 0) { zn = z.zielLetzterWegpunkt; }
-        if (zn == 0) { return false; }
+        if (zn == 0) {
+            blockiertZiel();   // rc605: "No Waypoint Near" -> STEER::Blocked(actor, target)
+            return false;
+        }
         if (zn < 0) { zn = kante(-zn).a; }   // Q_irand(0,1): fest mNodeA
         bool hat = hatPfad(0);
         if (hat) { hat = pfadAktualisieren(zn); }
         if (!hat) { hat = pfadFinden(zn); }
         if (hat) {
             hat = steerPfad() != 0.0F;
-            if (hat) { (void)ausweichen(); }
+            if (hat) {
+                // rc605: "Have A Path, Currently Blocked By Something"
+                if (ausweichen() != 0.0F) { blockiertBei(naechsterPfadOrt()); }
+            } else {
+                blockiertZiel();
+            }
+        } else {
+            blockiertZiel();   // "Nope, No Path At All...  Bad"
         }
         return hat;
     }
@@ -1988,6 +2870,14 @@ struct Lauf {
             sSpeed = kappen(sVel, sMaxSpeed);
         }
         if (sSpeed < 10.0F) { sSpeed = 0.0F; }
+        bewegt = false;
+        gehTaste = false;
+        ucmdVor = 0;    // rc601 (bewegung, teil 3): fuer PM_AirMove/PM_CrashLand
+        ucmdSeit = 0;
+        // rc605: PHASE II-IV nur "if (!NPC_Jumping())" (g_navigator.cpp:4131
+        // MD / 4250 OpenJK) - in der Luft bleiben ps.moveDir und ps.speed, wie
+        // STEER::Activate sie leerte, und der ucmd leer.
+        if (springtNoch()) { return; }
         NavVec moveDir = sVel;
         float gier = z.pfadGier;
         if (sSpeed > 0.0F && !istNull(moveDir)) {
@@ -1998,10 +2888,6 @@ struct Lauf {
         z.tempo = static_cast<int>(sSpeed);   // ps.speed ist int
         z.pfadGier = gier;
         z.wunschGier = winkel360(gier);
-        bewegt = false;
-        gehTaste = false;
-        ucmdVor = 0;    // rc601 (bewegung, teil 3): fuer PM_AirMove/PM_CrashLand
-        ucmdSeit = 0;
         if (sSpeed > 0.0F) {
             NavVec vorn{};
             NavVec rechts{};
@@ -2019,6 +2905,38 @@ struct Lauf {
                 z.tempo = static_cast<int>(static_cast<float>(z.tempo) * 0.75F);
                 sSpeed *= 0.75F;
             }
+        }
+        // rc605: PHASE IV - "UPDATE BLOCKING INFORMATION" (g_navigator.cpp:
+        // 4216-4245 MD / 4335-4372 OpenJK).
+        if (blockJetzt) {
+            if (!z.sprung.blockiert) {
+                z.sprung.blockiert = true;
+                z.sprung.blockiertSeit = jetzt;
+            }
+            z.sprung.blockiertEnt = blockJetztEnt;
+            z.sprung.blockiertOrt = blockJetztOrt;
+        } else if (z.sprung.blockiert) {
+            z.sprung.blockiert = false;
+            z.sprung.blockiertSeit = 0;
+            z.sprung.blockiertEnt = false;
+        }
+        // "If We've Been Blocked For More Than 2 Seconds, May Want To Take
+        // Corrective Action" (4247-4310 MD): SCF_NAV_CAN_JUMP (Flieger rechnet
+        // behaved nicht). Nach 8 s zum letzten Wegpunkt; das Versetzen dorthin
+        // nach 15 s haengt am Spieler (gi.inPVS) - die Vorschau kennt ihn
+        // nicht und nimmt immer den Sprung.
+        if (w.kannSpringen && blockiertFuer(2000)) {
+            if (blockiertFuer(8000) && (z.wegpunkt == 0 || abstand(knotenOrt(z.wegpunkt), z.ort) > 150.0F) &&
+                z.letzterWegpunkt != 0) {
+                (void)versucheSprungPos(knotenOrt(z.letzterWegpunkt));
+            } else if (z.sprung.blockiertEnt) {
+                (void)versucheSprungZiel();
+            } else {
+                (void)versucheSprungPos(z.sprung.blockiertOrt);
+            }
+            // NPC_TryJump nach PHASE III: ucmd.forwardmove = 0, ps.moveDir leer
+            // (rightmove und ps.speed bleiben).
+            if (sprungJetzt) { bewegt = ucmdSeit != 0; }
         }
     }
     NavVec zBewegung{};   // ps.moveDir dieses Denkbilds
@@ -2070,6 +2988,7 @@ struct Lauf {
     float schwer = 800.0F;        // ps.gravity
     signed char ucmdVor = 0;      // ucmd.forwardmove aus STEER::DeActivate
     signed char ucmdSeit = 0;     // ucmd.rightmove
+    bool jk2Pm = false;           // rc604 fix604: PM_WalkMove von JK2 (ohne moveDir aus ucmd)
     [[nodiscard]] NavSpur kastenSpur(const NavVec& a, const NavVec& b, std::uint32_t maske) const {
         return spurDurch(spurF, a, mins, maxs, b, kNavKeineEntity, maske);
     }
@@ -2080,12 +2999,18 @@ struct Lauf {
         backoff = backoff < 0.0F ? backoff * overbounce : backoff / overbounce;
         for (std::size_t i = 0; i < 3; ++i) { v[i] -= n[i] * backoff; }
     }
+    // rc604 fix604: pm.tracemask = ent->clipmask (g_active.cpp:11036 MD / 5393
+    // OpenJK; G_CheckInSolid ebenso, g_utils.cpp:1645 MD) - ohne CONTENTS_BODY
+    // nach SET_SOLID false oder mit SFB_NOTSOLID (NavWelt::pmOhneKoerper).
+    [[nodiscard]] std::uint32_t pmMaske() const {
+        return welt.pmOhneKoerper ? (kNavMaskNpcSolid & ~kNavBody) : kNavMaskNpcSolid;
+    }
     // PM_GroundTrace (bg_pmove.cpp:7385-7560 MD) fuer einen NPC zu Fuss (kein
     // Fahrzeug, kein Wandlauf, kein Halten durch Rancor/Wampa).
     void bodenSpur() {
         NavVec tief = z.ort;
         tief[2] -= 0.25F;
-        const NavSpur tr = kastenSpur(z.ort, tief, kNavMaskNpcSolid);
+        const NavSpur tr = kastenSpur(z.ort, tief, pmMaske());
         if (tr.allsolid) {
             // PM_CorrectAllSolid (bg_pmove.cpp:6323-6333 MD): "FIXME: jitter
             // around" - nur kein Boden, kein Gehen.
@@ -2105,6 +3030,18 @@ struct Lauf {
         bodenNormale = tr.normal;
         // "check if getting thrown off the ground" (ohne PMF_TIME_KNOCKBACK)
         if (z.tempoVek[2] > 100.0F && punkt(z.tempoVek, tr.normal) > 10.0F) {
+            // rc605 FU4: "go into jump animation" (bg_pmove.cpp:7487-7513 MD,
+            // 5216-5246 OpenJK): ausser bei PM_FlippingAnim(legsAnim) (und
+            // Spezialspruengen, Knockdown, Rolle, Tritt, Rancor/Wampa - nicht in
+            // einem Weg) PM_JumpForDir (1340-1432 MD, 1007-1045 OpenJK): ohne
+            // forwardmove/rightmove BOTH_JUMP1 (g_ActivateAnimationStyle 0),
+            // PMF_BACKWARDS_JUMP weg, SETANIM_LEGS mit OVERRIDE ohne HOLD.
+            z.sprung.abgehoben = true;
+            const bool dreht = z.sprung.beinAnim == kSaSprung && w.sprungAnimArt == 1;
+            if (!dreht) {
+                // NPC_TryJump und NPC_BSJump springen mit leerem ucmd (ucmdVor 0).
+                animSetzen(kSaJump1, false, 0);
+            }
             z.amBoden = false;
             bodenFlaeche = false;
             gehend = false;
@@ -2125,6 +3062,7 @@ struct Lauf {
             // ucmd "velocity[2] = 0".
             if (vorherTempo[2] < -200.0F) { z.pmZeit = 250; }   // PMF_TIME_LAND
             if (ucmdVor == 0 && ucmdSeit == 0) { z.tempoVek[2] = 0.0F; }
+            landeAnim();   // rc605 FU4: PM_CrashLand
         }
         z.amBoden = true;
     }
@@ -2132,7 +3070,10 @@ struct Lauf {
     bool schieben(float gravMod) {
         NavVec& vel = z.tempoVek;
         // Do-not-enter-Brushes zaehlen nur fuer einen NPC, der geht.
-        std::uint32_t inhalt = kNavMaskNpcSolid | (gehend ? kNavBotClip : 0U);
+        // rc604 fix604 (JK2): PM_SlideMove von Jedi Outcast spurt nur mit
+        // pm->tracemask - kein CONTENTS_BOTCLIP fuer gehende NPCs
+        // (codeJK2/game/bg_slidemove.cpp:47-90 gegen code/game/bg_slidemove.cpp:54-100).
+        std::uint32_t inhalt = pmMaske() | ((gehend && !jk2Pm) ? kNavBotClip : 0U);
         constexpr int kMaxEbenen = 5;   // MAX_CLIP_PLANES
         NavVec ebenen[kMaxEbenen]{};
         NavVec primal = vel;
@@ -2238,14 +3179,14 @@ struct Lauf {
         const float stufe = w.stufe;   // R6: je Klasse
         NavVec unten = startO;
         unten[2] -= stufe;
-        NavSpur tr = kastenSpur(startO, unten, kNavMaskNpcSolid);
+        NavSpur tr = kastenSpur(startO, unten, pmMaske());
         if (vel[2] > 0.0F && (tr.fraction == 1.0F || tr.normal[2] < 0.7F)) { return; }
         if (vel[0] == 0.0F && vel[1] == 0.0F) { return; }
         const NavVec untenO = z.ort;
         const NavVec untenV = vel;
         NavVec oben = startO;
         oben[2] += stufe;
-        tr = kastenSpur(startO, oben, kNavMaskNpcSolid);
+        tr = kastenSpur(startO, oben, pmMaske());
         if (tr.allsolid || tr.startsolid || tr.fraction == 0.0F) { return; }   // "can't step up"
         const NavVec obenEnde = tr.endpos;
         z.ort = obenEnde;
@@ -2260,7 +3201,15 @@ struct Lauf {
         }
         unten = z.ort;
         unten[2] -= stufe;
-        tr = kastenSpur(z.ort, unten, kNavMaskNpcSolid);
+        tr = kastenSpur(z.ort, unten, pmMaske());
+        if (jk2Pm) {
+            // rc604 fix604 (JK2): codeJK2/game/bg_slidemove.cpp:350-371 - ohne
+            // allsolid auf den Boden, abgleiten in jedem Fall (kein
+            // g_stepSlideFix-Ruecksprung).
+            if (!tr.allsolid) { z.ort = tr.endpos; }
+            if (tr.fraction < 1.0F) { abgleiten(vel, tr.normal, kOverclip); }
+            return;
+        }
         if (!tr.allsolid) {
             z.ort = tr.endpos;
             if (tr.fraction < 1.0F) { abgleiten(vel, tr.normal, kOverclip); }
@@ -2299,12 +3248,44 @@ struct Lauf {
         if (acc > dazu) { acc = dazu; }
         vel = plus(vel, mal(wishdir, acc));
     }
+    // rc604 fix604 (JK2): PM_WalkMove (codeJK2/game/bg_pmove.cpp:1920-1988) -
+    // mit ps.moveDir wishdir = moveDir, wishspeed = ps.speed; ohne (NPC_MoveToGoal
+    // setzt es nur seitwaerts, G_UcmdMoveForDir) wishvel aus ucmd und
+    // pml.forward/right (flach, auf die Bodenebene geklippt, normiert),
+    // wishspeed * PM_CmdScale (:382-406).
+    void jk2Beschleunigen(const NavVec& normale) {
+        if (!jk2Pm || !istNull(zBewegung)) {
+            beschleunigen(zBewegung, static_cast<float>(z.tempo), kPmAccelerate);
+            return;
+        }
+        NavVec vorn{};
+        NavVec rechts{};
+        qAchsen(z.gier, vorn, rechts);
+        vorn[2] = 0.0F;
+        rechts[2] = 0.0F;
+        abgleiten(vorn, normale, kOverclip);
+        abgleiten(rechts, normale, kOverclip);
+        (void)vektorNorm(vorn);
+        (void)vektorNorm(rechts);
+        const auto fm = static_cast<float>(ucmdVor);
+        const auto sm = static_cast<float>(ucmdSeit);
+        int maxm = std::abs(static_cast<int>(ucmdVor));
+        if (std::abs(static_cast<int>(ucmdSeit)) > maxm) { maxm = std::abs(static_cast<int>(ucmdSeit)); }
+        float scale = 0.0F;
+        if (maxm != 0) {
+            const auto total = static_cast<float>(std::sqrt(static_cast<double>(ucmdVor * ucmdVor + ucmdSeit * ucmdSeit)));
+            scale = static_cast<float>(z.tempo) * static_cast<float>(maxm) / (127.0F * total);
+        }
+        NavVec wishdir{vorn[0] * fm + rechts[0] * sm, vorn[1] * fm + rechts[1] * sm, vorn[2] * fm + rechts[2] * sm};
+        float wishspeed = vektorNorm(wishdir);
+        wishspeed *= scale;
+        beschleunigen(wishdir, wishspeed, kPmAccelerate);
+    }
     // PM_WalkMove (bg_pmove.cpp:4251-4530 MD) fuer NPCs mit moveDir.
     void gehBewegung() {
         NavVec& vel = z.tempoVek;
         reibung(true);
-        // wishdir = moveDir, wishspeed = ps.speed (4360-4377)
-        beschleunigen(zBewegung, static_cast<float>(z.tempo), kPmAccelerate);
+        jk2Beschleunigen(bodenNormale);
         // PM_ClipVelocity auf den Boden, Laenge behalten (4515-4522)
         const float l = laenge(vel);
         abgleiten(vel, bodenNormale, kOverclip);
@@ -2360,12 +3341,23 @@ struct Lauf {
             bodenSpur();                     // PM_GroundTrace
             // PM_DropTimers (bg_pmove.cpp:33160-33175 MD)
             if (z.pmZeit != 0) { z.pmZeit = frameMs >= z.pmZeit ? 0 : z.pmZeit - frameMs; }
+            // rc605: "drop legs animation counter" (bg_pmove.cpp:33203-33214 MD)
+            if (z.sprung.beinTimer > 0) { z.sprung.beinTimer = std::max(0, z.sprung.beinTimer - frameMs); }
+            // rc605 FU4: "drop torso animation counter" (bg_pmove.cpp:33190-33201 MD)
+            if (z.sprung.torsoTimer > 0) { z.sprung.torsoTimer = std::max(0, z.sprung.torsoTimer - frameMs); }
             if (gehend) {
                 gehBewegung();
             } else {
                 luftBewegung();   // ps.gravity > 0; FLY_NORMAL/PM_FlyMove rechnet behaved nicht (w.fallen)
             }
             if (z.ort != vorher) { bodenSpur(); }
+            footstepsTorso();   // rc605 FU4
+            // rc605: "on ground" - forceJumpZStart = 0, PMF_JUMPING weg
+            // (PmoveSingle, bg_pmove.cpp:34141-34150 MD).
+            if (z.amBoden) {
+                z.sprung.springt = false;
+                z.sprung.zStart = 0.0F;
+            }
             return;
         }
         // --- ohne Spuren (oder ohne Fallen): wie bis teil 2 ---------------------
@@ -2386,7 +3378,7 @@ struct Lauf {
                 vel = mal(vel, neu);
             }
         }
-        beschleunigen(zBewegung, static_cast<float>(z.tempo), kPmAccelerate);
+        jk2Beschleunigen(NavVec{0.0F, 0.0F, 1.0F});   // rc604 fix604 (JK2), sonst moveDir
         if (amBoden) {
             const float l = laenge(vel);
             float backoff = vel[2];
@@ -2405,6 +3397,741 @@ struct Lauf {
             if (welt.boden(z.ort[0], z.ort[1], z.ort[2] + w.stufe, z.ort[2] - w.stufe - 1.0F, b)) {
                 z.ort[2] = b - kDefaultMins2;
             }
+        }
+    }
+
+
+    // =========================================================================
+    // rc604 fix604 (JK2 Stufe 3): NPC_MoveToGoal von Jedi Outcast
+    // (codeJK2/game/NPC_move.cpp, g_navnew.cpp, g_nav.cpp, g_navigator.cpp).
+    // Die Wegpunkte in LaufZustand zaehlen hier Knoten + 1 (0: WAYPOINT_NONE).
+    // =========================================================================
+    [[nodiscard]] const NavNetzJk2* jk2Netz() const { return netz != nullptr ? netz->jk2.get() : nullptr; }
+    [[nodiscard]] int jk2Zahl() const {
+        const NavNetzJk2* n = jk2Netz();
+        return n != nullptr ? static_cast<int>(n->knoten.size()) : 0;
+    }
+    [[nodiscard]] const NavNetzJk2::Knoten& jk2Knoten(int id) const { return jk2Netz()->knoten[static_cast<std::size_t>(id)]; }
+    // NPC->clipmask: MASK_NPCSOLID (NPC_Begin), SET_SOLID false ohne CONTENTS_BODY
+    [[nodiscard]] std::uint32_t jk2Clipmaske() const { return welt.pmOhneKoerper ? (kJk2MaskNpcSolid & ~kNavBody) : kJk2MaskNpcSolid; }
+    [[nodiscard]] int jk2ZielRadius() const { return static_cast<int>(w.zielRadius); }
+    // navInfo_t (g_nav.h)
+    struct Jk2Info {
+        NavVec richtung{};
+        NavVec pfadRichtung{};
+        float abstand = 0.0F;
+        NavSpur spur;
+    };
+    // CheckedNodes - G_RunFrame leert sie in jedem Bild (g_main.cpp:1278).
+    std::map<int, unsigned char> jk2GeprueftIch;
+    std::map<int, unsigned char> jk2GeprueftZiel;
+    std::vector<signed char> jk2FehlJetzt;   // je failedEdge: -1 offen, 0 frei, 1 gesperrt
+
+    // G_EntIsUnlockedDoor mit dem Schloss zur Zeit (NavNetzJk2::tuerFrei).
+    [[nodiscard]] bool jk2TuerOffen(int e) const {
+        const NavNetzJk2* n = jk2Netz();
+        if (n == nullptr || e < 0 || e >= static_cast<int>(n->tuerFrei.size())) { return false; }
+        const signed char v = n->tuerFrei[static_cast<std::size_t>(e)];
+        if (v == 0) { return false; }
+        if (v == 3) { return true; }
+        bool zu = v == 2;
+        if (welt.mover) {
+            if (const NavMoverPlan::Stand* s = welt.mover->standVon(e, akt.t)) { zu = s->verriegelt; }
+        }
+        return !zu;
+    }
+    // NAV_HitNavGoal (g_nav.cpp:156-205), flying = qfalse
+    static bool jk2Getroffen(const NavVec& p, const NavVec& mi, const NavVec& ma, const NavVec& dest, int radius, bool mitRadius) {
+        if (mitRadius) {
+            NavVec d = minus(p, dest);
+            if (std::fabs(d[2]) <= 24.0F) { d[2] = 0.0F; }
+            return laenge2(d) <= static_cast<float>(radius * radius);
+        }
+        // G_BoundsOverlap (NPC_goal.cpp:117-139)
+        for (std::size_t i = 0; i < 3; ++i) {
+            const float dmin = -static_cast<float>(radius) + dest[i];
+            const float dmax = static_cast<float>(radius) + dest[i];
+            if (p[i] + mi[i] > dmax || p[i] + ma[i] < dmin) { return false; }
+        }
+        return true;
+    }
+    // ReachedGoal (NPC_goal.cpp:159-254)
+    [[nodiscard]] bool jk2Erreicht() const { return jk2Getroffen(z.ort, mins, maxs, w.ziel, jk2ZielRadius(), w.zielMitRadius); }
+    // NAV_CheckAhead (g_nav.cpp:482-534)
+    bool jk2Voraus(const NavVec& ende, NavSpur& tr, std::uint32_t maske) {
+        NavVec mi = mins;
+        mi[2] += kStepSize;
+        tr = spurDurch(spurF, z.ort, mi, maxs, ende, kNavKeineEntity, maske);
+        if (tr.startsolid && (tr.contents & kNavBotClip) != 0U) {
+            maske &= ~kNavBotClip;
+            tr = spurDurch(spurF, z.ort, mi, maxs, ende, kNavKeineEntity, maske);
+        }
+        if (!tr.allsolid && !tr.startsolid && tr.fraction == 1.0F) { return true; }
+        if (std::fabs(z.ort[2] - ende[2]) > 48.0F) { return false; }
+        const float radius = maxs[0] > maxs[1] ? maxs[0] : maxs[1];
+        const float dist = abstand(z.ort, ende);
+        const float tFrac = 1.0F - (radius / dist);
+        if (tr.fraction >= tFrac) { return true; }
+        if (tr.entity >= 0 && tr.entity < kNavKoerperBasis && jk2TuerOffen(tr.entity)) {
+            return !(abstand2(z.ort, tr.endpos) < 16.0F * 16.0F);   // MIN_DOOR_BLOCK_DIST_SQR
+        }
+        return false;
+    }
+    // NAV_ClearPathToPoint (g_nav.cpp:211-335) fuer die Figur (self->client)
+    bool jk2FigurFrei(const NavVec& punkt, std::uint32_t maske) {
+        if (welt.pvs && !welt.pvs(z.ort, punkt)) { return false; }
+        NavVec mi = mins;
+        mi[2] += kStepSize;
+        if (mi[2] > maxs[2]) { mi[2] = maxs[2]; }
+        NavSpur tr = spurDurch(spurF, z.ort, mi, maxs, punkt, kNavKeineEntity, maske | kNavMonsterClip | kNavBotClip);
+        if (tr.startsolid && (tr.contents & kNavBotClip) != 0U) {
+            tr = spurDurch(spurF, z.ort, mi, maxs, punkt, kNavKeineEntity, maske | kNavMonsterClip);
+        }
+        // okToHitEntNum ist das tempGoal - es haelt keine Spur auf.
+        return !tr.startsolid && !tr.allsolid && tr.fraction == 1.0F;
+    }
+    // ... fuer das Ziel: TestNodePath(goal, ..., qfalse) - goal->clipmask ist
+    // die der Figur (NPC_SetMoveGoal), ohne CONTENTS_BODY. Ein TAG-Ziel hat
+    // SVF_NAVGOAL: der Kasten des Besitzers, vom Knoten zum Ziel.
+    bool jk2ZielFrei(const NavVec& punkt) {
+        const NavVec& ziel = w.ziel;
+        if (welt.pvs && !welt.pvs(ziel, punkt)) { return false; }
+        const std::uint32_t maske = jk2Clipmaske() & ~kNavBody;
+        if (w.zielNavgoal) {
+            NavVec mi = mins;
+            mi[2] += kStepSize;
+            if (mi[2] > maxs[2]) { mi[2] = maxs[2]; }
+            NavSpur tr = spurDurch(spurF, punkt, mi, maxs, ziel, kNavKeineEntity, (maske | kNavMonsterClip | kNavBotClip) & ~kNavBody);
+            if (tr.startsolid && (tr.contents & kNavBotClip) != 0U) {
+                tr = spurDurch(spurF, punkt, mi, maxs, ziel, kNavKeineEntity, (maske | kNavMonsterClip) & ~kNavBody);
+            }
+            if (tr.startsolid || tr.allsolid) { return false; }
+            if (tr.fraction == 1.0F) { return true; }
+            return jk2Getroffen(ziel, mins, maxs, tr.endpos, jk2ZielRadius(), w.zielMitRadius);
+        }
+        // Ein Ziel ohne SVF_NAVGOAL (G_Find): sein Kasten - als Punkt-Entity 0.
+        const NavVec null{};
+        NavSpur tr = spurDurch(spurF, ziel, null, null, punkt, kNavKeineEntity, maske | kNavMonsterClip | kNavBotClip);
+        if (tr.startsolid && (tr.contents & kNavBotClip) != 0U) {
+            tr = spurDurch(spurF, ziel, null, null, punkt, kNavKeineEntity, maske | kNavMonsterClip);
+        }
+        return !tr.startsolid && !tr.allsolid && tr.fraction == 1.0F;
+    }
+    // CNavigator::CheckFailedEdge (g_navigator.cpp:2018-2102) in diesem Bild:
+    // ist die Verbindung wieder frei? (Die Pruefzeit - alle 1 bis 2 s - laesst
+    // behaved weg, siehe NOTIZEN_jk2.md.)
+    bool jk2KanteGesperrt(int a, int b) {
+        const NavNetzJk2* n = jk2Netz();
+        const int j = n->kanteFehl(a, b);
+        if (j < 0) { return false; }
+        if (jk2FehlJetzt.size() != n->fehl.size()) { jk2FehlJetzt.assign(n->fehl.size(), -1); }
+        signed char& c = jk2FehlJetzt[static_cast<std::size_t>(j)];
+        if (c >= 0) { return c != 0; }
+        const NavNetzJk2::Fehl& f = n->fehl[static_cast<std::size_t>(j)];
+        const NavVec& p1 = jk2Knoten(f.a).punkt;
+        const NavVec& p2 = jk2Knoten(f.b).punkt;
+        c = 1;
+        if (welt.pvs && !welt.pvs(p1, p2)) { return true; }
+        const NavVec mi{-kDefaultMaxs0, -kDefaultMaxs0, kDefaultMins2 + kStepSize};
+        const NavVec ma{kDefaultMaxs0, kDefaultMaxs0, kDefaultMaxs2};
+        const NavSpur tr = spurDurch(spurF, p1, mi, ma, p2, kNavKeineEntity, kJk2MaskNpcSolid | kNavMonsterClip | kNavBotClip);
+        if (tr.startsolid || tr.allsolid) { return true; }
+        if (tr.entity == kNavKeineEntity || (tr.entity >= 0 && tr.entity < kNavKoerperBasis && jk2TuerOffen(tr.entity))) { c = 0; }
+        return c != 0;
+    }
+    // CollectNearestNodes (g_navigator.cpp:1219-1284), Radius 512, hoechstens 16
+    struct Jk2Naechster {
+        int id = 0;
+        unsigned int abstand = 0;   // nodeList_t::distance
+    };
+    [[nodiscard]] std::vector<Jk2Naechster> jk2Sammeln(const NavVec& ort) const {
+        std::vector<Jk2Naechster> kette;
+        const int n = jk2Zahl();
+        for (int i = 0; i < n; ++i) {
+            const float dist = abstand2(jk2Knoten(i).punkt, ort);
+            if (dist > static_cast<float>(512 * 512)) { continue; }
+            const Jk2Naechster neu{i, static_cast<unsigned int>(dist)};
+            if (kette.empty()) {
+                kette.insert(kette.begin(), neu);
+                continue;
+            }
+            bool dazu = false;
+            for (auto it = kette.begin(); it != kette.end(); ++it) {
+                if (dist < static_cast<float>(it->abstand)) {
+                    kette.insert(it, neu);
+                    dazu = true;
+                    if (kette.size() > 16U) { kette.pop_back(); }
+                    break;
+                }
+            }
+            if (!dazu && kette.size() < 16U) { kette.push_back(neu); }
+        }
+        return kette;
+    }
+    // CNavigator::GetPathCost (g_navigator.cpp:2496-2566)
+    [[nodiscard]] int jk2PfadKosten(int start, int ende) const {
+        const int n = jk2Zahl();
+        if (start < 0 || start >= n || ende < 0 || ende >= n) { return kJk2Unendlich; }
+        if (jk2Knoten(start).kanten.empty()) { return kJk2Unendlich; }
+        const NavNetzJk2::Knoten& endK = jk2Knoten(ende);
+        int move = start;
+        int kosten = 0;
+        int schritte = 0;
+        while (move != ende) {
+            int bestRang = 131072;   // WORLD_SIZE
+            int best = -1;
+            int bestKosten = 0;
+            for (const NavNetzJk2::Kante& e : jk2Knoten(move).kanten) {
+                if (e.id == ende) { return kosten + e.kosten; }
+                const int r = endK.raenge[static_cast<std::size_t>(e.id)];
+                if (r == -1) { return kJk2Unendlich; }
+                if (r < bestRang) {
+                    best = e.id;
+                    bestRang = r;
+                    bestKosten = e.kosten;
+                }
+            }
+            kosten += bestKosten;
+            if (best < 0 || ++schritte > n) { return kJk2Unendlich; }   // (kann im Spiel nicht vorkommen)
+            move = best;
+        }
+        return kosten;
+    }
+    // CNavigator::RouteBlocked (g_navigator.cpp:2130-2213)
+    bool jk2WegGesperrt(int start, int test, int ende, int rejectRang) {
+        if (jk2KanteGesperrt(start, test)) { return true; }
+        if (test == ende) { return false; }
+        const NavNetzJk2::Knoten& endK = jk2Knoten(ende);
+        int next = test;
+        int last = start;
+        int bestNext = -1;
+        int bestRang = rejectRang;
+        int schritte = 0;
+        while (true) {
+            bool alleGesperrt = true;
+            for (const NavNetzJk2::Kante& e : jk2Knoten(next).kanten) {
+                const int id = e.id;
+                if (id == last || id == start) { continue; }
+                if (jk2KanteGesperrt(next, id)) { continue; }
+                if (id == ende) { return false; }
+                const int r = endK.raenge[static_cast<std::size_t>(id)];
+                if (r < 0) { continue; }
+                if (r < bestRang) {
+                    bestNext = id;
+                    bestRang = r;
+                    alleGesperrt = false;
+                }
+            }
+            if (alleGesperrt) { return true; }
+            last = next;
+            next = bestNext;
+            if (++schritte > jk2Zahl()) { return true; }
+        }
+    }
+    // CNavigator::GetBestNodeAltRoute (g_navigator.cpp:2221-2320), d_altRoutes 1
+    int jk2BesterKnoten(int start, int ende, int& pfadKosten, int reject) {
+        const int n = jk2Zahl();
+        if (n == 0 || start < 0 || start >= n || ende < 0 || ende >= n) { return -1; }
+        if (start == ende) { return jk2Netz()->kanteFehl(start, ende) == -1 ? start : -1; }
+        const NavNetzJk2::Knoten& s = jk2Knoten(start);
+        int best = -1;
+        int bestRang = kJk2Unendlich;
+        int rejectRang = kJk2Unendlich;
+        int bestKosten = kJk2Unendlich;
+        pfadKosten = 0;
+        if (reject != -1) {
+            for (const NavNetzJk2::Kante& e : s.kanten) {
+                if (e.id == reject) {
+                    rejectRang = jk2PfadKosten(start, ende);
+                    break;
+                }
+            }
+        }
+        for (const NavNetzJk2::Kante& e : s.kanten) {
+            const int id = e.id;
+            const int r = jk2PfadKosten(id, ende);
+            if (r >= rejectRang) { continue; }
+            if (id == ende) {
+                if (!jk2WegGesperrt(start, id, ende, rejectRang)) {
+                    pfadKosten += e.kosten;
+                    return id;
+                }
+                continue;
+            }
+            if (r == -1) {
+                pfadKosten = kJk2Unendlich;
+                return -1;
+            }
+            if (r < bestRang && !jk2WegGesperrt(start, id, ende, rejectRang)) {
+                best = id;
+                bestRang = r;
+                bestKosten = e.kosten + r;
+            }
+        }
+        pfadKosten = bestKosten;
+        return best;
+    }
+    // CNavigator::GetBestPathBetweenEnts (g_navigator.cpp:1290-1478),
+    // NF_CLEAR_PATH, d_altRoutes 1. ichWp/zielWp: ent->waypoint, goal->waypoint.
+    int jk2BesterWeg(int& ichWp, int& zielWp) {
+        if (jk2Zahl() == 0) { return -1; }
+        const std::vector<Jk2Naechster> k1 = jk2Sammeln(z.ort);
+        const std::vector<Jk2Naechster> k2 = jk2Sammeln(w.ziel);
+        int bestKosten = kJk2Unendlich;
+        int best = -1;
+        ichWp = -1;
+        zielWp = -1;
+        for (const Jk2Naechster& a : k1) {
+            const NavNetzJk2::Knoten& na = jk2Knoten(a.id);
+            const auto g = jk2GeprueftIch.find(a.id);
+            if (g != jk2GeprueftIch.end() && g->second == 1) { continue; }   // CHECKED_FAILED
+            if (g == jk2GeprueftIch.end()) {
+                if (jk2KnotenGescheitert(a.id)) {   // NodeFailed (g_navigator.cpp:1762-1772)
+                    jk2GeprueftIch[a.id] = 1;
+                    continue;
+                }
+                if (static_cast<int>(a.abstand) >= na.radius * na.radius || std::fabs(na.punkt[2] - z.ort[2]) >= 18.0F) {
+                    if (welt.pvs && !welt.pvs(z.ort, na.punkt)) {
+                        jk2GeprueftIch[a.id] = 1;
+                        continue;
+                    }
+                    if (!jk2FigurFrei(na.punkt, jk2Clipmaske())) {   // TestNodePath(ent, goal, position, qtrue)
+                        jk2GeprueftIch[a.id] = 1;
+                        continue;
+                    }
+                }
+                jk2GeprueftIch[a.id] = 2;   // CHECKED_PASSED
+            }
+            for (const Jk2Naechster& b : k2) {
+                const NavNetzJk2::Knoten& nb = jk2Knoten(b.id);
+                int kosten = static_cast<int>(std::floor(abstand(z.ort, na.punkt) + abstand(w.ziel, nb.punkt)));
+                int pfad = 0;
+                const int next = jk2BesterKnoten(a.id, b.id, pfad, best);
+                kosten += pfad;
+                if (kosten >= bestKosten) { continue; }
+                const auto g2 = jk2GeprueftZiel.find(b.id);
+                if (g2 != jk2GeprueftZiel.end() && g2->second == 1) { continue; }
+                if (g2 == jk2GeprueftZiel.end()) {
+                    if (static_cast<int>(b.abstand) >= nb.radius * nb.radius || std::fabs(nb.punkt[2] - w.ziel[2]) >= 18.0F) {
+                        if (welt.pvs && !welt.pvs(w.ziel, nb.punkt)) {
+                            jk2GeprueftZiel[b.id] = 1;
+                            continue;
+                        }
+                        if (!jk2ZielFrei(nb.punkt)) {
+                            jk2GeprueftZiel[b.id] = 1;
+                            continue;
+                        }
+                    }
+                    jk2GeprueftZiel[b.id] = 2;
+                }
+                bestKosten = kosten;
+                best = next;
+                ichWp = a.id;
+                zielWp = b.id;
+            }
+        }
+        return best;
+    }
+    // NAV_TestBestNode (g_nav.cpp:951-1057) - nur gegen die Architektur.
+    // AddFailedEdge bei gesperrten Tueren usw. fuehrt behaved nicht (NOTIZEN).
+    int jk2TesteKnoten(int start, int ende) {
+        const NavVec end = jk2Knoten(ende).punkt;
+        std::uint32_t maske = (jk2Clipmaske() & ~kNavBody) | kNavBotClip;
+        NavVec mi = mins;
+        mi[2] += kStepSize;
+        NavSpur tr = spurDurch(spurF, z.ort, mi, maxs, end, kNavKeineEntity, maske);
+        if (tr.startsolid && (tr.contents & kNavBotClip) != 0U) {
+            maske &= ~kNavBotClip;
+            tr = spurDurch(spurF, z.ort, mi, maxs, end, kNavKeineEntity, maske);
+        }
+        if (!tr.allsolid && !tr.startsolid && tr.fraction == 1.0F) { return ende; }
+        const bool zuHoch = !w.schwert && std::fabs(z.ort[2] - end[2]) > 48.0F;
+        if (!zuHoch) {
+            const float radius = maxs[0] > maxs[1] ? maxs[0] : maxs[1];
+            const float dist = abstand(z.ort, end);
+            const float tFrac = 1.0F - (radius / dist);
+            if (tr.fraction >= tFrac) { return ende; }
+        }
+        if (tr.entity >= 0 && tr.entity < kNavKoerperBasis && jk2TuerOffen(tr.entity)) {
+            if (abstand2(z.ort, tr.endpos) < 16.0F * 16.0F) { return start; }
+            if (!zuHoch) { return ende; }
+        }
+        return start;
+    }
+    // NAV_TestForBlocked (g_nav.cpp:857-879): der Blocker steht auf dem Ziel
+    bool jk2BlockiertAmZiel(const NavKoerperKasten& k, float abstandZiel) {
+        if (!jk2Getroffen(k.ort, k.mins, k.maxs, w.ziel, 12, false)) { return false; }
+        if (abstandZiel <= 64.0F) {   // MIN_STOP_DIST
+            // NPC_Blocked, NPC_FaceEntity: zum Blocker drehen (von Ursprung zu
+            // Ursprung statt Augen zu Augen - die Gier ist dieselbe Richtung).
+            z.wunschGier = winkel360(qGier(minus(k.ort, z.ort)));
+            return true;
+        }
+        return false;
+    }
+    [[nodiscard]] const NavKoerperKasten* jk2Koerper(int entity) const {
+        if (welt.koerper == nullptr || entity < kNavKoerperBasis) { return nullptr; }
+        for (const NavKoerperKasten& k : *welt.koerper) {
+            if (kNavKoerperBasis + k.id == entity) { return &k; }
+        }
+        return nullptr;
+    }
+    // NAVNEW_SidestepBlocker (g_navnew.cpp:243-366)
+    bool jk2Seitwaerts(const NavKoerperKasten& k, const NavVec& blockRichtung, float blockAbstand, NavVec& moveDir) {
+        NavVec mi = mins;
+        mi[2] += kStepSize;
+        const float gier = qGier(blockRichtung);
+        const float avoidRadius = std::sqrt(k.maxs[0] * k.maxs[0] + k.maxs[1] * k.maxs[1]) +
+                                  std::sqrt(maxs[0] * maxs[0] + maxs[1] * maxs[1]);
+        float bogen = (blockAbstand <= avoidRadius) ? 135.0F : ((avoidRadius / blockAbstand) * 90.0F);
+        const std::uint32_t maske = jk2Clipmaske() | kNavBotClip;
+        const auto probe = [&](float g, NavVec& dir) {
+            NavVec rechts{};
+            qAchsen(winkel360(g), dir, rechts);
+            const NavVec ziel = plus(z.ort, mal(dir, blockAbstand));
+            return spurDurch(spurF, z.ort, mi, maxs, ziel, kNavKeineEntity, maske);
+        };
+        if (z.seiteBis > jetzt) {   // sideStepHoldTime
+            if (z.letzteSeite == -1) { bogen *= -1.0F; }
+            const NavSpur tr = probe(gier + bogen, moveDir);
+            return tr.fraction == 1.0F && !tr.allsolid && !tr.startsolid;
+        }
+        NavVec rechtsDir{};
+        NavVec linksDir{};
+        float rechtsGut = 0.0F;
+        float linksGut = 0.0F;
+        NavSpur tr = probe(gier + bogen, rechtsDir);
+        if (!tr.allsolid && !tr.startsolid) {
+            if (tr.fraction >= 1.0F) {
+                moveDir = rechtsDir;
+                z.letzteSeite = 1;
+                z.seiteBis = jetzt + 2000;
+                return true;
+            }
+            rechtsGut = tr.fraction;
+        }
+        bogen *= -1.0F;
+        tr = probe(gier + bogen, linksDir);
+        if (!tr.allsolid && !tr.startsolid) {
+            if (tr.fraction >= 1.0F) {
+                moveDir = linksDir;
+                z.letzteSeite = -1;
+                z.seiteBis = jetzt + 2000;
+                return true;
+            }
+            linksGut = tr.fraction;
+        }
+        if (linksGut == 0.0F && rechtsGut == 0.0F) { return false; }
+        if (rechtsGut * blockAbstand >= avoidRadius || linksGut * blockAbstand >= avoidRadius) {
+            if (rechtsGut >= linksGut) {
+                moveDir = rechtsDir;
+                z.letzteSeite = 1;
+            } else {
+                moveDir = linksDir;
+                z.letzteSeite = -1;
+            }
+            z.seiteBis = jetzt + 2000;
+            return true;
+        }
+        return false;
+    }
+    // NAVNEW_ResolveEntityCollision / NAVNEW_Bypass (g_navnew.cpp:368-460).
+    // NAVNEW_PushBlocker schiebt den anderen - das rechnet behaved nicht (der
+    // andere hat seinen eigenen Plan); NAVNEW_CheckDoubleBlock fragt dessen
+    // blockingEntNum, den behaved nicht kennt (beides NOTIZEN_jk2.md).
+    bool jk2Ausweichen(int blocker, NavVec& moveDir) {
+        // Die Spur mit CONTENTS_BODY trifft nur Figuren (die func_door-Ausnahme
+        // von NAVNEW_ResolveEntityCollision greift hier nie).
+        const NavKoerperKasten* k = jk2Koerper(blocker);
+        if (k == nullptr) { return false; }
+        NavVec blockRichtung = minus(k->ort, z.ort);
+        const float blockAbstand = vektorNorm(blockRichtung);
+        // NAVNEW_DanceWithBlocker (g_navnew.cpp:200-237): vectoangles(movedir),
+        // Rollen 0, AngleVectors -> right
+        NavVec vorn{};
+        NavVec rechts{};
+        qAchsen(qGier(moveDir), vorn, rechts);
+        if (!istNull(k->tempo)) {
+            NavVec bm = k->tempo;
+            bm[2] = 0.0F;
+            const float dot = punkt(bm, rechts);
+            if (dot > 50.0F) {
+                moveDir = minus(moveDir, rechts);
+                (void)vektorNorm(moveDir);
+                return true;
+            }
+            if (dot > -50.0F) {
+                moveDir = plus(rechts, moveDir);
+                (void)vektorNorm(moveDir);
+                return true;
+            }
+        }
+        return jk2Seitwaerts(*k, blockRichtung, blockAbstand, moveDir);
+    }
+    // NAVNEW_AvoidCollision (g_navnew.cpp:462-538)
+    bool jk2Kollision(Jk2Info& info, bool blockiertMerken, int grenze) {
+        if (info.abstand > 128.0F) { info.abstand = 128.0F; }   // MAX_COLL_AVOID_DIST
+        const NavVec movepos = plus(z.ort, mal(info.richtung, info.abstand));
+        NavVec moveDir = info.richtung;
+        if (!jk2Voraus(movepos, info.spur, kNavBody)) {
+            const int blocker = info.spur.entity;
+            if (blockiertMerken) {
+                if (z.jk2Blockiert > grenze) {
+                    ++z.jk2Blockiert;   // d_patched 1
+                    return false;
+                }
+                ++z.jk2Blockiert;
+            }
+            if (const NavKoerperKasten* k = jk2Koerper(blocker)) {
+                if (jk2BlockiertAmZiel(*k, info.abstand)) { return false; }
+            }
+            if (!jk2Ausweichen(blocker, moveDir)) { return false; }
+            info.richtung = moveDir;
+            return true;
+        }
+        if (blockiertMerken) { z.jk2Blockiert = 0; }
+        return true;
+    }
+    [[nodiscard]] static int jk2Wp(int gespeichert) { return gespeichert - 1; }
+    // NAVNEW_MoveToGoal (g_navnew.cpp:594-880). Gibt den Knoten oder -1.
+    int jk2Makro(Jk2Info& info) {
+        int best = -1;
+        const int ichWp = jk2Wp(z.wegpunkt);
+        const int zielWp = jk2Wp(z.zielWegpunkt);
+        if (ichWp == -1 && z.wegpunktBis > jetzt) { return -1; }
+        if (zielWp == -1 && z.zielWegpunktBis > jetzt) { return -1; }
+        if (z.wegpunktBis > jetzt && z.zielWegpunktBis > jetzt) {
+            int junk = 0;
+            best = jk2BesterKnoten(ichWp, zielWp, junk, -1);
+        } else {
+            int a = -1;
+            int b = -1;
+            best = jk2BesterWeg(a, b);
+            z.wegpunkt = a + 1;
+            z.zielWegpunkt = b + 1;
+            if (best == -1) {
+                // Q_irand(500, 1500) - fest die Mitte
+                if (a == -1) { z.wegpunktBis = jetzt + kJk2WegpunktZeitMitte; }
+                if (b == -1) { z.zielWegpunktBis = jetzt + kJk2WegpunktZeitMitte; }
+                return -1;
+            }
+            if (z.zielWegpunktBis < jetzt) { z.zielWegpunktBis = jetzt + kJk2WegpunktZeitMitte; }
+        }
+        bool merken = true;
+        int versuche = 0;
+        bool frei = false;
+        Jk2Info probe = info;
+        while (!frei) {
+            if (best == -1) { return -1; }
+            NavVec ort = jk2Knoten(best).punkt;
+            const int meiner = jk2Wp(z.wegpunkt);
+            if (best != meiner) {
+                best = jk2TesteKnoten(meiner, best);
+                if (best == meiner) { ort = jk2Knoten(best).punkt; }
+            }
+            probe = info;
+            probe.richtung = minus(ort, z.ort);
+            (void)vektorNorm(probe.richtung);
+            frei = jk2Kollision(probe, merken, 5);
+            if (frei) {
+                info = probe;
+                if (w.schwert && info.richtung[2] * info.abstand > 64.0F) { return -1; }
+            } else {
+                merken = false;
+                if (best != meiner) {
+                    // d_altRoutes: AddFailedEdge, wenn ein Koerper die Verbindung
+                    // sperrt (fuehrt behaved nicht, NOTIZEN) - weiter zum eigenen.
+                    best = meiner;
+                } else {
+                    jk2KnotenScheitern(meiner);   // AddFailedNode (g_navnew.cpp:836-840)
+                    return -1;
+                }
+                if (++versuche >= 10) { return -1; }
+            }
+        }
+        if (z.wegpunktBis < jetzt) { z.wegpunktBis = jetzt + kJk2WegpunktZeitMitte; }
+        stueck = best + 1;
+        return best;
+    }
+    // NPC_ClearPathToGoal (NPC_move.cpp:43-83)
+    bool jk2FreiZumZiel() {
+        NavSpur tr;
+        if (jk2Voraus(w.ziel, tr, (jk2Clipmaske() & ~kNavBody) | kNavBotClip)) { return true; }
+        if (std::fabs(z.ort[2] - w.ziel[2]) > 48.0F) { return false; }
+        const float radius = maxs[0] > maxs[1] ? maxs[0] : maxs[1];
+        const float dist = abstand(z.ort, w.ziel);
+        const float tFrac = 1.0F - (radius / dist);
+        if (tr.fraction >= tFrac) { return true; }
+        if (w.zielNavgoal && jk2Getroffen(tr.endpos, mins, maxs, w.ziel, jk2ZielRadius(), w.zielMitRadius)) { return true; }
+        return false;
+    }
+    // NPC_GetMoveDirectionAltRoute (NPC_move.cpp:226-315), tryStraight qtrue
+    bool jk2Richtung(NavVec& dir, float& abstandZiel) {
+        Jk2Info info;
+        info.richtung = minus(w.ziel, z.ort);
+        info.abstand = vektorNorm(info.richtung);
+        info.pfadRichtung = info.richtung;
+        abstandZiel = info.abstand;
+        const auto gesicht = [&]() {
+            z.wunschGier = winkel360(qGier(info.richtung));   // "Can't reach goal, just face"
+            dir = info.richtung;
+            abstandZiel = info.abstand;
+            return false;
+        };
+        if (!jk2FreiZumZiel()) {
+            if (jk2Makro(info) == -1) { return gesicht(); }
+        } else {
+            Jk2Info probe = info;
+            if (!jk2Kollision(probe, true, 5)) {
+                if (jk2Makro(info) == -1) { return gesicht(); }
+            } else {
+                info = probe;
+            }
+        }
+        dir = info.richtung;
+        abstandZiel = info.abstand;
+        return true;
+    }
+    // NPC_MoveToGoal (NPC_move.cpp:389-474), aufgerufen aus NPC_BSCinematic.
+    // kampf: NPC_CheckCombatMove (ein Watchtarget, das nicht das Ziel ist).
+    void jk2ZumZiel(bool kampf) {
+        ucmdVor = 0;
+        ucmdSeit = 0;
+        NavVec dir{};
+        float abstandZiel = 0.0F;
+        if (!jk2Richtung(dir, abstandZiel)) {
+            richtung = dir;
+            return;
+        }
+        z.jk2ZielAbstand = abstandZiel;
+        richtung = dir;
+        const float pfadGier = qGier(dir);   // vectoangles -> lastPathAngles
+        z.pfadGier = pfadGier;
+        if (kampf) {
+            // G_UcmdMoveForDir (NPC_move.cpp:322-366) mit currentAngles
+            NavVec vorn{};
+            NavVec rechts{};
+            qAchsen(z.gier, vorn, rechts);
+            NavVec d = dir;
+            d[2] = 0.0F;
+            (void)vektorNorm(d);
+            zBewegung = d;
+            const float f = std::clamp(punkt(vorn, d) * 127.0F, -127.0F, 127.0F);
+            const float r = std::clamp(punkt(rechts, d) * 127.0F, -127.0F, 127.0F);
+            ucmdVor = static_cast<signed char>(std::floor(f));
+            ucmdSeit = static_cast<signed char>(std::floor(r));
+        } else {
+            z.wunschGier = winkel360(pfadGier);
+            ucmdVor = 127;
+        }
+    }
+    // ClientThink_real fuer NPCs (codeJK2/game/g_active.cpp:2358-2484) mit
+    // NPC_Accelerate (:1537-1597, fullWalkAcc/fullRunAcc qfalse). gierVorher:
+    // currentAngles[YAW] vor dem Pmove dieses Bilds. letzterVor/Seit:
+    // NPCInfo->last_ucmd.
+    void jk2Tempo(float gierVorher, signed char letzterVor, signed char letzterSeit, bool& bewegt, bool& gehTaste) {
+        int wunsch = 0;   // NPCInfo->desiredSpeed
+        if (ucmdVor != 0 || ucmdSeit != 0) {
+            wunsch = static_cast<int>(w.maxTempo);   // BUTTON_WALKING ? walkSpeed : runSpeed
+            if (z.jk2Tempo >= 80) {
+                if (z.jk2ZielAbstand < kJk2SlowdownDist) {   // NPCAI_NO_SLOWDOWN setzt kein Skript
+                    if (static_cast<float>(wunsch) > kJk2MinNpcSpeed) {
+                        const float langsam = static_cast<float>(wunsch) * z.jk2ZielAbstand / kJk2SlowdownDist;
+                        wunsch = static_cast<int>(std::ceil(langsam));
+                        if (static_cast<float>(wunsch) < kJk2MinNpcSpeed) { wunsch = static_cast<int>(kJk2MinNpcSpeed); }
+                    }
+                }
+            }
+        }
+        // NPC_Accelerate
+        const int geh = static_cast<int>(w.gehTempo);
+        int& cur = z.jk2Tempo;
+        if (wunsch <= geh) {
+            if (wunsch > cur + kJk2Beschleunigung) {
+                cur += kJk2Beschleunigung;
+            } else if (wunsch > cur) {
+                cur = wunsch;
+            } else if (wunsch < cur) {
+                cur = wunsch;   // "stop on a dime"
+            }
+        } else if (wunsch > cur) {
+            cur = wunsch;   // "accelerate instantly"
+        } else if (wunsch < cur) {
+            cur = wunsch;
+        }
+        if (cur <= 24 && wunsch < cur) {
+            z.tempo = 0;
+            cur = 0;
+            ucmdVor = 0;
+            ucmdSeit = 0;
+        } else {
+            gehTaste = cur <= geh;
+            if (cur > 0 && ucmdVor == 0 && ucmdSeit == 0) {
+                ucmdVor = letzterVor;   // "force them to take a couple more steps"
+                ucmdSeit = letzterSeit;
+            }
+            z.tempo = cur;
+            const float dreh = (180.0F - std::fabs(winkelDelta(gierVorher, z.wunschGier))) / 180.0F;
+            if (dreh < 0.75F) {
+                z.tempo = 0;
+            } else if (z.jk2ZielAbstand < 100.0F && dreh < 1.0F) {
+                z.tempo = static_cast<int>(std::floor(static_cast<float>(z.tempo) * dreh));
+            }
+        }
+        bewegt = ucmdVor != 0 || ucmdSeit != 0;
+    }
+    // CNavigator::NodeFailed / AddFailedNode (g_navigator.cpp:1729-1772)
+    [[nodiscard]] bool jk2KnotenGescheitert(int id) const {
+        for (const short k : z.jk2FehlKnoten) {
+            if (k - 1 == id) { return true; }
+        }
+        return false;
+    }
+    void jk2KnotenScheitern(int id) {
+        constexpr int kErst = 5000;   // CHECK_FAILED_EDGE_INTITIAL
+        std::size_t j = 0;
+        for (; j < z.jk2FehlKnoten.size(); ++j) {
+            if (z.jk2FehlKnoten[j] == 0) {
+                z.jk2FehlKnoten[j] = static_cast<short>(id + 1);
+                if (z.jk2FehlPruefBis == 0) { z.jk2FehlPruefBis = jetzt + kErst; }
+                return;
+            }
+            if (z.jk2FehlKnoten[j] == id + 1) { return; }
+        }
+        for (j = 0; j + 1 < z.jk2FehlKnoten.size(); ++j) { z.jk2FehlKnoten[j] = z.jk2FehlKnoten[j + 1]; }
+        z.jk2FehlKnoten.back() = static_cast<short>(id + 1);
+        if (z.jk2FehlPruefBis == 0) { z.jk2FehlPruefBis = jetzt + kErst; }
+    }
+    // CNavigator::CheckFailedNodes (g_navigator.cpp:1685-1727), in G_RunFrame je
+    // Bild: frei von Architektur UND Figuren -> vergessen; durch Architektur zu
+    // -> auch vergessen (gegen Figuren laesst es sich nicht pruefen). Neue
+    // Pruefung nach CHECK_FAILED_EDGE_INTERVAL + Q_irand(0, 1000) - fest 1500.
+    void jk2KnotenPruefen() {
+        if (z.jk2FehlPruefBis == 0 || z.jk2FehlPruefBis >= jetzt || jk2Zahl() == 0) { return; }
+        int noch = 0;
+        for (short& k : z.jk2FehlKnoten) {
+            if (k == 0) { continue; }
+            ++noch;
+            const NavVec& p = jk2Knoten(k - 1).punkt;
+            if (!jk2FigurFrei(p, kNavSolid | kNavMonsterClip | kNavBotClip)) {
+                k = 0;
+                --noch;
+            } else if (jk2FigurFrei(p, kNavBody)) {
+                k = 0;
+                --noch;
+            }
+        }
+        z.jk2FehlPruefBis = noch == 0 ? 0 : jetzt + 1500;
+    }
+    // G_RunFrame (g_main.cpp:1282-1300): ein alter Wegpunkt verfaellt.
+    void jk2WegpunkteAltern() {
+        if (z.wegpunkt != 0 && z.wegpunktBis < jetzt) {
+            z.letzterWegpunkt = z.wegpunkt;
+            z.wegpunkt = 0;
+        }
+        if (z.zielWegpunkt != 0 && z.zielWegpunktBis < jetzt) {
+            z.zielLetzterWegpunkt = z.zielWegpunkt;
+            z.zielWegpunkt = 0;
         }
     }
 
@@ -2493,9 +4220,12 @@ std::shared_ptr<const NavWelt> navWeltAusEntities(const std::vector<MapEntity>& 
         for (const char c : t) { h = (h ^ static_cast<unsigned char>(c)) * 1099511628211ULL; }
         h = (h ^ 0xffU) * 1099511628211ULL;
     };
+    // rc604 fix604: mit den Regeln von Jedi Outcast ein anderes Netz.
+    const bool jk2 = gJk2Nav.load(std::memory_order_relaxed);
+    if (jk2) { dazu("jk2"); }
     for (const MapEntity& e : ents) {
         const std::string k = klein(e.classname);
-        if (k != "waypoint" && k != "waypoint_small" && k != "waypoint_navgoal" && k != "point_combat") { continue; }
+        if (k != "waypoint" && k != "waypoint_small" && k != "waypoint_navgoal" && k != "point_combat" && !(jk2 && k == "func_door")) { continue; }
         dazu(k);
         dazu(e.origin);
         dazu(e.targetname);
@@ -2557,6 +4287,46 @@ std::uint64_t planSchluessel(const NavWelt& welt, const LaufZustand& z, const La
     }
     h = mische(h, bits(w.schwerkraft));
     h = mische(h, static_cast<std::uint64_t>(std::llround(std::max(-1.0e12, w.zielAbMs) * 16.0)));
+    // rc605: BS_JUMP
+    if (w.bsJump || z.sprung.bsAktiv) {
+        for (const int i : {0x42534a, static_cast<int>(w.bsJump), w.hockeMs, w.landMs, static_cast<int>(z.sprung.bsAktiv),
+                            z.sprung.bsZustand, z.sprung.beinTimer, z.sprung.bsAnim, z.sprung.bsAnimAb}) {
+            h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint32_t>(i)));
+        }
+    }
+    // rc605 FU4: die Sprungkette (Animationen, Timer, Absprung).
+    {
+        const LaufZustand::Sprung& sk = z.sprung;
+        if (sk.beinAnim != 0 || sk.torsoAnim != 0 || sk.torsoTimer != 0 || sk.abgehoben || w.kannSpringen || w.bsJump) {
+            for (const int i : {0x4b4554, sk.beinAnim, sk.beinAnimAb, sk.torsoAnim, sk.torsoAnimAb, sk.torsoTimer,
+                                static_cast<int>(sk.abgehoben), sk.beinTimer, w.sprungAnimArt, w.sprungAnimMs, w.landMs,
+                                w.forceLandMs}) {
+                h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint32_t>(i)));
+            }
+        }
+    }
+    // rc605: Spruenge und der Merker "blockiert" (nur mit SCF_NAV_CAN_JUMP).
+    if (w.kannSpringen) {
+        h = mische(h, w.keineAkrobatik ? 0x4e4f4143ULL : 0x41434fULL);   // rc605: SET_NO_ACROBATICS
+        const LaufZustand::Sprung& sp = z.sprung;
+        for (const int i : {0x535052, static_cast<int>(sp.springt), static_cast<int>(sp.laeuft), sp.zurueckBis, sp.zurueckSperreBis,
+                            sp.naechsterAb, static_cast<int>(sp.blockiert), sp.blockiertSeit, static_cast<int>(sp.blockiertEnt)}) {
+            h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint32_t>(i)));
+        }
+        for (const float f : {sp.ziel[0], sp.ziel[1], sp.ziel[2], sp.maxXY, sp.maxZ, sp.zStart, sp.blockiertOrt[0], sp.blockiertOrt[1],
+                              sp.blockiertOrt[2], w.weltSchwerkraft}) {
+            h = mische(h, bits(f));
+        }
+    }
+    // rc604 fix604 (JK2 Stufe 3)
+    if (gJk2Nav.load(std::memory_order_relaxed)) {
+        for (const short k : z.jk2FehlKnoten) { h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint16_t>(k))); }
+        for (const int i : {0x4a4b32, z.jk2Tempo, z.jk2Blockiert, z.jk2FehlPruefBis, static_cast<int>(w.zielMitRadius), static_cast<int>(w.zielNavgoal),
+                            static_cast<int>(w.schwert), static_cast<int>(static_cast<bool>(w.fremdGier))}) {
+            h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint32_t>(i)));
+        }
+        h = mische(h, bits(z.jk2ZielAbstand));
+    }
     // rc601 integ: Takt des Verhaltens (OpenJK) und was er weiterbenutzt.
     if (w.verhaltenTaktMs > static_cast<int>(kNavDenkMs)) {
         h = mische(h, static_cast<std::uint64_t>(static_cast<std::uint32_t>(w.verhaltenTaktMs)));
@@ -2762,6 +4532,16 @@ struct LaufRechner {
         w = werte;
         zielDa = w.zielGesetzt;
         z.vorlaufErledigt();   // rc601 (bewegung, teil 3): dieser Plan hat ihn
+        // rc605: Q3_SetBState(BS_JUMP) setzt jumpState = JS_FACING
+        // (Q3_Interface.cpp:2684-2687 MD); ohne BS_JUMP gilt die Folge nicht mehr.
+        if (werte.bsJump && !z.sprung.bsAktiv) {
+            z.sprung.bsAktiv = true;
+            z.sprung.bsZustand = 1;
+        } else if (!werte.bsJump) {
+            z.sprung.bsAktiv = false;
+            z.sprung.bsZustand = 0;
+            z.sprung.bsAnim = 0;
+        }
         // Das erste Denkbild nach abMs auf dem 50-ms-Raster.
         t = kNavDenkMs * (std::floor((abMs + 0.5) / kNavDenkMs) + 1.0);
         // rc601 (bewegung, teil 3): Vorlauf ab dem Spawn - G_CheckInSolid
@@ -2770,6 +4550,7 @@ struct LaufRechner {
         // 200 ms in NPC_Begin, das erste NPC_Think 150 ms spaeter mit 200 ms.
         if (w.spawnVorlauf && !w.ohneKoerper) {
             Lauf l0(welt, w, z);
+            l0.jk2Pm = gJk2Nav.load(std::memory_order_relaxed);   // rc604 fix604
             l0.jetzt = static_cast<int>(std::lround(abMs));
             l0.akt.t = abMs;
             if (w.spawnImFesten && (welt.spur || welt.spurZeit)) {
@@ -2777,7 +4558,7 @@ struct LaufRechner {
                 m0[2] = 0.0F;
                 NavVec ende = z.ort;
                 ende[2] += l0.mins[2];
-                const NavSpur s = spurDurch(l0.spurF, z.ort, m0, l0.maxs, ende, kNavKeineEntity, kNavMaskNpcSolid);
+                const NavSpur s = spurDurch(l0.spurF, z.ort, m0, l0.maxs, ende, kNavKeineEntity, l0.pmMaske());
                 if (!s.allsolid && !s.startsolid && s.fraction < 1.0F) {
                     z.ort = s.endpos;
                     z.ort[2] -= l0.mins[2];
@@ -2824,8 +4605,18 @@ struct LaufRechner {
             return rr < 0.5 || rr > static_cast<double>(w.verhaltenTaktMs) - 0.5;
         }();
         const bool zielJetzt = zielDa && zielZeit && verhalten;
-        // UpdateGoal (NPC_goal.cpp:173)
-        if (zielJetzt && l.erreicht(w.ziel, w.zielRadius)) {
+        // rc604 fix604 (JK2 Stufe 3): Jedi Outcast - NPC_MoveToGoal mit dem alten
+        // Navigator, das Tempo aus ClientThink_real (bhed/navlauf.h).
+        const bool jk2 = gJk2Nav.load(std::memory_order_relaxed) && !w.ohneKoerper;
+        l.jk2Pm = jk2;
+        if (jk2) {
+            l.jk2WegpunkteAltern();
+            l.jk2KnotenPruefen();   // CheckFailedNodes, ebenfalls in G_RunFrame
+        }
+        // UpdateGoal (NPC_goal.cpp:173; JK2 ReachedGoal, codeJK2/game/NPC_goal.cpp:159-254)
+        // rc605: in BS_JUMP prueft nur NPC_BSJump das Ziel (JS_LANDING).
+        const bool bsJump = w.bsJump && !w.ohneKoerper && !jk2;
+        if (zielJetzt && !bsJump && (jk2 ? l.jk2Erreicht() : l.erreicht(w.ziel, w.zielRadius))) {
             zielDa = false;
             plan.ankunftMs = t;
             if (ersterZielTakt) { plan.zielAnfangsErreicht = true; }
@@ -2834,6 +4625,8 @@ struct LaufRechner {
         signed char vor = 0;
         signed char seit = 0;
         signed char hoch = 0;
+        int wegArt = 0;
+        bool bsGedreht = false;   // rc605: NPC_BSJump drehte schon (NPC_UpdateAngles)
         if (!verhalten) {
             // rc601 integ: OpenJK ohne Verhalten in diesem Denkbild
             // (NPC.cpp:2502-2526): "VectorCopy(oldMoveDir, ps.moveDir)",
@@ -2862,14 +4655,36 @@ struct LaufRechner {
             } else {
                 z.tempoVek = {0.0F, 0.0F, 0.0F};
             }
+        } else if (jk2) {
+            // NPC_BSCinematic (codeJK2/game/NPC_behavior.cpp:232-263): mit Ziel
+            // NPC_MoveToGoal(qtrue); NPC_CheckCombatMove: ein Watchtarget, das
+            // nicht das Ziel ist, laesst die Figur seitwaerts gehen.
+            if (zielDa && zielZeit) { l.jk2ZumZiel(static_cast<bool>(w.fremdGier)); }
+            gehTaste = w.gangSchalter == 1;   // NPC_ApplyScriptFlags (NPC.cpp:885-898)
+        } else if (bsJump) {
+            // rc605: NPC_BehaviorSet_Default -> NPC_BSJump (NPC.cpp:1138-1140 MD);
+            // kein STEER, der ucmd bleibt leer.
+            if (zielDa && zielZeit) {
+                bsGedreht = true;
+                if (l.bsSprung()) {
+                    zielDa = false;
+                    plan.ankunftMs = t;
+                }
+            }
         } else if (zielDa && zielZeit) {
             // NPC_MoveToGoal (NPC_move.cpp:892-955)
             l.aktivieren();
             bool ok = l.steerHin();
+            wegArt = 1;
             if (!ok) {
                 ok = l.navHin();
-                if (!ok) { l.stop(); }
+                wegArt = 2;
+                if (!ok) {
+                    l.stop();
+                    wegArt = 3;
+                }
             }
+            if (l.blockJetzt) { wegArt += 10; }
             l.deaktivieren(bewegt, gehTaste);
         }
         // NPC_BSCinematic: ein Watchtarget ueberschreibt desiredYaw (nur im
@@ -2878,7 +4693,22 @@ struct LaufRechner {
             float g = 0.0F;
             if (w.fremdGier(t, z.ort, g)) { z.wunschGier = g; }
         }
-        l.drehen();
+        const float gierVorher = z.gier;
+        // rc604 fix604 (JK2): ohne Verhalten ueberschreibt memcpy(&ucmd,
+        // &NPCInfo->last_ucmd) die Winkel, die NPC_UpdateAngles eben gerechnet
+        // hat (codeJK2/game/NPC.cpp:2113-2115) - die Figur dreht sich nur in den
+        // Denkbildern mit Verhalten (alle 100 ms um den Schritt von 50 ms).
+        // rc604 fix604b (A1): OpenJK tut dasselbe - NPC_UpdateAngles(qtrue,
+        // qtrue), dann memcpy(&ucmd, &NPCInfo->last_ucmd) (code/game/NPC.cpp:
+        // 2515-2520), last_ucmd aus NPC_ExecuteBState (NPC.cpp:2279). Movie
+        // Duels hat in jedem Denkbild Verhalten (verhalten ist immer wahr).
+        if (verhalten && !bsGedreht) { l.drehen(); }
+        // rc604 fix604 (JK2): last_ucmd vor ClientThink (NPC.cpp:1903-1909), dann
+        // das Tempo in ClientThink_real - in jedem Denkbild.
+        const signed char jk2Vor = l.ucmdVor;
+        const signed char jk2Seit = l.ucmdSeit;
+        const bool jk2Geh = gehTaste;
+        if (jk2) { l.jk2Tempo(gierVorher, jk2Vor, jk2Seit, bewegt, gehTaste); }
         if (w.ohneKoerper) {
             // PmoveSingle: PM_NOCLIP -> PM_NoclipMove, PM_DropTimers, return -
             // kein PM_Footsteps, die Beine behalten ihre Animation (bewegt
@@ -2896,9 +4726,9 @@ struct LaufRechner {
             // NPC_ExecuteBState). Ohne Ziel ist der ucmd dort leer.
             z.letzteBewegung = l.zBewegung;
             if (verhalten) {
-                z.letzterVor = w.ohneKoerper ? vor : l.ucmdVor;
-                z.letzterSeit = w.ohneKoerper ? seit : l.ucmdSeit;
-                z.letzteGehTaste = gehTaste;
+                z.letzterVor = w.ohneKoerper ? vor : (jk2 ? jk2Vor : l.ucmdVor);
+                z.letzterSeit = w.ohneKoerper ? seit : (jk2 ? jk2Seit : l.ucmdSeit);
+                z.letzteGehTaste = jk2 ? jk2Geh : gehTaste;
             }
         }
         LaufTakt takt;
@@ -2908,7 +4738,9 @@ struct LaufRechner {
         takt.tempo = z.tempo;
         takt.bewegt = bewegt;
         takt.gehTaste = gehTaste;
-        takt.gehAnim = w.gangSchalter == 2 ? false : (w.gangSchalter == 1 ? true : gehTaste);
+        // rc604 fix604 (JK2): BUTTON_WALKING aus ClientThink_real (currentSpeed <=
+        // walkSpeed) - nach NPC_ApplyScriptFlags (g_active.cpp:2421-2428).
+        takt.gehAnim = jk2 ? gehTaste : (w.gangSchalter == 2 ? false : (w.gangSchalter == 1 ? true : gehTaste));
         takt.stueck = l.stueck;
         takt.richtung = l.richtung;
         takt.zustandWunschGier = z.wunschGier;
@@ -2917,13 +4749,30 @@ struct LaufRechner {
         takt.koerperMin = l.kpMin;
         takt.koerperMax = l.kpMax;
         takt.kantenGefragt = l.kantenGefragt;
+        takt.sprung = l.sprungJetzt;   // rc605
+        takt.bsAnim = z.sprung.bsAnim;
+        takt.bsAnimAb = z.sprung.bsAnimAb;
+        takt.beinAnim = z.sprung.beinAnim;   // rc605 FU4
+        takt.beinAnimAb = z.sprung.beinAnimAb;
+        takt.torsoAnim = z.sprung.torsoAnim;
+        takt.torsoAnimAb = z.sprung.torsoAnimAb;
+        // Die Folge von NPC_BSJump zeigt die Szene als Bewegung (wegBewegtBei).
+        if (bsJump && z.sprung.bsAnim != 0) { takt.bewegt = true; }
+        // rc605 FU4: ebenso jede Animation der Sprungkette (die Szene zeigt sie im Weg).
+        if (z.sprung.beinAnim != kSaKeine) { takt.bewegt = true; }
+        takt.weg = wegArt;
+        takt.sprungTempo = l.sprungTempo;
         plan.takte.push_back(takt);
         plan.zustaende.push_back(z);
         // Ende? (In BS_NOCLIP gibt es keinen Boden - alle drei Achsen.)
         // rc601 (bewegung, teil 3): mit Spuren steht nur, wer auf dem Boden
         // ist und nicht faellt.
         const bool mitFallen = welt.boden && (welt.spur || welt.spurZeit) && w.fallen && !w.ohneKoerper;
-        const bool steht = z.tempoVek[0] == 0.0F && z.tempoVek[1] == 0.0F &&
+        // rc605 FU4: solange eine Animation der Sprungkette ihren Timer hat
+        // (BOTH_LAND1 nach PM_CrashLand), laeuft der Plan weiter - sonst schnitte
+        // die Szene sie am Wegende ab.
+        const bool ketteHaelt = z.sprung.beinAnim != kSaKeine && z.sprung.beinAnim != kSaStand1 && z.sprung.beinTimer > 0;
+        const bool steht = z.tempoVek[0] == 0.0F && z.tempoVek[1] == 0.0F && !ketteHaelt &&
                            (mitFallen ? (z.amBoden && z.tempoVek[2] == 0.0F)
                                       : ((welt.boden && !w.ohneKoerper) || z.tempoVek[2] == 0.0F));
         if (!zielZeit) {
@@ -2951,7 +4800,12 @@ struct LaufRechner {
             if (steht && z.ort == ruheOrt) {
                 // Mit Ziel, ohne Bewegung: so lange, dass sich weder die
                 // Spur-Timer (1,5/2 s) noch der A*-Speicher (4,5 s) aendern.
-                if (!ohneNie && t - ruheSeit >= 7000.0) {
+                // rc605: eine Figur, die springen kann, versucht es nach 2 s
+                // und nach 8 s blockiert (zum letzten Wegpunkt) - erst danach,
+                // mit dem naechsten jumpNextCheckTime (hoechstens 2 s) und
+                // jumpBackupTime, aendert sich nichts mehr.
+                const bool sprungOffen = w.kannSpringen && !w.keineAkrobatik && z.sprung.blockiert && t <= z.sprung.blockiertSeit + 11000.0;
+                if (!ohneNie && !sprungOffen && t - ruheSeit >= 7000.0) {
                     plan.nie = true;
                     fertig = true;
                     return;
@@ -3062,7 +4916,46 @@ int npcVerhaltenTaktMs(bool movieDuels, const std::string& waffe, int spielstufe
     return 100;
 }
 
+// rc605: NPC_JumpAnimation (NPC_move.cpp:413-511 MD / 343-368 OpenJK).
+std::string npcSprungAnim(bool movieDuels, const std::string& klasse, const std::string& waffe, const std::string& rang) {
+    const std::string k = klein(klasse);
+    const bool schwert = klein(waffe) == "wp_saber";
+    // "NPCInfo->rank != RANK_CREWMAN && NPCInfo->rank <= RANK_LT_JG" -
+    // TranslateRankName (NPC_stats.cpp:222-268): civilian (auch unbekannt),
+    // ensign, ltjg.
+    const std::string r = klein(rang);
+    const bool tiefRang = !(r == "crewman" || r == "lt" || r == "ltcomm" || r == "commander" || r == "captain");
+    bool keineAkrobatik = k == "class_bobafett" || (k == "class_reborn" && !schwert) || k == "class_rockettrooper" || tiefRang;
+    if (movieDuels) {
+        keineAkrobatik = keineAkrobatik || k == "class_mandalorian" || k == "class_jango" || k == "class_jangodual" ||
+                         (k == "class_calonord" && !schwert);
+    }
+    if (keineAkrobatik) { return "BOTH_FORCEJUMP1"; }   // "can't do acrobatics"
+    if (k == "class_howler") { return "BOTH_JUMP1"; }
+    if (k == "class_alora") { return "BOTH_ALORA_FLIP_2"; }
+    return "BOTH_FLIP_F";
+}
+
+// rc605: "anyone who has any force jump can jump" / "These jokers can jump"
+// (NPC_spawn.cpp:588-602 MD, 386-400 OpenJK).
+bool npcKannSpringen(const std::string& klasse, int levitation) {
+    return levitation > 0 || klein(klasse) == "class_howler";
+}
+
+// rc605 FU4: was die Sprungkette von der Animation aus NPC_JumpAnimation wissen
+// muss - PM_FlippingAnim (bg_pmove.cpp:10260-10330 MD: BOTH_FLIP_F, die
+// BOTH_ALORA_FLIP_*) laesst PM_JumpForDir aus, BOTH_FORCEJUMP1 landet in
+// PM_GetLandingAnim auf BOTH_FORCELAND1, BOTH_JUMP1 (CLASS_HOWLER) auf BOTH_LAND1.
+int npcSprungAnimArt(const std::string& anim) {
+    const std::string a = klein(anim);
+    if (a == "both_jump1") { return 2; }
+    if (a == "both_forcejump1") { return 0; }
+    return 1;   // BOTH_FLIP_F, BOTH_ALORA_FLIP_1..3
+}
+
 void navMovieDuelsRegeln(bool an) { gMovieDuels.store(an, std::memory_order_relaxed); }
+void navJk2Regeln(bool an) { gJk2Nav.store(an, std::memory_order_relaxed); }
+bool navJk2Regeln() { return gJk2Nav.load(std::memory_order_relaxed); }
 bool navMovieDuelsRegeln() { return gMovieDuels.load(std::memory_order_relaxed); }
 
 NavPlanZaehler navPlanZaehler() {
@@ -3139,6 +5032,7 @@ LaufZustand abschnittsBeginn(const LaufZustand& satz, const LaufZustand& alleinB
     nimm(z.zielWegpunktBis, satz.zielWegpunktBis, alleinBeiSchnitt.zielWegpunktBis, jetzt.zielWegpunktBis);
     nimm(z.amBoden, satz.amBoden, alleinBeiSchnitt.amBoden, jetzt.amBoden);
     nimm(z.pmZeit, satz.pmZeit, alleinBeiSchnitt.pmZeit, jetzt.pmZeit);
+    nimm(z.sprung, satz.sprung, alleinBeiSchnitt.sprung, jetzt.sprung);   // rc605
     if (satz.pfadDa == alleinBeiSchnitt.pfadDa && satz.pfad == alleinBeiSchnitt.pfad &&
         satz.pfadGroesse == alleinBeiSchnitt.pfadGroesse) {
         z.pfadDa = jetzt.pfadDa;
@@ -3201,8 +5095,23 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
     for (std::size_t i = 0; i < reihe.size(); ++i) { reihe[i] = i; }
     std::stable_sort(reihe.begin(), reihe.end(), [&](std::size_t x, std::size_t y) { return figuren[x].reihe < figuren[y].reihe; });
 
-    // Wo ist Figur f, und ist sie ein Koerper?
-    const auto kastenVon = [&](std::size_t f, double t, NavKoerperKasten& k) {
+    // rc604 fix604: contents und clipmask jeder Figur zur Zeit (NavFigurKoerper::
+    // fest). NPC_Begin: CONTENTS_BODY und MASK_NPCSOLID, mit SFB_NOTSOLID
+    // contents 0 und MASK_NPCSOLID & ~CONTENTS_BODY (NPC_spawn.cpp:1895-1904 MD
+    // / 1152-1161 OpenJK).
+    struct FestStand {
+        bool koerper = true;            // contents & CONTENTS_BODY
+        bool clip = true;               // clipmask & CONTENTS_BODY
+        std::size_t naechster = 0;      // naechster Wechsel in fest
+        double versuch = -1.0;          // SolidifyOwner denkt hier wieder (< 0: keiner)
+    };
+    std::vector<FestStand> fz(figuren.size());
+    for (std::size_t f = 0; f < figuren.size(); ++f) {
+        fz[f].koerper = !figuren[f].sfbNichtFest;
+        fz[f].clip = !figuren[f].sfbNichtFest;
+    }
+    // Wo ist Figur f (ob Koerper oder nicht)?
+    const auto ortVon = [&](std::size_t f, double t, NavKoerperKasten& k) {
         const NavFigurKoerper& fg = figuren[f];
         if (t < fg.daAbMs - 0.5 || t >= fg.daBisMs - 0.5) { return false; }
         const Stand& s = st[f];
@@ -3227,6 +5136,68 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
         k.mins = {-fg.halbBreite, -fg.halbBreite, kDefaultMins2};
         k.maxs = {fg.halbBreite, fg.halbBreite, fg.hoeheOben};
         return true;
+    };
+    // Wo ist Figur f, und ist sie ein Koerper?
+    const auto kastenVon = [&](std::size_t f, double t, NavKoerperKasten& k) {
+        return fz[f].koerper && ortVon(f, t, k);
+    };
+    // SpotWouldTelefrag2(mover, currentOrigin) mit mover->contents =
+    // CONTENTS_BODY (g_client.cpp:320-341 MD / 158 OpenJK): gi.EntitiesInBox
+    // ueber den Kasten der Figur (SV_AreaEntities gegen absmin/absmax der
+    // anderen, je 1 weiter) - trifft er einen anderen Koerper?
+    const auto telefrag = [&](std::size_t f, double t) {
+        NavKoerperKasten ich;
+        if (!ortVon(f, t, ich)) { return false; }
+        NavVec lo{};
+        NavVec hi{};
+        for (std::size_t i = 0; i < 3; ++i) {
+            lo[i] = ich.ort[i] + ich.mins[i];
+            hi[i] = ich.ort[i] + ich.maxs[i];
+        }
+        for (std::size_t g = 0; g < figuren.size(); ++g) {
+            NavKoerperKasten k;
+            if (g != f && kastenVon(g, t, k) && beruehrt(lo, hi, k)) { return true; }
+        }
+        return false;
+    };
+    // Die Wechsel bis zum Denkbild t, in der Zeitfolge mit SolidifyOwner.
+    const auto festBis = [&](std::size_t f, double t) {
+        const std::vector<std::pair<double, signed char>>& w = figuren[f].fest;
+        FestStand& z = fz[f];
+        for (;;) {
+            const double tw = z.naechster < w.size() ? w[z.naechster].first : 1.0e300;
+            const double tv = z.versuch >= 0.0 ? z.versuch : 1.0e300;
+            if (std::min(tw, tv) > t + 0.5) { break; }
+            if (tv <= tw) {
+                // SolidifyOwner (Q3_Interface.cpp:6031-6056 MD / 5589-5615 OpenJK):
+                // telefrag - in FRAMETIME wieder; sonst Koerper, die clipmask
+                // nur ohne SFB_NOTSOLID.
+                if (telefrag(f, tv)) {
+                    z.versuch = tv + 100.0;
+                } else {
+                    z.koerper = true;
+                    if (!figuren[f].sfbNichtFest) { z.clip = true; }
+                    z.versuch = -1.0;
+                }
+                continue;
+            }
+            const signed char art = w[z.naechster].second;
+            ++z.naechster;
+            if (art == kNavFestUnsichtbar) {
+                z.koerper = false;   // Q3_SetInvisible(true): contents = 0
+            } else if (art == kNavFestNicht) {
+                z.koerper = false;   // Q3_SetSolid(false): CONTENTS_CORPSE bzw. 0
+                z.clip = false;      // ... clipmask &= ~CONTENTS_BODY (NPC)
+            } else if (telefrag(f, tw)) {
+                // Q3_SetSolid(true): contents bleibt, ein solidifier denkt in
+                // FRAMETIME (100 ms, g_local.h) - auch ein SET_SOLID false
+                // danach haelt ihn nicht auf.
+                z.versuch = z.versuch >= 0.0 ? std::min(z.versuch, tw + 100.0) : tw + 100.0;
+            } else {
+                z.koerper = true;
+                z.clip = true;       // clipmask |= CONTENTS_BODY
+            }
+        }
     };
     const auto andere = [&](std::size_t ich, double t) {
         kaesten.clear();
@@ -3329,6 +5300,7 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
     int ruhig = 0;
     for (int schritt = 0; schritt < 200000; ++schritt, t += kNavDenkMs) {
         bool tutWas = false;
+        for (const std::size_t f : reihe) { festBis(f, t); }   // rc604 fix604
         for (const std::size_t f : reihe) {
             Stand& s = st[f];
             // Ein neuer Abschnitt beginnt mit dem Denkbild nach seinem abMs.
@@ -3384,6 +5356,7 @@ NavKoerperErgebnis navKoerperLauf(const NavWelt& welt, const std::vector<NavFigu
             const NavAbschnitt& a = abschnitte[static_cast<std::size_t>(s.aktuell)];
             if (t > a.schnittMs + 0.5) { continue; }   // der naechste Abschnitt uebernimmt
             andere(f, t);
+            kw.pmOhneKoerper = !fz[f].clip;   // rc604 fix604: pm.tracemask = ent->clipmask
             if (s.art == Art::Folgt) {
                 const LaufPlan& al = *a.allein;
                 // rc603 fix603: Takte zwischen den Denkbildern des gemeinsamen

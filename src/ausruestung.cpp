@@ -41,6 +41,7 @@
 //     ActorState::saberLoop, gespielt wird er noch nicht.
 //   * Die Muendung eines Schusses kommt weiter aus dem Ursprung der Figur
 //     (muzzlePoint), nicht vom Bolzen "*flash" des Waffenmodells.
+#include "bhed/regelwerk.h"
 #include "bhed/scene.h"
 
 #include <algorithm>
@@ -391,6 +392,55 @@ std::string npcTeamWaffe(const std::string& team, const std::string& npcType,
     return "WP_NONE";
 }
 
+// rc604 fix604 (JK2 Stufe 3): NPC_WeaponsForTeam von Jedi Outcast
+// (codeJK2/game/NPC_spawn.cpp:401-612) mit NPC_SetWeapons (:624-670, die
+// hoechste Waffe, MELEE nur ohne andere). Anders als OpenJK vergleicht es die
+// Anfaenge MIT Gross/klein (Q_strncmp), "remote" ganz, und "elder",
+// "stcommander_jk2", "md_grogu" gibt es nicht.
+std::string npcTeamWaffeJk2(const std::string& team, const std::string& npcType, int spawnflags) {
+    std::string t = klein(ohneRand(team));
+    if (beginntMit(t, "team_")) { t = t.substr(5); }
+    const std::string& n = npcType;
+    const auto gleich = [&n](const char* x) { return klein(n) == x; };                 // Q_stricmp
+    const auto anfang = [&n](const char* x) { return n.rfind(x, 0) == 0; };            // Q_strncmp
+    if (t == "enemy") {
+        if (gleich("tavion") || anfang("reborn") || gleich("desann") || anfang("shadowtrooper")) { return "WP_SABER"; }
+        if (anfang("stofficer")) { return "WP_FLECHETTE"; }
+        if (gleich("stcommander")) { return "WP_REPEATER"; }
+        if (gleich("swamptrooper")) { return "WP_FLECHETTE"; }
+        if (gleich("swamptrooper2")) { return "WP_REPEATER"; }
+        if (gleich("rockettrooper")) { return "WP_ROCKET_LAUNCHER"; }
+        if (gleich("imperial") || anfang("impworker") || gleich("stormpilot")) { return "WP_BLASTER_PISTOL"; }
+        if (gleich("galak")) { return "WP_BLASTER"; }
+        if (gleich("galak_mech")) { return "WP_REPEATER"; }
+        if (anfang("ugnaught")) { return "WP_NONE"; }
+        if (gleich("granshooter")) { return "WP_BLASTER"; }
+        if (gleich("granboxer")) { return "WP_MELEE"; }
+        if (anfang("gran")) { return "WP_THERMAL"; }   // THERMAL|MELEE
+        if (gleich("rodian")) { return "WP_DISRUPTOR"; }
+        if (gleich("rodian2")) { return "WP_BLASTER"; }
+        if (gleich("interrogator") || gleich("sentry") || anfang("protocol")) { return "WP_NONE"; }
+        if (anfang("weequay")) { return "WP_BOWCASTER"; }
+        if (gleich("impofficer") || gleich("impcommander")) { return "WP_BLASTER"; }
+        if (gleich("probe") || gleich("seeker") || gleich("remote")) { return "WP_BOT_LASER"; }
+        if (gleich("trandoshan")) { return "WP_REPEATER"; }
+        if (gleich("atst")) { return "WP_ATST_SIDE"; }
+        if (gleich("mark1") || gleich("mark2")) { return "WP_BOT_LASER"; }
+        if (gleich("minemonster") || gleich("howler")) { return "WP_MELEE"; }
+        return "WP_BLASTER";
+    }
+    if (t == "player") {
+        if ((spawnflags & 2) != 0) { return "WP_REPEATER"; }         // SFB_RIFLEMAN
+        if ((spawnflags & 4) != 0) { return "WP_BLASTER_PISTOL"; }   // SFB_PHASER
+        if (anfang("jedi") || gleich("luke")) { return "WP_SABER"; }
+        if (anfang("prisoner")) { return "WP_NONE"; }
+        if (anfang("bespincop")) { return "WP_BLASTER_PISTOL"; }
+        if (gleich("monmothma")) { return "WP_NONE"; }
+        return "WP_BLASTER";
+    }
+    return "WP_NONE";
+}
+
 bool haeltSaber(const ActorState& st) noexcept {
     return st.waffe.empty() || st.waffe == "WP_SABER";
 }
@@ -482,6 +532,69 @@ int saberArtIndex(Actor& a, const std::string& name, int fach,
     return static_cast<int>(a.saberArten.size() - 1);
 }
 
+// --- rc604 jk2: das Schwert in Jedi Outcast ------------------------------
+//
+// JK2 kennt keine .sab-Dateien und hat genau EINE Klinge. Was die Figur in
+// der Hand hat, haengt an ihrer Klasse:
+//   Griff   WP_SetSaberModel (codeJK2/game/wp_saber.cpp:365-385), gesetzt in
+//           WP_SaberInitBladeData (:506-508): Desann, Luke und Kyle (NPC und
+//           Spieler) eigene, alle anderen saber_reborn.
+//   Laenge  saberLengthMax (:469-480): Desann 48, Reborn 32, sonst 40.
+//   Farbe   "saberColor" aus NPCs.cfg (NPC_ParseParms, NPC_stats.cpp:1707-1716;
+//           TranslateSaberColor :215-245 - Unbekanntes wird blau, "random"
+//           SABER_ORANGE..SABER_PURPLE). Ohne Angabe bleibt ps.saberColor 0 =
+//           SABER_RED (q_shared.h, JK2_MODE); der Spieler SABER_BLUE
+//           (g_client.cpp:1666, in der Beschreibung "player" eingetragen).
+//   Klaenge saberon/saberoff fuer TEAM_PLAYER, sonst enemy_saber_on/off
+//           (cg_players.cpp:5216-5223, wp_saber.cpp:6617-6625); Summen nach
+//           CG_SaberHumSoundForEnt (cg_players.cpp:4078-4106).
+//   Radius  2.8 (CG_DoSaber, cg_players.cpp:4261, ohne das Flackern).
+int saberArtJk2(Actor& a, const NpcDef* def) {
+    const std::string k = def != nullptr ? gross(ohneRand(def->klasse)) : std::string();
+    const bool spielerTeam = def != nullptr && gross(ohneRand(def->team)) == "TEAM_PLAYER";
+    const bool feind = def != nullptr && gross(ohneRand(def->team)) == "TEAM_ENEMY";
+    const std::string name = "jk2|" + k;
+    for (std::size_t i = 0; i < a.saberArten.size(); ++i) {
+        if (a.saberArten[i].fach == 0 && a.saberArten[i].name == name) {
+            return static_cast<int>(i);
+        }
+    }
+    SaberArt art;
+    art.name = name;
+    art.fach = 0;
+    art.gefunden = true;
+    art.typ = "SABER_SINGLE";
+    art.numBlades = 1;
+    art.soundOn = spielerTeam ? "sound/weapons/saber/saberon.wav" : "sound/weapons/saber/enemy_saber_on.wav";
+    art.soundOff = spielerTeam ? "sound/weapons/saber/saberoff.wav" : "sound/weapons/saber/enemy_saber_off.wav";
+    art.soundLoop = k == "CLASS_DESANN" ? "sound/weapons/saber/saberhum2.wav"
+                    : k == "CLASS_LUKE" ? "sound/weapons/saber/saberhum5.wav"
+                    : k == "CLASS_KYLE" ? "sound/weapons/saber/saberhum4.wav"
+                    : feind             ? "sound/weapons/saber/saberhum3.wav"
+                                        : "sound/weapons/saber/saberhum1.wav";
+    const std::string griff = k == "CLASS_DESANN" ? "models/weapons2/saber_desann/saber_w.glm"
+                              : k == "CLASS_LUKE" ? "models/weapons2/saber_luke/saber_w.glm"
+                              : k == "CLASS_KYLE" ? "models/weapons2/saber/saber_w.glm"
+                                                  : "models/weapons2/saber_reborn/saber_w.glm";
+    KlingenZustand& b = art.klinge[0];
+    b.max = k == "CLASS_DESANN" ? 48.0F : k == "CLASS_REBORN" ? 32.0F : 40.0F;
+    b.radius = 2.8F;
+    const std::string farbe = def != nullptr ? klein(ohneRand(def->saberFarbe[0][0])) : std::string();
+    if (farbe.empty()) {
+        b.farbe = "red";
+    } else if (farbe == "random") {
+        b.farbe = saberFarbeAufloesen("random", a.name + "|jk2");
+    } else if (farbe == "red" || farbe == "orange" || farbe == "yellow" || farbe == "green" || farbe == "blue" ||
+               farbe == "purple") {
+        b.farbe = farbe;
+    } else {
+        b.farbe = "blue";
+    }
+    art.modell = modellIndex(a, griff);
+    a.saberArten.push_back(std::move(art));
+    return static_cast<int>(a.saberArten.size() - 1);
+}
+
 int waffenModellIndex(Actor& a, const std::string& waffe, bool kotor,
                       const SzenenHilfe* hilfe) {
     if (hilfe == nullptr || hilfe->waffen == nullptr) {
@@ -512,7 +625,8 @@ void ausstattungBeimSpawnen(Actor& a, const NpcDef* def, const SzenenHilfe* hilf
         // SET_SABERACTIVE weiter eine Klinge zeigt, und keine Waffe.
         a.startWaffe.clear();
         a.startHatSaber = true;   // "haelt ein Schwert" - also hat sie eins
-        const int art = saberArtIndex(a, "", 0, hilfe);
+        // rc604 jk2: in Jedi Outcast das Schwert der Klasse (saberArtJk2).
+        const int art = regelwerkJediOutcast() ? saberArtJk2(a, nullptr) : saberArtIndex(a, "", 0, hilfe);
         belege(a, a.startSaber[0], art);
         return;
     }
@@ -524,6 +638,15 @@ void ausstattungBeimSpawnen(Actor& a, const NpcDef* def, const SzenenHilfe* hilf
     std::string waffe = gross(ohneRand(def->weapon));
     if (waffe.empty() || waffe == "WP_NONE") {
         waffe = npcTeamWaffe(def->team, a.npcType, spawnflags);
+    }
+    if (regelwerkJediOutcast()) {
+        // rc604 fix604 (JK2 Stufe 3): NPC_ParseParms von Jedi Outcast kennt kein
+        // "weapon" - NPC_Begin ruft immer NPC_SetWeapons (NPC_spawn.cpp:947).
+        waffe = npcTeamWaffeJk2(def->team, a.npcType, spawnflags);
+        // NPC_type "kyle" bekommt NPCAI_MATCHPLAYERWEAPON (NPC_spawn.cpp:1274-1279):
+        // G_MatchPlayerWeapon in NPC_Begin (:1052-1055, g_active.cpp:1078-1117)
+        // nimmt die Waffe des Spielers - in der Vorschau haelt er das Schwert.
+        if (klein(a.npcType) == "kyle" && !a.echterSpieler) { waffe = "WP_SABER"; }
     }
     a.startWaffe = waffe;
     a.startHatSaber = (waffe == "WP_SABER") || def->saberImInventar;
@@ -540,17 +663,21 @@ void ausstattungBeimSpawnen(Actor& a, const NpcDef* def, const SzenenHilfe* hilf
             if (def->saberRadius[f][b] > 0.0F) { s.klinge[b].radius = def->saberRadius[f][b]; }
         }
     };
-    if (!def->saber.empty()) {
+    if (regelwerkJediOutcast()) {
+        // rc604 jk2: keine .sab, kein saber2 - Griff, Laenge und Farbe nach
+        // der Klasse und NPCs.cfg (saberArtJk2).
+        belege(a, a.startSaber[0], saberArtJk2(a, def));
+    } else if (!def->saber.empty()) {
         belege(a, a.startSaber[0], saberArtIndex(a, def->saber, 0, hilfe));
     }
-    uebersteuern(a.startSaber[0], 0);
+    if (!regelwerkJediOutcast()) { uebersteuern(a.startSaber[0], 0); }
     // saber2 nur, wenn das erste kein Zweihaender ist; ist das ZWEITE einer,
     // entfernt die Engine es wieder (WP_RemoveSaber setzt dabei die Vorgaben
     // ein, wp_saberLoad.cpp:3008).
     const bool ersterZweihaendig =
         a.startSaber[0].art >= 0 &&
         a.saberArten[static_cast<std::size_t>(a.startSaber[0].art)].zweihaendig;
-    if (!def->saber2.empty() && !ersterZweihaendig) {
+    if (!def->saber2.empty() && !ersterZweihaendig && !regelwerkJediOutcast()) {
         const int art = saberArtIndex(a, def->saber2, 1, hilfe);
         if (a.saberArten[static_cast<std::size_t>(art)].zweihaendig) {
             belege(a, a.startSaber[1], saberArtIndex(a, "", 1, hilfe));
@@ -730,7 +857,10 @@ void ausruestungSchritt(const Actor& a, ActorState& st, const ActorStep& step) {
             break;
         }
         case ActorStep::Kind::Saber: {
-            if (!zumSchwert(st, ms)) {
+            // rc604 fix604 (JK2 Stufe 3): Q3_SetSaberActive von Jedi Outcast
+            // wechselt nicht zum Schwert - ohne WP_SABER in der Hand "is not
+            // using a saber!" und nichts (codeJK2/game/Q3_Interface.cpp:6258-6278).
+            if (regelwerkJediOutcast() ? !haeltSaber(st) : !zumSchwert(st, ms)) {
                 break;
             }
             const bool an = step.value > 0.5F;

@@ -31,9 +31,23 @@ std::string slurp(const std::string& p) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // rc604: paksort / FS_PathCmp (code/qcommon/files.cpp:2475, 2713, 2773).
+    {
+        std::vector<std::string> n = {"C:/spiel/base/zz.pk3", "C:/spiel/base/Assets1.pk3", "C:/spiel/base/assets0.pk3",
+                                      "C:/spiel/base/b.pk3", "C:/spiel/base/assets_[x].pk3"};
+        bhed::sortierePk3WieEngine(n);
+        std::string folge;
+        for (const std::string& s : n) { folge += s.substr(s.find_last_of('/') + 1) + " "; }
+        std::printf("  pk3-Folge: %s\n", folge.c_str());
+        expect("pk3 wie paksort: ohne Ruecksicht auf Gross/klein",
+               n[0].find("assets0") != std::string::npos && n[1].find("Assets1") != std::string::npos &&
+                   n[2].find("assets_[x]") != std::string::npos && n[3].find("b.pk3") != std::string::npos);
+        expect("FS_PathCmp: Backslash und : wie /, a-z wie A-Z",
+               bhed::fsPathCmp("a\\b", "A/B") == 0 && bhed::fsPathCmp("x:y", "X/Y") == 0 && bhed::fsPathCmp("a", "ab") < 0);
+    }
     if (argc < 2) {
         std::printf("  (kein Archiv angegeben - Test uebersprungen)\n");
-        return 0;
+        return fails == 0 ? 0 : 1;
     }
     const std::string path = argv[1];
 

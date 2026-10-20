@@ -31,6 +31,8 @@
 
 #include "bhed/clock.h"
 #include "bhed/gegenstaende.h"   // rc603: spawntBeiSchwierigkeit (Kartenstart)
+#include "bhed/npcklasse.h"      // rc604 fix604: npcSpawntBeimKartenstart
+#include "bhed/regelwerk.h"      // rc604 fix604: leicheAb
 #include "bhed/scene.h"
 
 #include <algorithm>
@@ -180,7 +182,8 @@ bool freiBeimSpawnen(const MapEntity& e) {
 // Die Aufgabenfaecher einer Entity (taskID_t, g_public.h). Ein neuer
 // Befehl desselben Fachs erledigt den alten SOFORT (Q3_TaskIDSet ruft
 // Q3_TaskIDComplete auf das alte).
-enum Fach : int { kStimme = 0, kWeg, kBlick, kOben, kUnten, kBeide, kFaecher };
+// rc605 (fix605): kGroesse = TID_RESIZE (SET_SOLID true im Koerper eines anderen).
+enum Fach : int { kStimme = 0, kWeg, kBlick, kOben, kUnten, kBeide, kGroesse, kFaecher };
 
 struct Aufgabe {
     int id = -1;
@@ -256,6 +259,7 @@ struct Wesen {
     bool ortBekannt = false;
     bool gehend = false;
     bool rennend = false;
+    bool keineAkrobatik = false;   // rc605: SET_NO_ACROBATICS
     float gehTempo = -1.0F;
     float laufTempo = -1.0F;
     std::map<std::string, std::string> parm;
@@ -279,6 +283,7 @@ struct Wesen {
     // - sonst endete dowait zu einer anderen Zeit, als die Figur ankommt.
     bool zielGesetzt = false;
     bool zielMarke = true;      // TAG: die Aufgabe des SET_NAVGOAL haelt (TID_MOVE_NAV)
+    bool zielMitRadius = false; // rc604 fix604 (JK2): NAVGOAL_USE_RADIUS
     float zielOrt[3]{};
     double zielRadius = 12.0;
     bool wegLaeuft = false;     // von wegVon nach zielOrt in [wegAb, wegBis]
@@ -331,7 +336,29 @@ struct Wesen {
     // versetzt. Der echte Spieler hat keinen.
     bool anfangBekannt = false;
     NavVec anfang{};
+    // rc604 fix604: contents/clipmask je Zeit (NavFigurKoerper::fest) -
+    // SET_INVISIBLE true, SET_SOLID, SFB_NOTSOLID am Spawner.
+    bool sfbNichtFest = false;
+    std::vector<std::pair<double, signed char>> festLog;
+    // rc605 (fix605): contents & CONTENTS_BODY ab einer Zeit, wie der Ablauf es
+    // sieht (SpotWouldTelefrag2 der anderen), und wann der solidifier eines
+    // SET_SOLID true wieder denkt (< 0: keiner).
+    std::vector<std::pair<double, bool>> koerperAb;
+    double festVersuch = -1.0;
+    double festSeit = 0.0;       // der SET_SOLID true dazu
 };
+
+// rc604 fix604: ab wann eine zur Zeit `tod` gestorbene Figur kein Koerper mehr
+// ist. CorpsePhysics (aus DeadThink, jedes NPC_Think: alle 50 ms) setzt
+// CONTENTS_CORPSE, sobald level.time - s.time > 5000 (Movie Duels, NPC.cpp:209)
+// bzw. > 500 (OpenJK, NPC.cpp:122); s.time ist die Todeszeit (player_die,
+// g_combat.cpp:5854 MD / 4690 OpenJK). Bis dahin bleibt sie CONTENTS_BODY.
+// Mark1 und Interrogator bleiben fest - rc605 (fix605): leicheVon mit
+// AblaufWelt::bleibtFest.
+double leicheAb(double tod) {
+    const double grenze = regelwerkMovieDuels() ? 5000.0 : 500.0;
+    return tod + grenze + kNavDenkMs;
+}
 
 struct Geplant {
     double ms = 0.0;
@@ -340,6 +367,7 @@ struct Geplant {
     std::string name;         // Benutzen: targetname; Skript: Pfad
     int wesen = -1;           // Skript/Spawn: auf wem
     int ausloeser = -1;
+    bool roffNotiz = false;   // rc604: aus einer Notiz "USE" einer ROFF-Bahn
 };
 
 class Nachbau {
@@ -357,6 +385,7 @@ public:
     void kartenstartLauf();
 
 private:
+    void fallenPlanen();   // rc605: Ziele explodierter misc_trip_mine
     void takte();
     void spielerBeginnt();
     bool kartenstartGeplant() const;
@@ -496,8 +525,14 @@ private:
         }
         // NPC_targetname zuerst: die erzeugte Figur traegt ihn als eigenen
         // targetname (NPC_spawn.cpp:1688).
+        // rc604: was G_SpawnGEntityFromSpawnVars wegen "notsingle" oder der
+        // Schwierigkeit freigibt (code/game/g_spawn.cpp:1064-1075 OpenJK), gibt
+        // es nicht - weder den Spawner noch einen NPC mit seinem Namen.
+        const auto gespawnt = [this](const MapEntity& e) {
+            return welt_.spielstufe < 0 || e.classname == "worldspawn" || spawntBeiSchwierigkeit(e, welt_.spielstufe);
+        };
         for (const MapEntity& e : welt_.karte->entities) {
-            if (!istNpcSpawner(e)) {
+            if (!istNpcSpawner(e) || !gespawnt(e)) {
                 continue;
             }
             const std::string* t = schluessel(e, "NPC_targetname");
@@ -507,7 +542,7 @@ private:
             }
         }
         for (const MapEntity& e : welt_.karte->entities) {
-            if (!istNpcSpawner(e) && gleich(icarusName(e), name)) {
+            if (!istNpcSpawner(e) && gespawnt(e) && gleich(icarusName(e), name)) {
                 return &e;
             }
         }
@@ -582,12 +617,21 @@ private:
                 w.yawRate = y;
                 w.gier.rate = welt_.drehrateNpc(w.name, w.waffe, y);
             }
+            w.gier.taktMs = drehTakt(w);   // rc604 fix604b (A1)
             return;
         }
         if (welt_.drehrate) {
             const float r = welt_.drehrate(w.name);
             if (r > 0.0F) { w.gier.rate = r; }
         }
+    }
+
+    // rc604 fix604b (A1): der Takt, in dem NPC_UpdateAngles wirklich dreht
+    // (GierLauf::taktMs, bhed/scene.h) - der Takt des Verhaltens. rc604: auch
+    // unter Jedi Outcast (codeJK2/game/NPC.cpp:2084-2091, 2111-2113).
+    [[nodiscard]] int drehTakt(const Wesen& w) const {
+        if (!welt_.verhaltenTakt) { return 50; }
+        return welt_.verhaltenTakt(w.name, w.waffe);
     }
 
     // Schluessel der Karte in die Buchfuehrung uebernehmen.
@@ -613,6 +657,10 @@ private:
             if (!sf.empty() && (std::atoi(sf.c_str()) & 32) != 0) {
                 w.verhaltenZustand = "BS_CINEMATIC";
             }
+            // rc604 fix604: SFB_NOTSOLID (64, b_public.h) - NPC_Spawn_Do erbt die
+            // spawnflags (NPC_spawn.cpp:2755 MD), NPC_Begin setzt contents 0
+            // (NPC_spawn.cpp:1895-1904 MD / 1152-1161 OpenJK).
+            if (!sf.empty() && (std::atoi(sf.c_str()) & 64) != 0) { w.sfbNichtFest = true; }
         }
         for (const char* key : {"spawnscript", "usescript", "deathscript", "painscript", "awakescript",
                                 "angerscript", "fleescript", "lostenemyscript", "victoryscript",
@@ -872,6 +920,8 @@ private:
             f.daAbMs = it != aus_.erscheint.end() ? it->second : -1.0e300;
             f.daBisMs = w.totMs;
             f.orte = w.orteLog;
+            f.sfbNichtFest = w.sfbNichtFest;   // rc604 fix604
+            f.fest = w.festLog;
             // Vor dem ersten Plan steht sie, wo dieser beginnt.
             for (const NavAbschnitt& a : aus_.laufAbschnitte) {
                 if (a.figur == w.koerperNr) {
@@ -897,10 +947,58 @@ private:
             f.daAbMs = it != aus_.erscheint.end() ? it->second : -1.0e300;
             f.daBisMs = w.totMs;
             f.orte = w.orteLog;
+            f.sfbNichtFest = w.sfbNichtFest;   // rc604 fix604
+            f.fest = w.festLog;
             if (w.anfangBekannt) { f.orte.insert(f.orte.begin(), {-1.0e299, w.anfang}); }
             w.koerperNr = static_cast<int>(aus_.laufFiguren.size());
             aus_.laufFiguren.push_back(std::move(f));
             aus_.laufFigurNamen.push_back(w.name);
+        }
+        // rc604 fix604: auch die Figuren vom Kartenstart, die kein Skript nennt
+        // (kein Wesen): SP_NPC_spawner ohne targetname spawnt sie beim Laden
+        // (NPC_spawn.cpp:3087 ff. MD / 2037 ff. OpenJK), NPC_Begin macht sie zum
+        // Koerper (contents CONTENTS_BODY, mit SFB_NOTSOLID 0; NPC_spawn.cpp:
+        // 1895-1904 MD / 1152-1161 OpenJK) - die Vorschau zeichnet sie dort
+        // (scene.cpp, Kartenfiguren), andere gingen bis fix604 durch sie hindurch.
+        // Ohne Plan stehen sie an ihrem Spawner.
+        // rc604 fix604: die Darsteller anderer Zwischensequenzen - beim Laden
+        // gespawnt, aber von diesem Ablauf nie angesprochen (kein Wesen). Ohne
+        // Skript (leerer Reiter: die Karte, wie sie laedt) bleiben alle.
+        if (welt_.karte != nullptr && !kartenstart_ && aus_.befehle > 0) {
+            for (const MapEntity& e : welt_.karte->entities) {
+                if (!npcSpawntBeimKartenstart(e) || !kinoDarsteller(e)) { continue; }
+                const std::string nt = klein(wertVon(e, "NPC_targetname"));
+                bool schon = wesenNach_.count(nt) != 0U;
+                for (const auto& wp : wesen_) { schon = schon || wp->ent == &e; }
+                if (!schon) { aus_.fremdeDarsteller.insert(nt); }
+            }
+        }
+        if (welt_.karte == nullptr || aus_.laufFiguren.empty()) { return; }
+        const std::vector<MapEntity>& ents = welt_.karte->entities;
+        for (std::size_t ei = 0; ei < ents.size(); ++ei) {
+            const MapEntity& e = ents[ei];
+            if (!npcSpawntBeimKartenstart(e)) { continue; }
+            if (welt_.spielstufe >= 0 && !spawntBeiSchwierigkeit(e, welt_.spielstufe)) { continue; }
+            bool schon = false;
+            for (const auto& wp : wesen_) { schon = schon || wp->ent == &e; }
+            if (schon) { continue; }
+            if (kinoDarsteller(e) && aus_.fremdeDarsteller.count(klein(wertVon(e, "NPC_targetname"))) != 0U) { continue; }
+            float o[3] = {0.0F, 0.0F, 0.0F};
+            if (!leseVek(e.origin, o)) { continue; }
+            const std::string nt = wertVon(e, "NPC_targetname");
+            const std::string name = nt.empty() ? e.classname + "#" + std::to_string(ei) : nt;   // wie scene.cpp
+            NavFigurKoerper f;
+            f.reihe = reiheVon(&e);
+            f.halbBreite = welt_.halbBreite ? welt_.halbBreite(name) : 16.0F;
+            f.hoeheOben = welt_.hoeheOben ? welt_.hoeheOben(name) : 40.0F;
+            // Im Kartenstart NPC_Begin bei 500 (kartenstartLauf), sonst lange
+            // vor dem Skript.
+            f.daAbMs = kartenstart_ ? kLetztesLadebildMs + 100.0 : -1.0e300;
+            f.orte.push_back({-1.0e299, NavVec{o[0], o[1], o[2]}});
+            const std::string sf = wertVon(e, "spawnflags");
+            f.sfbNichtFest = !sf.empty() && (std::atoi(sf.c_str()) & 64) != 0;
+            aus_.laufFiguren.push_back(std::move(f));
+            aus_.laufFigurNamen.push_back(name);
         }
     }
     // rc601 (bewegung, teil 3): Fallen/Vorlauf dieser Figur (AblaufWelt::vorlauf).
@@ -918,6 +1016,7 @@ private:
         w.lauf.gesetztMs = it != aus_.erscheint.end() ? it->second : kNavKartenSpawnMs;
         w.lauf.gesetztSpawn = true;
         w.lauf.denkNullMs = w.lauf.gesetztMs + 150.0;   // rc601 integ: erstes NPC_Think
+        w.gier.denkNullMs = w.lauf.denkNullMs;           // rc604 fix604b (A1)
         w.lauf.gesetztImFesten = art == 1;
     }
     void wegPlanen(Wesen& w, double tBefehl, bool fahrt) const {
@@ -958,6 +1057,9 @@ private:
         werte.zielGesetzt = w.zielGesetzt;
         for (int a = 0; a < 3; ++a) { werte.ziel[static_cast<std::size_t>(a)] = w.zielOrt[a]; }
         werte.zielRadius = static_cast<float>(w.zielRadius);
+        werte.zielMitRadius = w.zielMitRadius;   // rc604 fix604 (JK2)
+        werte.zielNavgoal = w.zielMarke;
+        werte.schwert = w.waffe.size() == 8 && (w.waffe == "WP_SABER" || w.waffe == "wp_saber");
         werte.maxTempo = tempo(w, gehtLangsam(w));
         werte.gehTempo = tempo(w, true);
         werte.drehRate = w.gier.rate;
@@ -965,7 +1067,16 @@ private:
         werte.hoeheOben = welt_.hoeheOben ? welt_.hoeheOben(w.name) : 40.0F;
         werte.stufe = welt_.stufe ? welt_.stufe(w.name) : 18.0F;
         werte.gangSchalter = w.rennend ? 2 : (w.gehend ? 1 : 0);
+        werte.kannSpringen = welt_.kannSpringen && welt_.kannSpringen(w.name);   // rc605
+        werte.keineAkrobatik = w.keineAkrobatik;   // rc605: SET_NO_ACROBATICS
         werte.ohneKoerper = w.verhaltenZustand == "BS_NOCLIP";   // NPC_BSNoClip + PM_NoclipMove
+        // rc605: BS_JUMP - NPC_BSJump mit den Laengen von BOTH_CROUCH1/BOTH_LAND1.
+        werte.bsJump = w.verhaltenZustand == "BS_JUMP";
+        if (welt_.animDauer) {   // rc605 FU4: fuer jeden Plan (PM_CrashLand nach einem Sprung)
+            if (werte.bsJump) { werte.hockeMs = static_cast<int>(std::max(0.0, welt_.animDauer(w.name, "BOTH_CROUCH1"))); }
+            werte.landMs = static_cast<int>(std::max(0.0, welt_.animDauer(w.name, "BOTH_LAND1")));
+            werte.forceLandMs = static_cast<int>(std::max(0.0, welt_.animDauer(w.name, "BOTH_FORCELAND1")));
+        }
         if (kino(w) && w.watchAn) {
             const bool selbst = w.watchSelbst;
             const NavVec ziel{w.watchOrt[0], w.watchOrt[1], w.watchOrt[2]};
@@ -989,6 +1100,7 @@ private:
                 werte.schwerkraft = static_cast<float>(std::atof(g->c_str()));
             }
         }
+        werte.weltSchwerkraft = werte.schwerkraft;   // rc605: g_gravity (EvaluateTrajectory)
         if (w.schwerkraft >= 0.0F) { werte.schwerkraft = w.schwerkraft; }
         // rc601 integ: Takt des Verhaltens (OpenJK 100 ms, Movie Duels 50).
         werte.verhaltenTaktMs = welt_.verhaltenTakt ? welt_.verhaltenTakt(w.name, w.waffe)
@@ -1176,7 +1288,9 @@ private:
         w.stapel.push_back(std::move(r));
     }
 
-    void starteSkript(int wi, const std::string& pfad, int ausloeser) {
+    // sofort: nur NPC_Begin ruft nach dem spawnscript selbst Update auf
+    // (NPC_spawn.cpp:1290-1296 OpenJK, :1033-1040 codeJK2, :2040-2043 MD).
+    void starteSkript(int wi, const std::string& pfad, int ausloeser, bool sofort = false) {
         (void)ausloeser;
         if (wi < 0) {
             return;
@@ -1195,9 +1309,19 @@ private:
         // (md_toaj cin3_race: am Ende "race_time_up" -> derselbe
         // Skriptstarter), ist das eine Endlosschleife ueber use.
         const int starts = ++starts_[std::make_pair(wi, idx)];
-        // CSequencer::Run: wie INSERT, der neue Ablauf laeuft sofort.
+        // CSequencer::Run (Sequencer.cpp:383-411 OpenJK, ICARUS_RunScript
+        // g_ICARUS.cpp:90-115 codeJK2): Recall, dann Route -> Prime ->
+        // SetCommand -> PushTask (TaskManager.cpp:857-878) - KEIN Go(). Der
+        // neue Ablauf laeuft erst beim naechsten Update der Entity: in
+        // G_RunFrame nach ihrer Nummer (g_main.cpp:1077-1086 fuer Entities,
+        // :2038-2042 fuer Clients/NPCs) - noch in diesem Bild, wenn sie nach
+        // dem Ausloeser dran ist, sonst im naechsten (Schritt 3 in takte).
+        // rc604: bis fix604 lief er sofort. Ohne Takt (Proben, bildMs 0)
+        // gibt es kein naechstes Bild - dort weiter sofort.
         schiebeEin(wi, s->nodes, idx, Path{}, false, starts > 3);
-        aktualisiere(wi, jetzt_);
+        if (sofort || welt_.bildMs <= 0.0) {
+            aktualisiere(wi, jetzt_);
+        }
     }
 
     // --- use ----------------------------------------------------------------
@@ -1228,6 +1352,12 @@ private:
         bool traf = false;
         for (const MapEntity& e : welt_.karte->entities) {
             if (!gleich(e.targetname, name)) {
+                continue;
+            }
+            // rc604: eine Entity, die G_SpawnGEntityFromSpawnVars wegen
+            // "notsingle" oder der Schwierigkeit entfernt hat, gibt es nicht -
+            // G_Find findet sie nicht (g_spawn.cpp:1096-1101 OpenJK).
+            if (welt_.spielstufe >= 0 && !spawntBeiSchwierigkeit(e, welt_.spielstufe)) {
                 continue;
             }
             traf = true;
@@ -1660,9 +1790,31 @@ private:
             } else if (welt_.roffDauer) {
                 const std::string datei = wertArg(w, n.args[1]);
                 const double d = welt_.roffDauer(datei);
-                if (d >= 0.0) {
-                    setzeFach(w, kWeg, id, t + d, false);
+                if (d >= 0.0 || d == kRoffEndlos) {
+                    // rc604: G_LoadRoff hat die Datei - Play ersetzt ent->roff und
+                    // setzt roff_ctr = 0 (CQuake3GameInterface::Play,
+                    // code/game/Q3_Interface.cpp:9760-9784 OpenJK). Die Notizen
+                    // der alten Bahn kommen nie mehr an die Reihe (G_Roff liest nur
+                    // ent->roff, g_roff.cpp:717-855): ihre geplanten USE fallen weg.
+                    // Ein move haelt die Bahn nicht an (Q3_Lerp2Origin fasst
+                    // next_roff_time nicht an), eine fehlende Datei auch nicht.
+                    geplant_.erase(std::remove_if(geplant_.begin(), geplant_.end(),
+                                                  [&](const Geplant& g) {
+                                                      return g.roffNotiz && g.wesen == wi && g.ms > t + 1e-6;
+                                                  }),
+                                   geplant_.end());
+                    // rc604 (A2 Rest): "loop rof" (OpenJK) - die Aufgabe
+                    // bleibt offen (g_roff.cpp:841 erreicht nie das Ende).
+                    setzeFach(w, kWeg, id, d >= 0.0 ? t + d : 1.0e300, d < 0.0);
                     fertig = false;
+                    // Notizen "USE <skript>": RunScript auf dieser Entity zur
+                    // Zeit des Bilds (g_roff.cpp:308-319 OpenJK) - Run ohne
+                    // Go, das Skript laeuft im Update der Entity danach.
+                    if (welt_.roffSkripte) {
+                        for (const auto& [ms, skript] : welt_.roffSkripte(datei)) {
+                            plane(Geplant{t + ms, 0, Geplant::Art::Skript, skript, wi, wi, true});
+                        }
+                    }
                 } else if (d <= kRoffFehlt) {
                     hinweis(w.name + ": ROFF \"" + datei + "\" fehlt - play wird nie fertig (wie im Spiel)");
                     fertig = false;
@@ -1676,7 +1828,11 @@ private:
                 const int zi = wesen(ziel, false);
                 if (zi >= 0) {
                     Wesen& z = *wesen_[static_cast<std::size_t>(zi)];
-                    z.totMs = std::min(z.totMs, jetzt_);   // rc601 (bewegung, teil 3): kein CONTENTS_BODY mehr
+                    // rc601 (bewegung, teil 3): kein CONTENTS_BODY mehr. rc604
+                    // fix604: remove sofort (Q3_RemoveEnt: contents = 0,
+                    // Q3_Interface.cpp:7202 MD), kill erst als Leiche
+                    // (CorpsePhysics, leicheAb).
+                    z.totMs = std::min(z.totMs, c == "remove" ? jetzt_ : leicheVon(z, jetzt_));
                     if (c == "remove") {
                         z.gibt = false;
                         z.stapel.clear();
@@ -1712,7 +1868,18 @@ private:
             return true;
         }
         if (k == "set_navgoal") {
+            // rc604 fix604 (JK2 Stufe 3): Jedi Outcast setzt die Aufgabe IMMER
+            // in TID_MOVE_NAV und ruft nicht zurueck (codeJK2/game/
+            // Q3_Interface.cpp:6607-6610, Q3_SetNavGoal ist void) - erledigt
+            // erst NPC_ReachedGoal. Ohne Ziel (Nicht-NPC, "null", unbekannt
+            // ohne altes Ziel) wartet ein dowait fuer immer; ein Ziel ohne TAG
+            // (G_Find) haelt die Aufgabe bis zur Ankunft.
+            const bool jk2 = navJk2Regeln();
             if (!w.figur || w.echterSpieler) {
+                if (jk2) {
+                    setzeFach(w, kWeg, id, 0.0, true);
+                    return false;
+                }
                 return true;   // rc601 (bewegung): "tried to set a navgoal on a non-NPC"
             }
             // rc601 (bewegung): Q3_SetNavGoal wie in scene.cpp
@@ -1739,25 +1906,41 @@ private:
                     leereFach(w, kWeg);
                 }
                 w.wegId = -1;
+                if (jk2) {
+                    setzeFach(w, kWeg, id, 0.0, true);   // JK2: die neue Aufgabe bleibt offen
+                    return false;
+                }
                 return true;
             }
+            // JK2: unbekannt - das alte Ziel bleibt, die Aufgabe haengt an ihm.
+            const auto jk2Unbekannt = [&]() {
+                if (w.zielGesetzt && w.wegLaeuft) {
+                    setzeFach(w, kWeg, id, w.wegBis, false);
+                    w.wegId = id;
+                } else {
+                    setzeFach(w, kWeg, id, 0.0, true);
+                    w.wegId = w.zielGesetzt ? id : -1;
+                }
+                return false;
+            };
             if (welt_.karte == nullptr) {
                 hinweis("Wegpunkt \"" + wert + "\" fehlt in der Karte");
-                return true;
+                return jk2 ? jk2Unbekannt() : true;
             }
             const NavZiel z = navZielAufloesen(*welt_.karte, wert);
             if (!z.gefunden) {
                 hinweis("Wegpunkt \"" + wert + "\" fehlt in der Karte");
-                return true;
+                return jk2 ? jk2Unbekannt() : true;
             }
             const bool fahrt = wegAnhalten(w, t);
             w.zielGesetzt = true;
             w.zielMarke = z.marke;
+            w.zielMitRadius = z.mitRadius;
             for (int a = 0; a < 3; ++a) { w.zielOrt[a] = z.ort[a]; }
             w.zielRadius = z.radius;
             w.lauf.neuesZiel();   // rc601 (bewegung, Wege): NPC_SetMoveGoal, tempGoal->waypoint = NONE
             wegPlanen(w, t, fahrt);
-            if (!z.marke) {
+            if (!z.marke && !jk2) {
                 w.wegId = -1;
                 return true;
             }
@@ -1816,13 +1999,21 @@ private:
             w.schwerkraft = static_cast<float>(std::atof(wert.c_str()));
         }
         if (k == "set_origin" || k == "set_teleport_dest") {
+            // rc605 (fix605): $tag( "name", ORIGIN )$ - nur ein TAG (tagVektor,
+            // wie CTaskManager::Get -> GetTag); sonst scheitert der set und es
+            // geschieht nichts. Bis rc604 fand ortVon jede Entity des Namens.
+            float o[3];
+            bool zahlen = leseVek(wert, o);
+            if (!zahlen && n.args[1].kind == Arg::Kind::Expr) {
+                if (welt_.karte == nullptr || !tagVektor(*welt_.karte, n.args[1].text, o)) { return true; }
+                zahlen = true;
+            }
             // rc601 (bewegung): G_SetOrigin laesst goalEntity und die
             // Geschwindigkeit stehen (g_utils.cpp:1585) - ein laufender Weg
             // geht vom neuen Ort aus weiter, ohne neuen Anlauf.
             // rc601 (bewegung, Wege): auch ohne Ziel, wenn sie noch ausrollt.
             const bool hatte = static_cast<bool>(w.plan);
             const bool fahrt = hatte && wegAnhalten(w, t);
-            float o[3];
             // rc601 (bewegung, teil 3): G_SetOrigin am Ende dieses Denkbilds -
             // der naechste Plan beginnt hier (wie scene.cpp).
             laufBereiten(w);
@@ -1830,20 +2021,10 @@ private:
                 w.lauf.gesetztMs = navDenkbildAb(t);
                 w.lauf.gesetztSpawn = false;
             }
-            if (leseVek(wert, o)) {
+            if (zahlen) {
                 for (int a = 0; a < 3; ++a) { w.ort[a] = o[a]; }
                 w.ortBekannt = true;
                 w.orteLog.push_back({navDenkbildAb(t), NavVec{o[0], o[1], o[2]}});   // rc601 (bewegung, teil 3)
-            } else if (n.args[1].kind == Arg::Kind::Expr) {
-                // $tag( "name", ORIGIN )$
-                const std::string& x = n.args[1].text;
-                const auto q1 = x.find('"');
-                const auto q2 = (q1 == std::string::npos) ? q1 : x.find('"', q1 + 1);
-                if (q2 != std::string::npos && ortVon(x.substr(q1 + 1, q2 - q1 - 1), o)) {
-                    for (int a = 0; a < 3; ++a) { w.ort[a] = o[a]; }
-                    w.ortBekannt = true;
-                    w.orteLog.push_back({navDenkbildAb(t), NavVec{o[0], o[1], o[2]}});   // rc603 fix603
-                }
             }
             if (w.zielGesetzt || hatte) {
                 wegPlanen(w, t, fahrt);
@@ -1952,9 +2133,11 @@ private:
             w.waffe = wa;
             const float y = w.yawRate > 0.0F ? w.yawRate : w.gier.rate;
             const float neu = welt_.drehrateNpc(w.name, w.waffe, y);
-            if (neu != w.gier.rate) {   // sonst bleibt der Plan derselbe
+            const int takt = drehTakt(w);   // rc604 fix604b (A1)
+            if (neu != w.gier.rate || takt != w.gier.taktMs) {   // sonst bleibt der Plan derselbe
                 planGierSync(w, t);
                 w.gier.rateAb(t, neu);
+                w.gier.taktAb(t, takt);
                 wegNeuPlanen(w, t);
             }
             return true;
@@ -1970,7 +2153,12 @@ private:
         // SET_ANGLES: SetClientViewAngle (ein Sprung) und Q3_SetDYaw.
         if (k == "set_angles") {
             float a[3];
-            if (w.figur && !w.echterSpieler && leseVek(wert, a)) {
+            bool winkel = leseVek(wert, a);
+            // rc605 (fix605): $tag( "name", ANGLES )$ (tagVektor).
+            if (!winkel && n.args[1].kind == Arg::Kind::Expr && welt_.karte != nullptr) {
+                winkel = tagVektor(*welt_.karte, n.args[1].text, a);
+            }
+            if (w.figur && !w.echterSpieler && winkel) {
                 w.gier.setzen(t, a[1]);
                 const float wirkt = wirktGier(w, t, a[1]);
                 if (wirkt != a[1]) {
@@ -2039,7 +2227,8 @@ private:
                     double ende = planGenauAb(np, t);
                     if (ende < 0.0 && !np.takte.empty()) {
                         const LaufZustand& zl = np.zustaende.back();
-                        const double h = drehHalteMs(zl.gier, zl.wunschGier, w.gier.rate);
+                        const double h = drehHalteMs(zl.gier, zl.wunschGier, w.gier.rate,
+                                                     DrehTakt{w.gier.taktMs, w.gier.denkNullMs, np.takte.back().t});
                         ende = h < 0.0 ? -1.0 : np.takte.back().t + h;
                     }
                     if (ende >= 0.0) {
@@ -2055,9 +2244,11 @@ private:
             const float wirkt = (k == "set_dpitch") ? w.gier.ziel : wirktGier(w, t, wunsch);
             // rc601 (bewegung, teil 3): die Gier Denkbild fuer Denkbild mit
             // ANGLE2SHORT (wie scene.cpp), der Nick wie bisher.
-            const double haltGier = (k == "set_dpitch") ? drehHalteMs(0.0F, w.gier.rate)
-                                                        : drehHalteMs(w.gier.bei(t), wirkt, w.gier.rate);
-            const double haltNick = drehHalteMs(std::fabs(winkel180(nick)), w.gier.rate);
+            // rc604 fix604b (A1): OpenJK dreht nur mit Verhalten (DrehTakt).
+            const DrehTakt dt{w.gier.taktMs, w.gier.denkNullMs, t};
+            const double haltGier = (k == "set_dpitch") ? drehHalteMs(0.0F, w.gier.rate, dt)
+                                                        : drehHalteMs(w.gier.bei(t), wirkt, w.gier.rate, dt);
+            const double haltNick = drehHalteMs(std::fabs(winkel180(nick)), w.gier.rate, dt);
             const double halt = (haltGier < 0.0 || haltNick < 0.0) ? -1.0 : std::max(haltGier, haltNick);
             if (k != "set_dpitch" && !(kino(w) && w.watchAn) && !laeuftBei(w, t)) {
                 w.gier.zielAb(t, wunsch);
@@ -2071,6 +2262,10 @@ private:
         }
         if (k == "set_walking") { w.gehend = gleich(wert, "true"); wegNeuPlanen(w, t); return true; }
         if (k == "set_running") { w.rennend = gleich(wert, "true"); wegNeuPlanen(w, t); return true; }
+        // rc605: SET_NO_ACROBATICS (Q3_Set -> Q3_SetNoAcrobatics, Q3_Interface.cpp:
+        // 5623-5647 MD: "true" ohne Gross/klein, alles andere false) - NPC_CanTryJump
+        // fragt es in jedem Versuch, ein laufender Weg geht also anders weiter.
+        if (k == "set_no_acrobatics") { w.keineAkrobatik = gleich(wert, "true"); wegNeuPlanen(w, t); return true; }
         // ... und beide setzen ps.speed (Q3_Interface.cpp:3621-3657 MD) - das
         // Tempo in BS_NOCLIP (PM_CmdScale).
         if (k == "set_walkspeed") {
@@ -2084,6 +2279,39 @@ private:
             return true;
         }
         if (k == "set_inactive") { w.inaktiv = gleich(wert, "true"); return true; }
+        // rc604 fix604: was contents/clipmask aendert, fuer den gemeinsamen Takt
+        // (NavFigurKoerper::fest). Q3_Set: SET_SOLID / SET_INVISIBLE mit
+        // !Q_stricmp("true", data) (Q3_Interface.cpp:9496-9516 MD / 8900-8920
+        // OpenJK). Q3_SetInvisible(false) laesst contents, wie es ist.
+        if (k == "set_invisible") {
+            if (gleich(wert, "true")) {
+                w.festLog.push_back({t, kNavFestUnsichtbar});
+                w.koerperAb.push_back({t, false});   // rc605 (fix605)
+            }
+            return true;
+        }
+        if (k == "set_solid") {
+            const bool fest = gleich(wert, "true");
+            w.festLog.push_back({t, fest ? kNavFestJa : kNavFestNicht});
+            // rc605 (fix605): Q3_Set SET_SOLID true - scheitert Q3_SetSolid an
+            // SpotWouldTelefrag2, haelt TID_RESIZE die Aufgabe (Q3_TaskIDSet,
+            // Q3_Interface.cpp:9496-9504 MD / 8900-8908 OpenJK), bis SolidifyOwner
+            // die Figur fest macht und Q3_TaskIDComplete ruft (Q3_Interface.cpp:
+            // 6031-6056 MD / 5589-5615 OpenJK). Ein solidifier denkt in FRAMETIME
+            // (level.time + 100, Q3_SetSolid 6080-6089 MD / 5636-5645 OpenJK).
+            if (!fest) {
+                w.koerperAb.push_back({t, false});
+                return true;
+            }
+            if (w.istClient && telefrag(w, t)) {
+                if (w.festVersuch < 0.0) { w.festSeit = t; }
+                w.festVersuch = w.festVersuch >= 0.0 ? std::min(w.festVersuch, t + 100.0) : t + 100.0;
+                setzeFach(w, kGroesse, id, 0.0, true);
+                return false;
+            }
+            w.koerperAb.push_back({t, true});
+            return true;
+        }
         // SET_SPAWNSCRIPT, SET_DEATHSCRIPT, SET_USESCRIPT ...
         if (k.size() > 10 && k.compare(k.size() - 6, 6, "script") == 0 && k.rfind("set_", 0) == 0 &&
             k != "set_cinematic_skipscript") {
@@ -2096,6 +2324,111 @@ private:
             return true;
         }
         return true;
+    }
+
+    // rc605 (fix605): leicheAb - nur nicht fuer Mark1 und Interrogator: die
+    // bleiben CONTENTS_BODY (CorpsePhysics, NPC.cpp:209-216 MD / 122-127
+    // OpenJK, "The Mark1 & Interrogator stays solid."), bis remove sie nimmt.
+    double leicheVon(const Wesen& z, double tod) const {
+        if (welt_.bleibtFest && welt_.bleibtFest(z.name)) { return 1.0e300; }
+        return leicheAb(tod);
+    }
+
+    // --- rc605 (fix605): SET_SOLID true und TID_RESIZE ------------------------
+    //
+    // Ist Wesen g zur Zeit t ein Koerper (contents & CONTENTS_BODY)? NPC_Begin:
+    // CONTENTS_BODY, mit SFB_NOTSOLID 0 (NPC_spawn.cpp:1895-1904 MD / 1152-1161
+    // OpenJK); danach SET_INVISIBLE true / SET_SOLID false / ein gelungenes
+    // SET_SOLID true (koerperAb); kill/remove bis totMs (leicheAb).
+    bool koerperBei(const Wesen& g, double t) const {
+        if (!g.istClient || !g.gibt || t >= g.totMs - kGleichzeitig) { return false; }
+        const auto it = aus_.erscheint.find(g.name);
+        if (it != aus_.erscheint.end() && t < it->second - kGleichzeitig) { return false; }
+        bool k = !g.sfbNichtFest;
+        for (const auto& [ms, an] : g.koerperAb) {
+            if (ms <= t + kGleichzeitig) { k = an; }
+        }
+        return k;
+    }
+    // SpotWouldTelefrag2( mover, currentOrigin ) mit mover->contents =
+    // CONTENTS_BODY (g_utils.cpp SpotWouldTelefrag2; g_client.cpp:320-341 MD /
+    // 158 OpenJK): gi.EntitiesInBox ueber den Kasten der Figur an ihrem Ort -
+    // SV_AreaEntities vergleicht mit absmin/absmax der anderen, die SV_LinkEntity
+    // je 1 weiter macht - und trifft er einen anderen Koerper? Wie
+    // navKoerperLauf (navlauf.cpp, telefrag), aber mit den Orten des Ablaufs zur
+    // Zeit t (ortJetzt) und den Figuren vom Kartenstart, die kein Skript nennt,
+    // an ihrem Spawner. Nur Figuren - andere Entities mit CONTENTS_BODY gibt es
+    // in den Karten nicht.
+    bool telefrag(const Wesen& w, double t) const {
+        if (!w.plan && !w.ortBekannt) { return false; }
+        float o[3];
+        ortJetzt(w, t, o);
+        constexpr float kMins2 = -24.0F;   // DEFAULT_MINS_2 (bg_public.h)
+        const float hb = welt_.halbBreite ? welt_.halbBreite(w.name) : 16.0F;
+        const float ho = welt_.hoeheOben ? welt_.hoeheOben(w.name) : 40.0F;
+        const float lo[3] = {o[0] - hb, o[1] - hb, o[2] + kMins2};
+        const float hi[3] = {o[0] + hb, o[1] + hb, o[2] + ho};
+        const auto trifft = [&](const float p[3], float b, float h) {
+            const float amin[3] = {p[0] - b - 1.0F, p[1] - b - 1.0F, p[2] + kMins2 - 1.0F};
+            const float amax[3] = {p[0] + b + 1.0F, p[1] + b + 1.0F, p[2] + h + 1.0F};
+            for (int i = 0; i < 3; ++i) {
+                if (amin[i] > hi[i] || amax[i] < lo[i]) { return false; }
+            }
+            return true;
+        };
+        for (const auto& gp : wesen_) {
+            const Wesen& g = *gp;
+            if (&g == &w || !koerperBei(g, t) || (!g.plan && !g.ortBekannt)) { continue; }
+            float p[3];
+            ortJetzt(g, t, p);
+            if (trifft(p, welt_.halbBreite ? welt_.halbBreite(g.name) : 16.0F,
+                       welt_.hoeheOben ? welt_.hoeheOben(g.name) : 40.0F)) {
+                return true;
+            }
+        }
+        if (welt_.karte == nullptr) { return false; }
+        const std::vector<MapEntity>& ents = welt_.karte->entities;
+        for (std::size_t ei = 0; ei < ents.size(); ++ei) {
+            const MapEntity& e = ents[ei];
+            if (!npcSpawntBeimKartenstart(e) || kinoDarsteller(e)) { continue; }
+            if (welt_.spielstufe >= 0 && !spawntBeiSchwierigkeit(e, welt_.spielstufe)) { continue; }
+            if (kartenstart_ && t < kLetztesLadebildMs + 100.0 - kGleichzeitig) { continue; }
+            const std::string sf = wertVon(e, "spawnflags");
+            if (!sf.empty() && (std::atoi(sf.c_str()) & 64) != 0) { continue; }   // SFB_NOTSOLID
+            bool schon = false;
+            for (const auto& gp : wesen_) { schon = schon || gp->ent == &e; }
+            float p[3];
+            if (schon || !leseVek(e.origin, p)) { continue; }
+            const std::string nt = wertVon(e, "NPC_targetname");
+            const std::string name = nt.empty() ? e.classname + "#" + std::to_string(ei) : nt;
+            if (trifft(p, welt_.halbBreite ? welt_.halbBreite(name) : 16.0F, welt_.hoeheOben ? welt_.hoeheOben(name) : 40.0F)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    // SolidifyOwner (Q3_Interface.cpp:6031-6056 MD / 5589-5615 OpenJK): denkt
+    // er jetzt, ist die Figur fest und TID_RESIZE erledigt - oder er versucht
+    // es in FRAMETIME wieder. Vor den Entities des Bildes: der solidifier
+    // bekommt von G_Spawn meist eine fruehere freie Nummer (beim Laden
+    // freigegebene light, waypoint, ref_tag ...).
+    void solidify(Wesen& w, double t) {
+        if (w.festVersuch < 0.0 || w.festVersuch > t + kGleichzeitig) { return; }
+        if (!w.gibt) {   // !self->owner->inuse
+            w.festVersuch = -1.0;
+            return;
+        }
+        if (telefrag(w, t)) {
+            w.festVersuch = t + 100.0;
+            return;
+        }
+        w.festVersuch = -1.0;
+        w.koerperAb.push_back({t, true});
+        Aufgabe& a = w.fach[static_cast<std::size_t>(kGroesse)];
+        if (a.id >= 0) {
+            erledige(a.id);
+            a = Aufgabe{};
+        }
     }
 
     // --- Der Taktgeber einer Entity (CTaskManager::Go) ----------------------
@@ -2405,6 +2738,12 @@ private:
                     return true;
                 }
             }
+            // rc605 (fix605): ein solidifier denkt weiter (TID_RESIZE) - wie beim
+            // wait hoechstens 60 s lang ein Grund zu warten (steckt die Figur fuer
+            // immer in einem anderen, wartet das Spiel ewig).
+            if (w->festVersuch >= 0.0 && jetzt_ - w->festSeit < 60000.0) {
+                return true;
+            }
             for (const Aufgabe& a : w->fach) {
                 // Wie beim wait: was erst in ueber 60 s fertig wuerde (eine
                 // fehlende ROFF-Datei endet nie), ist kein Grund zu warten.
@@ -2427,8 +2766,9 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
     const int s0 = skriptIndex(startPfad.empty() ? std::string{"(offen)"} : startPfad, &start);
     // Der Traeger: wer das Skript in der Karte ausfuehrt.
     bool figur = false;
+    std::string traegerSchluessel;
     std::string traeger = (welt_.karte != nullptr && !startPfad.empty())
-                              ? ablaufTraeger(*welt_.karte, startPfad, &figur)
+                              ? ablaufTraeger(*welt_.karte, startPfad, &figur, &traegerSchluessel)
                               : std::string{};
     aus_.traeger = traeger;
     aus_.traegerIstFigur = figur;
@@ -2446,13 +2786,36 @@ void Nachbau::lauf(const Script& start, const std::string& startPfad) {
             w->anfangBekannt = w->ortBekannt;   // rc603 fix603
             w->anfang = {w->ort[0], w->ort[1], w->ort[2]};
         }
+        // rc604 fix604: das deathscript einer Figur laeuft ab ihrem Tod
+        // (player_die: G_ActivateBehavior BSET_DEATH, g_combat.cpp:5824 MD /
+        // 4657 OpenJK) - der Traeger ist ab 0 tot und wird zur Leiche
+        // (CorpsePhysics). Bis fix604 stand er als Koerper da: md_fh1_jedi
+        // transition (deathscript von st18) - starkiller pendelte zwei Minuten
+        // vor ihm.
+        if (figur && traegerSchluessel == "deathscript") { w->totMs = leicheVon(*w, 0.0); }
         traeger_ = static_cast<int>(wesen_.size());
         wesenNach_[klein(w->name)] = traeger_;
         wesen_.push_back(std::move(w));
     }
     schiebeEin(traeger_, start.nodes, s0, Path{}, true);
     notiereStart(s0);   // rc603: das Startskript laeuft bei 0 los
+    fallenPlanen();     // rc605
     takte();
+}
+
+// rc605: WP_Explode -> G_UseTargets( self, attacker ) (g_weapon.cpp:221-224
+// OpenJK) zur Zeit jeder Explosion aus der Spur der Szene (AblaufWelt::
+// fallenUses); der Ausloeser ist die Falle selbst (attacker = self, eine
+// Karten-Falle hat weder owner noch activator).
+void Nachbau::fallenPlanen() {
+    for (const AblaufWelt::FallenUse& f : welt_.fallenUses) {
+        if (f.ziel.empty()) { continue; }
+        int wer = -1;
+        if (welt_.karte != nullptr && f.entity >= 0 && f.entity < static_cast<int>(welt_.karte->entities.size())) {
+            wer = wesenFuer(welt_.karte->entities[static_cast<std::size_t>(f.entity)]);
+        }
+        plane(Geplant{f.ms, 0, Geplant::Art::Benutzen, f.ziel, -1, wer});
+    }
 }
 
 // rc603: die Schleife des Taktgebers - aus lauf herausgezogen, damit der
@@ -2467,6 +2830,7 @@ void Nachbau::takte() {
         jetzt_ = t;
         // 1. Aufgaben, die von selbst fertig werden (Stimme, Weg, Animation)
         for (auto& w : wesen_) {
+            solidify(*w, t);   // rc605 (fix605): TID_RESIZE
             pruefeFaecher(*w, t);
         }
         // 2. Geplantes (Verzoegerungen, Spawns)
@@ -2512,7 +2876,9 @@ void Nachbau::takte() {
                     }
                     const auto it = f.verhalten.find("spawnscript");
                     if (it != f.verhalten.end()) {
-                        starteSkript(g.wesen, it->second, g.ausloeser);
+                        // NPC_Begin: G_ActivateBehavior(BSET_SPAWN), dann
+                        // gleich Update (NPC_spawn.cpp:1290-1296 OpenJK).
+                        starteSkript(g.wesen, it->second, g.ausloeser, f.figur);
                     }
                 }
             }
@@ -2588,6 +2954,7 @@ void Nachbau::takte() {
                 for (const Aufgabe& a : w->fach) {
                     if (a.id >= 0 && !a.nie && a.fertig > t) { n = std::min(n, a.fertig); }
                 }
+                if (w->festVersuch > t) { n = std::min(n, w->festVersuch); }   // rc605 (fix605)
             }
             for (const Geplant& g : geplant_) { n = std::min(n, g.ms); }
             if (n <= t) { n = t + 1.0; }
@@ -2647,6 +3014,7 @@ void Nachbau::kartenstartLauf() {
         takte();
         return;
     }
+    fallenPlanen();   // rc605
     const int stufe = welt_.spielstufe;
     const auto spawnt = [stufe](const MapEntity& e) { return stufe < 0 || spawntBeiSchwierigkeit(e, stufe); };
     const std::vector<MapEntity>& ents = welt_.karte->entities;
@@ -2917,9 +3285,12 @@ const AblaufHerkunft* Ablauf::woher(const Path& p) const {
     return (it == herkunft.end()) ? nullptr : &it->second;
 }
 
-std::string ablaufTraeger(const MapData& karte, const std::string& startPfad, bool* istFigur) {
+std::string ablaufTraeger(const MapData& karte, const std::string& startPfad, bool* istFigur, std::string* schluesselAus) {
     if (istFigur != nullptr) {
         *istFigur = false;
+    }
+    if (schluesselAus != nullptr) {
+        schluesselAus->clear();
     }
     const std::string gesucht = skriptSchluessel(startPfad);
     if (gesucht.empty()) {
@@ -2939,6 +3310,7 @@ std::string ablaufTraeger(const MapData& karte, const std::string& startPfad, bo
             if (r < rang) {
                 rang = r;
                 bester = &e;
+                if (schluesselAus != nullptr) { *schluesselAus = kk; }
             }
         }
     }
@@ -3077,6 +3449,17 @@ bool gleicherPfad(const std::shared_ptr<const std::vector<NavPfadPunkt>>& a,
     if (!a || !b || a->size() != b->size()) { return false; }
     return a->empty() || std::memcmp(a->data(), b->data(), a->size() * sizeof(NavPfadPunkt)) == 0;
 }
+// rc605: NPC-Spruenge und der Merker "blockiert" (LaufZustand::Sprung).
+bool gleicherSprung(const LaufZustand::Sprung& a, const LaufZustand::Sprung& b) {
+    return a.springt == b.springt && a.laeuft == b.laeuft && gleichBits(a.ziel, b.ziel) && gleichBits(a.maxXY, b.maxXY) &&
+           gleichBits(a.maxZ, b.maxZ) && a.zurueckBis == b.zurueckBis && a.zurueckSperreBis == b.zurueckSperreBis &&
+           a.naechsterAb == b.naechsterAb && gleichBits(a.zStart, b.zStart) && a.blockiert == b.blockiert &&
+           a.blockiertSeit == b.blockiertSeit && a.blockiertEnt == b.blockiertEnt && gleichBits(a.blockiertOrt, b.blockiertOrt) &&
+           a.bsAktiv == b.bsAktiv && a.bsZustand == b.bsZustand && a.beinTimer == b.beinTimer && a.bsAnim == b.bsAnim &&
+           a.bsAnimAb == b.bsAnimAb && a.beinAnim == b.beinAnim && a.beinAnimAb == b.beinAnimAb &&   // rc605 FU4
+           a.torsoAnim == b.torsoAnim && a.torsoAnimAb == b.torsoAnimAb && a.torsoTimer == b.torsoTimer &&
+           a.abgehoben == b.abgehoben;
+}
 bool gleicherZustand(const LaufZustand& a, const LaufZustand& b) {
     // Neue Felder in LaufZustand gehoeren hier hinein (static_assert unten).
     return gleichBits(a.ort, b.ort) && gleichBits(a.tempoVek, b.tempoVek) && a.tempo == b.tempo &&
@@ -3090,7 +3473,11 @@ bool gleicherZustand(const LaufZustand& a, const LaufZustand& b) {
            a.amBoden == b.amBoden && a.pmZeit == b.pmZeit && gleichBits(a.gesetztMs, b.gesetztMs) &&
            a.gesetztSpawn == b.gesetztSpawn && a.gesetztImFesten == b.gesetztImFesten &&
            gleichBits(a.denkNullMs, b.denkNullMs) && gleichBits(a.letzteBewegung, b.letzteBewegung) &&   // rc601 integ
-           a.letzterVor == b.letzterVor && a.letzterSeit == b.letzterSeit && a.letzteGehTaste == b.letzteGehTaste;
+           a.letzterVor == b.letzterVor && a.letzterSeit == b.letzterSeit && a.letzteGehTaste == b.letzteGehTaste &&
+           a.jk2Tempo == b.jk2Tempo && gleichBits(a.jk2ZielAbstand, b.jk2ZielAbstand) &&
+           a.jk2Blockiert == b.jk2Blockiert && a.jk2FehlKnoten == b.jk2FehlKnoten &&
+           a.jk2FehlPruefBis == b.jk2FehlPruefBis &&   // rc604 fix604 (JK2)
+           gleicherSprung(a.sprung, b.sprung);         // rc605
 }
 bool gleicheWerte(const LaufWerte& a, const LaufWerte& b) {
     // Neue Felder in LaufWerte gehoeren hier hinein (static_assert unten).
@@ -3101,15 +3488,19 @@ bool gleicheWerte(const LaufWerte& a, const LaufWerte& b) {
            a.gangSchalter == b.gangSchalter && gleichBits(a.stufe, b.stufe) && a.ohneKoerper == b.ohneKoerper &&
            gleichBits(a.schwerkraft, b.schwerkraft) && a.fallen == b.fallen && gleichBits(a.zielAbMs, b.zielAbMs) &&
            a.spawnVorlauf == b.spawnVorlauf && a.spawnImFesten == b.spawnImFesten &&
-           a.verhaltenTaktMs == b.verhaltenTaktMs;   // rc601 integ
+           a.verhaltenTaktMs == b.verhaltenTaktMs &&   // rc601 integ
+           a.zielMitRadius == b.zielMitRadius && a.zielNavgoal == b.zielNavgoal && a.schwert == b.schwert &&   // rc604 fix604
+           a.kannSpringen == b.kannSpringen && gleichBits(a.weltSchwerkraft, b.weltSchwerkraft) &&   // rc605
+           a.bsJump == b.bsJump && a.hockeMs == b.hockeMs && a.landMs == b.landMs && a.keineAkrobatik == b.keineAkrobatik &&
+           a.sprungAnimArt == b.sprungAnimArt && a.sprungAnimMs == b.sprungAnimMs && a.forceLandMs == b.forceLandMs;   // rc605 FU4
 }
 #if defined(_MSC_VER) && defined(_M_X64)
 // Waechst eine dieser Strukturen, fehlt das neue Feld oben im Vergleich.
 static_assert(sizeof(NavPfadPunkt) == 9U * 4U, "NavPfadPunkt mit Luecken oder neuem Feld: gleicherPfad pruefen");
-static_assert(sizeof(LaufZustand) == 176U, "neues Feld in LaufZustand: gleicherZustand ergaenzen");
-static_assert(sizeof(LaufWerte) == 144U, "neues Feld in LaufWerte: gleicheWerte ergaenzen");
-static_assert(sizeof(NavAbschnitt) == 376U, "neues Feld in NavAbschnitt: gleicheEingaben ergaenzen");
-static_assert(sizeof(NavFigurKoerper) == 56U, "neues Feld in NavFigurKoerper: gleicheEingaben ergaenzen");
+static_assert(sizeof(LaufZustand) == 320U, "neues Feld in LaufZustand: gleicherZustand ergaenzen");
+static_assert(sizeof(LaufWerte) == 184U, "neues Feld in LaufWerte: gleicheWerte ergaenzen");
+static_assert(sizeof(NavAbschnitt) == 560U, "neues Feld in NavAbschnitt: gleicheEingaben ergaenzen");
+static_assert(sizeof(NavFigurKoerper) == 88U, "neues Feld in NavFigurKoerper: gleicheEingaben ergaenzen");
 #endif
 bool gleicheEingaben(const Ablauf& a, const std::vector<NavAbschnitt>& abschnitte, const std::vector<NavFigurKoerper>& figuren,
                      const std::vector<std::uint64_t>& schluessel) {
@@ -3130,8 +3521,12 @@ bool gleicheEingaben(const Ablauf& a, const std::vector<NavAbschnitt>& abschnitt
         const NavFigurKoerper& x = a.laufFiguren[i];
         const NavFigurKoerper& y = figuren[i];
         if (x.reihe != y.reihe || !gleichBits(x.halbBreite, y.halbBreite) || !gleichBits(x.hoeheOben, y.hoeheOben) ||
-            !gleichBits(x.daAbMs, y.daAbMs) || !gleichBits(x.daBisMs, y.daBisMs) || x.orte.size() != y.orte.size()) {
+            !gleichBits(x.daAbMs, y.daAbMs) || !gleichBits(x.daBisMs, y.daBisMs) || x.orte.size() != y.orte.size() ||
+            x.sfbNichtFest != y.sfbNichtFest || x.fest.size() != y.fest.size()) {   // rc604 fix604
             return false;
+        }
+        for (std::size_t j = 0; j < x.fest.size(); ++j) {
+            if (!gleichBits(x.fest[j].first, y.fest[j].first) || x.fest[j].second != y.fest[j].second) { return false; }
         }
         for (std::size_t j = 0; j < x.orte.size(); ++j) {
             if (!gleichBits(x.orte[j].first, y.orte[j].first) || !gleichBits(x.orte[j].second, y.orte[j].second)) {

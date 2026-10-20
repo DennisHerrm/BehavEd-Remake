@@ -5,10 +5,12 @@
 // statt nachzusehen.
 #include "bhed/camtrack.h"
 #include "bhed/mapview.h"
+#include "bhed/regelwerk.h"
 #include "bhed/scene.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
@@ -208,6 +210,25 @@ void pfadProben() {
             mitPfad(vorspann + "camera ( PATH, \"gibt/es/nicht\" );\nwait ( 1000.000 );\n", nullptr);
         expect("PATH ohne Datei: die Kamera bleibt stehen", nahe3(t.at(500.0).pos, 100.0F, 0.0F, 0.0F) &&
                                                                nahe3(t.at(500.0).angles, 0.0F, 90.0F, 0.0F));
+    }
+    // rc604 fix604 (JK2 Stufe 3): CGCam_Roff von Jedi Outcast
+    // (codeJK2/cgame/cg_camera.cpp:1385-1464) kennt keine Notizen ("cut", "fov"
+    // ...) und dreht PITCH und ROLL um (:1418-1419).
+    {
+        if (std::getenv("BHED_JK2_ALT") == nullptr) { bhed::regelwerkAnwendenSpiel(bhed::kRegelwerkJediOutcast, -1); }
+        auto r = std::make_shared<bhed::Roff>(testRoff());
+        r->notizen = {"cut fov 40"};
+        r->bilder[1].ersteNotiz = 0;
+        r->bilder[1].notizen = 1;
+        const bhed::CameraTrack t = mitPfad(vorspann + "camera ( PATH, \"test/bahn\" );\nwait ( 2000.000 );\n", r);
+        const bhed::CameraState b = t.at(150.0);
+        const bhed::CameraState c = t.at(250.0);
+        zeige("JK2 150 ms", b);
+        zeige("JK2 250 ms", c);
+        expect("JK2: \"cut fov 40\" wirkt nicht - halber Weg (115 / 105), Zoom bleibt 90",
+               nahe3(b.pos, 115.0F, 0.0F, 0.0F) && nahe3(b.angles, 0.0F, 105.0F, -3.0F) && near(b.fovX, 90.0F));
+        expect("JK2: PITCH umgedreht (-2,5 bei 250 ms statt 2,5)", nahe3(c.angles, -2.5F, 115.0F, -4.0F));
+        bhed::regelwerkAnwenden(false, -1);
     }
 }
 }  // namespace

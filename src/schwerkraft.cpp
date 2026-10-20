@@ -700,6 +700,279 @@ bool netzTreffer(const BspMesh& netz, const std::vector<bool>& fest, const float
     return true;
 }
 
+// rc604 fix604: das Raster fuer netzTrefferRaster.
+//
+// Gemessen (md_roc_jedi, "Schwerkraft (mit Movern)", 20-48 s je Reiter): 95 %
+// der Zeit in netzTreffer - 8,2 Millionen Modellstrahlen mit zusammen 4
+// Milliarden Dreiecken (die Brush-Modelle ohne origin liegen in Weltkoordinaten,
+// ihr Radius um den Nullpunkt deckt die ganze Karte). Fuer einen senkrechten
+// Strahl (von und bis gleich in X/Y, d = (+-0, +-0, dz)) rechnet strahlDreieck:
+//   q = (-dz * e2y, dz * e2x, +-0), det = e1x * q0 + e1y * q1 + e1z * q2,
+//   u = s.q / det, v = d.(s x e1) / det - die Baryzentrischen in X/Y.
+// (1) det ist genau +-0 (verworfen, fabs < 1e-12), wenn e1x = e2x = 0,
+//     e1y = e2y = 0, e1x = e1y = 0 oder e2x = e2y = 0 (endlich mal +-0 ist
+//     +-0, +-0 plus +-0 ist +-0) - solche Dreiecke fragt kein senkrechter
+//     Strahl je an. (Ohne /fp:fast; mit FMA bliebe es ebenso +-0.)
+// (2) Mit A = |e1x e2y - e1y e2x| >= 0,01 * L^2 (L die laengste Kante in X/Y)
+//     hat det hoechstens 4,5 eps / 0,01 = 2,7e-5 relativen Fehler und s.q / det
+//     hoechstens 3 eps |s| L / (0,01 L^2) = 1,8e-5 |s| / L absoluten (eps =
+//     2^-24). Liegt P um h ausserhalb des Kastens des Dreiecks, ist eine
+//     Baryzentrische <= -h / (2 L); strahlDreieck nimmt sie erst ab -1e-5 -
+//     das verlangt h <= ~1,2e-4 L. Der Kasten waechst um 1 + 0,001 L: das
+//     Achtfache und mehr. Auch weit weg waechst der Fehler (proportional |s|)
+//     langsamer als der Abstand.
+// (3) Alle anderen (fast senkrecht, Splitter): dort kann det reines Rauschen
+//     sein und u/v irgendwo auf der GERADEN des Dreiecks einen Treffer melden
+//     (wie bisher). Aber nur nahe dieser Geraden: mit q0 = -fl(dz e2y), q1 =
+//     fl(dz e2x), q2 = +-0 ist |fl(s.q) - dz (s x e2)z| <= 3,01 eps |dz| |s| |e2|
+//     und |det_c - dz A| <= 3,01 eps |dz| |e1| |e2| (Betraege in X/Y, A =
+//     e1y e2x - e1x e2y aus den gerundeten Kanten); u_c in [-1e-5, 1 + 1e-5]
+//     verlangt |fl(s.q)| <= 1,00002 |det_c|, also fuer den Abstand h2 des
+//     Punkts von der Geraden p0 + t e2:
+//       h2 <= 1,00002 |A| / |e2| + 4 eps (|e1| + |s|)
+//     (ebenso mit v fuer e1). Mit `reichweite` (|P| in X und Y hoechstens so
+//     weit, modellTreffer: der Radius um den Nullpunkt) steht jedes solche
+//     Dreieck in allen Zellen, die der Streifen 1,001 |A| / |e| + 64 eps (|e'| +
+//     |s|max) + 0,001 um die Gerade der laengeren Kante beruehrt; ausserhalb
+//     des Rasters fragt jeder Strahl alle aus (3).
+// Die Zelle: floor((x - x0) / zelle) ist monoton in x, also liegt die Zelle
+// eines P im gewachsenen Kasten zwischen den Zellen seiner Ecken. Das Minimum
+// der Anteile haengt nicht von der Reihenfolge ab (gleiche Werte, `<`).
+// Bewiesen in bewegungtest (NR1-NR7) gegen netzTreffer, Bit fuer Bit, und im
+// Selbsttest (BHED_SCHWER_VERGLEICH) an den Reitern von md_roc_jedi.
+NetzRaster baueNetzRaster(const BspMesh& netz, const std::vector<bool>& fest, float zelle, float reichweite) {
+    NetzRaster r;
+    r.zelle = zelle > 1.0F ? zelle : 32.0F;
+    r.gebaut = true;
+    // Ein Streifen (3): durch p0 in Richtung (dx, dy), halbe Breite w.
+    struct Streifen {
+        std::uint32_t i;
+        double px;
+        double py;
+        double dx;
+        double dy;
+        double w;
+    };
+    std::vector<Streifen> streifen;
+    const bool mitStreifen = reichweite > 0.0F && std::isfinite(reichweite);
+    struct Eintrag {
+        std::uint32_t i;
+        float lo[2];
+        float hi[2];
+    };
+    std::vector<Eintrag> gitter;
+    float lo[2] = {1.0e30F, 1.0e30F};
+    float hi[2] = {-1.0e30F, -1.0e30F};
+    for (const BspMesh::Batch& b : netz.batches) {
+        if (!batchFest(b, fest)) {
+            continue;
+        }
+        const std::size_t ende = std::min<std::size_t>(netz.indexes.size(), std::size_t{b.firstIndex} + b.numIndexes);
+        for (std::size_t i = b.firstIndex; i + 2 < ende; i += 3) {
+            const std::uint32_t i0 = netz.indexes[i];
+            const std::uint32_t i1 = netz.indexes[i + 1];
+            const std::uint32_t i2 = netz.indexes[i + 2];
+            if (i0 >= netz.verts.size() || i1 >= netz.verts.size() || i2 >= netz.verts.size()) {
+                continue;
+            }
+            const float* p0 = netz.verts[i0].xyz;
+            const float* p1 = netz.verts[i1].xyz;
+            const float* p2 = netz.verts[i2].xyz;
+            // Genau wie strahlDreieck.
+            const float e1x = p1[0] - p0[0];
+            const float e1y = p1[1] - p0[1];
+            const float e2x = p2[0] - p0[0];
+            const float e2y = p2[1] - p0[1];
+            if ((e1x == 0.0F && e2x == 0.0F) || (e1y == 0.0F && e2y == 0.0F) || (e1x == 0.0F && e1y == 0.0F) ||
+                (e2x == 0.0F && e2y == 0.0F)) {
+                continue;   // (1)
+            }
+            const double ax = e1x;
+            const double ay = e1y;
+            const double bx = e2x;
+            const double by = e2y;
+            const double cx = static_cast<double>(p2[0]) - p1[0];
+            const double cy = static_cast<double>(p2[1]) - p1[1];
+            const double l2 = std::max({ax * ax + ay * ay, bx * bx + by * by, cx * cx + cy * cy});
+            const double flaeche = std::fabs(ax * by - ay * bx);
+            const bool endlich = std::isfinite(l2) && std::isfinite(flaeche) && std::isfinite(p0[0]) &&
+                                 std::isfinite(p0[1]) && std::isfinite(p1[0]) && std::isfinite(p1[1]) &&
+                                 std::isfinite(p2[0]) && std::isfinite(p2[1]);
+            if (!endlich || !(flaeche >= 0.01 * l2)) {
+                r.immer.push_back(static_cast<std::uint32_t>(i));   // (3)
+                if (endlich && mitStreifen) {
+                    const double l1 = std::sqrt(ax * ax + ay * ay);
+                    const double lz = std::sqrt(bx * bx + by * by);
+                    const bool mitE2 = lz >= l1;
+                    const double le = mitE2 ? lz : l1;
+                    const double lAnder = mitE2 ? l1 : lz;
+                    constexpr double kEps = 5.9604644775390625e-8;   // 2^-24
+                    const double sMax = static_cast<double>(reichweite) * 1.4142135623730951 +
+                                        std::hypot(static_cast<double>(p0[0]), static_cast<double>(p0[1])) + 1.0;
+                    Streifen st{};
+                    st.i = static_cast<std::uint32_t>(i);
+                    st.px = p0[0];
+                    st.py = p0[1];
+                    st.dx = (mitE2 ? bx : ax) / le;
+                    st.dy = (mitE2 ? by : ay) / le;
+                    st.w = 1.001 * flaeche / le + 64.0 * kEps * (lAnder + sMax) + 0.001;
+                    streifen.push_back(st);
+                }
+                continue;
+            }
+            const double rand = 1.0 + 0.001 * std::sqrt(l2);   // (2)
+            Eintrag e{};
+            e.i = static_cast<std::uint32_t>(i);
+            for (int k = 0; k < 2; ++k) {
+                const double mn = std::min({static_cast<double>(p0[k]), static_cast<double>(p1[k]), static_cast<double>(p2[k])});
+                const double mx = std::max({static_cast<double>(p0[k]), static_cast<double>(p1[k]), static_cast<double>(p2[k])});
+                // In float nach aussen gerundet: der Kasten wird nie kleiner.
+                e.lo[k] = std::nextafter(static_cast<float>(mn - rand), -1.0e38F);
+                e.hi[k] = std::nextafter(static_cast<float>(mx + rand), 1.0e38F);
+                lo[k] = std::min(lo[k], e.lo[k]);
+                hi[k] = std::max(hi[k], e.hi[k]);
+            }
+            gitter.push_back(e);
+        }
+    }
+    // Hoechstens eine Million Zellen; mit den Streifen (das Raster deckt dann
+    // die ganze Reichweite, bei Brush-Modellen in Weltkoordinaten die Karte)
+    // hoechstens 65536 je Modell (256 KB), die Zellen werden dafuer groesser.
+    long long hoechstens = 1000000LL;
+    if (mitStreifen && !streifen.empty()) {
+        hoechstens = 65536LL;
+        // Das Raster deckt alles, woher ein Strahl kommt (|P| <= reichweite).
+        const float rw = std::nextafter(reichweite, 1.0e38F);
+        lo[0] = std::min(lo[0], -rw);
+        lo[1] = std::min(lo[1], -rw);
+        hi[0] = std::max(hi[0], rw);
+        hi[1] = std::max(hi[1], rw);
+    }
+    if (gitter.empty() && streifen.empty()) {
+        return r;
+    }
+    if (gitter.empty() && !mitStreifen) {
+        return r;
+    }
+    for (;;) {
+        r.nx = static_cast<int>(std::floor((hi[0] - lo[0]) / r.zelle)) + 1;
+        r.ny = static_cast<int>(std::floor((hi[1] - lo[1]) / r.zelle)) + 1;
+        if (static_cast<long long>(r.nx) * r.ny <= hoechstens) { break; }
+        r.zelle *= 2.0F;
+    }
+    r.x0 = lo[0];
+    r.y0 = lo[1];
+    const auto zellen = static_cast<std::size_t>(r.nx) * static_cast<std::size_t>(r.ny);
+    // Dieselbe Rechnung wie beim Suchen (netzTrefferRaster).
+    const auto zx = [&r](float x) { return std::clamp(static_cast<int>(std::floor((x - r.x0) / r.zelle)), 0, r.nx - 1); };
+    const auto zy = [&r](float y) { return std::clamp(static_cast<int>(std::floor((y - r.y0) / r.zelle)), 0, r.ny - 1); };
+    // Die Zellen eines Streifens: je Zeile (steile Gerade) oder Spalte (flache)
+    // der Bereich, den der Streifen dort ueberdeckt - in double, die Zeile um
+    // 0,1 % der Zelle weiter, die Enden nach aussen in float gerundet und mit
+    // derselben Rechnung wie beim Suchen in Zellen gewandelt.
+    const auto streifenZellen = [&](const Streifen& st, const auto& tu) {
+        const bool steil = std::fabs(st.dy) >= std::fabs(st.dx);
+        const int n = steil ? r.ny : r.nx;
+        const double o0 = steil ? r.y0 : r.x0;
+        for (int j = 0; j < n; ++j) {
+            const double a = o0 + static_cast<double>(j) * r.zelle - 0.001 * r.zelle - 0.001;
+            const double b = o0 + static_cast<double>(j + 1) * r.zelle + 0.001 * r.zelle + 0.001;
+            // Punkte (x, y) mit |(x - px) dy - (y - py) dx| <= w, die Koordinate
+            // entlang der Zeile/Spalte zwischen a und b.
+            const double haupt = steil ? st.dy : st.dx;   // |haupt| >= 1/sqrt(2)
+            const double neben = steil ? st.dx : st.dy;
+            const double p0h = steil ? st.py : st.px;
+            const double p0n = steil ? st.px : st.py;
+            const double t1 = (a - p0h) / haupt;
+            const double t2 = (b - p0h) / haupt;
+            const double m1 = p0n + neben * t1;
+            const double m2 = p0n + neben * t2;
+            const double breit = st.w / std::fabs(haupt);
+            const double qlo = std::min(m1, m2) - breit;
+            const double qhi = std::max(m1, m2) + breit;
+            const float flo = std::nextafter(static_cast<float>(qlo), -1.0e38F);
+            const float fhi = std::nextafter(static_cast<float>(qhi), 1.0e38F);
+            const float grenzeLo = steil ? r.x0 : r.y0;
+            const float grenzeHi = steil ? r.x0 + static_cast<float>(r.nx) * r.zelle : r.y0 + static_cast<float>(r.ny) * r.zelle;
+            if (fhi < grenzeLo - r.zelle || flo > grenzeHi + r.zelle) { continue; }
+            const int k0 = steil ? zx(flo) : zy(flo);
+            const int k1 = steil ? zx(fhi) : zy(fhi);
+            for (int k = k0; k <= k1; ++k) {
+                if (steil) {
+                    tu(static_cast<std::size_t>(j) * static_cast<std::size_t>(r.nx) + static_cast<std::size_t>(k));
+                } else {
+                    tu(static_cast<std::size_t>(k) * static_cast<std::size_t>(r.nx) + static_cast<std::size_t>(j));
+                }
+            }
+        }
+    };
+    std::vector<std::uint32_t> zahl(zellen, 0U);
+    for (const Eintrag& e : gitter) {
+        for (int yy = zy(e.lo[1]); yy <= zy(e.hi[1]); ++yy) {
+            for (int xx = zx(e.lo[0]); xx <= zx(e.hi[0]); ++xx) {
+                ++zahl[static_cast<std::size_t>(yy) * static_cast<std::size_t>(r.nx) + static_cast<std::size_t>(xx)];
+            }
+        }
+    }
+    for (const Streifen& st : streifen) {
+        streifenZellen(st, [&](std::size_t z) { ++zahl[z]; });
+    }
+    r.anfang.assign(zellen + 1U, 0U);
+    for (std::size_t z = 0; z < zellen; ++z) { r.anfang[z + 1U] = r.anfang[z] + zahl[z]; }
+    r.liste.assign(r.anfang[zellen], 0U);
+    std::vector<std::uint32_t> pos(r.anfang.begin(), r.anfang.end() - 1);
+    for (const Eintrag& e : gitter) {
+        for (int yy = zy(e.lo[1]); yy <= zy(e.hi[1]); ++yy) {
+            for (int xx = zx(e.lo[0]); xx <= zx(e.hi[0]); ++xx) {
+                r.liste[pos[static_cast<std::size_t>(yy) * static_cast<std::size_t>(r.nx) + static_cast<std::size_t>(xx)]++] = e.i;
+            }
+        }
+    }
+    for (const Streifen& st : streifen) {
+        streifenZellen(st, [&](std::size_t z) { r.liste[pos[z]++] = st.i; });
+    }
+    r.streifen = mitStreifen;
+    return r;
+}
+
+bool netzTrefferRaster(const BspMesh& netz, const NetzRaster& r, const std::vector<bool>& fest, const float von[3],
+                       const float bis[3], float treffer[3]) {
+    if (!r.gebaut || von[0] != bis[0] || von[1] != bis[1]) {
+        return netzTreffer(netz, fest, von, bis, treffer);
+    }
+    const float d[3] = {bis[0] - von[0], bis[1] - von[1], bis[2] - von[2]};
+    float beste = 2.0F;
+    const auto pruefe = [&](std::uint32_t i) {
+        const float f = strahlDreieck(von, d, netz.verts[netz.indexes[i]].xyz, netz.verts[netz.indexes[i + 1U]].xyz,
+                                      netz.verts[netz.indexes[i + 2U]].xyz);
+        if (f >= 0.0F && f < beste) {
+            beste = f;
+        }
+    };
+    bool drin = false;
+    if (r.nx > 0 && r.ny > 0) {
+        // Wie zx/zy in baueNetzRaster, ohne Klemmen: ausserhalb liegt kein
+        // gewachsener Kasten.
+        const float fx = std::floor((von[0] - r.x0) / r.zelle);
+        const float fy = std::floor((von[1] - r.y0) / r.zelle);
+        if (fx >= 0.0F && fy >= 0.0F && fx < static_cast<float>(r.nx) && fy < static_cast<float>(r.ny)) {
+            drin = true;
+            const std::size_t zi = static_cast<std::size_t>(fy) * static_cast<std::size_t>(r.nx) + static_cast<std::size_t>(fx);
+            for (std::uint32_t j = r.anfang[zi]; j < r.anfang[zi + 1U]; ++j) { pruefe(r.liste[j]); }
+        }
+    }
+    // (3): ohne Streifen, oder ausserhalb des Rasters (dort liegt kein Kasten
+    // aus (2), aber womoeglich eine Gerade aus (3)), jedes.
+    if (!r.streifen || !drin) {
+        for (const std::uint32_t i : r.immer) { pruefe(i); }
+    }
+    if (beste > 1.0F) {
+        return false;
+    }
+    for (int k = 0; k < 3; ++k) { treffer[k] = von[k] + d[k] * beste; }
+    return true;
+}
+
 BodenRaster baueBodenRaster(const BspMesh& netz, const std::vector<bool>& fest, float zelle) {
     BodenRaster r;
     r.zelle = zelle > 1.0F ? zelle : 64.0F;

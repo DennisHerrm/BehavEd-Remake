@@ -103,7 +103,7 @@ void wetterBauen() {
     // gelesenen Karte (Code-Pruefung rc592: vorher wirkte eine geaenderte
     // Flagge gar nicht, und eine neu kompilierte Karte behielt ihn).
     const std::string schl = g_app->map.path + "|" + std::to_string(g_app->map.entities.size()) + "|" +
-                             std::to_string(g_app->entStand);
+                             std::to_string(g_app->entStand) + (regelwerkJediOutcast() ? "|jk2" : "");
     if (schl == g_wetter.schluessel) { return; }
     static const void* geoStand = nullptr;
     static std::size_t geoFlaechen = 0;
@@ -116,6 +116,31 @@ void wetterBauen() {
     g_wetter.schluessel = schl;
     for (const MapEntity& e : g_app->map.entities) {
         const int f = flags(e);
+        if (regelwerkJediOutcast()) {
+            // rc604 fix604 (JK2 Stufe 3): Jedi Outcast kennt nur fx_rain und
+            // fx_snow (codeJK2/game/g_spawn.cpp:685-686), ohne Flaggen: "rain
+            // init <count>" bzw. "snow init <count>" und "wind" (g_fx.cpp:
+            // 276-321). Der Renderer liest nur das erste Wort - "rain" sind
+            // 1000 Tropfen mit 2000/s, "snow" der Schnee wie unten
+            // (code/rd-vanilla/tr_WorldEffects.cpp:1767, 1891, 1964); count
+            // bleibt ungelesen. fx_wind und fx_spacedust spawnen nicht.
+            if (e.classname == "fx_rain") {
+                g_wetter.wolken.push_back(regen(1000, 2000.0F));
+                g_wetter.wind[0] += 120.0F;   // "wind" wie oben
+            } else if (e.classname == "fx_snow") {
+                Wolke w;
+                w.anzahl = 1000;
+                w.bild = "gfx/effects/snowflake1";
+                w.hoehe = 2.0F;
+                w.breite = 2.0F;
+                w.fall = 300.0F * 0.25F;
+                w.farbe[0] = w.farbe[1] = w.farbe[2] = 0.75F;
+                w.schweben = 30.0F;
+                g_wetter.wolken.push_back(w);
+                g_wetter.wind[0] += 120.0F;
+            }
+            continue;
+        }
         if (e.classname == "fx_rain") {
             if ((f & 1) != 0) {
                 g_wetter.wolken.push_back(regen(500, 2000.0F));
@@ -149,6 +174,26 @@ void wetterBauen() {
                 w.schweben = 30.0F;
                 g_wetter.wolken.push_back(w);
                 if ((f & 2) == 0) { g_wetter.wolken.push_back(nebel(0.2F)); }   // snow + fog
+            }
+            if ((f & 8) != 0) { g_wetter.wolken.push_back(nebel(0.2F)); }
+        } else if (e.classname == "fx_lava" && regelwerkMovieDuels()) {
+            // rc604 fix604b (B6): SP_CreateLava (md_g_fx.cpp:318-350 MD, nur Movie
+            // Duels): 1 "lightlava", 2 "lava", 4 "heavylava", sonst "lava" + "fog";
+            // 8 dazu "fog". Der Renderer kennt nur "lava" - 1000 Teilchen wie der
+            // Schnee, Bild gfx/effects/snowflake2.tga (RE_WorldEffectCommand,
+            // code/rd-vanilla/tr_WorldEffects.cpp:1909-1924 MD); "lightlava" und
+            // "heavylava" uebergeht er (:2105-2112).
+            if ((f & 1) == 0 && (f & 4) == 0) {
+                Wolke w;
+                w.anzahl = 1000;
+                w.bild = "gfx/effects/snowflake2";
+                w.hoehe = 2.0F;
+                w.breite = 2.0F;
+                w.fall = 300.0F * 0.25F;   // wie snow (Initialize, mFrictionInverse)
+                w.farbe[0] = w.farbe[1] = w.farbe[2] = 0.75F;
+                w.schweben = 30.0F;
+                g_wetter.wolken.push_back(w);
+                if ((f & 2) == 0) { g_wetter.wolken.push_back(nebel(0.2F)); }   // lava + fog
             }
             if ((f & 8) != 0) { g_wetter.wolken.push_back(nebel(0.2F)); }
         } else if (e.classname == "fx_spacedust") {
@@ -236,6 +281,29 @@ float zufall(std::uint32_t& s) {
 }
 
 }  // namespace
+
+// rc604 fix604b (B6): wie viele Wolken dieses Bild tragen (Selbsttest).
+bool wetterFuerGras(float wind[3]) {
+    // R_IsRaining (tr_WorldEffects.cpp:2360): irgendeine Teilchenwolke. Die
+    // Windzonen laufen nur, solange es Wolken gibt (RB_RenderWorldEffects
+    // kehrt ohne sie vorher um, :1527) - ohne Wolken bleibt
+    // mGlobalWindSpeed 0 (:1506).
+    wind[0] = wind[1] = wind[2] = 0.0F;
+    if (!g_app->zeigeWetter || g_app->geo.empty()) { return false; }
+    wetterBauen();
+    if (g_wetter.wolken.empty()) { return false; }
+    for (int k = 0; k < 3; ++k) { wind[k] = g_wetter.wind[k]; }
+    return true;
+}
+
+int wetterWolkenMitBild(const std::string& bild) {
+    wetterBauen();
+    int n = 0;
+    for (const Wolke& w : g_wetter.wolken) {
+        if (w.bild == bild) { ++n; }
+    }
+    return n;
+}
 
 int wetterTeilchen(std::vector<gpu::KlingenQuad>& aus, const Camera& cam) {
     g_app->wetterTeilchenZahl = 0;   // auch, wenn gleich nichts kommt

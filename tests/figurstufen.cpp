@@ -19,6 +19,23 @@ bool nah(float a, float b) { return std::fabs(a - b) < 1e-4F; }
 }  // namespace
 
 int main() {
+    // rc604: ein fehlendes Stufenbild wie R_FindShader/R_LoadMDXM.
+    {
+        const FigurShaderErsatz zweite = figurShaderMitFehlendemBild(1, 3, true);
+        const FigurShaderErsatz erste = figurShaderMitFehlendemBild(0, 3, true);
+        const FigurShaderErsatz glm = figurShaderMitFehlendemBild(2, 3, false);
+        const FigurShaderErsatz alle = figurShaderMitFehlendemBild(3, 3, false);
+        pruefe(zweite.stufen == 1U && !zweite.ersatzbild && !zweite.unsichtbar,
+               "Bild der zweiten Stufe fehlt (Haut): die erste Stufe bleibt");
+        pruefe(erste.stufen == 0U && erste.unsichtbar && !erste.ersatzbild,
+               "Bild der ersten Stufe fehlt (Haut): keine Stufe, unsichtbar");
+        pruefe(glm.ersatzbild && !glm.unsichtbar, "Bild fehlt ohne Haut: tr.defaultShader (Kasten)");
+        pruefe(alle.stufen == 3U && !alle.ersatzbild && !alle.unsichtbar, "alle Bilder da: der Shader, wie er ist");
+        const std::vector<unsigned char> k = figurErsatzbild();
+        pruefe(k.size() == 16U * 16U * 4U && k[0] == 255U && k[(5U * 16U + 5U) * 4U] == 32U &&
+                   k[(15U * 16U + 7U) * 4U + 3U] == 255U,
+               "Ersatzbild: 16 x 16, innen 32, Rand 255");
+    }
     // Wortgleich aus MD_Models_PT.pk3 (shaders/battledroid.shader) und
     // MD_Models_Legends.pk3 (shaders/kyle_pack_v2.shader).
     const std::string text =

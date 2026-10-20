@@ -1,8 +1,8 @@
 {
  "Every command": "Alle Befehle",
- "What each command of the Events list does, every camera command, every macro and every SET_ field - with the value it expects.": "Was jeder Befehl der Ereignis-Liste tut, jeder Kamerabefehl, jedes Makro und jedes SET_-Feld - mit dem Wert, den er erwartet.",
+ "What each command of the Events list does, every camera command, every macro and every SET_ field - with the value it expects.": "Was jeder Befehl der Ereignisliste tut, jeder Kamerabefehl, jedes Makro und jedes SET_-Feld - mit dem Wert, den er erwartet.",
  "Commands are inserted from the **{{GroupEvents}}** list (double-click, drag or <kbd>Insert</kbd>) and changed in the **{{EditorTitle}}** (double-click the line). Hover over a command in the list to read the help text the game's designers wrote for it. How to put them together: [[skripte]].": "Befehle fügst du aus der Liste **{{GroupEvents}}** ein (Doppelklick, Ziehen oder <kbd>Einfg</kbd>) und änderst sie im **{{EditorTitle}}** (Doppelklick auf die Zeile). Fährst du in der Liste mit der Maus über einen Befehl, siehst du den Hilfetext, den die Entwickler des Spiels dafür geschrieben haben. Wie man sie zusammensetzt: [[skripte]].",
- "The commands of the Events list": "Die Befehle der Ereignis-Liste",
+ "The commands of the Events list": "Die Befehle der Ereignisliste",
  "Each command has its own page with pictures of the editor and of all three views: [[cmd]].": "Jeder Befehl hat eine eigene Seite mit Bildern des Editors und aller drei Ansichten: [[cmd]].",
  "Command": "Befehl",
  "What it does": "Was er tut",

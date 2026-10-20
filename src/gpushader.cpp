@@ -793,6 +793,8 @@ std::string figurVertexShaderHlsl(std::uint32_t features) {
     // bhed/figurstufen.h. gStufe.x Farbe (0 wie bisher, 1 weiss, 2 gStufeFarbe,
     // 3 schwarz), .y Alpha (0 eins, 1 lightingSpecular, 2 gStufeFarbe.a),
     // .z tcGen (0 base, 1 environment). Alles 0 = der alte Weg.
+    // rc604 fix604b (B4): .w 1 = tcMod - gStufeTexMatrix/gStufeTexOffTurb wie
+    // gTexMatrix/gTexOffTurb der Karte (packeKonstanten, ComputeTexMods).
     s += R"(
 cbuffer JeStufe : register(b3) {
     float4 gStufe;
@@ -801,7 +803,30 @@ cbuffer JeStufe : register(b3) {
     float4 gAchse0;
     float4 gAchse1;
     float4 gAchse2;
+    float4 gStufeTexMatrix;
+    float4 gStufeTexOffTurb;
+    // rc604: deformVertexes (RB_DeformTessGeometry) - siehe deformWerte
+    // (gpumap_win32.cpp).
+    float4 gDefWelle;     // base, amplitude, phase, frequency
+    float4 gDefArt;       // deformationSpread, Tabelle, an, -
+    float4 gDefBeule;     // bulge width, height, speed; Tabelle der move-Welle
+    float4 gDefWeg;       // moveVector, refdef.floatTime
+    float4 gDefWegWelle;  // base, amplitude, phase, frequency der move-Welle
 };
+// rc604: die Tabellen der Engine (R_InitFuncTables, code/rd-vanilla/
+// tr_init.cpp:1724-1747 OpenJK), FUNCTABLE_SIZE 1024; i schon & FUNCTABLE_MASK.
+float defTabelle(float art, int i) {
+    i = i & 1023;
+    if (art < 1.5) { return sin(radians((float)i * 360.0 / 1023.0)); }
+    if (art < 2.5) {
+        int j = i & 511;
+        float v = (j < 256) ? (float)j / 256.0 : 1.0 - (float)(j - 256) / 256.0;
+        return (i < 512) ? v : -v;
+    }
+    if (art < 3.5) { return (i < 512) ? 1.0 : -1.0; }
+    if (art < 4.5) { return (float)i / 1024.0; }
+    return 1.0 - (float)i / 1024.0;
+}
 // rc603 Durchsicht: Q_rsqrt (q_math.c:375 MD / 360 OJ) - 0x5f3759df und EINE
 // Newton-Stufe, bis zu 0.175 Prozent zu klein. RB_CalcSpecularAlpha und
 // VectorNormalizeFast in RB_CalcEnvironmentTexCoords rechnen damit, nicht
@@ -859,6 +884,30 @@ VSOut main(VSIn ein) {
                           dot(r2.xyz, ein.normal));
         welt += p * w;
         nrm += n * w;
+    }
+    // --- rc604: deformVertexes, im Raum des Modells wie tess.xyz/tess.normal
+    // (RB_CalcDeformVertexes / RB_CalcBulgeVertexes / RB_CalcMoveVertexes,
+    // code/rd-vanilla/tr_shade_calc.cpp:129-276 OpenJK; WAVEVALUE: Tabelle an
+    // Q_ftol((phase + floatTime * freq) * FUNCTABLE_SIZE) & FUNCTABLE_MASK).
+    if (gDefArt.z > 0.5) {
+        float zeit = gDefWeg.w;
+        if (gDefArt.y > 0.5) {
+            float off = (gDefWelle.w == 0.0) ? 0.0 : (welt.x + welt.y + welt.z) * gDefArt.x;
+            int i = (int)((gDefWelle.z + off + zeit * gDefWelle.w) * 1024.0);
+            welt += nrm * (gDefWelle.x + defTabelle(gDefArt.y, i) * gDefWelle.y);
+        }
+        if (gDefBeule.y != 0.0) {
+            if (gDefBeule.z == 0.0 && gDefBeule.x == 0.0) {
+                welt += nrm * gDefBeule.y;
+            } else {
+                int o = (int)(162.974661726 * (ein.uv.x * gDefBeule.x + zeit * gDefBeule.z));
+                welt += nrm * (defTabelle(1.0, o) * gDefBeule.y);
+            }
+        }
+        if (gDefBeule.w > 0.5) {
+            int i = (int)((gDefWegWelle.z + zeit * gDefWegWelle.w) * 1024.0);
+            welt += gDefWeg.xyz * (gDefWegWelle.x + defTabelle(gDefBeule.w, i) * gDefWegWelle.y);
+        }
     }
     // Danach die Stellung der Figur in der Welt.
     float4 w4 = mul(gFigurWelt, float4(welt, 1.0));
@@ -961,6 +1010,20 @@ VSOut main(VSIn ein) {
             float3 vL = float3(dot(v, gAchse0.xyz), dot(v, gAchse1.xyz), dot(v, gAchse2.xyz));
             float dd = dot(nL, vL);
             aus.uv = float2(nL.x * dd - 0.5 * vL.x, nL.y * dd - 0.5 * vL.y);
+        }
+        if (gStufe.w > 0.5) {
+            // rc604 fix604b (B4): tcMod der Stufe nach ComputeTexCoords
+            // (code/rd-vanilla/tr_shade.cpp: erst tcGen, dann die tcMod-Kette),
+            // die Kette auf der CPU zusammengerechnet wie bei der Karte. turb
+            // (RB_CalcTurbulentTexCoords, tr_shade_calc.cpp) liest tess.xyz -
+            // an einem Modell die Ecke im Raum der Entity (RB_SurfaceGhoul legt
+            // die gewichteten Knochenorte dort ab), also `welt` VOR gFigurWelt.
+            float2 st2;
+            st2.x = aus.uv.x * gStufeTexMatrix.x + (aus.uv.y * gStufeTexMatrix.z + gStufeTexOffTurb.x);
+            st2.y = aus.uv.x * gStufeTexMatrix.y + (aus.uv.y * gStufeTexMatrix.w + gStufeTexOffTurb.y);
+            float2 ort = float2(welt.x + welt.z, welt.y);
+            float2 tx = frac(ort * 0.0009765625 + gStufeTexOffTurb.w.xx);
+            aus.uv = st2 + sin(tx * 6.2831853) * gStufeTexOffTurb.z;
         }
     }
     return aus;

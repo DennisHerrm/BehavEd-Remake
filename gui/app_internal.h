@@ -71,6 +71,7 @@
 #include "bhed/validate.h"
 #include "imgui.h"
 #include <algorithm>
+#include <atomic>
 #include <cfloat>
 #include <chrono>
 #include <functional>
@@ -140,6 +141,9 @@ struct App {
     // Der ICARUS-Nachbau des offenen Skripts (bhed/ablauf.h): daraus
     // entstehen Kamerabahn, Zeitleiste und Szene.
     Ablauf ablauf;
+    // rc604 fix604: die Plaene aus dem gemeinsamen Takt (andere Figuren im
+    // Weg) - fuer die Uebersicht des Tuer-Laufs im Selbsttest.
+    std::shared_ptr<const std::map<std::uint64_t, std::shared_ptr<const LaufPlan>>> koerperPlaene;
     // Gelesene Skripte fuer run/use/spawnscript, nach Pfad (klein).
     std::map<std::string, std::unique_ptr<Script>> ablaufSkripte;
     // SET_CAMERA_GROUP aus dem Ablauf: Entity -> (ab ms, Gruppe), geordnet.
@@ -914,6 +918,36 @@ struct App {
     // Wie viele davon beim Zerbrechen spielen (MoverSim::bruchEffekte) -
     // sie haengen wie die per use gestarteten fx_runner am Skript.
     std::size_t bruchFxZahl = 0;
+    // rc604: misc_trip_mine - laserTrapThink (code/game/wp_trip_mine.cpp:135-146
+    // OpenJK) beim Scharfmachen: G_Sound warning.wav und s.loopSound hum_loop.wav.
+    std::vector<KartenKlang> fallenKlaenge;
+    // rc604: misc_trip_mine - wann das Modell zu sehen ist (laserfalleLauf):
+    // Entity -> ab (EF_NODRAW weg) .. bis (G_FreeEntity, < 0 offen). Ohne
+    // Eintrag: immer.
+    std::map<std::size_t, std::pair<double, double>> fallenSicht;
+    // rc604: wie viele misc_trip_mine im Vorschauzeitraum explodieren (WP_Explode).
+    std::size_t fallenExplosionen = 0;
+    // rc605 (fix605): WP_Explode ruft G_UseTargets( self, attacker ) (g_weapon.cpp:
+    // 221-224 OpenJK) - die Ziele explodierender Fallen fuer die Mover-Simulation
+    // (unaufgeloest: target_counter, target_relay rechnet MoverSim). fallenUses
+    // gingen in die letzte moverSim.baue (zur Karte fallenUsesKarte), fallenUsesNeu
+    // kommen aus dem letzten fallenEffekteSetzen.
+    // rc605: die Uses gehen in den Nachbau (AblaufWelt::fallenUses), der
+    // Zaehler und usescript rechnet und MoverSim die aufgeloesten gibt.
+    std::vector<AblaufWelt::FallenUse> fallenUses;
+    std::string fallenUsesKarte;
+    std::vector<AblaufWelt::FallenUse> fallenUsesNeu;
+    // ... und wie oft eine Figur getroffen war: am Netz (G2_RadiusTracePolys)
+    // bzw. nur am Kasten, weil ihr Modell noch nicht geladen war.
+    int fallenNetzTreffer = 0;
+    int fallenKastenTreffer = 0;
+    // rc604: Knochenanimationen der Geschuetze (misc_sentry_turret klappt auf,
+    // misc_ion_cannon je Schuss) - Entity -> Animationen nach Zeit.
+    std::map<std::size_t, std::vector<KnochenAnim>> geschuetzAnims;
+    // rc605 FU4: misc_sentry_turret ohne Feind - die Gier von bone_hinge nach
+    // jedem pas_think (pasSchwenkLauf).
+    std::map<std::size_t, std::vector<PasSchwenk>> pasSchwenks;
+    std::size_t ionenSchuesse = 0;   // Effekte env/ion_cannon im Vorschauzeitraum
     // Ebenso die Effekt-Notizen der ROFF-Bahnen (roffEffektStarts, rc592).
     std::size_t roffFxZahl = 0;
     // Tueren, Plattformen, func_wall & Co. - siehe bhed/mover.h. Wird in
@@ -1090,6 +1124,29 @@ struct App {
     // einen Verlauf zu sehen.
     int frameCostTick = 0;
     BspMesh effectMesh;                           // je Bild neu
+    // --- rc604: surfaceSprites (gui/app_gras.cpp) ---------------------------
+    // Je Shader der Karte die Stufen mit surfaceSprites: ihr Textureintrag
+    // (Eckenfarbe, beide Seiten), die Angaben und ob sie additiv mischt.
+    struct GrasStufe {
+        int platz = 0;
+        SurfaceSprite ss;
+        std::size_t stufenNr = 0;
+        bool additiv = false;
+    };
+    std::vector<std::vector<GrasStufe>> grasStufen;
+    int grasStand = 0;                 // zaehlt jede Aenderung an grasStufen
+    BspMesh grasNetz;                  // je Bild neu (baueGrasNetz)
+    BspMesh grasNetzNeben;             // Kameravorschau / Himmelsportal (baueGrasNetzNeben)
+    int grasViereckeNeben = 0;
+    float grasReichweite = 1.0F;       // rangescalefactor der Hauptsicht
+    int grasVierecke = 0;              // im letzten Bild gezeichnet (Selbsttest)
+    int grasFlaechen = 0;
+    int grasNebelAufrufe = 0;          // Nebel ueber den Halmen im letzten Bild
+    int grasPatches = 0;               // davon Patches (Dreiecke wie RB_SurfaceGrid)
+    bool zeigeGras = true;             // Selbsttest: mit und ohne vergleichen
+    // surfaceSprites-Stufen, die beim Laden als flache Schicht auf die
+    // Flaeche kamen - die Engine zeichnet sie nie so (tr_shade.cpp:1888 MD).
+    int grasFlachSchichten = 0;
 
     // --- .md3-Modelle der Karte ------------------------------------------
     //
@@ -1136,6 +1193,9 @@ struct App {
         float welt[16]{};
         float ort[3]{};
         bool versteckt = false;   // nur Selbsttest
+        // rc604 fix604b (B3): EF_SHADER_ANIM - das animMap-Bild s.frame statt
+        // nach der Zeit (R_BindAnimatedImage mit RF_SETANIMINDEX); -1: nach Zeit.
+        int bildIndex = -1;
     };
     std::vector<GegenstandGlm> gegenstandGlm;
     // Je Kartenmodell die Figur der Szene, die es bewegt (move, rotate,
@@ -1189,7 +1249,11 @@ struct App {
         const Skeleton* skeleton = nullptr;
         bool tried = false;
     };
-    std::vector<ActorAssets> actorAssets;
+    // rc604 fix604: je Figur ein Verweis auf das EINE geladene Modell
+    // (modelCache) statt einer Kopie samt Bildern - fuenf Obi-Wans hielten
+    // fuenf Kopien, und jedes prepareScene legte sie neu an (neue Adressen,
+    // also lud die Grafik sie auch neu hoch). Ohne Modell: ein leerer Eintrag.
+    std::vector<std::shared_ptr<const ActorAssets>> actorAssets;
     NpcMap npcMap;
     // Die Klingen aus ext_data/sabers/*.sab. Schluessel ist der Eintragname
     // aus dem `saber`-Schluessel einer .npc-Datei.
@@ -1294,7 +1358,10 @@ struct App {
     // eingelesen und verkleinert.
     //
     // Schluessel ist der Modellordner: models/players/<name>.
-    std::map<std::string, ActorAssets> modelCache;
+    std::map<std::string, std::shared_ptr<const ActorAssets>> modelCache;
+    // rc604 fix604: fuer welche Karte modelCache zuletzt aufgeraeumt wurde -
+    // beim Kartenwechsel fallen die Modelle, die keine Figur mehr nennt.
+    std::string modelCacheKarte;
     // Die Modelle der Schwertgriffe. Schluessel ist der VOLLE Pfad aus der
     // .sab-Datei - anders als bei Figuren, die immer unter
     // models/players/<name>/model.glm liegen.
@@ -1456,6 +1523,11 @@ struct App {
     // 1 Movie Duels) und die Schwierigkeits-Einstellung dazu (regelwerkPruefen).
     int regelwerkMdStand = -1;
     int regelwerkSchwierigkeitStand = -2;
+    // rc604: das zuletzt angewandte Spiel (kRegelwerkOpenJK/MovieDuels/
+    // JediOutcast, -1 = noch nie) und der Ordner des geladenen Befehlssatzes
+    // (leer = der von loadModel, data/base oder die eigene .bhc).
+    int regelwerkSpielStand = -1;
+    std::string befehlssatzOrdner;
     // Wo Balken und Blende zuletzt lagen (Bildschirm, x0 y0 x1 y1) und wie
     // hoch ein Balken war - fuer den Selbsttest.
     float blendeFlaeche[4] = {0.0F, 0.0F, 0.0F, 0.0F};
@@ -1587,6 +1659,13 @@ struct App {
         // die gerade geladene Karte zu, und aus dem Mitbenutzen wird wieder
         // ein Besitz.
         bool ownMap = false;
+        // rc604: die Spielordner, zu denen seine Karte gehoert (die der
+        // Sitzung beim Laden, leer = die eingerichteten) - gemerkt wie die
+        // Karte (mit eigener oder geerbter Karte). Beim Hinwechseln gelten
+        // wieder sie: ein JK2-Missionsreiter neben einem von Jedi Academy
+        // liest sonst die Dateien und Regeln des anderen Spiels.
+        std::vector<std::string> spielordner;
+        bool spielordnerGemerkt = false;
         // Wo die ANSICHT stand - Ort, Blickrichtung, Zeitpunkt.
         //
         // Gemeldet: "er speichert nur nicht die kamera position wo ich
@@ -2213,6 +2292,9 @@ struct App {
 
 // Der eine Zustand. Definiert in app.cpp.
 extern App* g_app;
+// rc605 FU4 (Selbsttest geschuetzanim, app_view3d.cpp): Drehung eines Knochens des
+// Wachgeschuetzes durch den Schwenk ohne Feind, in Grad (-1: nicht messbar).
+float pasKnochenDrehung(std::size_t ent, double ms, const std::string& knochen);
 
 // Masseinheiten des Originaldialogs.
 float dx(float v);
@@ -2550,7 +2632,18 @@ bool roffBearbeiten(const std::string& datei);
 // --- Wetter (gui/app_wetter.cpp, rc592) ----------------------------------------
 // (gpu::KlingenQuad steht in gpumap.h; hier nur der Name.)
 int wetterTeilchen(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam);
+int wetterWolkenMitBild(const std::string& bild);   // rc604 fix604b (B6), Selbsttest
 int flareSchilde(std::vector<bhed::gpu::KlingenQuad>& aus, const Camera& cam, float aspekt);
+// rc604 surfaceSprites: regnet es (R_IsRaining, tr_WorldEffects.cpp:2360 -
+// irgendeine Teilchenwolke) und der Wind der Wetterzonen.
+bool wetterFuerGras(float wind[3]);
+// --- surfaceSprites (gui/app_gras.cpp, rc604) ----------------------------------
+void grasStufeLaden(const ShaderInfo& info, const ShaderInfo::Stage& st, std::size_t stufenNr, const std::string& name,
+                    std::size_t shaderNr);
+void baueGrasNetz(const Camera& cam, float reichweite);
+void baueGrasNetzNeben(const Camera& cam, float reichweite);
+// Selbsttest: Mitte der groessten Grasflaeche (vertical/flattened, mit alleArten auch effect).
+bool grasTestZiel(float mitte[3], bool alleArten = false, bool nurPatch = false);
 // je(i) fuer i in [0, n), auf die Kerne verteilt, sobald es sich lohnt (rc594).
 // Fuer Strahltests (traceRay ist fadenfest); je(i) darf nur Platz i schreiben.
 void spurenVerteilt(std::size_t n, const std::function<void(std::size_t)>& je);
@@ -2677,6 +2770,14 @@ void loadMapTextures();
 // Die Textur zu EINEM Shadernamen. Auch die .md3-Modelle gehen diesen Weg -
 // zwei getrennte waeren zwei Gelegenheiten, verschieden falsch zu liegen.
 bool loadTextureFor(const std::string& shaderName, TextureSet::Tex& out);
+// rc604 fix604b (B1): eine Zusatzstufe laden (gui/app.cpp, aus loadMapTextures).
+void zusatzstufeLaden(const ShaderInfo& info, const ShaderInfo::Stage& st, const std::string& shaderName,
+                      TextureSet::Tex& t);
+// rc604 fix604b (B1): animMap der Basisstufe laden (gui/app.cpp).
+void basisBildfolgeLaden(const ShaderInfo& info, int eigenerIndex, const std::string& shaderName,
+                         TextureSet::Tex& t);
+// rc604 fix604b (B1): Farbe/Alpha einer weiteren Effektstufe (gui/app_view3d.cpp).
+void effektStufeFarbe(const ShaderInfo::Stage& st, TextureSet::Tex& z);
 // Was die Kartenleiste als Namen zeigt: die Mission, wenn ihre Karte vorn
 // liegt, sonst den Namen der Karte (rc592) - siehe drawMapToolbar.
 std::string leistenTitel();
@@ -2746,6 +2847,9 @@ void prepareScene();
 // traegt mit (Aufzuege, Tueren) - nur noetig, wenn sich ein Mover mit
 // tragender Flaeche bewegt (schwerkraftMitMovernNoetig).
 void schwerkraftVorschau(bool mitMovern);
+// rc604 fix604: Raster und Speicher der Schwerkraft mit Movern (Vorgabe an;
+// aus: der alte Weg, fuer den Vergleich im Selbsttest, BHED_SCHWER_VERGLEICH).
+extern std::atomic<bool> gSchwerkraftSchnell;
 // rc601 (bewegung, Wege wie im Spiel): die Brushes der Karte fuer die Spuren
 // von NAV/STEER (beim Laden der .bsp), und daraus die Welt fuer planeLauf -
 // Wegnetz wie im Spiel, Spuren, Sichttabelle, Boden. Zwischengespeichert,
@@ -2772,6 +2876,17 @@ void schwierigkeitWaehlen(int n);
 // Regelwerks aufgeloest).
 [[nodiscard]] bool regelwerkOrdnerErkannt();
 bool regelwerkPruefen();
+// rc604 (Jedi Outcast): das Spiel, wie es gerade gilt (regelwerkSpiel nach
+// Einstellung, Spielordnern und Sitzung); ist ein Ordner JK2 (jk2sp.exe bzw.
+// eine JK2-Karte, zwischengespeichert); die eingerichteten Spielordner des
+// Spiels nach den Einstellungen (gamePathsJk2 bei Jedi Outcast, sonst
+// gamePaths); das Regelwerk sofort anwenden (rescanGamePaths, vor dem
+// Einlesen); den Befehlssatz des Regelwerks laden (data/jk2 bzw. data/base).
+[[nodiscard]] int regelwerkSpielErmitteln();
+[[nodiscard]] bool jediOutcastOrdner(const std::string& verzeichnis);
+[[nodiscard]] const std::vector<std::string>& eingerichteteSpielordner();
+void regelwerkAnwendenJetzt();
+void befehlssatzFuerRegelwerk();
 [[nodiscard]] int schwierigkeitJetzt();
 [[nodiscard]] std::string regelwerkStatusZeile();
 
@@ -2877,6 +2992,9 @@ void openSkinFile();
 void openSkeletonFile();
 void openEntFile();
 void addGamePathDirectory(const std::string& dir);
+// rc604 jk2: die NPC-Beschreibungen des Spiels nach dem Regelwerk lesen
+// (Jedi Outcast: ext_data/NPCs.cfg). Rueckgabe: gelesene Dateien.
+int npcDateienLesen(NpcMap& m);
 // rc603: die Spielordner, die gerade gelten - die dieser Sitzung
 // (sitzungsSpielordner), sonst die eingerichteten.
 const std::vector<std::string>& aktiveSpielordner();
@@ -3009,12 +3127,14 @@ sound::Mixer::Daten tonMischerDaten(const std::string& datei);
 //
 // Aus drawMapView herausgezogen, damit die Schwertproben dieselbe
 // Knochenrechnung haben wie die Zeichnung (app_view3d.cpp):
-void figurBilderSetzen(const Actor& a, App::ActorAssets& assets, const ActorState& st, double ms, ActorDraw& d);
+void figurBilderSetzen(const Actor& a, const App::ActorAssets& assets, const ActorState& st, double ms, ActorDraw& d);
 void figurWeltMatrix(const ActorDraw& a, float fw[16]);
 void figurKopfGier(const ActorState& st, ActorDraw& d);
 void anbautenFuer(const Actor& a, const ActorState& st, double ms, ActorDraw& d);
 void npcSkalaFuer(const std::string& npcType, float aus[3]);
 const efx::Effect* effectByName(const std::string& name);
+// rc604: eine Effektdatei samt Shadern laden (app_view3d.cpp) - auch fuer den Selbsttest.
+bool ladeEffektDatei(const std::string& path, const std::string& herkunft);
 // Nach dem Laden einer .bsp (kollisionLaden): die Schwertspuren der alten Karte
 // vergessen. rc601 integ: die Brushes kommen aus geladeneKollision().
 void saberKarteGeladen();

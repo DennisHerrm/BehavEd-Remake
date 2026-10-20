@@ -64,6 +64,13 @@ struct GamePath {
 
 [[nodiscard]] bool scanGamePath(const std::string& directory, GamePath& out);
 
+// rc604: FS_PathCmp (code/qcommon/files.cpp:2475-2508 OpenJK, auch Movie Duels
+// und Jedi Outcast): Buchstaben a-z gross, '\' und ':' als '/'. paksort
+// (:2713-2720) sortiert die .pk3-Namen eines Ordners damit
+// (FS_AddGameDirectory :2773) - ohne Ruecksicht auf Gross/klein.
+[[nodiscard]] int fsPathCmp(const std::string& a, const std::string& b) noexcept;
+void sortierePk3WieEngine(std::vector<std::string>& namen);
+
 // Alle Eintraege eines Suchpfads, die auf eine der Endungen passen -
 // zusammengefasst und ohne Dubletten, spaetere Archive gewinnen.
 struct FoundFile {

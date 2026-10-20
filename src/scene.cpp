@@ -1,11 +1,14 @@
 #include "bhed/scene.h"
 #include "bhed/npcklasse.h"
+#include "bhed/gegenstaende.h"   // rc604: spawntBeiSchwierigkeit
+#include "bhed/regelwerk.h"
 #include "bhed/camtrack.h"
 
 #include "bhed/num.h"
 
 #include "bhed/clock.h"
 #include <map>
+#include <set>
 #include <memory>
 #include <functional>
 
@@ -24,6 +27,20 @@
 
 namespace bhed {
 namespace {
+// rc605 FU4: ein Code der Sprungkette (LaufTakt::beinAnim/torsoAnim) als Name;
+// kSaSprung ist die Animation aus NPC_JumpAnimation (npcSprungAnim).
+std::string ketteAnimName(int code, const std::string& sprungAnim) {
+    switch (code) {
+        case kSaSprung: return sprungAnim.empty() ? std::string("BOTH_FLIP_F") : sprungAnim;
+        case kSaJump1: return "BOTH_JUMP1";
+        case kSaLand1: return "BOTH_LAND1";
+        case kSaCrouch1: return "BOTH_CROUCH1";
+        case kSaInAir1: return "BOTH_INAIR1";
+        case kSaForceLand1: return "BOTH_FORCELAND1";
+        case kSaStand1: return "BOTH_STAND1";
+        default: return {};
+    }
+}
 // Der kuerzere Weg zwischen zwei Winkeln, in Grad.
 //
 // Nachgebaut nach AngleDelta() der Engine (shared/qcommon/q_math.c): das
@@ -262,6 +279,12 @@ const MapEntity* findSpawner(const MapData& map, const std::string& name) {
         if (!isNpcSpawner(e)) {
             continue;
         }
+        // rc604: einen Spawner, den G_SpawnGEntityFromSpawnVars wegen "notsingle"
+        // oder der Schwierigkeit freigibt (code/game/g_spawn.cpp:1064-1075
+        // OpenJK), gibt es nicht - also auch keinen NPC mit seinem Namen.
+        if (!spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) {
+            continue;
+        }
         const std::string* t = e.find("NPC_targetname");
         if (t != nullptr && sameName(*t, name)) {
             return &e;
@@ -287,6 +310,12 @@ const MapEntity* findSpawner(const MapData& map, const std::string& name) {
 // Bahn auf der Karte.
 const MapEntity* findNamed(const MapData& map, const std::string& name) {
     for (const MapEntity& e : map.entities) {
+        // rc604: eine Entity, die G_SpawnGEntityFromSpawnVars wegen
+        // "notsingle" oder der Schwierigkeit freigegeben hat, findet ICARUS
+        // nicht (g_spawn.cpp:1096-1101 OpenJK) - affect auf sie bewegt nichts.
+        if (e.classname != "worldspawn" && !spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) {
+            continue;
+        }
         const std::string* t = e.find("NPC_targetname");
         if (t != nullptr && sameName(*t, name)) {
             return &e;
@@ -343,6 +372,18 @@ bool findeImSpiel(const MapData& map, const std::string& name, float out[3], boo
     if (istFigur != nullptr) { *istFigur = false; }
     if (name.empty()) {
         return false;
+    }
+    // rc604 jk2: in Jedi Outcast heisst der Spieler "kyle" (targetname und
+    // script_targetname, codeJK2/game/g_client.cpp:1620) - und er ist
+    // Entity 0, G_Find findet ihn vor jeder anderen.
+    if (regelwerkJediOutcast() && sameName(name, "kyle")) {
+        for (const MapEntity& e : map.entities) {
+            if (e.classname == "info_player_start" && !e.origin.empty()) {
+                readVec(e.origin, out);
+                if (istFigur != nullptr) { *istFigur = true; }
+                return true;
+            }
+        }
     }
     for (const MapEntity& e : map.entities) {
         if (e.origin.empty() || imSpielFreigegeben(e) || e.targetname.empty() || !sameName(e.targetname, name)) {
@@ -1017,6 +1058,8 @@ ActorState Actor::at(double ms) const {
         std::string waffeJetzt;
         (void)festeRate;
         g.rate = npcDrehrate(*this, waffeJetzt, yawRate);
+        g.taktMs = npcDrehTaktMs(*this, waffeJetzt);   // rc604 fix604b (A1)
+        g.denkNullMs = laufZustand.denkNullMs;
         bool kino = false;
         const ActorStep* watch = nullptr;
         const ActorStep* lauf = nullptr;
@@ -1092,6 +1135,7 @@ ActorState Actor::at(double ms) const {
                 case GierArt::Waffe:
                     waffeJetzt = e.step->text;
                     g.rateAb(e.t, npcDrehrate(*this, waffeJetzt, yawRate));
+                    g.taktAb(e.t, npcDrehTaktMs(*this, waffeJetzt));   // rc604 fix604b (A1)
                     break;
                 case GierArt::Weg:
                     lauf = e.step;
@@ -1182,10 +1226,24 @@ ActorState Actor::at(double ms) const {
             // laeuft mit dem wirklichen Tempo (resultspeed, bg_pmove.cpp:34277;
             // bg_panimate.cpp:6860-6925: animSpeed *= resultspeed / 50 bzw. 150).
             float animTempo = -1.0F;
+            // rc605 FU4: die Sprungkette aus dem Plan (planeLauf): Beine und
+            // eigener Oberkoerper nach NPC_JumpAnimation, PM_JumpForDir,
+            // NPC_BSJump und PM_CrashLand - siehe LaufTakt::beinAnim.
+            int beinCode = kSaKeine;
+            double beinAb = 0.0;
+            int torsoCode = kSaKeine;
+            double torsoAb = 0.0;
             if (weg->lauf) {
                 const std::vector<LaufTakt>& tk = weg->lauf->takte;
                 for (std::size_t i = 0; i < tk.size(); ++i) {
                     if (tk[i].t < ms) { continue; }
+                    // Das Denkbild, dessen Pmove gerade laeuft: sein Ergebnis gilt
+                    // ab seinem Beginn (wie die Bahn), also der Takt bei ms.
+                    const std::size_t j = (tk[i].t <= ms + 0.5 || i == 0) ? i : i - 1;
+                    beinCode = tk[j].beinAnim;
+                    beinAb = tk[j].beinAnimAb;
+                    torsoCode = tk[j].torsoAnim;
+                    torsoAb = tk[j].torsoAnimAb;
                     lauf = tk[i].gehAnim ? "BOTH_WALK1" : "BOTH_RUN1";
                     const NavVec& vor = i == 0 ? weg->lauf->anfang.ort : tk[i - 1].ort;
                     const float dx = tk[i].ort[0] - vor[0];
@@ -1207,6 +1265,11 @@ ActorState Actor::at(double ms) const {
                                  : (st.saberActive ? "BOTH_WALKBACK2" : "BOTH_WALKBACK1");
                 }
             }
+            if (beinCode != kSaKeine) {   // rc605 FU4
+                lauf = ketteAnimName(beinCode, sprungAnim);
+                animTempo = 1.0F;
+                ab = beinAb;
+            }
             st.animation = lauf;
             st.prevAnimation.clear();
             // Die Animation laeuft MIT dem Tempo - siehe kAnimSpeedWalk in
@@ -1224,15 +1287,56 @@ ActorState Actor::at(double ms) const {
             }
             st.animStartMs = ab;
             beineBis = -1.0;
+            // rc605 FU4: ein eigener Oberkoerper der Kette (BOTH_FORCEJUMP1, solange
+            // PM_JumpForDir die Beine auf BOTH_JUMP1 setzt und sein HOLD-Timer
+            // laeuft). Eine Skriptanimation auf dem Oberkoerper, die spaeter
+            // begann, bleibt (das juengere PM_SetAnim mit OVERRIDE gilt).
+            if (torsoCode != kSaKeine && torsoCode != beinCode) {
+                const bool skriptTorso = torsoBis >= 0.0 && ms <= torsoBis && !st.torsoAnimation.empty() && st.torsoStartMs > torsoAb;
+                if (!skriptTorso) {
+                    st.torsoAnimation = ketteAnimName(torsoCode, sprungAnim);
+                    st.torsoStartMs = torsoAb;
+                    st.torsoHold = false;
+                    st.torsoPrevAnimation.clear();
+                }
+            }
         }
     } else if (!st.moving && wegNr >= 0 && beineAbMs < gehEnde &&
                !timerHaelt() && !(beineBis > gehEnde && beineBis < kNie)) {
         // Nach dem Weg: die Grundhaltung ab dem Wegende. Das gilt auch,
         // wenn vor dem Weg eine Skriptanimation gesetzt war - der Weg hat
         // sie abgeloest, sie kommt danach nicht wieder.
-        if (st.animation != "BOTH_STAND1") {
+        // rc605 FU4: laeuft am Wegende eine Animation der Sprungkette mit
+        // ihrem HOLD-Timer (BOTH_LAND1 nach PM_CrashLand), kann PM_Footsteps sie
+        // nicht abloesen - sie bleibt, bis ihr Timer abgelaufen ist (der Plan
+        // laeuft so lange weiter, LaufWerte/ketteHaelt in navlauf.cpp).
+        double standAb = gehEnde;
+        bool ketteZeigt = false;
+        const ActorStep& ws = steps[static_cast<std::size_t>(wegNr)];
+        if (ws.lauf) {
+            const std::vector<LaufTakt>& tk = ws.lauf->takte;
+            std::size_t j = 0;
+            while (j < tk.size() && tk[j].t < gehEnde - 0.5) { ++j; }
+            if (j > 0) { --j; }   // das Denkbild, dessen Ergebnis am Wegende gilt
+            for (; j < tk.size(); ++j) {
+                const int c = tk[j].beinAnim;
+                if (c == kSaKeine || c == kSaStand1) {
+                    standAb = std::max(gehEnde, tk[j].t);
+                    break;
+                }
+                if (tk[j].t > ms + 0.5) { break; }
+                st.animation = ketteAnimName(c, sprungAnim);
+                st.animStartMs = tk[j].beinAnimAb;
+                st.prevAnimation.clear();
+                ketteZeigt = true;
+            }
+            if (ketteZeigt && j < tk.size() && (tk[j].beinAnim == kSaKeine || tk[j].beinAnim == kSaStand1) && tk[j].t <= ms + 0.5) {
+                ketteZeigt = false;
+            }
+        }
+        if (!ketteZeigt && st.animation != "BOTH_STAND1") {
             st.animation = "BOTH_STAND1";
-            st.animStartMs = gehEnde;
+            st.animStartMs = standAb;
             st.prevAnimation.clear();
         }
         st.animSpeed = 1.0F;
@@ -1376,7 +1480,58 @@ float torsoBlendFraction(const ActorState& st, double ms) noexcept {
     return static_cast<float>(seit / st.torsoBlendMs);
 }
 
-void parseNpcFile(const std::string& text, NpcMap& out) {
+namespace {
+// ClassNames[] (codeJK2/game/NPC_stats.cpp:42-94), in der Reihenfolge von
+// class_t (codeJK2/game/teams.h) - also je Eintrag der Name des Enums dazu.
+struct Jk2Klasse {
+    const char* datei;
+    const char* klasse;
+};
+constexpr Jk2Klasse kJk2Klassen[] = {
+    {"atst", "CLASS_ATST"}, {"bartender", "CLASS_BARTENDER"}, {"bespin_cop", "CLASS_BESPIN_COP"},
+    {"claw", "CLASS_CLAW"}, {"commando", "CLASS_COMMANDO"}, {"desann", "CLASS_DESANN"}, {"fish", "CLASS_FISH"},
+    {"flier2", "CLASS_FLIER2"}, {"galak", "CLASS_GALAK"}, {"glider", "CLASS_GLIDER"}, {"gonk", "CLASS_GONK"},
+    {"gran", "CLASS_GRAN"}, {"howler", "CLASS_HOWLER"}, {"imperial", "CLASS_IMPERIAL"},
+    {"impworker", "CLASS_IMPWORKER"}, {"interrogator", "CLASS_INTERROGATOR"}, {"jan", "CLASS_JAN"},
+    {"jedi", "CLASS_JEDI"}, {"kyle", "CLASS_KYLE"}, {"lando", "CLASS_LANDO"}, {"lizard", "CLASS_LIZARD"},
+    {"luke", "CLASS_LUKE"}, {"mark1", "CLASS_MARK1"}, {"mark2", "CLASS_MARK2"}, {"galak_mech", "CLASS_GALAKMECH"},
+    {"minemonster", "CLASS_MINEMONSTER"}, {"monmotha", "CLASS_MONMOTHA"}, {"morgankatarn", "CLASS_MORGANKATARN"},
+    {"mouse", "CLASS_MOUSE"}, {"murjj", "CLASS_MURJJ"}, {"prisoner", "CLASS_PRISONER"}, {"probe", "CLASS_PROBE"},
+    {"protocol", "CLASS_PROTOCOL"}, {"r2d2", "CLASS_R2D2"}, {"r5d2", "CLASS_R5D2"}, {"rebel", "CLASS_REBEL"},
+    {"reborn", "CLASS_REBORN"}, {"reelo", "CLASS_REELO"}, {"remote", "CLASS_REMOTE"}, {"rodian", "CLASS_RODIAN"},
+    {"seeker", "CLASS_SEEKER"}, {"sentry", "CLASS_SENTRY"}, {"shadowtrooper", "CLASS_SHADOWTROOPER"},
+    {"stormtrooper", "CLASS_STORMTROOPER"}, {"swamp", "CLASS_SWAMP"}, {"swamptrooper", "CLASS_SWAMPTROOPER"},
+    {"tavion", "CLASS_TAVION"}, {"trandoshan", "CLASS_TRANDOSHAN"}, {"ugnaught", "CLASS_UGNAUGHT"},
+    {"weequay", "CLASS_WEEQUAY"},
+};
+bool gleichOhneFallNpc(const std::string& a, const char* b) {
+    std::size_t i = 0;
+    for (; i < a.size() && b[i] != '\0'; ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
+    }
+    return i == a.size() && b[i] == '\0';
+}
+}  // namespace
+
+std::string jk2KlassenName(const std::string& wert) {
+    // Q_stricmp gegen ClassNames[1..] (NPC_stats.cpp:153-163).
+    for (const Jk2Klasse& k : kJk2Klassen) {
+        if (gleichOhneFallNpc(wert, k.datei)) { return k.klasse; }
+    }
+    return "CLASS_NONE";
+}
+
+std::string jk2TeamName(const std::string& wert) {
+    // TeamNames[] = {"", "player", "enemy", "neutral"} (NPC_stats.cpp:34-40).
+    if (gleichOhneFallNpc(wert, "player")) { return "TEAM_PLAYER"; }
+    if (gleichOhneFallNpc(wert, "enemy")) { return "TEAM_ENEMY"; }
+    if (gleichOhneFallNpc(wert, "neutral")) { return "TEAM_NEUTRAL"; }
+    return "TEAM_FREE";
+}
+
+void parseNpcFile(const std::string& text, NpcMap& out, bool jk2) {
     // Aufbau wie bei den Shaderskripten: Name, geschweifte Klammer, Zeilen
     // mit Schluessel und Wert.
     std::string name;
@@ -1434,7 +1589,11 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
                 if (cur.customSkin.empty()) {
                     cur.customSkin = "default";
                 }
-                out[key] = cur;
+                // rc604 jk2: der erste Eintrag gewinnt (NPC_ParseParms sucht
+                // von vorn im Puffer aus NPCs.cfg und *.npc).
+                if (!jk2 || out.find(key) == out.end()) {
+                    out[key] = cur;
+                }
             }
             name.clear();
             neu();
@@ -1559,7 +1718,7 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
             }
         }
         if (key == "playerteam") {
-            cur.team = wert;
+            cur.team = jk2 ? jk2TeamName(wert) : wert;
         }
         // saberStyle, gekappt wie NPC_ParseParms (NPC_stats.cpp:4506).
         if (key == "saberstyle") {
@@ -1567,7 +1726,7 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
             cur.saberStil = static_cast<int>(std::clamp(n, 1L, 7L));
         }
         if (key == "class") {
-            cur.klasse = wert;
+            cur.klasse = jk2 ? jk2KlassenName(wert) : wert;
         }
         if (key == "scale" || key == "scalex" || key == "scaley" || key == "scalez") {
             const long n = std::strtol(wert.c_str(), nullptr, 10);
@@ -1584,6 +1743,11 @@ void parseNpcFile(const std::string& text, NpcMap& out) {
         }
         if (key == "rank") {
             cur.rang = wert;
+        }
+        // rc605: "FP_LEVITATION <n>" (NPC_ParseParms: GetIDForString(FPTable),
+        // forcePowerLevel[fp] = n, hoechstens FORCE_LEVEL_5).
+        if (key == "fp_levitation") {
+            cur.levitation = std::clamp(std::atoi(wert.c_str()), 0, 5);
         }
         // kotorWeapons und dualPistols: JEDE Zahl schaltet an - auch 0
         // (NPC_stats.cpp:4059 ff. setzt 1, sobald eine Zahl dasteht).
@@ -1959,13 +2123,19 @@ Scene buildOnce(const Script& s, const MapData& map,
             // Erst der Spawner (der traegt den NPC_type), sonst irgendeine
             // Entity dieses Namens - Tuer, Plattform, Raumschiff.
             // rc602: eine Kartenfigur bringt ihren Spawner mit (festerSpawner).
-            const MapEntity* sp = festerSpawner != nullptr ? festerSpawner : findSpawner(map, name);
-            if (sp == nullptr) {
+            // rc604 jk2: "kyle" ist in Jedi Outcast der Spieler (Entity 0,
+            // script_targetname "kyle", codeJK2/game/g_client.cpp:1620) -
+            // ICARUS findet ihn vor jedem gleichnamigen Spawner.
+            const bool jk2Spieler = festerSpawner == nullptr && regelwerkJediOutcast() && sameName(name, "kyle");
+            const MapEntity* sp = jk2Spieler                ? nullptr
+                                  : festerSpawner != nullptr ? festerSpawner
+                                                             : findSpawner(map, name);
+            if (sp == nullptr && !jk2Spieler) {
                 sp = findNamed(map, name);
             }
             // Der Spieler: kein Spawner, er steht beim Laden am
             // info_player_start (SP_info_player_start / SelectSpawnPoint).
-            const bool istSpieler = sp == nullptr && sameName(name, "player");
+            const bool istSpieler = sp == nullptr && (sameName(name, "player") || jk2Spieler);
             if (istSpieler) {
                 for (const MapEntity& e : map.entities) {
                     if (e.classname == "info_player_start") {
@@ -2054,6 +2224,11 @@ Scene buildOnce(const Script& s, const MapData& map,
                 if (isNpcSpawner(*sp)) {
                     fresh.npcType = effektiverNpcTyp(*sp);
                     fresh.kartenEntity = static_cast<int>(sp - map.entities.data());
+                } else if (sp->classname == "misc_atst_drivable") {
+                    // rc604: SP_misc_atst_drivable (code/game/g_misc.cpp:3077-3125
+                    // OpenJK, :3176 MD): models/players/atst/model.glm, NPC_type
+                    // "atst" (NPC_PrecacheAnimationCFG), modelScale 1 1 1.
+                    fresh.npcType = "atst";
                 } else if (const std::string* t = sp->find("NPC_type")) {
                     // Andere Klassen mit dem Schluessel (misc_model_breakable ...).
                     fresh.npcType = *t;
@@ -2124,6 +2299,12 @@ Scene buildOnce(const Script& s, const MapData& map,
             // Waffe zaehlt je Denkbild, auch nach SET_WEAPON).
             fresh.raketenTruppler = npcDef != nullptr && sameName(npcDef->klasse, "CLASS_ROCKETTROOPER");
             fresh.rang = npcDef != nullptr ? npcDef->rang : std::string();   // rc601 integ
+            fresh.klasse = npcDef != nullptr ? npcDef->klasse : std::string();   // rc605 fix605
+            // rc605: NPC-Spruenge (NPC_spawn.cpp:588-602 MD; NPC_JumpAnimation).
+            if (npcDef != nullptr && !regelwerkJediOutcast()) {
+                fresh.kannSpringen = npcKannSpringen(npcDef->klasse, npcDef->levitation);
+                fresh.sprungAnim = npcSprungAnim(navMovieDuelsRegeln(), npcDef->klasse, npcDef->weapon, npcDef->rang);
+            }
             // rc601 (bewegung, gemeinsam mit saber): ein NPC_spawner mit
             // spawnflags 32 (SFB_CINEMATIC) beginnt in BS_CINEMATIC
             // (NPC_SetMiscDefaultData, NPC_spawn.cpp:315-319).
@@ -2164,7 +2345,8 @@ Scene buildOnce(const Script& s, const MapData& map,
             // bg_slidemove.cpp:384-416 MD): CLASS_ATST 70, CLASS_RANCOR 48
             // bzw. mit spawnflags 1 (Mutant) 64, sonst maxs[2] <= 0 nur 4.
             if (npcDef != nullptr && sameName(npcDef->klasse, "CLASS_ATST")) {
-                fresh.stufe = 70.0F;
+                // rc604 fix604 (JK2): Jedi Outcast 66 (codeJK2/game/bg_slidemove.cpp:297-301)
+                fresh.stufe = regelwerkJediOutcast() ? 66.0F : 70.0F;
             } else if (npcDef != nullptr && sameName(npcDef->klasse, "CLASS_RANCOR")) {
                 fresh.stufe = (spawnflags & 1) != 0 ? 64.0F : 48.0F;
             } else if (fresh.hoeheOben <= 0.0F) {
@@ -2506,6 +2688,8 @@ Scene buildOnce(const Script& s, const MapData& map,
             werte.zielGesetzt = actor->zielGesetzt;
             for (int k = 0; k < 3; ++k) { werte.ziel[static_cast<std::size_t>(k)] = actor->zielOrt[k]; }
             werte.zielRadius = static_cast<float>(actor->zielRadius);
+            werte.zielMitRadius = actor->zielMitRadius;   // rc604 fix604 (JK2)
+            werte.zielNavgoal = actor->zielMarke;
             werte.maxTempo = v;
             werte.gehTempo = walkSpeed;
             werte.drehRate = drehRateBei(tt);
@@ -2513,12 +2697,15 @@ Scene buildOnce(const Script& s, const MapData& map,
             werte.hoeheOben = actor->hoeheOben;
             werte.stufe = actor->stufe;
             werte.gangSchalter = actor->laufSchalter ? 2 : (actor->gehSchalter ? 1 : 0);
+            werte.kannSpringen = actor->kannSpringen;   // rc605
+            werte.keineAkrobatik = actor->keineAkrobatik;   // rc605: SET_NO_ACROBATICS
             werte.fremdGier = watchGierFn(tt);
             // rc601 integ: Takt des Verhaltens (OpenJK 100 ms, Movie Duels jedes
             // Denkbild) mit der Waffe in der Hand zu Beginn des Plans.
             {
                 std::string wa = actor->at(tt).waffe;
                 if (wa.empty() || wa == "drop") { wa = wa.empty() ? actor->startWaffe : "WP_NONE"; }
+                werte.schwert = sameName(wa, "WP_SABER");   // rc604 fix604 (JK2)
                 werte.verhaltenTaktMs = npcVerhaltenTaktMs(navMovieDuelsRegeln(), wa,
                                                            hilfe != nullptr ? hilfe->schwierigkeit : kSchwierigkeitVorgabe,
                                                            actor->rang);
@@ -2527,10 +2714,27 @@ Scene buildOnce(const Script& s, const MapData& map,
             // BS_NOCLIP: NPC_BSNoClip + PM_NoclipMove mit dem ps.speed, das
             // die Figur gerade hat (bhed/navlauf.h, LaufWerte::ohneKoerper).
             werte.ohneKoerper = verhaltenBei(tt) == "BS_NOCLIP";
+            // rc605: BS_JUMP - NPC_BSJump (wie ablauf.cpp).
+            werte.bsJump = verhaltenBei(tt) == "BS_JUMP";
+            // rc605 FU4: die Landeanimationen fuer jeden Plan - ein Sprung aus
+            // BS_JUMP landet oft erst im Plan nach SET_BEHAVIOR_STATE BS_DEFAULT
+            // (PM_CrashLand). NPC_JumpAnimation (Art, HOLD-Laenge) nur mit
+            // SCF_NAV_CAN_JUMP.
+            if (hilfe != nullptr && hilfe->animDauer) {
+                if (werte.bsJump) { werte.hockeMs = static_cast<int>(std::max(0.0, hilfe->animDauer(actor->name, "BOTH_CROUCH1"))); }
+                werte.landMs = static_cast<int>(std::max(0.0, hilfe->animDauer(actor->name, "BOTH_LAND1")));
+                werte.forceLandMs = static_cast<int>(std::max(0.0, hilfe->animDauer(actor->name, "BOTH_FORCELAND1")));
+                if (werte.kannSpringen) {
+                    const std::string sa = actor->sprungAnim.empty() ? std::string("BOTH_FLIP_F") : actor->sprungAnim;
+                    werte.sprungAnimArt = npcSprungAnimArt(sa);
+                    werte.sprungAnimMs = static_cast<int>(std::max(0.0, hilfe->animDauer(actor->name, sa)));
+                }
+            }
             // rc601 (bewegung, teil 3): ps.gravity (g_gravity der Karte, ab
             // SET_GRAVITY der eigene Wert) und ob sie faellt.
             werte.fallen = !actor->ohneSchwerkraft;
             werte.schwerkraft = out.schwerkraft;
+            werte.weltSchwerkraft = out.schwerkraft;   // rc605: g_gravity
             for (const auto& [ms, g] : actor->eigeneSchwerkraft) {
                 if (ms <= tt + kGleichzeitig) { werte.schwerkraft = g; }
             }
@@ -2943,11 +3147,22 @@ Scene buildOnce(const Script& s, const MapData& map,
                 ActorStep step;
                 step.kind = ActorStep::Kind::Roff;
                 step.startMs = t;
-                step.endMs = t + roffLaufzeitMs(*datei);
-                step.text = child.args[1].text;
                 // Zwei Wege in G_Roff: mit client (NPC) oder ohne. Eine
                 // Figur hat hier einen NPC_type, alles andere nicht.
                 step.roffFigur = !actor->npcType.empty();
+                // rc604 (A2 Rest): unter OpenJK startet "loop rof" die Bahn
+                // neu (g_roff.cpp:320-366) - die Bilder, wie G_Roff sie
+                // nacheinander anwendet, hoechstens 10 Minuten (12000 Bilder
+                // zu mindestens 50 ms); die Bahn endet im Spiel nie.
+                if (roffNotizenOpenJk()) {
+                    bool endlos = false;
+                    Roff aus = roffMitSchleife(*datei, step.roffFigur, 12000, &endlos);
+                    if (aus.bilder.size() != datei->bilder.size() || endlos) {
+                        datei = std::make_shared<const Roff>(std::move(aus));
+                    }
+                }
+                step.endMs = t + roffLaufzeitMs(*datei);
+                step.text = child.args[1].text;
                 const ActorState jetzt = actor->at(t);
                 for (int k = 0; k < 3; ++k) {
                     step.from[k] = actor->steps.empty() ? here[k] : jetzt.pos[k];
@@ -2962,13 +3177,15 @@ Scene buildOnce(const Script& s, const MapData& map,
                     facing[k] = ende.winkel[k];
                 }
                 // Die Notizen: was sie ausloesen, wann und wo.
-                for (const RoffAusloesung& a : roffAusloesungen(*datei)) {
+                // rc604 fix604b (A2): unter OpenJK alle Notizen eines Bilds.
+                const bool ojNotizen = roffNotizenOpenJk();
+                for (const RoffAusloesung& a : roffAusloesungen(*datei, ojNotizen)) {
                     RoffEreignis e;
                     e.ms = t + a.ms;
                     e.figur = name;
                     e.datei = step.text;
                     e.text = datei->notizen[a.notiz];
-                    e.befehl = zerlegeRoffNotiz(e.text);
+                    e.befehl = zerlegeRoffNotiz(e.text, ojNotizen);
                     const RoffStand basis = roffStandVorBild(*datei, *bahn, a.bild, step.roffFigur);
                     if (e.befehl.art == RoffNotizBefehl::Art::Effekt) {
                         roffEffektOrt(e.befehl, basis.ort, basis.winkel, e.ort, e.winkel);
@@ -2997,6 +3214,14 @@ Scene buildOnce(const Script& s, const MapData& map,
             }
 
             if (const std::string* v = setValue(child, "SET_ORIGIN")) {
+                // rc605 (fix605): $tag( "name", ORIGIN )$ - der Ort des TAGs; ohne
+                // TAG scheitert der set (tagVektor), es geschieht nichts.
+                float zielOrt[3] = {0.0F, 0.0F, 0.0F};
+                if (child.args[1].kind == Arg::Kind::Expr) {
+                    if (!tagVektor(map, *v, zielOrt)) { continue; }
+                } else {
+                    readVec(*v, zielOrt);
+                }
                 // rc601 (bewegung): set ( SET_ORIGIN ) ruft G_SetOrigin
                 // (Q3_Interface.cpp:8772 ff., auch OpenJK:8249), NICHT
                 // Q3_SetOrigin: der Ort gilt genau, die Geschwindigkeit
@@ -3015,7 +3240,7 @@ Scene buildOnce(const Script& s, const MapData& map,
                 step.kind = ActorStep::Kind::Teleport;
                 step.startMs = t;
                 step.endMs = t;
-                readVec(*v, step.to);
+                for (int k = 0; k < 3; ++k) { step.to[k] = zielOrt[k]; }
                 for (int k = 0; k < 3; ++k) {
                     step.from[k] = alt[k];
                     here[k] = step.to[k];
@@ -3053,11 +3278,26 @@ Scene buildOnce(const Script& s, const MapData& map,
             }
 
             if (const std::string* v = setValue(child, "SET_ANGLES")) {
+                // rc604 fix604 (JK2 Stufe 3): Q3_SetAngles von Jedi Outcast setzt
+                // bei Entities ohne client nur s.angles - nicht s.apos.trBase und
+                // currentAngles (codeJK2/game/Q3_Interface.cpp:1125-1150 gegen
+                // code/game/Q3_Interface.cpp:1056-1062). Gezeichnet wird nach
+                // apos, und ein spaeteres rotate beginnt bei currentAngles: es
+                // aendert sich nichts.
+                if (regelwerkJediOutcast() && !npc && !actor->echterSpieler) { continue; }
+                // rc605 (fix605): $tag( "name", ANGLES )$ - die Winkel des TAGs
+                // (tagVektor); ohne TAG scheitert der set.
+                float zielWinkel[3] = {0.0F, 0.0F, 0.0F};
+                if (child.args[1].kind == Arg::Kind::Expr) {
+                    if (!tagVektor(map, *v, zielWinkel)) { continue; }
+                } else {
+                    readVec(*v, zielWinkel);
+                }
                 ActorStep step;
                 step.kind = ActorStep::Kind::Face;
                 step.startMs = t;
                 step.endMs = t;
-                readVec(*v, step.to);
+                for (int k = 0; k < 3; ++k) { step.to[k] = zielWinkel[k]; }
                 step.path = p;
                 // Das naechste rotate beginnt HIER (Q3_SetAngles setzt
                 // currentAngles).
@@ -3095,6 +3335,17 @@ Scene buildOnce(const Script& s, const MapData& map,
             if (const std::string* v = setValue(child, "SET_RUNNING")) {
                 actor->laufSchalter = sameName(*v, "true");
                 neuPlanen(t);
+                continue;
+            }
+
+            // rc605: SET_NO_ACROBATICS - NPC_CanTryJump (NPC_move.cpp:330 MD)
+            // verweigert danach jeden NPC-Sprung (Q3_SetNoAcrobatics,
+            // Q3_Interface.cpp:5623-5647 MD).
+            if (const std::string* v = setValue(child, "SET_NO_ACROBATICS")) {
+                if (npc) {
+                    actor->keineAkrobatik = sameName(*v, "true");
+                    neuPlanen(t);
+                }
                 continue;
             }
 
@@ -3279,7 +3530,10 @@ Scene buildOnce(const Script& s, const MapData& map,
                                 double ende = planGenauAb(np, t);
                                 if (ende < 0.0 && !np.takte.empty()) {
                                     const LaufZustand& zl = np.zustaende.back();
-                                    const double h = drehHalteMs(zl.gier, zl.wunschGier, drehRateBei(t));
+                                    const double h = drehHalteMs(
+                                        zl.gier, zl.wunschGier, drehRateBei(t),
+                                        DrehTakt{npcDrehTaktMs(*actor, actor->at(t).waffe), actor->laufZustand.denkNullMs,
+                                                 np.takte.back().t});   // rc604 fix604b (A1)
                                     ende = h < 0.0 ? -1.0 : np.takte.back().t + h;
                                 }
                                 if (ende >= 0.0) {
@@ -3305,8 +3559,10 @@ Scene buildOnce(const Script& s, const MapData& map,
                     // rc601 (bewegung, teil 3): die Gier Denkbild fuer Denkbild mit
                     // ANGLE2SHORT, der Nick wie bisher.
                     const float nickFehler = (sicht != nullptr && gefunden) ? std::fabs(winkel180(zielNick)) : 0.0F;
-                    const double haltGier = drehHalteMs(j.angles[1], wirkt, j.turnDegPerSec);
-                    const double haltNick = drehHalteMs(nickFehler, j.turnDegPerSec);
+                    // rc604 fix604b (A1): OpenJK dreht nur mit Verhalten (DrehTakt).
+                    const DrehTakt dt{npcDrehTaktMs(*actor, j.waffe), actor->laufZustand.denkNullMs, t};
+                    const double haltGier = drehHalteMs(j.angles[1], wirkt, j.turnDegPerSec, dt);
+                    const double haltNick = drehHalteMs(nickFehler, j.turnDegPerSec, dt);
                     const double halt = (haltGier < 0.0 || haltNick < 0.0) ? -1.0 : std::max(haltGier, haltNick);
                     // Drehrate 0: TID_ANGLE_FACE wird nie fertig - die Szene
                     // kennt kein "nie" und haelt nicht; der Ablauf schon.
@@ -3471,15 +3727,21 @@ Scene buildOnce(const Script& s, const MapData& map,
                         const bool merkZiel = actor->zielGesetzt;
                         float merkOrt[3] = {actor->zielOrt[0], actor->zielOrt[1], actor->zielOrt[2]};
                         const double merkRadius = actor->zielRadius;
+                        const bool merkMitRadius = actor->zielMitRadius;
+                        const bool merkMarke = actor->zielMarke;
                         const Path merkPfad = actor->zielPfad;
                         actor->zielGesetzt = true;
                         for (int k = 0; k < 3; ++k) { actor->zielOrt[k] = ziel.ort[k]; }
                         actor->zielRadius = ziel.radius;
+                        actor->zielMitRadius = ziel.mitRadius;
+                        actor->zielMarke = ziel.marke;
                         actor->zielPfad = p;
                         wegPlanen(t, jetzt, false, -1, false);
                         actor->zielGesetzt = merkZiel;
                         for (int k = 0; k < 3; ++k) { actor->zielOrt[k] = merkOrt[k]; }
                         actor->zielRadius = merkRadius;
+                        actor->zielMitRadius = merkMitRadius;
+                        actor->zielMarke = merkMarke;
                         actor->zielPfad = merkPfad;
                     }
                     continue;
@@ -3492,6 +3754,8 @@ Scene buildOnce(const Script& s, const MapData& map,
                 actor->zielGesetzt = true;
                 for (int k = 0; k < 3; ++k) { actor->zielOrt[k] = ziel.ort[k]; }
                 actor->zielRadius = ziel.radius;
+                actor->zielMitRadius = ziel.mitRadius;
+                actor->zielMarke = ziel.marke;
                 actor->zielPfad = p;
                 // rc601 (bewegung, Wege): NPC_SetMoveGoal - tempGoal->waypoint
                 // = WAYPOINT_NONE, noWaypointTime = 0, lastWaypoint = NONE
@@ -3814,8 +4078,19 @@ Scene buildOnce(const Script& s, const MapData& map,
             if (!npcSpawntBeimKartenstart(e)) {
                 continue;
             }
+            // rc604: "notsingle" und das Bit der Schwierigkeit entfernen jede
+            // Entity (G_SpawnGEntityFromSpawnVars, g_spawn.cpp:1096-1101 OpenJK).
+            if (!spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) {
+                continue;
+            }
             const std::string* nt = e.find("NPC_targetname");
             const std::string name = nt != nullptr ? *nt : std::string();
+            // rc604 fix604: die Darsteller anderer Zwischensequenzen nicht.
+            if (hilfe->fremdeDarsteller != nullptr && !name.empty()) {
+                std::string kl = name;
+                for (char& c : kl) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+                if (hilfe->fremdeDarsteller->count(kl) != 0U) { continue; }
+            }
             bool schon = false;
             for (const Actor& a : out.actors) {
                 schon = schon || a.kartenEntity == static_cast<int>(ei) || (!name.empty() && sameName(a.name, name));
@@ -3826,6 +4101,44 @@ Scene buildOnce(const Script& s, const MapData& map,
             figurAnlegen(name.empty() ? e.classname + "#" + std::to_string(ei) : name, &e);
             out.actors.back().kartenEntity = static_cast<int>(ei);
             out.actors.back().kartenFigur = true;
+        }
+    }
+    // rc604: misc_atst_drivable - der AT-ST zum Einsteigen steht ab dem Laden
+    // da (SP_misc_atst_drivable): misc_atst_setanim(ent, rootBone, BOTH_STAND2)
+    // mit BONE_ANIM_OVERRIDE_FREEZE (g_misc.cpp:2917-2945 OpenJK) - einmal,
+    // dann steht das letzte Bild -, und G2API_SetSurfaceOnOff(...,
+    // "head_hatchcover", 0): Flaggen 0 = die Flaeche ist AN (G2_SetSurfaceOnOff,
+    // G2SURFACEFLAG_OFF waere 2) - so wie das Modell sie ohnehin zeigt. Ein
+    // Name fuer ICARUS kommt erst mit dem Einsteigen (misc_atst_use).
+    if (hilfe != nullptr && hilfe->kartenFiguren) {
+        for (std::size_t ei = 0; ei < map.entities.size(); ++ei) {
+            const MapEntity& e = map.entities[ei];
+            if (e.classname != "misc_atst_drivable" || !spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) { continue; }
+            bool schon = false;
+            for (const Actor& a : out.actors) { schon = schon || a.kartenEntity == static_cast<int>(ei); }
+            if (schon) { continue; }
+            figurAnlegen(e.classname + "#" + std::to_string(ei), &e);
+            Actor& at = out.actors.back();
+            at.kartenEntity = static_cast<int>(ei);
+            at.kartenFigur = true;
+            ActorStep anim;
+            anim.kind = ActorStep::Kind::Anim;
+            anim.startMs = 0.0;
+            anim.endMs = 0.0;
+            anim.text = "BOTH_STAND2";
+            anim.part = AnimPart::Both;
+            if (hilfe->animDauer) {
+                const double d = hilfe->animDauer(at.name, anim.text);
+                if (d > 0.0) { anim.endMs = d; }
+            }
+            at.steps.push_back(anim);
+            ActorStep frei;
+            frei.kind = ActorStep::Kind::Hold;
+            frei.startMs = 0.0;
+            frei.endMs = 0.0;
+            frei.value = -1.0F;   // BONE_ANIM_OVERRIDE_FREEZE: das letzte Bild bleibt
+            frei.part = AnimPart::Both;
+            at.steps.push_back(frei);
         }
     }
 
@@ -4162,6 +4475,20 @@ NavZiel navZielAufloesen(const MapData& map, const std::string& name) {
                 r = std::strtof(rs->c_str(), nullptr);
             }
             z.radius = (r != 0.0F) ? static_cast<double>(static_cast<int>(r)) : 12.0;
+            if (navJk2Regeln()) {
+                // rc604 fix604 (JK2 Stufe 3): SP_waypoint_navgoal setzt mit "radius"
+                // NAVGOAL_USE_RADIUS (Abstand statt Kasten); _8/_4/_2/_1 haben
+                // ihren festen Radius (codeJK2/game/g_nav.cpp:1356-1515).
+                const std::string k = e.classname;
+                z.mitRadius = r != 0.0F && (k == "waypoint_navgoal" || k == "WAYPOINT_NAVGOAL");
+                if (k.size() > 17 && (k.rfind("waypoint_navgoal_", 0) == 0 || k.rfind("WAYPOINT_NAVGOAL_", 0) == 0)) {
+                    const std::string groesse = k.substr(17);
+                    if (groesse == "8" || groesse == "4" || groesse == "2" || groesse == "1") {
+                        z.radius = std::atof(groesse.c_str());
+                        z.mitRadius = false;
+                    }
+                }
+            }
         } else {
             z.radius = 16.0;   // SP_reference_tag: TAG_Add( ..., 16, 0 ) (g_ref.cpp:396)
         }
@@ -4181,6 +4508,96 @@ NavZiel navZielAufloesen(const MapData& map, const std::string& name) {
         z.radius = std::sqrt(16.0 + 16.0) + (figurZiel ? std::sqrt(16.0 + 16.0) : 0.0);
     }
     return z;
+}
+
+// rc605 (fix605): $tag( "name", ORIGIN|ANGLES )$ als Wert eines set.
+// CTaskManager::Get (TaskManager.cpp:637-652 OpenJK) ruft
+// CQuake3GameInterface::GetTag (Q3_Interface.cpp:8728-8747 MD / 8202 OpenJK):
+// TAG_GetOrigin/TAG_GetAngles( ent->ownername, name ) - ohne Besitzer die
+// allgemeinen TAGs, ohne Gross/klein (TAG_Find, g_ref.cpp Q_strlwr) - und
+// schreibt "%f %f %f". Findet es keinen TAG, gibt Get false: der set scheitert
+// (ICARUS_VALIDATE -> TASK_FAILED), Q3_Set wird nicht gerufen.
+// TAGs: ref_tag (SP_reference_tag -> ref_link: TAG_Add( targetname, ownername,
+// s.origin, s.angles, 16, 0 ); mit target zeigt s.angles per vectoangles zum
+// Ziel) und waypoint_navgoal (SP_waypoint_navgoal: origin[2] += 0.125, TAG_Add
+// mit s.angles). s.angles aus "angles" (F_VECTOR) bzw. "angle" (F_ANGLEHACK:
+// 0 angle 0) in der Reihenfolge der Schluessel (G_ParseField).
+// Bis rc604 las die Szene den Ausdruck als Zahlen: 0 0 0 - npc_rancor1 in
+// t2_rancor (rancorPos1) fiel zwei Minuten vom Kartenursprung in die Tiefe.
+bool tagVektor(const MapData& map, const std::string& ausdruck, float out[3]) {
+    std::string k;
+    for (const char c : ausdruck) {
+        if (c != '$' && c != ' ' && c != '\t') { k.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c)))); }
+    }
+    if (k.rfind("tag(", 0) != 0) { return false; }
+    const std::size_t a = ausdruck.find('"');
+    const std::size_t b = (a == std::string::npos) ? a : ausdruck.find('"', a + 1);
+    if (b == std::string::npos) { return false; }
+    const std::string name = ausdruck.substr(a + 1, b - a - 1);
+    const NavZiel z = navZielAufloesen(map, name);
+    if (!z.gefunden || !z.marke) { return false; }
+    std::string rest;
+    for (std::size_t i = b + 1; i < ausdruck.size(); ++i) {
+        rest.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ausdruck[i]))));
+    }
+    if (rest.find("angles") == std::string::npos) {
+        for (int i = 0; i < 3; ++i) { out[i] = z.ort[i]; }
+        return true;
+    }
+    // TAG_GetAngles: dieselbe Entity wie navZielAufloesen (der ERSTE TAG).
+    for (const MapEntity& e : map.entities) {
+        const bool navgoal = e.classname.rfind("waypoint_navgoal", 0) == 0;
+        const bool reftag = e.classname == "ref_tag";
+        if ((!navgoal && !reftag) || e.origin.empty() || e.targetname.empty() || !sameName(e.targetname, name)) { continue; }
+        if (reftag) {
+            const std::string* besitzer = e.find("ownername");
+            if (besitzer != nullptr && !besitzer->empty()) { continue; }
+        }
+        float w[3] = {0.0F, 0.0F, 0.0F};
+        for (const auto& [schl, wert] : e.keys) {
+            if (sameName(schl, "angles")) {
+                readVec(wert, w);
+            } else if (sameName(schl, "angle")) {
+                w[0] = 0.0F;
+                w[1] = static_cast<float>(std::atof(wert.c_str()));
+                w[2] = 0.0F;
+            }
+        }
+        const std::string* ziel = reftag ? e.find("target") : nullptr;
+        if (ziel != nullptr && !ziel->empty()) {
+            // ref_link: G_Find( targetname ) - vectoangles( Ziel - Ursprung ) (q_math.cpp).
+            for (const MapEntity& t : map.entities) {
+                if (t.origin.empty() || t.targetname != *ziel || imSpielFreigegeben(t)) { continue; }
+                float o[3];
+                float p[3];
+                readVec(e.origin, o);
+                readVec(t.origin, p);
+                const float d[3] = {p[0] - o[0], p[1] - o[1], p[2] - o[2]};
+                float gier = 0.0F;
+                float nick = 0.0F;
+                if (d[1] == 0.0F && d[0] == 0.0F) {
+                    nick = d[2] > 0.0F ? 90.0F : 270.0F;
+                } else {
+                    if (d[0] != 0.0F) {
+                        gier = static_cast<float>(std::atan2(d[1], d[0]) * 180.0 / 3.14159265358979323846);
+                    } else {
+                        gier = d[1] > 0.0F ? 90.0F : 270.0F;
+                    }
+                    if (gier < 0.0F) { gier += 360.0F; }
+                    const float vor = std::sqrt(d[0] * d[0] + d[1] * d[1]);
+                    nick = static_cast<float>(std::atan2(d[2], vor) * 180.0 / 3.14159265358979323846);
+                    if (nick < 0.0F) { nick += 360.0F; }
+                }
+                w[0] = -nick;
+                w[1] = gier;
+                w[2] = 0.0F;
+                break;
+            }
+        }
+        for (int i = 0; i < 3; ++i) { out[i] = w[i]; }
+        return true;
+    }
+    return false;
 }
 
 bool engineFindet(const MapData& map, const std::string& name, float out[3], bool* istFigur) {
@@ -4237,15 +4654,19 @@ float GierLauf::bei(double t) const noexcept {
     }
     float y = yaw0;
     double tf = t0;
-    for (int n = 0; n < 4000 && tf + kNpcDenktaktMs <= t + 1e-6; ++n) {
-        const float yn = npcGierSchritt(y, ziel, rate);
+    for (int n = 0; n < 8000 && tf + kNpcDenktaktMs <= t + 1e-6; ++n) {
         tf += kNpcDenktaktMs;
+        // rc604 fix604b (A1): OpenJK dreht nur in Denkbildern mit Verhalten
+        // (code/game/NPC.cpp:2515-2520, siehe bhed/scene.h).
+        if (!drehBild(tf)) { continue; }
+        const float yn = npcGierSchritt(y, ziel, rate);
         if (yn == y) {
             return y;   // steht still: so bleibt es
         }
         y = yn;
     }
     if (t > tf + 1e-6) {
+        if (!drehBild(tf + kNpcDenktaktMs)) { return y; }
         const float yn = npcGierSchritt(y, ziel, rate);
         const auto f = static_cast<float>((t - tf) / kNpcDenktaktMs);
         return y + winkel180(yn - y) * f;
@@ -4284,6 +4705,43 @@ double drehHalteMs(float fehler, float rate) noexcept {
     const double decay = static_cast<double>(rate) * kNpcDenktaktMs / 1000.0;
     const double schritte = std::ceil(static_cast<double>(f) / decay - 1e-4);
     return kNpcDenktaktMs * (schritte + 1.0);
+}
+
+// rc604 fix604b (A1): siehe bhed/scene.h (DrehTakt, GierLauf::taktMs).
+// Verhalten laeuft, wenn nextBStateThink <= level.time: ab dem ersten
+// NPC_Think alle taktMs (NPC.cpp:2471-2488) - das Denkbild tf liegt auf dem
+// 50-ms-Raster; gerundet, damit Zeiten mit Bruchteilen dasselbe Bild treffen.
+bool DrehTakt::dreht(double tf) const noexcept {
+    if (ms <= static_cast<int>(kNpcDenktaktMs)) { return true; }
+    const long long bilder = ms / static_cast<int>(kNpcDenktaktMs);
+    const long long k = std::llround((tf - nullMs) / kNpcDenktaktMs);
+    return ((k % bilder) + bilder) % bilder == 0;
+}
+bool GierLauf::drehBild(double tf) const noexcept { return DrehTakt{taktMs, denkNullMs, t0}.dreht(tf); }
+double drehHalteMs(float yaw, float ziel, float rate, const DrehTakt& takt) noexcept {
+    if (takt.ms <= static_cast<int>(kNpcDenktaktMs)) { return drehHalteMs(yaw, ziel, rate); }
+    // "exact" in jedem Denkbild, in dem |AngleDelta| vor dem Drehen hoechstens
+    // MIN_ANGLE_ERROR ist (auch ohne Verhalten, NPC.cpp:2518); gedreht wird
+    // nur mit Verhalten.
+    float y = yaw;
+    for (int n = 1; n < 8000; ++n) {
+        if (std::fabs(winkel180(y - ziel)) <= kMinAngleError) { return kNpcDenktaktMs * n; }
+        if (!(rate > 0.0F)) { return -1.0; }
+        if (takt.dreht(takt.abMs + kNpcDenktaktMs * n)) { y = npcGierSchritt(y, ziel, rate); }
+    }
+    return -1.0;
+}
+double drehHalteMs(float fehler, float rate, const DrehTakt& takt) noexcept {
+    if (takt.ms <= static_cast<int>(kNpcDenktaktMs)) { return drehHalteMs(fehler, rate); }
+    double f = std::fabs(fehler);
+    if (f <= kMinAngleError) { return kNpcDenktaktMs; }
+    if (!(rate > 0.0F)) { return -1.0; }
+    const double decay = static_cast<double>(rate) * kNpcDenktaktMs / 1000.0;
+    for (int n = 1; n < 8000; ++n) {
+        if (f <= kMinAngleError) { return kNpcDenktaktMs * n; }
+        if (takt.dreht(takt.abMs + kNpcDenktaktMs * n)) { f = std::max(0.0, f - decay); }
+    }
+    return -1.0;
 }
 
 // --- Paket bewegung (rc601, Durchsicht 2): die Schwierigkeit ---------------
@@ -4343,6 +4801,20 @@ float npcDrehrate(const Actor& a, const std::string& waffe, float yawRate) {
     return yawRate;
 }
 
+// rc604 fix604b (A1): siehe bhed/scene.h.
+int npcDrehTaktMs(const std::string& waffe, const std::string& rang) {
+    // rc604: auch Jedi Outcast - codeJK2/game/NPC.cpp:2111-2113 hat denselben
+    // memcpy(&ucmd, &NPCInfo->last_ucmd) nach NPC_UpdateAngles im Zweig ohne
+    // Verhalten, und denselben Verhaltenstakt (NPC.cpp:2084-2091). Bis rc604
+    // drehte der Regler im Stand unter Jedi Outcast alle 50 ms.
+    std::string w = waffe;
+    if (w == "drop") { w = "WP_NONE"; }
+    return npcVerhaltenTaktMs(navMovieDuelsRegeln(), w, regelwerkSpielstufe(), rang);
+}
+int npcDrehTaktMs(const Actor& a, const std::string& waffe) {
+    return npcDrehTaktMs(waffe.empty() ? a.startWaffe : waffe, a.rang);
+}
+
 std::function<float(const std::string&, const std::string&, float)> ablaufDrehrate(const Scene& s) {
     auto figuren = std::make_shared<std::map<std::string, Actor>>();
     for (const Actor& a : s.actors) {
@@ -4382,6 +4854,15 @@ std::function<int(const std::string&, const std::string&)> ablaufVerhaltenTakt(c
         if (w == "drop") { w = "WP_NONE"; }
         return npcVerhaltenTaktMs(navMovieDuelsRegeln(), w, spielstufe, rang);
     };
+}
+
+// rc605 (fix605): siehe bhed/scene.h.
+std::function<bool(const std::string&)> ablaufBleibtFest(const Scene& s) {
+    auto feste = std::make_shared<std::set<std::string>>();
+    for (const Actor& a : s.actors) {
+        if (sameName(a.klasse, "CLASS_MARK1") || sameName(a.klasse, "CLASS_INTERROGATOR")) { feste->insert(a.name); }
+    }
+    return [feste](const std::string& f) { return feste->count(f) != 0U; };
 }
 
 // rc601 (bewegung, teil 3): siehe bhed/scene.h.

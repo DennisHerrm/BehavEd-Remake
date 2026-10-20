@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <cstring>
@@ -698,6 +699,21 @@ std::string fmtFloat(float v) {
         std::snprintf(buf, sizeof(buf), "%.*f", digits, static_cast<double>(v));
         if (toFloat(buf) == v) {
             return buf;
+        }
+    }
+    // rc604 (JK2, cinematic24.ibi): die gerundete Schreibweise trifft nicht
+    // immer - IBIze rechnet die Nachkommastellen in float auf
+    // (codeJK2/icarus/Tokenizer.cpp:2413-2431, CTokenizer::HandleFloat).
+    // 0x3D4CCCCD (0,05) ergibt aus "0.050000001" ein Bit weniger, aus
+    // "0.050000002" genau den Wert. Also die Nachbarn der letzten Stelle
+    // versuchen - so baut auch IBIze dieselbe .ibi daraus.
+    for (int digits = 6; digits <= 9; ++digits) {
+        const double schritt = std::pow(10.0, -digits);
+        for (const int n : {1, -1, 2, -2, 3, -3}) {
+            std::snprintf(buf, sizeof(buf), "%.*f", digits, static_cast<double>(v) + n * schritt);
+            if (toFloat(buf) == v) {
+                return buf;
+            }
         }
     }
     std::snprintf(buf, sizeof(buf), "%.9g", static_cast<double>(v));

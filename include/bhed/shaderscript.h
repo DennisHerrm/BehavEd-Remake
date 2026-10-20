@@ -407,6 +407,42 @@ struct DeformZusatz {
     [[nodiscard]] bool normalAn() const noexcept { return normal[0] != 0.0F; }
 };
 
+// --- surfaceSprites: Gras, Buesche, Blumen, Regenspritzer (rc604) ----------
+//
+// surfaceSprite_t aus tr_local.h:332 (Movie Duels rd-vanilla; OpenJK
+// gleich). Gelesen wie ParseSurfaceSprites (tr_shader.cpp:706 MD) und
+// ParseSurfaceSpritesOptional (tr_shader.cpp:863 MD). Die Stufe zeichnet
+// die Engine NICHT als Schicht (tr_shade.cpp:1888 MD: "continue"), sondern
+// erst nach allen anderen Stufen als viele kleine Bilder auf der Flaeche
+// (RB_DrawSurfaceSprites, tr_surfacesprites.cpp:1440) - siehe
+// bhed/grasflaechen.h.
+struct SurfaceSprite {
+    // SURFSPRITE_* (tr_local.h:320): 0 keins, 1 vertical, 2 oriented,
+    // 3 effect, 4 weatherfx (effect mit ssFXWeather), 5 flattened.
+    int typ = 0;
+    float width = 0.0F;
+    float height = 0.0F;
+    float density = 0.0F;
+    float wind = 0.0F;
+    float windIdle = 0.0F;
+    float fadeDist = 0.0F;
+    float fadeMax = 0.0F;
+    float fadeScale = 0.0F;
+    float fxAlphaStart = 0.0F;
+    float fxAlphaEnd = 0.0F;
+    float fxDuration = 0.0F;
+    float vertSkew = 0.0F;
+    float variance[2]{};
+    float fxGrow[2]{};
+    // SURFSPRITE_FACING_* (tr_local.h:327): 0 normal, 1 up, 2 down, 3 any.
+    // Die Zeichner fragen nur "ungleich 0" (haengen bzw. flach nach oben).
+    int facing = 0;
+    // Die Zeile surfaceSprites stand da und war gueltig (sonst bleibt typ,
+    // was ss*-Zeilen davor hinterliessen - meist 0, die Stufe ist dann eine
+    // ganz normale Schicht wie im Spiel).
+    [[nodiscard]] bool aktiv() const noexcept { return typ != 0; }
+};
+
 struct ShaderInfo {
     std::string image;            // erstes brauchbares Bild
     // Die tcMod-Kette der Stufe, aus der auch das Bild kommt - siehe TexMod.
@@ -505,6 +541,9 @@ struct ShaderInfo {
         float portalWeite = 0.0F;
         // Woher der Alphawert kommt - siehe AlphaGen.
         AlphaGen alphaGen = AlphaGen::FromImage;
+        // rc604: es stand `alphaGen entity` (AGEN_ENTITY) - alphaGen ist dann
+        // Const 1; ein Effektteilchen nimmt seinen Alphawert (effektAlphaEntity).
+        bool alphaEntity = false;
         // --- depthWrite: Tiefe schreiben, obwohl gemischt wird ----------
         //
         // Die Engine LOESCHT die Tiefenmaske fuer jede Stufe mit blendFunc
@@ -592,6 +631,8 @@ struct ShaderInfo {
         // Gemessen ueber die sechs pk3: 1039 der 4457 Shader tragen `glow`,
         // bei MD_Maps_Ep3 sind es 342 von 736.
         bool glow = false;
+        // surfaceSprites dieser Stufe (rc604) - typ 0 heisst: keine.
+        SurfaceSprite ss;
     };
     std::vector<Stage> stages;
 
@@ -664,6 +705,7 @@ struct ShaderInfo {
 
     // alphaGen der Stufe, aus der auch das Bild kommt.
     AlphaGen alphaGen = AlphaGen::FromImage;
+    bool alphaEntity = false;   // rc604: dort stand `alphaGen entity`
 
     // Die Mischfaktoren der Stufe, aus der auch das Bild kommt.
     BlendFactor srcFactor = BlendFactor::One;

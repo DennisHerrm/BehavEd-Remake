@@ -1,4 +1,10 @@
 // checkall.cpp - liest alle .icarus und haelt sie gegen das Befehlsmodell.
+//
+// rc604 (JK2): auch .ibi - wie "Datei > .ibi oeffnen" zurueckuebersetzt
+// (readIbi + decompile mit demselben Befehlsmodell). Das Original-Jedi-Outcast
+// liefert nur .ibi mit; so laesst sich der JK2-Befehlssatz (data/jk2) an allen
+// 1356 Skripten aus assets0.pk3 messen.
+#include "bhed/ibi.h"
 #include "bhed/script.h"
 #include "bhed/validate.h"
 
@@ -48,12 +54,17 @@ int main(int argc, char** argv) {
         if (!e.is_regular_file()) continue;
         std::string ext = e.path().extension().string();
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (ext != ".icarus") continue;
+        if (ext != ".icarus" && ext != ".ibi") continue;
         ++files;
 
         bhed::Script s;
         std::vector<bhed::Diag> d;
-        if (!bhed::readScript(slurp(e.path()), s, d)) ++broken;
+        if (ext == ".ibi") {
+            std::vector<bhed::IbiBlock> bl;
+            if (!bhed::readIbi(slurp(e.path()), bl, d) || !bhed::decompile(bl, db, s, d)) ++broken;
+        } else if (!bhed::readScript(slurp(e.path()), s, d)) {
+            ++broken;
+        }
 
         std::vector<bhed::Issue> issues;
         bhed::validate(s, db, issues);

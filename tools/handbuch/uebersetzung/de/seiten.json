@@ -105,7 +105,7 @@
  "The **{{GroupEvents}}** list of every command and macro, the script tree, the action column - for writing scripts. [[skripte]]": "Die Liste **{{GroupEvents}}** mit jedem Befehl und Makro, der Skriptbaum, die Aktionsspalte - zum Schreiben von Skripten. [[skripte]]",
  "The mission: the entity list and inspector, the map in 3D with the timeline below - for cameras, figures, entities and saving the mission. [[karte]]": "Die Mission: Entity-Liste und Inspektor, die Karte in 3D mit der Zeitleiste darunter - für Kameras, Figuren, Entities und das Speichern der Mission. [[karte]]",
  "A character model with its animations - to find an animation and put it into the script. [[modell]]": "Ein Figurenmodell mit seinen Animationen - um eine Animation zu finden und ins Skript zu setzen. [[modell]]",
- "The action column (Events mode)": "Die Aktionsspalte (Events-Modus)",
+ "The action column (Events mode)": "Die Aktionsspalte (Modus Ereignisse)",
  "The action column, as in the original BehavEd.": "Die Aktionsspalte, wie im originalen BehavEd.",
  "Button": "Knopf",
  "Removes the selected lines (<kbd>Delete</kbd>).": "Entfernt die gewählten Zeilen (<kbd>Entf</kbd>).",
@@ -234,7 +234,7 @@
  "Textures on or off.": "Texturen an oder aus.",
  "In the animation list: copies the animation name.": "In der Animationsliste: kopiert den Namen der Animation.",
  "Puts `set ( SET_ANIM_BOTH, ... )` for the animation into the script. [[k-animation-abspielen]]": "Setzt `set ( SET_ANIM_BOTH, ... )` für die Animation ins Skript. [[k-animation-abspielen]]",
- "The event editor for `%s` - the numbers match the table below.": "Der Event-Editor für `%s` - die Nummern passen zur Tabelle unten.",
+ "The event editor for `%s` - the numbers match the table below.": "Der Ereignis-Editor für `%s` - die Nummern passen zur Tabelle unten.",
  "`%s` in the script tree.": "`%s` im Skriptbaum.",
  "`%s` in the list of the selected script node.": "`%s` in der Liste des gewählten Skriptknotens.",
  "`%s` in Tracks.": "`%s` in den Spuren."

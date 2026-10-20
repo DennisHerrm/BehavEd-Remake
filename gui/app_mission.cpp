@@ -491,12 +491,7 @@ const std::vector<std::string>& npcTypen() {
     } else if (g_app->npcMap.empty() && typen.empty()) {
         // Noch keine Szene gebaut - die .npc-Dateien selbst lesen.
         NpcMap m;
-        for (const GamePath& gp : g_app->gamePaths) {
-            for (const FoundFile& f : findByExtension(gp, {".npc"})) {
-                std::string text;
-                if (readFromArchives(f.name, text)) { parseNpcFile(text, m); }
-            }
-        }
+        (void)npcDateienLesen(m);   // rc604 jk2: Jedi Outcast liest NPCs.cfg
         for (const auto& [t, d] : m) { typen.push_back(t); }
     }
     return typen;

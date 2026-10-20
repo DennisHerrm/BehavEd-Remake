@@ -67,8 +67,21 @@ int main() {
     pruefe(gras.stufenBild.size() == 3U && gras.stufenBild[1] == "textures/yavin/ground",
            "Gras: Bild der zweiten Stufe ohne Endung, klein");
     const auto fg = fehlendeMerkmale(gras, Zusammenhang::Welt);
-    pruefe(fg.size() == 1U && fg[0] == "surfacesprites vertical",
-           "Welt: nur surfaceSprites fehlt, q3map/qer/surfaceparm/ss* zaehlen nicht " + liste(fg));
+    // rc604: surfaceSprites zeichnet die Vorschau wie das Spiel (gui/app_gras.cpp) - an der Welt keine Luecke.
+    pruefe(fg.empty(), "Welt: seit rc604 surfaceSprites - nichts fehlt, q3map/qer/surfaceparm/ss* zaehlen nicht " +
+                           liste(fg));
+    const auto fge = fehlendeMerkmale(gras, Zusammenhang::Effekt);
+    pruefe(fge.size() == 1U && fge[0] == "effekt: surfacesprites vertical",
+           "Effekt: surfaceSprites auf Effektteilchen bleibt eine Luecke " + liste(fge));
+    {
+        std::map<std::string, ShaderAnweisungen> m3;
+        sammleShader("textures/probe/alle\n{\n{\nmap a\nsurfaceSprites oriented 8 8 32 300\n}\n"
+                     "{\nmap b\nsurfaceSprites effect 2 2 32 300\nssFXWeather\n}\n"
+                     "{\nmap c\nsurfaceSprites flattened 8 8 32 300\n}\n}\n",
+                     m3);
+        const auto fa = fehlendeMerkmale(m3["textures/probe/alle"], Zusammenhang::Welt);
+        pruefe(m3.size() == 1U && fa.empty(), "Welt: oriented, effect, flattened ebenso " + liste(fa));
+    }
 
     const ShaderAnweisungen& sbd = m["models/players/sbd/body"];
     const auto ff = fehlendeMerkmale(sbd, Zusammenhang::Figur, "models/players/sbd/body");
@@ -78,6 +91,28 @@ int main() {
 
     const auto fe = fehlendeMerkmale(m["gfx/effects/glowball"], Zusammenhang::Effekt);
     pruefe(fe.empty(), "Effekt: eine glow-Stufe geht seit rc602 ins Gluehen - keine Luecke " + liste(fe));
+    // rc604 fix604b (B1): Effektteilchen zeichnen alle Stufen - drei Stufen sind keine Luecke mehr.
+    const auto fe3 = fehlendeMerkmale(sbd, Zusammenhang::Effekt);
+    pruefe(fe3.empty(), "Effekt: seit fix604b alle Stufen (keine \"weitere stufe\") " + liste(fe3));
+    // rc604 fix604b (B4): tcMod an Figurenstufen wird gezeichnet - keine Luecke mehr.
+    std::map<std::string, ShaderAnweisungen> m2;
+    sammleShader("models/players/palpatine/bodyemp_holo\n{\n{\nmap models/players/palpatine/holo\n"
+                 "blendFunc GL_ONE GL_ONE\ntcMod turb 0 0.2 0 0.5\ntcMod rotate 20\n}\n}\n", m2);
+    const auto ft = fehlendeMerkmale(m2["models/players/palpatine/bodyemp_holo"], Zusammenhang::Figur,
+                                     "models/players/palpatine/bodyemp_holo");
+    pruefe(m2.size() == 1U && ft.empty(), "Figur: seit fix604b tcMod turb/rotate - keine Luecke " + liste(ft));
+    // rc604: deformVertexes wave/bulge/move an Figuren (yoda_shadow/smoke, z_zzUpdate8.pk3)
+    // zeichnet der Figuren-Vertexshader - keine Luecke; normal bleibt eine.
+    std::map<std::string, ShaderAnweisungen> m3;
+    sammleShader("models/players/yoda_shadow/smoke\n{\ndeformVertexes wave 2 sin 0 2 0 1\n{\n"
+                 "map models/players/yoda_shadow/smoke\nblendFunc GL_ONE GL_ONE\n}\n}\n"
+                 "models/players/test/wackel\n{\ndeformVertexes normal 0.5 2\n{\nmap models/players/test/w\n}\n}\n",
+                 m3);
+    const auto fd = fehlendeMerkmale(m3["models/players/yoda_shadow/smoke"], Zusammenhang::Figur,
+                                     "models/players/yoda_shadow/smoke");
+    const auto fdn = fehlendeMerkmale(m3["models/players/test/wackel"], Zusammenhang::Figur, "models/players/test/wackel");
+    pruefe(fd.empty() && hat(fdn, "figur: deformvertexes normal"),
+           "Figur: deformVertexes wave keine Luecke, normal schon " + liste(fd) + liste(fdn));
 
     const auto fn = fehlendeMerkmale(m["textures/test/neu"], Zusammenhang::Welt);
     pruefe(hat(fn, "deformvertexes text") && hat(fn, "videomap") && hat(fn, "tcgen vector") &&

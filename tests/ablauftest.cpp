@@ -191,6 +191,28 @@ void feste() {
         pruefe(it != a.erscheint.end() && std::fabs(it->second - 1100.0) < 51.0, "NPC_spawner mit delay 1 s (+100 ms NPC_Begin)");
         pruefe(zeitVon(a, "bob", "set", "BOTH_SIT1") >= 1000.0, "spawnscript laeuft auf der Figur");
     }
+    // 10b. rc604: CSequencer::Run (Sequencer.cpp:383-411 OpenJK) legt den
+    //      neuen Ablauf nur an (Route -> Prime -> SetCommand -> PushTask,
+    //      TaskManager.cpp:857-878) - kein Go(). Er laeuft erst beim naechsten
+    //      Update der Entity (G_RunThink, g_main.cpp:1077-1086). Der Runner
+    //      (Entity 1) ist in diesem Bild schon dran gewesen: ein Bild spaeter.
+    {
+        MapData m;
+        MapEntity r;
+        r.classname = "target_scriptrunner";
+        r.targetname = "runner";
+        r.keys = {{"classname", "target_scriptrunner"}, {"targetname", "runner"}, {"usescript", "x/jetzt"}};
+        m.entities = {r};
+        auto jetzt = std::make_shared<Script>(lies("print ( \"jetzt\" );\n"));
+        AblaufWelt w3;
+        w3.karte = &m;
+        w3.skript = [jetzt](const std::string& p) -> const Script* { return p == "x/jetzt" ? jetzt.get() : nullptr; };
+        const Script s = lies("use ( \"runner\" );\nwait ( 500.000 );\n");
+        const Ablauf a = simuliereAblauf(s, "", w3);
+        const double t = zeitVon(a, "runner", "print", "jetzt");
+        std::printf("   run: print bei %.1f ms\n", t);
+        pruefe(std::fabs(t - 50.0) < 0.5, "Run ohne Go: das Skript beginnt beim naechsten Update der Entity");
+    }
     // 11. play ( "PLAY_ROFF" ) haelt TID_MOVE_NAV bis zum letzten Bild
     //     (Q3_Interface.cpp:10698, g_roff.cpp:626). Fehlt die Datei, ruft
     //     niemand Completed (TaskManager.cpp:1603): dowait haengt.
@@ -336,11 +358,14 @@ void kartenstart() {
     pruefe(beginn("k/intro") == 550.0 && beginn("k/spieler") == 550.0,
            "Kartenstart: die Ziele der Startposition beim ClientSpawn (Ende des Bildes 550)");
     pruefe(beginn("k/wache") == 550.0, "Kartenstart: NPC-Spawner ohne targetname - spawnscript im ersten Bild nach NPC_Begin (550 ms)");
-    pruefe(beginn("k/zweit") == 2600.0, "Kartenstart: use aus dem Intro nach wait ( 2000 ) (2600 ms)");
-    pruefe(beginn("k/tod") == 3150.0, "Kartenstart: kill nach wait ( 500 ) startet das deathscript der gespawnten Figur (3150 ms)");
+    // rc604: Run ohne Go - das Intro (Run bei 550, ClientSpawn) laeuft erst
+    // im Bild 600 los, sein wait endet bei 2650; k/zweit (Entity 3, vor dem
+    // Runner 7) laeuft ab 2700, sein wait 500 endet bei 3250.
+    pruefe(beginn("k/zweit") == 2650.0, "Kartenstart: use aus dem Intro nach wait ( 2000 ) (2650 ms)");
+    pruefe(beginn("k/tod") == 3250.0, "Kartenstart: kill nach wait ( 500 ) startet das deathscript der gespawnten Figur (3250 ms)");
     pruefe(beginn("k/namenlos") == 550.0, "Kartenstart: Spawner ohne NPC_targetname - spawnscript trotzdem (550 ms)");
-    pruefe(beginn("k/spaeter") == 2700.0,
-           "Kartenstart: Spawner ohne NPC_targetname per use - spawnscript nach NPC_Begin (use 2600 + 100)");
+    pruefe(beginn("k/spaeter") == 2800.0,
+           "Kartenstart: Spawner ohne NPC_targetname per use - spawnscript nach NPC_Begin (use 2700 + 100)");
     pruefe(beginn("k/nie") == -2.0 && beginn("k/schwer") == -2.0,
            "Kartenstart: Trigger beim Betreten und eine Entity, die bei dieser Schwierigkeit nicht spawnt, starten nichts");
     const std::vector<std::string> pfade = {"k/nie", "K/Zweit", "scripts/k/tod.IBI", "k/wache", "k/spieler",
@@ -618,6 +643,84 @@ int werkzeug(int argc, char** argv) {
 
 }  // namespace
 
+// rc604: ein Skriptname, dessen Spawner G_SpawnGEntityFromSpawnVars wegen der
+// Schwierigkeit freigibt (code/game/g_spawn.cpp:1064-1075 OpenJK): affect findet
+// niemanden, der Block laeuft nicht.
+void entfernterSpawner() {
+    MapData m;
+    MapEntity sp;
+    sp.classname = "NPC_spawner";
+    sp.origin = "0 0 0";
+    sp.keys = {{"classname", "NPC_spawner"}, {"NPC_targetname", "wache"}, {"NPC_type", "stormtrooper"},
+               {"spawnflags", "1024"}, {"origin", "0 0 0"}};
+    m.entities = {sp};
+    MapEntity welt;
+    welt.classname = "worldspawn";
+    welt.keys = {{"classname", "worldspawn"}};
+    m.entities.insert(m.entities.begin(), welt);
+    const Script s = lies("affect ( \"wache\", FLUSH )\n{\n\tprint ( \"da\" );\n}\n");
+    const auto drucke = [&](int stufe) {
+        AblaufWelt w;
+        w.karte = &m;
+        w.spielstufe = stufe;
+        const Ablauf a = simuliereAblauf(s, "", w);
+        return zeitVon(a, "wache", "print", "da") >= 0.0 ? 1 : 0;
+    };
+    const int schwer = drucke(2);
+    const int leicht = drucke(0);
+    std::printf("  entfernter Spawner: print schwer %d, leicht %d\n", schwer, leicht);
+    pruefe(schwer == 0 && leicht == 1, "affect auf eine Figur, deren Spawner die Schwierigkeit entfernt: laeuft nicht");
+}
+
+// rc605: eine explodierende misc_trip_mine benutzt ihr target (WP_Explode ->
+// G_UseTargets) - der Nachbau rechnet den target_counter dahinter (count 2:
+// erst die zweite Explosion feuert usescript und target) und gibt die
+// Benutzung der Wand an MoverSim weiter.
+void fallenZiele() {
+    MapData m;
+    const auto ent = [](const std::string& k, std::vector<std::pair<std::string, std::string>> keys) {
+        MapEntity e;
+        e.classname = k;
+        for (const auto& [a, b] : keys) {
+            if (a == "targetname") { e.targetname = b; }
+            if (a == "origin") { e.origin = b; }
+        }
+        keys.emplace_back("classname", k);
+        e.keys = std::move(keys);
+        return e;
+    };
+    m.entities = {
+        ent("worldspawn", {}),
+        ent("misc_trip_mine", {{"target", "zaehler"}, {"origin", "0 0 0"}}),
+        ent("misc_trip_mine", {{"target", "zaehler"}, {"origin", "64 0 0"}}),
+        ent("target_counter", {{"targetname", "zaehler"}, {"count", "2"}, {"usescript", "f/zaehler"}, {"target", "wand"}}),
+        ent("func_usable", {{"targetname", "wand"}, {"model", "*1"}}),
+    };
+    std::map<std::string, std::shared_ptr<Script>> skripte;
+    skripte["f/zaehler"] = std::make_shared<Script>(lies("print ( \"zaehler\" );\n"));
+    AblaufWelt w;
+    w.karte = &m;
+    w.skript = [skripte](const std::string& p) -> const Script* {
+        const auto it = skripte.find(p);
+        return it == skripte.end() ? nullptr : it->second.get();
+    };
+    w.fallenUses = {{600.0, "zaehler", 1}, {1200.0, "zaehler", 2}};
+    const Script s = lies("wait ( 2000.000 );\n");
+    const Ablauf a = simuliereAblauf(s, "", w);
+    const double druck = zeitVon(a, "zaehler", "print", "zaehler");
+    int wand = 0;
+    double wandMs = -1.0;
+    for (const Ablauf::Benutzung& b : a.benutzt) {
+        if (b.name == "wand") {
+            ++wand;
+            wandMs = b.ms;
+        }
+    }
+    std::printf("  Fallenziele: usescript bei %.0f, Wand %d mal (bei %.0f)\n", druck, wand, wandMs);
+    pruefe(druck >= 1200.0 && druck < 1300.0, "zweite Explosion: target_counter feuert usescript (count 2)");
+    pruefe(wand == 1 && std::fabs(wandMs - 1200.0) < 0.5, "zweite Explosion: target des Zaehlers einmal benutzt, bei 1200 ms");
+}
+
 int main(int argc, char** argv) {
     if (argc >= 3) {
         return werkzeug(argc, argv);
@@ -626,6 +729,8 @@ int main(int argc, char** argv) {
     kartenstart();   // rc603
     kartenstartSpawner();   // rc603 (Durchsicht)
     kartenstartFreigegeben();   // rc603 (Durchsicht)
+    entfernterSpawner();   // rc604
+    fallenZiele();         // rc605
     std::printf("%s\n", fehler == 0 ? "alle Proben bestanden" : "FEHLGESCHLAGEN");
     return fehler == 0 ? 0 : 1;
 }

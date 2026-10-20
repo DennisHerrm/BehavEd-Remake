@@ -376,6 +376,32 @@ void bewegenProben() {
 }
 
 // --- Paket kamera, rc601: die Einstellungen des Spielfensters ------------------
+// rc604: alphaGen entity in einer Effektstufe - der Alphawert des Teilchens
+// (RB_CalcAlphaFromEntity: shaderRGBA[3]), nicht die feste 1.
+void effektAlphaProben() {
+    std::printf("\n--- alphaGen entity im Effektshader ---\n");
+    bhed::ShaderMap m;
+    bhed::parseShaderScript("gfx/fx/a\n{\n    {\n        map gfx/a\n        blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA\n"
+                            "        alphaGen entity\n    }\n    {\n        map gfx/b\n        alphaGen entity\n"
+                            "        alphaGen vertex\n    }\n}\n",
+                            m);
+    const auto it = m.find("gfx/fx/a");
+    const bool da = it != m.end() && it->second.stages.size() == 2U;
+    expect("alphaGen entity wird erkannt (Grundstufe und Stufe), das letzte alphaGen gilt",
+           da && it->second.alphaEntity && it->second.stages[0].alphaEntity && !it->second.stages[1].alphaEntity);
+    // Wie die Ansicht eine Stufe uebernimmt: alphaGen Const, alphaConst 1.
+    bhed::TextureSet::Tex z;
+    z.alphaGen = bhed::AlphaGen::Const;
+    z.alphaConst = 1.0F;
+    bhed::effektAlphaEntity(da && it->second.stages[0].alphaEntity, z);
+    expect("Effektstufe mit alphaGen entity nimmt den Alphawert des Teilchens (Ecke), kein festes 1",
+           z.alphaGen == bhed::AlphaGen::Vertex && z.alphaConst < 0.0F);
+    bhed::TextureSet::Tex w;
+    w.alphaConst = 0.5F;
+    bhed::effektAlphaEntity(false, w);
+    expect("ohne alphaGen entity bleibt die Stufe wie sie ist", w.alphaConst == 0.5F);
+}
+
 void einstellungsProben() {
     std::printf("\n--- Einstellungen des Spielfensters (Paket kamera) ---\n");
     const bhed::Settings vorgabe;
@@ -812,6 +838,7 @@ int main() {
     rollProben();
     bewegenProben();
     einstellungsProben();
+    effektAlphaProben();
 
     std::printf("\n%s (%d Fehlschlaege)\n",
                 fails != 0 ? "FEHLGESCHLAGEN" : "alle Ansichtsproben bestanden", fails);

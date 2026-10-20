@@ -100,9 +100,11 @@ int main(int argc, char** argv) {
         "HL_HEAD", "HL_GENERIC6",
         "SET_NAVGOAL", "SET_BEHAVIOR_STATE", "SET_PARM8",
         // Achtung: das Handbuch schreibt SET_BEHAVIORSTATE (ohne
-        // Unterstrich). Das ist die JK2-Form; JKA hat sie umbenannt. Beim
-        // Schreiben dieser Probe bin ich selbst darauf hereingefallen und
-        // hielt behaved fuer fehlerhaft. Es war das Handbuch.
+        // Unterstrich). Das ist die Form des ICARUS_Manual.doc - schon der
+        // JK2-Spielcode schreibt SET_BEHAVIOR_STATE (codeJK2/game/
+        // Q3_Interface.h, rc604 nachgesehen; data/jk2). Beim Schreiben
+        // dieser Probe bin ich selbst darauf hereingefallen und hielt
+        // behaved fuer fehlerhaft. Es war das Handbuch.
     };
     std::printf("\nGegenprobe - diese MUESSEN angeboten werden:\n");
     int fehlt = 0;

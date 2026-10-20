@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -369,9 +370,32 @@ struct TextureSet {
         [[nodiscard]] bool empty() const noexcept { return rgba.empty(); }
     };
     std::vector<Tex> byShader;
+    // rc604 fix604: die Bloecke der Kartenmodelle in byShader (Schluessel ->
+    // erster Platz). Jedes prepareScene stellte die Modelle der Karte neu auf
+    // und haengte ihre Bilder samt Bildpyramide JEDES MAL wieder an byShader
+    // an - bei taspir2 rund 370 MB je Aufruf, und jeder Reiterwechsel ruft
+    // es. Ein Modell mit denselben Bildern bekommt jetzt seinen Block wieder
+    // (dieselben Bilder, derselbe Inhalt); geleert wird mit dem ganzen Satz.
+    std::map<std::string, int> modellBloecke;
     int found = 0;
     int missing = 0;
 };
+
+// rc604: `alphaGen entity` in einer Stufe eines Effektshaders. AGEN_ENTITY
+// liest backEnd.currentEntity->e.shaderRGBA[3] (RB_CalcAlphaFromEntity,
+// code/rd-vanilla/tr_shade_calc.cpp OpenJK) - beim Teilchen ist das der
+// Alphawert, den FxPrimitives.cpp in mRefEnt.shaderRGBA[3] legt
+// (CParticle::UpdateAlpha, FX_USE_ALPHA). Dieselbe Zahl tragen seine Ecken
+// (RB_SurfaceSprite -> RB_AddQuadStamp mit shaderRGBA, tr_surface.cpp), also
+// gilt fuer die Stufe der Eckenalphawert - kein festes 1.
+inline void effektAlphaEntity(bool alphaEntity, TextureSet::Tex& z) noexcept {
+    if (!alphaEntity) {
+        return;
+    }
+    z.alphaGen = AlphaGen::Vertex;
+    z.alphaConst = -1.0F;
+    z.alphaWave = Wave{};
+}
 
 // Ein bewegtes Brush-Modell: eine Tuer, eine Plattform, ein Raumschiff.
 //
@@ -514,6 +538,8 @@ struct KlingeDraw {
     // Halber Durchmesser. saberRadius aus der .sab-Datei, Vorgabe 3
     // (SABER_RADIUS_STANDARD, wp_saber.h:57).
     float radius = 3.0F;
+    // rc604 fix604 (JK2): die volle Laenge (radiusmult beim Zuenden).
+    float laengeMax = 0.0F;
     // Farbe der Klinge. Sie gilt nur, wenn die Texturen unten fehlen.
     std::uint8_t farbe[3] = {120, 180, 255};
     // --- Die beiden Bilder, aus denen eine Klinge besteht ------------

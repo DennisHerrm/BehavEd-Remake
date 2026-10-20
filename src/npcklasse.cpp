@@ -405,16 +405,197 @@ bool nurMovieDuels(const std::string& k, Bau& b) {
     return false;
 }
 
+// rc604 jk2: die SP_NPC_*-Funktionen von Jedi Outcast
+// (codeJK2/game/NPC_spawn.cpp:1722-2785) - GENAU die 50 Namen aus spawns[]
+// (codeJK2/game/g_spawn.cpp:622-671); alles andere ("NPC_Player",
+// "NPC_Cultist" ...) hat dort keine Funktion. Eigene Tabelle statt
+// "gemeinsam": fuenf Klassen rechnen anders als in Jedi Academy (NPC_Jedi,
+// NPC_Rebel, NPC_Galak, NPC_Kyle, NPC_Droid_Remote), NPC_ImpWorker wuerfelt
+// und laesst den Schluessel gelten.
+bool jk2Klasse(const std::string& k, Bau& b) {
+    struct Fest {
+        const char* klasse;
+        const char* typ;
+    };
+    // self->NPC_type = "..."; - ohne Ruecksicht auf den Schluessel.
+    static const Fest kFest[] = {
+        {"NPC_Kyle", "Kyle"},                        // :1722 (keine spawnflags)
+        {"NPC_Lando", "Lando"},                      // :1738
+        {"NPC_Jan", "Jan"},                          // :1752
+        {"NPC_Luke", "Luke"},                        // :1766
+        {"NPC_MonMothma", "MonMothma"},              // :1782
+        {"NPC_Tavion", "Tavion"},                    // :1796
+        {"NPC_Reelo", "Reelo"},                      // :1812
+        {"NPC_Desann", "Desann"},                    // :1850
+        {"NPC_Bartender", "Bartender"},              // :1866
+        {"NPC_MorganKatarn", "MorganKatarn"},        // :1880
+        {"NPC_Tie_Pilot", "stormpilot"},             // :2045
+        {"NPC_Monster_Murjj", "Murjj"},              // :2398
+        {"NPC_Monster_Swamp", "Swamp"},              // :2412
+        {"NPC_Monster_Howler", "howler"},            // :2426
+        {"NPC_MineMonster", "minemonster"},          // :2440
+        {"NPC_Monster_Claw", "Claw"},                // :2455
+        {"NPC_Monster_Glider", "Glider"},            // :2469
+        {"NPC_Monster_Flier2", "Flier2"},            // :2483
+        {"NPC_Monster_Lizard", "Lizard"},            // :2497
+        {"NPC_Monster_Fish", "Fish"},                // :2511
+        {"NPC_Droid_Interrogator", "interrogator"},  // :2529
+        {"NPC_Droid_Probe", "probe"},                // :2547
+        {"NPC_Droid_Mark1", "mark1"},                // :2566
+        {"NPC_Droid_Mark2", "mark2"},                // :2585
+        {"NPC_Droid_ATST", "atst"},                  // :2601
+        {"NPC_Droid_Remote", "remote"},              // :2619 (JKA: remote_sp)
+        {"NPC_Droid_Seeker", "seeker"},              // :2637
+        {"NPC_Droid_Sentry", "sentry"},              // :2655
+        {"NPC_Droid_Gonk", "gonk"},                  // :2675
+        {"NPC_Droid_Mouse", "mouse"},                // :2696
+    };
+    for (const Fest& x : kFest) {
+        if (k == x.klasse) {
+            b.setze(x.typ);
+            return true;
+        }
+    }
+    struct FestFlag {
+        const char* klasse;
+        const char* mit;
+        const char* ohne;
+    };
+    // spawnflags & 1, ueberschreibt den Schluessel.
+    static const FestFlag kFestFlag[] = {
+        {"NPC_Galak", "Galak_Mech", "Galak"},         // :1828 (in OpenJK JKA leer)
+        {"NPC_Droid_R2D2", "r2d2_imp", "r2d2"},       // :2718
+        {"NPC_Droid_R5D2", "r5d2_imp", "r5d2"},       // :2746
+        {"NPC_Droid_Protocol", "protocol_imp", "protocol"},   // :2771
+    };
+    for (const FestFlag& x : kFestFlag) {
+        if (k == x.klasse) {
+            b.setze(b.f(1) ? x.mit : x.ohne);
+            return true;
+        }
+    }
+    if (k == "NPC_Stormtrooper" || k == "NPC_StormtrooperOfficer") {
+        // :1999 - ohne "if (!self->NPC_type)"; Officer: spawnflags |= 1 (:2031).
+        const int sf = k == "NPC_StormtrooperOfficer" ? (b.sf | 1) : b.sf;
+        if ((sf & 8) != 0) {
+            b.setze("rockettrooper");
+        } else if ((sf & 4) != 0) {
+            b.setze("stofficeralt");
+        } else if ((sf & 2) != 0) {
+            b.setze("stcommander");
+        } else if ((sf & 1) != 0) {
+            b.setze("stofficer");
+        } else {
+            b.zufall({"StormTrooper", "StormTrooper2"});   // Q_irand(0, 1)
+        }
+        return true;
+    }
+    // --- nur ohne Schluessel ("if ( !self->NPC_type )") -----------------
+    if (k == "NPC_Jedi") {   // :1901 - Flag 1 jeditrainer, sonst Jedi/Jedi2 (JKA: 2, 4 und jedi_*)
+        if (b.frei()) {
+            if (b.f(1)) {
+                b.setze("jeditrainer");
+            } else {
+                b.zufall({"Jedi", "Jedi2"});
+            }
+        }
+        return true;
+    }
+    if (k == "NPC_Prisoner") {   // :1940
+        if (b.frei()) { b.zufall({"Prisoner", "Prisoner2"}); }
+        return true;
+    }
+    if (k == "NPC_Rebel") {   // :1964 - wuerfelt Rebel/Rebel2 (JKA: immer Rebel)
+        if (b.frei()) { b.zufall({"Rebel", "Rebel2"}); }
+        return true;
+    }
+    if (k == "NPC_Ugnaught") {   // :2059
+        if (b.frei()) { b.zufall({"Ugnaught", "Ugnaught2"}); }
+        return true;
+    }
+    if (k == "NPC_Gran") {   // :2087
+        if (b.frei()) {
+            if (b.f(1)) {
+                b.setze("granshooter");
+            } else if (b.f(2)) {
+                b.setze("granboxer");
+            } else {
+                b.zufall({"gran", "gran2"});
+            }
+        }
+        return true;
+    }
+    if (k == "NPC_Rodian") {   // :2124
+        if (b.frei()) { b.setze(b.f(1) ? "rodian2" : "rodian"); }
+        return true;
+    }
+    if (k == "NPC_Weequay") {   // :2148
+        if (b.frei()) { b.zufall({"Weequay", "Weequay2", "Weequay3", "Weequay4"}); }
+        return true;
+    }
+    if (k == "NPC_Trandoshan") {   // :2179
+        if (b.frei()) { b.setze("Trandoshan"); }
+        return true;
+    }
+    if (k == "NPC_SwampTrooper") {   // :2197
+        if (b.frei()) { b.setze(b.f(1) ? "SwampTrooper2" : "SwampTrooper"); }
+        return true;
+    }
+    if (k == "NPC_Imperial") {   // :2229
+        if (b.frei()) { b.setze(b.f(1) ? "ImpOfficer" : b.f(2) ? "ImpCommander" : "Imperial"); }
+        return true;
+    }
+    if (k == "NPC_ImpWorker") {   // :2269 - "!Q_irand(0, 2)", dann Q_irand(0, 1)
+        if (b.frei()) { b.zufall({"ImpWorker", "ImpWorker2", "ImpWorker3"}); }
+        return true;
+    }
+    if (k == "NPC_BespinCop") {   // :2297 - "!Q_irand(0, 1)" -> BespinCop bei 0
+        if (b.frei()) { b.zufall({"BespinCop", "BespinCop2"}); }
+        return true;
+    }
+    if (k == "NPC_Reborn") {   // :2331
+        if (b.frei()) {
+            b.setze(b.f(1)   ? "rebornforceuser"
+                    : b.f(2) ? "rebornfencer"
+                    : b.f(4) ? "rebornacrobat"
+                    : b.f(8) ? "rebornboss"
+                             : "reborn");
+        }
+        return true;
+    }
+    if (k == "NPC_ShadowTrooper") {   // :2368
+        if (b.frei()) { b.zufall({"ShadowTrooper", "ShadowTrooper2"}); }
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 NpcKlassenTyp npcKlassenTyp(const std::string& classname, int spawnflags, const std::string& schluesselTyp,
                             bool hatMessage, bool movieDuels) {
+    return npcKlassenTypSpiel(classname, spawnflags, schluesselTyp, hatMessage,
+                              movieDuels ? kRegelwerkMovieDuels : kRegelwerkOpenJK);
+}
+
+NpcKlassenTyp npcKlassenTypSpiel(const std::string& classname, int spawnflags, const std::string& schluesselTyp,
+                                 bool hatMessage, int spiel) {
+    const bool movieDuels = spiel == kRegelwerkMovieDuels;
     NpcKlassenTyp r;
     r.typ = schluesselTyp;
     Bau b{schluesselTyp, spawnflags, hatMessage, r};
     if (classname == "NPC_spawner") {   // SP_NPC_spawner: der Schluessel oder nichts
         r.bekannt = true;
         r.spawnt = true;
+        return r;
+    }
+    if (spiel == kRegelwerkJediOutcast) {   // rc604 jk2: nur die Tabelle von codeJK2
+        if (jk2Klasse(classname, b)) {
+            r.bekannt = true;
+            r.spawnt = true;
+            return r;
+        }
+        r.typ.clear();
         return r;
     }
     if (classname == "NPC_Galak" && !movieDuels) {
@@ -443,7 +624,17 @@ NpcKlassenTyp npcKlassenTyp(const MapEntity& e, bool movieDuels) {
                          msg != nullptr && !msg->empty(), movieDuels);
 }
 
-NpcKlassenTyp npcKlassenTyp(const MapEntity& e) { return npcKlassenTyp(e, regelwerkMovieDuels()); }
+NpcKlassenTyp npcKlassenTyp(const MapEntity& e) {
+    if (regelwerkJediOutcast()) {   // rc604 jk2
+        const std::string* t = e.find("NPC_type");
+        const std::string* sf = e.find("spawnflags");
+        const std::string* msg = e.find("message");
+        return npcKlassenTypSpiel(e.classname, sf != nullptr ? std::atoi(sf->c_str()) : 0,
+                                  t != nullptr ? *t : std::string(), msg != nullptr && !msg->empty(),
+                                  kRegelwerkJediOutcast);
+    }
+    return npcKlassenTyp(e, regelwerkMovieDuels());
+}
 
 std::string effektiverNpcTyp(const MapEntity& e) {
     NpcKlassenTyp k = npcKlassenTyp(e);
@@ -454,6 +645,12 @@ bool npcSpawntBeimKartenstart(const MapEntity& e) {
     if (!e.targetname.empty()) { return false; }
     const NpcKlassenTyp k = npcKlassenTyp(e);
     return k.spawnt && !k.typ.empty();
+}
+
+bool kinoDarsteller(const MapEntity& e) {
+    const std::string* nt = e.find("NPC_targetname");
+    const std::string* sf = e.find("spawnflags");
+    return nt != nullptr && !nt->empty() && sf != nullptr && (std::atoi(sf->c_str()) & 32) != 0;
 }
 
 }  // namespace bhed

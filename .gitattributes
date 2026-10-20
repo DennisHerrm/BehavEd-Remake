@@ -1,2 +1,3 @@
 data/fixtures/*.txt -text
 data/base/*.h -text
+data/jk2/*.h -text

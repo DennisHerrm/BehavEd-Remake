@@ -15,6 +15,7 @@
 #include "bhed/bspgeo.h"
 #include "bhed/kollision.h"
 #include "bhed/navlauf.h"
+#include "bhed/regelwerk.h"
 #include "bhed/scene.h"
 #include "bhed/script.h"
 #include "bhed/wegpunkte.h"
@@ -26,6 +27,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -35,6 +37,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace bhed;
@@ -327,6 +330,41 @@ void laufenSzene() {
         const ActorState e = a.at(60000.0);
         pruefe(std::fabs(e.pos[0] - 380.0F) < 20.0F && std::fabs(e.pos[1]) < 20.0F, "A8b ... bis zum Ziel");
     }
+    // A8c - rc605 (fix605): SET_ORIGIN / SET_ANGLES mit $tag( "name", ORIGIN|ANGLES )$.
+    // CTaskManager::Get schreibt den Ort des TAGs als "%f %f %f" (TaskManager.cpp:
+    // 637-652 OpenJK); ohne TAG scheitert der set (TASK_FAILED). Bis rc604 las die
+    // Szene den Ausdruck als Zahlen - 0 0 0 (npc_rancor1 in t2_rancor fiel vom
+    // Kartenursprung).
+    {
+        const MapData mt = karte((std::string(kKarte1) +
+                                  "{\n\"classname\" \"ref_tag\"\n\"targetname\" \"blick\"\n\"origin\" \"-50 60 100\"\n"
+                                  "\"angle\" \"135\"\n}\n").c_str());
+        const Scene s = szene(held(warte(500.0) + setZahl("SET_ORIGIN", "$tag( \"MARKE\", ORIGIN )$") +
+                                   setZahl("SET_ANGLES", "$tag( \"blick\", ANGLES )$") + warte(500.0) +
+                                   setZahl("SET_ORIGIN", "$tag( \"fehlt\", ORIGIN )$") +
+                                   setZahl("SET_ANGLES", "$tag( \"fehlt\", ANGLES )$")),
+                              mt);
+        const ActorState st = s.actors.front().at(1500.0);
+        pruefe(std::fabs(st.pos[0] - 380.0F) < 0.5F && std::fabs(st.pos[1]) < 0.5F && st.pos[2] > 50.0F,
+               "A8c SET_ORIGIN $tag( \"MARKE\", ORIGIN )$: steht an der Marke 380 0 (" + std::to_string(st.pos[0]) + " " +
+                   std::to_string(st.pos[1]) + " " + std::to_string(st.pos[2]) + ")");
+        pruefe(std::fabs(st.angles[1] - 135.0F) < 0.5F,
+               "A8c SET_ANGLES $tag( \"blick\", ANGLES )$: Gier 135 (" + std::to_string(st.angles[1]) + "); ein fehlender TAG aendert nichts");
+        // Der Ablauf nimmt denselben Ort (Plaene der Figuren beginnen dort).
+        AblaufWelt welt;
+        welt.karte = &mt;
+        const Ablauf ab = simuliereAblauf(lies(held(warte(500.0) + setZahl("SET_ORIGIN", "$tag( \"MARKE\", ORIGIN )$") +
+                                                    set("SET_NAVGOAL", "ziel2") + warte(100.0) +
+                                                    setZahl("SET_ORIGIN", "$tag( \"held\", ORIGIN )$"))),
+                                          "probe", welt);
+        bool ok = false;
+        bool falsch = false;
+        for (const NavAbschnitt& a : ab.laufAbschnitte) {
+            ok = ok || (std::fabs(a.start.ort[0] - 380.0F) < 0.5F && a.abMs < 700.0);
+            falsch = falsch || (std::fabs(a.start.ort[0]) < 0.5F && a.abMs > 550.0);   // $tag( "held" ) ist kein TAG
+        }
+        pruefe(ok && !falsch, "A8c Ablauf: der Weg nach ziel2 beginnt an der Marke 380 0; $tag( \"held\" ) versetzt nicht");
+    }
     // A9 - BUTTON_WALKING: ohne Schalter waehlt das Tempo die Animation
     // (STEER::DeActivate, g_navigator.cpp:4170: mSpeed < walkSpeed + 5).
     {
@@ -496,6 +534,27 @@ void laufenAblauf() {
         pruefe(t > 3000.0 && std::fabs(st.pos[0]) < 20.0F && std::fabs(st.pos[1] - 250.0F) < 20.0F,
                "B7 neues Ziel: Strecke ab dem aktuellen Ort (" + std::to_string(t) + " ms, " + std::to_string(st.pos[0]) +
                    " " + std::to_string(st.pos[1]) + ")");
+    }
+    // B8 - rc604 fix604 (JK2 Stufe 3): Jedi Outcast setzt TID_MOVE_NAV immer
+    // und ruft nicht zurueck (codeJK2/game/Q3_Interface.cpp:6607-6610): ein
+    // dowait auf "null" oder ein unbekanntes Ziel wartet fuer immer; OpenJK
+    // ist sofort fertig.
+    {
+        const auto mitNull = [&](const std::string& ziel) {
+            return zeitVon(lauf(inA("\ttask ( \"geh\" )\n\t{\n\t\tset ( \"SET_NAVGOAL\", \"" + ziel + "\" );\n\t}\n"
+                                    "\tdowait ( \"geh\" );\n\tprint ( \"da\" );\n")),
+                           "a", "print", "da");
+        };
+        const double nullJka = mitNull("NULL");
+        const double fehltJka = mitNull("gibtsnicht");
+        const bool mdVorher = navMovieDuelsRegeln();
+        if (std::getenv("BHED_JK2_ALT") == nullptr) { regelwerkAnwendenSpiel(kRegelwerkJediOutcast, -1); }
+        const double nullJk2 = mitNull("NULL");
+        const double fehltJk2 = mitNull("gibtsnicht");
+        regelwerkAnwenden(mdVorher, -1);
+        pruefe(nah(nullJka, 0.0, 0.5) && nah(fehltJka, 0.0, 0.5), "B8 OpenJK: dowait auf \"null\"/unbekannt sofort fertig");
+        pruefe(nullJk2 < 0.0 && fehltJk2 < 0.0, "B8 Jedi Outcast: dowait auf \"null\"/unbekannt wartet fuer immer (" +
+                                                    std::to_string(nullJk2) + " / " + std::to_string(fehltJk2) + ")");
     }
 }
 
@@ -3588,6 +3647,78 @@ void regelwerkVerhaltenTakt() {
                " ms; mit 50 ms " + std::to_string(a50) + " ms)");
 }
 
+// rc604 fix604b (A1): OpenJK dreht NPCs nur in Denkbildern mit Verhalten. Im
+// Zweig ohne Verhalten rechnet NPC_UpdateAngles(qtrue, qtrue) zwar ucmd.angles,
+// gleich danach ueberschreibt memcpy(&ucmd, &NPCInfo->last_ucmd) sie wieder
+// (code/game/NPC.cpp:2515-2520); last_ucmd stammt aus dem letzten
+// NPC_ExecuteBState (NPC.cpp:2279). Also alle 100 ms ein 50-ms-Schritt.
+void regelwerkDrehTakt() {
+    std::printf("\n== fix604b A1: OpenJK dreht nur mit Verhalten ==\n");
+    LaufZustand start;
+    start.ort = {0.0F, 0.0F, 24.0F};
+    start.tempoVek = {150.0F, 0.0F, 0.0F};
+    start.denkNullMs = 0.0;
+    LaufWerte w;
+    w.zielGesetzt = true;
+    w.ziel = {0.0F, 300.0F, 24.0F};
+    w.maxTempo = 150.0F;
+    w.gehTempo = 90.0F;
+    w.verhaltenTaktMs = 100;
+    const LaufPlan p = planeLauf(*navWeltAusEntities({}), start, w, 0.0, 8000.0);
+    int zwischen = 0;
+    int gesamt = 0;
+    float vorher = start.gier;
+    for (std::size_t i = 0; i < p.takte.size() && i < p.zustaende.size(); ++i) {
+        const bool verhalten = std::fmod(p.takte[i].t, 100.0) < 0.5;
+        if (std::fabs(p.zustaende[i].gier - vorher) > 1e-4F) {
+            ++gesamt;
+            if (!verhalten) { ++zwischen; }
+        }
+        vorher = p.zustaende[i].gier;
+    }
+    pruefe(zwischen == 0 && gesamt > 0, "RW7 OpenJK 100 ms: die Figur dreht (viewangles) nur in Denkbildern mit Verhalten (" +
+                                            std::to_string(zwischen) + " dazwischen, " + std::to_string(gesamt) + " gesamt)");
+    // Der Regler im Stand (GierLauf, SET_DYAW): Takt 100 ab denkNullMs 0 -
+    // Schritte bei 100, 200 ...; dazwischen gilt der alte Winkel.
+    GierLauf g;
+    g.yaw0 = 0.0F;
+    g.t0 = 0.0;
+    g.ziel = 90.0F;
+    g.rate = 330.0F;
+    g.taktMs = 100;
+    g.denkNullMs = 0.0;
+    const float b50 = g.bei(50.0);
+    const float b100 = g.bei(100.0);
+    const float b200 = g.bei(200.0);
+    pruefe(b50 == 0.0F && std::fabs(b100 - 16.4959717F) < 1e-4F && std::fabs(b200 - 32.991943F) < 1e-4F,
+           "RW8 GierLauf mit Takt 100: 50 ms " + std::to_string(b50) + ", 100 ms " + std::to_string(b100) + ", 200 ms " +
+               std::to_string(b200));
+    // TID_ANGLE_FACE: 20 Grad bei 330 Grad/s sind zwei Schritte (16,5 + 3,5);
+    // mit 50 ms fertig nach 150 ms, mit Takt 100 ab Phase 0: Schritte bei 100
+    // und 200, "exact" im Denkbild danach - 250 ms.
+    const double h50 = drehHalteMs(0.0F, 20.0F, 330.0F);
+    const double h100 = drehHalteMs(0.0F, 20.0F, 330.0F, DrehTakt{100, 0.0, 0.0});
+    const double n100 = drehHalteMs(20.0F, 330.0F, DrehTakt{100, 0.0, 0.0});
+    pruefe(h50 == 150.0 && h100 == 250.0 && n100 == 250.0,
+           "RW9 TID_ANGLE_FACE mit Takt 100: " + std::to_string(h100) + " ms (Nick " + std::to_string(n100) + ", mit 50 ms " +
+               std::to_string(h50) + ")");
+    // Movie Duels: Takt 50 - unveraendert.
+    const double hMd = drehHalteMs(0.0F, 20.0F, 330.0F, DrehTakt{50, 0.0, 0.0});
+    pruefe(hMd == 150.0, "RW10 Takt 50 (Movie Duels) unveraendert: " + std::to_string(hMd) + " ms");
+    // rc604: Jedi Outcast hat denselben memcpy (codeJK2/game/NPC.cpp:2111-2113)
+    // und denselben Verhaltenstakt (NPC.cpp:2084-2091: FRAMETIME, Jedi mit
+    // Schwert ab g_spskill 2 und Rang > ltjg FRAMETIME/2) - auch der Regler im
+    // Stand dreht dort nur mit Verhalten.
+    regelwerkAnwendenSpiel(kRegelwerkJediOutcast, 2);
+    const int jk2Blaster = npcDrehTaktMs("WP_BLASTER", "");
+    const int jk2Jedi = npcDrehTaktMs("WP_SABER", "commander");
+    const int jk2Reborn = npcDrehTaktMs("WP_SABER", "ltjg");
+    regelwerkAnwenden(true, -1);
+    pruefe(jk2Blaster == 100 && jk2Jedi == 50 && jk2Reborn == 100,
+           "RW11 Jedi Outcast: Drehtakt wie das Verhalten (Blaster " + std::to_string(jk2Blaster) + ", Jedi " +
+               std::to_string(jk2Jedi) + ", Reborn " + std::to_string(jk2Reborn) + ")");
+}
+
 // rc602 kartenpruefung: "duel_jt_outside" (1100 Wegpunkte) brachte behaved
 // nach einer anderen Karte zum Absturz - baueNavNetz nahm 1024 echte Knoten,
 // der Platzhalter [0] dazu macht 1025, n.region hat aber nur NUM_NODES (1024)
@@ -3612,6 +3743,749 @@ void knotenGrenze() {
     pruefe(netz->region.size() >= netz->knoten.size(), "KG2 n.region fasst jeden Knoten (" +
                                                           std::to_string(netz->region.size()) + " / " +
                                                           std::to_string(netz->knoten.size()) + ")");
+}
+
+// --- rc605 (fix605): SET_SOLID true im Koerper eines anderen (UK13, UK14) ------
+//
+// Im Spiel scheitert Q3_SetSolid an SpotWouldTelefrag2; Q3_Set haelt dann
+// TID_RESIZE (Q3_Interface.cpp:9496-9504 MD / 8900-8908 OpenJK), bis
+// SolidifyOwner (alle FRAMETIME = 100 ms ab dem Befehl) keinen anderen Koerper
+// mehr findet (Q3_Interface.cpp:6031-6056 MD / 5589-5615 OpenJK). Ein dowait auf
+// den set wartet so lange; der Ablauf machte ihn sofort fertig.
+void festWarten() {
+    std::printf("\n== fix605: SET_SOLID true wartet, bis die Figur fest werden kann (UK13, UK14) ==\n");
+    const auto zeit = [](const char* bOrt, const std::string& bBefehle) {
+        const std::string text = std::string(kKarteAblauf) +
+                                 "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"b\"\n\"NPC_type\" \"jedi\"\n\"origin\" \"" +
+                                 bOrt + "\"\n}\n";
+        const MapData m = karte(text.c_str());
+        AblaufWelt w;
+        w.karte = &m;
+        const Ablauf a = simuliereAblauf(lies("affect ( \"b\", FLUSH )\n{\n" + bBefehle + "}\n" +
+                                             inA("\tset ( \"SET_SOLID\", \"false\" );\n\ttask ( \"fest\" )\n\t{\n"
+                                                 "\t\tset ( \"SET_SOLID\", \"true\" );\n\t}\n"
+                                                 "\tdowait ( \"fest\" );\n\tprint ( \"fest\" );\n")),
+                                         "", w);
+        return zeitVon(a, "a", "print", "fest");
+    };
+    // b steht 10 neben a (die Kaesten ueberlappen) und geht bei 1000 weg.
+    const double t1 = zeit("10 0 0", "\twait ( 1000.000 );\n\tset ( \"SET_ORIGIN\", \"500 0 0\" );\n");
+    pruefe(t1 >= 1000.0 && t1 <= 1150.0,
+           "UK13 a in b: dowait auf SET_SOLID true endet erst, wenn b weg ist (1000-1150, ist " + std::to_string(t1) + ")");
+    // b 40 weit (Kaesten 32 breit, absmin/absmax 1 weiter): kein Treffer, sofort fest.
+    const double t2 = zeit("40 0 0", "\twait ( 1000.000 );\n\tset ( \"SET_ORIGIN\", \"500 0 0\" );\n");
+    pruefe(t2 >= 0.0 && t2 < 60.0, "UK14 b 40 weit: SET_SOLID true sofort fertig (ist " + std::to_string(t2) + ")");
+}
+
+// --- rc604 fix604: contents/clipmask je Zeit im gemeinsamen Takt (UK1-UK7) ----
+//
+// md_ga_sith, intro_sith.ibi: col1 ist SET_INVISIBLE true - im Spiel contents
+// 0 (Q3_SetInvisible, Q3_Interface.cpp:3101-3128 MD). dok1 drueckte in der
+// Vorschau sieben Sekunden gegen ihren Kasten. SET_SOLID false: CONTENTS_CORPSE
+// und clipmask ohne CONTENTS_BODY, SET_SOLID true: CONTENTS_BODY erst, wenn
+// SpotWouldTelefrag2 keinen anderen Koerper findet (SolidifyOwner alle 100 ms),
+// SFB_NOTSOLID (spawnflags 64): contents 0 ab NPC_Begin.
+void koerperFest() {
+    std::printf("\n== fix604: unsichtbare/nicht feste Figuren im gemeinsamen Takt (UK1-UK7) ==\n");
+    const std::vector<ProbeKlotz> boden = {{{-3000, -3000, -16}, {3000, 3000, 0}, kNavSolid}};
+    auto welt = std::make_shared<NavWelt>();
+    welt->spur = [boden](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int, std::uint32_t maske) {
+        return probeSpur(boden, a, mi, ma, b, maske);
+    };
+    welt->boden = [](float, float, float zOben, float zUnten, float& z) {
+        if (zOben < 0.0F || zUnten > 0.0F) { return false; }
+        z = 0.0F;
+        return true;
+    };
+    struct Erg {
+        double an = -1.0;
+        float quer = 0.0F;
+        float rest = 999.0F;
+    };
+    // a geht von (0 0) nach (zx 0); b steht bei (bx by) - oder fehlt (bx > 1e5).
+    const auto lauf = [&](float zx, float bx, float by, int sfA, int sfB, const std::string& skriptB, const std::string& skriptA) {
+        char k[1200];
+        std::snprintf(k, sizeof(k),
+                      "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"a\"\n\"NPC_type\" \"jedi\"\n\"spawnflags\" \"%d\"\n"
+                      "\"origin\" \"0 0 24.125\"\n}\n"
+                      "{\n\"classname\" \"waypoint_navgoal\"\n\"targetname\" \"za\"\n\"origin\" \"%.0f 0 24\"\n}\n",
+                      sfA, static_cast<double>(zx));
+        std::string kt = k;
+        if (bx < 1.0e5F) {
+            std::snprintf(k, sizeof(k),
+                          "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"b\"\n\"NPC_type\" \"jedi\"\n\"spawnflags\" \"%d\"\n"
+                          "\"origin\" \"%.0f %.0f 24.125\"\n}\n",
+                          sfB, static_cast<double>(bx), static_cast<double>(by));
+            kt += k;
+        }
+        const MapData m = karte(kt.c_str());
+        AblaufWelt aw;
+        aw.karte = &m;
+        aw.nav = welt;
+        std::string text;
+        if (!skriptB.empty()) { text += "affect ( \"b\", FLUSH )\n{\n" + skriptB + "}\n"; }
+        text += "affect ( \"a\", FLUSH )\n{\n" + skriptA + "\tset ( \"SET_WALKING\", \"true\" );\n"
+                "\tset ( \"SET_NAVGOAL\", \"za\" );\n\twait ( 15000 );\n}\n";
+        const Ablauf ab = simuliereAblaufMitKoerpern(lies(text), "", aw, nullptr);
+        SzenenHilfe h;
+        h.nav = welt;
+        h.koerperPlaene = aw.koerperPlaene;
+        const Scene s = buildScene(ab.flach, m, &h);
+        Erg e;
+        const Actor* fa = figur(s, "a");
+        if (fa == nullptr) { return e; }
+        e.an = ankunftVon(*fa);
+        for (double t = 0.0; t <= 15000.0; t += 50.0) { e.quer = std::max(e.quer, std::fabs(fa->at(t).pos[1])); }
+        e.rest = std::hypot(zx - fa->at(15000.0).pos[0], fa->at(15000.0).pos[1]);
+        return e;
+    };
+    const auto zeige = [](const char* was, const Erg& e) {
+        std::printf("  info  %s: angekommen %.0f, quer %.1f, Rest %.1f\n", was, e.an, static_cast<double>(e.quer),
+                    static_cast<double>(e.rest));
+    };
+    const auto gleich = [](const Erg& x, const Erg& y) { return x.an > 0.0 && nah(x.an, y.an, 0.5) && nah(x.quer, y.quer, 0.01); };
+    const std::string unsichtbar = "\tset ( \"SET_INVISIBLE\", \"true\" );\n";
+    const Erg ohne = lauf(300.0F, 1.0e6F, 0.0F, 0, 0, "", "");
+    // b braucht einen Befehl, sonst kennt der Ablauf ihn nicht (Wesen nur fuer
+    // Namen aus den Skripten).
+    const std::string nichts = "\tset ( \"SET_PARM1\", \"1\" );\n";
+    const Erg fest = lauf(300.0F, 150.0F, 0.0F, 0, 0, nichts, "");
+    zeige("ohne b", ohne);
+    zeige("b fest im Weg", fest);
+    pruefe(ohne.an > 0.0 && !gleich(fest, ohne), "UK0 Bezug: ein fester Koerper im Weg aendert den Weg");
+    const Erg u1 = lauf(300.0F, 150.0F, 0.0F, 0, 0, unsichtbar, "");
+    zeige("b SET_INVISIBLE true", u1);
+    pruefe(gleich(u1, ohne), "UK1 SET_INVISIBLE true: contents 0 - a geht wie ohne b (Ankunft " + std::to_string(u1.an) + " / " +
+                                 std::to_string(ohne.an) + ")");
+    const Erg u2 = lauf(300.0F, 150.0F, 0.0F, 0, 0, "\tset ( \"SET_SOLID\", \"false\" );\n", "");
+    zeige("b SET_SOLID false", u2);
+    pruefe(gleich(u2, ohne), "UK2 SET_SOLID false: CONTENTS_CORPSE - a geht wie ohne b");
+    const Erg u3 = lauf(300.0F, 150.0F, 0.0F, 0, 0, unsichtbar + "\tset ( \"SET_INVISIBLE\", \"false\" );\n", "");
+    zeige("b SET_INVISIBLE true, dann false", u3);
+    pruefe(gleich(u3, ohne), "UK3 SET_INVISIBLE false stellt contents nicht zurueck - a geht wie ohne b");
+    const Erg u4 = lauf(300.0F, 150.0F, 0.0F, 0, 64, nichts, "");
+    zeige("b mit SFB_NOTSOLID", u4);
+    pruefe(gleich(u4, ohne), "UK4 SFB_NOTSOLID am Spawner: contents 0 ab NPC_Begin - a geht wie ohne b");
+    const Erg u5 = lauf(300.0F, 150.0F, 0.0F, 0, 0, unsichtbar + "\tset ( \"SET_SOLID\", \"true\" );\n", "");
+    zeige("b SET_INVISIBLE true, dann SET_SOLID true", u5);
+    pruefe(gleich(u5, fest), "UK5 SET_SOLID true nach SET_INVISIBLE: wieder CONTENTS_BODY - wie b fest");
+    // UK6: b (SFB_NOTSOLID) steht in a; SET_SOLID true bei 0 - SpotWouldTelefrag2
+    // findet a, SolidifyOwner versucht es alle 100 ms, bis a weg ist. a geht
+    // von b weg wie ohne b. Ohne die Pruefung wuerde b sofort fest und a
+    // steckte in ihm.
+    const Erg o6 = lauf(-300.0F, 1.0e6F, 0.0F, 0, 0, "", "");
+    const Erg u6 = lauf(-300.0F, 24.0F, 0.0F, 0, 64, "\tset ( \"SET_SOLID\", \"true\" );\n", "");
+    zeige("ohne b, nach -300", o6);
+    zeige("b in a, SET_SOLID true", u6);
+    pruefe(gleich(u6, o6), "UK6 SET_SOLID true in einem anderen Koerper: erst fest, wenn er weg ist (SolidifyOwner) - a geht wie ohne b");
+    // UK7: a selbst SET_SOLID false (clipmask ohne CONTENTS_BODY), b fest in
+    // a: Pmove spurt mit pm.tracemask = clipmask und haelt a nicht auf.
+    const Erg u7 = lauf(-300.0F, 24.0F, 0.0F, 0, 0, nichts, "\tset ( \"SET_SOLID\", \"false\" );\n");
+    const Erg f7 = lauf(-300.0F, 24.0F, 0.0F, 0, 0, nichts, "");
+    zeige("a SET_SOLID false, b fest in a", u7);
+    zeige("a fest, b fest in a", f7);
+    pruefe(u7.an > 0.0 && u7.rest < 24.0F, "UK7 a ohne CONTENTS_BODY in der clipmask kommt aus b heraus an (Ankunft " +
+                                              std::to_string(u7.an) + ", Rest " + std::to_string(u7.rest) + ")");
+    // UK8/UK9: eine Figur vom Kartenstart, die kein Skript nennt (Spawner ohne
+    // targetname, ohne NPC_targetname): im Spiel ein Koerper ab NPC_Begin -
+    // die Vorschau zeichnet sie, a ging bis fix604 durch sie hindurch. Mit
+    // SFB_NOTSOLID nicht.
+    const auto ohneName = [&](int sf) {
+        char k[600];
+        std::snprintf(k, sizeof(k),
+                      "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"a\"\n\"NPC_type\" \"jedi\"\n\"origin\" \"0 0 24.125\"\n}\n"
+                      "{\n\"classname\" \"waypoint_navgoal\"\n\"targetname\" \"za\"\n\"origin\" \"300 0 24\"\n}\n"
+                      "{\n\"classname\" \"NPC_spawner\"\n\"NPC_type\" \"jedi\"\n\"spawnflags\" \"%d\"\n\"origin\" \"150 0 24.125\"\n}\n",
+                      sf);
+        const MapData m = karte(k);
+        AblaufWelt aw;
+        aw.karte = &m;
+        aw.nav = welt;
+        const std::string text = "affect ( \"a\", FLUSH )\n{\n\tset ( \"SET_WALKING\", \"true\" );\n"
+                                 "\tset ( \"SET_NAVGOAL\", \"za\" );\n\twait ( 15000 );\n}\n";
+        const Ablauf ab = simuliereAblaufMitKoerpern(lies(text), "", aw, nullptr);
+        SzenenHilfe h;
+        h.nav = welt;
+        h.koerperPlaene = aw.koerperPlaene;
+        const Scene s = buildScene(ab.flach, m, &h);
+        Erg e;
+        const Actor* fa = figur(s, "a");
+        if (fa == nullptr) { return e; }
+        e.an = ankunftVon(*fa);
+        for (double t = 0.0; t <= 15000.0; t += 50.0) { e.quer = std::max(e.quer, std::fabs(fa->at(t).pos[1])); }
+        e.rest = std::hypot(300.0F - fa->at(15000.0).pos[0], fa->at(15000.0).pos[1]);
+        return e;
+    };
+    const Erg u8 = ohneName(0);
+    const Erg u9 = ohneName(64);
+    zeige("Kartenfigur ohne Namen im Weg", u8);
+    zeige("Kartenfigur ohne Namen mit SFB_NOTSOLID", u9);
+    pruefe(gleich(u8, fest), "UK8 eine Kartenfigur, die kein Skript nennt, ist ein Koerper - wie b fest");
+    pruefe(gleich(u9, ohne), "UK9 ... mit SFB_NOTSOLID nicht - a geht wie ohne sie");
+    // UK10-UK12: eine getoetete Figur bleibt ein Koerper, bis CorpsePhysics sie
+    // zur Leiche macht (level.time - s.time > 5000 MD / > 500 OpenJK,
+    // NPC.cpp:209 MD / 122 OpenJK; s.time = Todeszeit, g_combat.cpp:5854 MD /
+    // 4690 OpenJK). Das deathscript laeuft ab dem Tod (player_die,
+    // G_ActivateBehavior BSET_DEATH, g_combat.cpp:5824 MD / 4657 OpenJK): wer es
+    // als Reiter oeffnet, sieht den Traeger tot ab 0.
+    bool mark1 = false;   // rc605 fix605: b ist ein Mark1 (AblaufWelt::bleibtFest)
+    const auto mitText = [&](const std::string& kt, const std::string& text, const std::string& pfad) {
+        const MapData m = karte(kt.c_str());
+        AblaufWelt aw;
+        aw.karte = &m;
+        aw.nav = welt;
+        if (mark1) { aw.bleibtFest = [](const std::string& f) { return f == "b"; }; }
+        const Ablauf ab = simuliereAblaufMitKoerpern(lies(text), pfad, aw, nullptr);
+        SzenenHilfe h;
+        h.nav = welt;
+        h.koerperPlaene = aw.koerperPlaene;
+        const Scene s = buildScene(ab.flach, m, &h);
+        Erg e;
+        const Actor* fa = figur(s, "a");
+        if (fa == nullptr) { return e; }
+        e.an = ankunftVon(*fa);
+        for (double t = 0.0; t <= 20000.0; t += 50.0) { e.quer = std::max(e.quer, std::fabs(fa->at(t).pos[1])); }
+        e.rest = std::hypot(300.0F - fa->at(20000.0).pos[0], fa->at(20000.0).pos[1]);
+        return e;
+    };
+    const std::string kartA = "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"a\"\n\"NPC_type\" \"jedi\"\n\"origin\" \"0 0 24.125\"\n}\n"
+                              "{\n\"classname\" \"waypoint_navgoal\"\n\"targetname\" \"za\"\n\"origin\" \"300 0 24\"\n}\n";
+    const std::string kartB = "{\n\"classname\" \"NPC_spawner\"\n\"npc_targetname\" \"b\"\n\"NPC_type\" \"jedi\"\n"
+                              "\"deathscript\" \"probe/tod\"\n\"origin\" \"150 0 24.125\"\n}\n";
+    const std::string gehen = "affect ( \"a\", FLUSH )\n{\n\tset ( \"SET_WALKING\", \"true\" );\n"
+                              "\tset ( \"SET_NAVGOAL\", \"za\" );\n\twait ( 15000 );\n}\n";
+    const std::string toeten = "affect ( \"b\", FLUSH )\n{\n\tset ( \"SET_PARM1\", \"1\" );\n}\nkill ( \"b\" );\n";
+    const Erg u10 = mitText(kartA + kartB, toeten + gehen, "");
+    zeige("b bei 0 getoetet, a geht los (Movie Duels)", u10);
+    pruefe(gleich(u10, fest), "UK10 Movie Duels: der Getoetete bleibt 5 s ein Koerper - a weicht aus wie bei b fest (Ankunft " +
+                                  std::to_string(u10.an) + ", ohne b " + std::to_string(ohne.an) + ")");
+    regelwerkAnwenden(false, -1);
+    const Erg o11 = mitText(kartA, gehen, "");
+    const Erg u11 = mitText(kartA + kartB, toeten + gehen, "");
+    regelwerkAnwenden(true, -1);
+    zeige("ohne b (OpenJK)", o11);
+    zeige("b bei 0 getoetet, a geht los (OpenJK)", u11);
+    pruefe(gleich(u11, o11), "UK11 OpenJK: nach 0,5 s eine Leiche - a geht wie ohne b");
+    // UK12: der Reiter ist das deathscript von b; a geht erst nach 6 s los.
+    const std::string spaeter = "wait ( 6000 );\n" + gehen;
+    const Erg o12 = mitText(kartA, spaeter, "probe/tod");
+    const Erg u12 = mitText(kartA + kartB, spaeter, "probe/tod");
+    zeige("ohne b, a ab 6 s", o12);
+    zeige("im deathscript von b, a ab 6 s", u12);
+    pruefe(gleich(u12, o12), "UK12 im deathscript ist der Traeger tot: nach 5 s eine Leiche - a geht wie ohne b");
+    // UK15/UK16 - rc605 (fix605): Mark1 und Interrogator bleiben nach dem Tod
+    // CONTENTS_BODY (CorpsePhysics, NPC.cpp:209-216 MD / 122-127 OpenJK).
+    regelwerkAnwenden(false, -1);
+    const Erg f15 = mitText(kartA + kartB, gehen, "");
+    mark1 = true;
+    const Erg u15 = mitText(kartA + kartB, toeten + gehen, "");
+    mark1 = false;
+    regelwerkAnwenden(true, -1);
+    zeige("b lebt (OpenJK)", f15);
+    zeige("Mark1 b bei 0 getoetet (OpenJK)", u15);
+    pruefe(gleich(u15, f15) && !gleich(u15, o11),
+           "UK15 OpenJK: ein getoeteter Mark1 wird nie zur Leiche - a weicht aus wie bei b lebend");
+    mark1 = true;
+    const Erg u16 = mitText(kartA + kartB, spaeter, "probe/tod");
+    mark1 = false;
+    const Erg f16 = mitText(kartA + kartB, spaeter, "");
+    zeige("im deathscript des Mark1 b, a ab 6 s", u16);
+    pruefe(gleich(u16, f16) && !gleich(u16, o12), "UK16 im deathscript eines Mark1 bleibt der Traeger ein Koerper");
+}
+
+// --- rc604 fix604: netzTrefferRaster = netzTreffer, Bit fuer Bit (NR1-NR7) ----
+//
+// md_roc_jedi, "Schwerkraft (mit Movern)": 20-48 s je Reiter, 95 % davon in
+// netzTreffer (jedes Dreieck jedes Brush-Modells je Strahl). Das Raster fragt
+// nur die Dreiecke der Zelle (plus die fast senkrechten) - es muss fuer jeden
+// senkrechten Strahl genau dasselbe liefern: Treffer ja/nein und dieselben Bits.
+void netzRasterProben() {
+    std::printf("\n== fix604: Raster fuer senkrechte Strahlen gegen Brush-Modelle (NR1-NR7) ==\n");
+    std::uint64_t zufall = 0x9E3779B97F4A7C15ULL;
+    const auto zahl = [&zufall]() {
+        zufall ^= zufall << 13;
+        zufall ^= zufall >> 7;
+        zufall ^= zufall << 17;
+        return zufall;
+    };
+    const auto gleich01 = [&zahl]() { return static_cast<float>(static_cast<double>(zahl() >> 11) / 9007199254740992.0); };
+    // Ein Netz aus allerlei Dreiecken: flach, schraeg, senkrecht an den Achsen,
+    // senkrecht schraeg, Splitter, winzig, gross, Ecken auf ganzen Zahlen (wie
+    // Brushes) und krumme (wie unterteilte Patches); zwei Batches, einer nicht fest.
+    BspMesh netz;
+    const auto ecke = [&netz](float x, float y, float z) {
+        BspVertex v;
+        v.xyz[0] = x;
+        v.xyz[1] = y;
+        v.xyz[2] = z;
+        netz.verts.push_back(v);
+        return static_cast<std::uint32_t>(netz.verts.size() - 1U);
+    };
+    const auto dreieck = [&](float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz) {
+        netz.indexes.push_back(ecke(ax, ay, az));
+        netz.indexes.push_back(ecke(bx, by, bz));
+        netz.indexes.push_back(ecke(cx, cy, cz));
+    };
+    for (int i = 0; i < 4000; ++i) {
+        const int art = i % 8;
+        const bool ganz = (i / 8) % 2 == 0;
+        float x = (gleich01() - 0.5F) * 2000.0F;
+        float y = (gleich01() - 0.5F) * 2000.0F;
+        float z = (gleich01() - 0.5F) * 400.0F;
+        if (ganz) {
+            x = std::round(x / 8.0F) * 8.0F;
+            y = std::round(y / 8.0F) * 8.0F;
+            z = std::round(z);
+        }
+        const float g = art == 5 ? 0.01F + gleich01() : (art == 6 ? 200.0F + gleich01() * 800.0F : 8.0F + gleich01() * 120.0F);
+        const float gx = ganz ? std::round(g) + 1.0F : g;
+        switch (art) {
+            case 0: dreieck(x, y, z, x + gx, y, z, x, y + gx, z); break;                        // flach
+            case 1: dreieck(x, y, z, x + gx, y, z + gx * 0.5F, x, y + gx, z + 3.0F); break;     // schraeg
+            case 2: dreieck(x, y, z, x, y + gx, z, x, y, z + gx); break;                        // senkrecht x = const
+            case 3: dreieck(x, y, z, x + gx, y, z, x + gx, y, z + gx); break;                   // senkrecht y = const
+            case 4: dreieck(x, y, z, x + gx, y + gx, z, x + gx, y + gx, z + gx); break;         // senkrecht schraeg
+            case 7: dreieck(x, y, z, x + gx, y + gx * 1.0e-4F, z + 1.0F, x + gx * 2.0F, y + gx * 3.0e-4F, z); break;   // Splitter
+            default: dreieck(x, y, z, x + gx, y + gx * 0.3F, z + gx * 0.2F, x - gx * 0.2F, y + gx, z - gx * 0.1F); break;
+        }
+    }
+    BspMesh::Batch b0;
+    b0.shader = 0;
+    b0.firstIndex = 0;
+    b0.numIndexes = static_cast<std::uint32_t>(netz.indexes.size() / 2U / 3U * 3U);
+    BspMesh::Batch b1;
+    b1.shader = 1;
+    b1.firstIndex = b0.numIndexes;
+    b1.numIndexes = static_cast<std::uint32_t>(netz.indexes.size()) - b0.numIndexes;
+    netz.batches = {b0, b1};
+    // Die Strahlen: zufaellig, genau auf Ecken, auf Kanten (Mitte), auf der
+    // Geraden senkrechter Dreiecke weit draussen, und ganz ausserhalb.
+    std::vector<std::array<float, 2>> punkte;
+    for (int i = 0; i < 30000; ++i) {
+        punkte.push_back({(gleich01() - 0.5F) * 2400.0F, (gleich01() - 0.5F) * 2400.0F});
+    }
+    for (std::size_t i = 0; i + 2 < netz.indexes.size(); i += 3) {
+        const float* p = netz.verts[netz.indexes[i]].xyz;
+        const float* q = netz.verts[netz.indexes[i + 1]].xyz;
+        punkte.push_back({p[0], p[1]});
+        punkte.push_back({(p[0] + q[0]) * 0.5F, (p[1] + q[1]) * 0.5F});
+        punkte.push_back({p[0] + (q[0] - p[0]) * 7.0F, p[1] + (q[1] - p[1]) * 7.0F});
+    }
+    punkte.push_back({1.0e5F, -1.0e5F});
+    const auto hashDazu = [](std::uint64_t h, const void* d, std::size_t n) {
+        const auto* c = static_cast<const unsigned char*>(d);
+        for (std::size_t i = 0; i < n; ++i) { h = (h ^ c[i]) * 1099511628211ULL; }
+        return h;
+    };
+    // Ohne Reichweite (fast senkrechte immer gefragt), mit einer, die nicht
+    // alle Strahlen deckt (ausserhalb alle), und mit einer, die alle deckt.
+    int nr = 0;
+    for (const float reichweite : {0.0F, 1500.0F, 12000.0F}) {
+    for (const std::vector<bool>& fest : {std::vector<bool>{}, std::vector<bool>{true, false}}) {
+        ++nr;
+        const NetzRaster r = baueNetzRaster(netz, fest, 32.0F, reichweite);
+        std::uint64_t ha = 1469598103934665603ULL;
+        std::uint64_t hb = 1469598103934665603ULL;
+        int treffer = 0;
+        int verschieden = 0;
+        double msAlt = 0.0;
+        double msNeu = 0.0;
+        for (const auto& pt : punkte) {
+            for (const float zo : {300.0F, 37.5F}) {
+                const float von[3] = {pt[0], pt[1], zo};
+                const float bis[3] = {pt[0], pt[1], zo - 380.0F};
+                float ta[3] = {0.0F, 0.0F, 0.0F};
+                float tb[3] = {0.0F, 0.0F, 0.0F};
+                const auto t0 = std::chrono::steady_clock::now();
+                const bool a = netzTreffer(netz, fest, von, bis, ta);
+                const auto t1 = std::chrono::steady_clock::now();
+                const bool bb = netzTrefferRaster(netz, r, fest, von, bis, tb);
+                const auto t2 = std::chrono::steady_clock::now();
+                msAlt += std::chrono::duration<double, std::milli>(t1 - t0).count();
+                msNeu += std::chrono::duration<double, std::milli>(t2 - t1).count();
+                ha = hashDazu(ha, &a, 1);
+                hb = hashDazu(hb, &bb, 1);
+                if (a) { ha = hashDazu(ha, ta, sizeof(ta)); }
+                if (bb) { hb = hashDazu(hb, tb, sizeof(tb)); }
+                treffer += a ? 1 : 0;
+                if (a != bb || (a && std::memcmp(ta, tb, sizeof(ta)) != 0)) { ++verschieden; }
+            }
+        }
+        std::printf("  info  NR%d (Reichweite %.0f) %zu Dreiecke, %zu Strahlen, %d Treffer, %zu fast senkrecht%s, Zellen %dx%d, "
+                    "Eintraege %zu: alt %.1f ms, Raster %.1f ms, Hash %016llx / %016llx\n",
+                    nr, static_cast<double>(reichweite), netz.indexes.size() / 3U, punkte.size() * 2U, treffer, r.immer.size(),
+                    r.streifen ? " (Streifen)" : "", r.nx, r.ny, r.liste.size(), msAlt, msNeu,
+                    static_cast<unsigned long long>(ha), static_cast<unsigned long long>(hb));
+        pruefe(verschieden == 0 && ha == hb && treffer > 1000,
+               "NR" + std::to_string(nr) + (fest.empty() ? " alles fest" : " ein Batch nicht fest") + ", Reichweite " +
+                   std::to_string(static_cast<int>(reichweite)) + ": jeder senkrechte Strahl trifft mit Raster Bit fuer Bit wie ohne (" +
+                   std::to_string(verschieden) + " verschieden)");
+    }
+    }
+    // NR7: ein schraeger Strahl (gekipptes Modell) geht an netzTreffer.
+    {
+        const NetzRaster r = baueNetzRaster(netz, {}, 32.0F, 1500.0F);
+        int verschieden = 0;
+        for (int i = 0; i < 2000; ++i) {
+            const float von[3] = {(gleich01() - 0.5F) * 2000.0F, (gleich01() - 0.5F) * 2000.0F, 300.0F};
+            const float bis[3] = {von[0] + 3.0F, von[1] - 2.0F, -100.0F};
+            float ta[3] = {0.0F, 0.0F, 0.0F};
+            float tb[3] = {0.0F, 0.0F, 0.0F};
+            const bool a = netzTreffer(netz, {}, von, bis, ta);
+            const bool bb = netzTrefferRaster(netz, r, {}, von, bis, tb);
+            if (a != bb || (a && std::memcmp(ta, tb, sizeof(ta)) != 0)) { ++verschieden; }
+        }
+        pruefe(verschieden == 0, "NR7 schraege Strahlen: wie netzTreffer");
+    }
+}
+
+// --- rc605: NPC-Spruenge (NPC_TryJump / NPC_Jump, NPC_move.cpp MD) -----------
+// SP1: blockiert vor einem Absatz 32 hoeher (wie kylo3 in md_acc_sith): kein
+// Netz, STEER::SafeToGoTo scheitert an der Kante, NAV::GoTo findet keinen
+// Knoten -> STEER::Blocked(tempGoal); nach mehr als 2 s blockiert
+// NPC_TryJump(blockedTargetEntity). Erste Bahn: shotSpeed = Abstand, also
+// travelTime 1 s, shotVel = Richtung * Abstand + (0, 0, 0.5 * 800 * 1).
+// SP2: eine Decke ueber der ersten Bahn - der zweite Versuch (shotSpeed - 50)
+// steigt hoeher und trifft auch, der dritte (shotSpeed + 50) geht durch.
+// SP3: eine Sprungkante im Wegnetz (targetJump): STEER::Path -> NPC_TryJump(
+// NextPosition); ohne SCF_NAV_CAN_JUMP ist die Kante ungueltig.
+void spruenge605() {
+    std::printf("\n== rc605: NPC-Spruenge (SP1-SP3) ==\n");
+    const auto baueWelt = [](std::vector<ProbeKlotz> kl) {
+        auto welt = std::make_shared<NavWelt>();
+        welt->spur = [kl](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int, std::uint32_t maske) {
+            return probeSpur(kl, a, mi, ma, b, maske);
+        };
+        welt->boden = [](float x, float, float zOben, float zUnten, float& z) {
+            const float oben = x < 100.0F ? 0.0F : 32.0F;
+            if (oben > zOben || oben < zUnten) { return false; }
+            z = oben;
+            return true;
+        };
+        return welt;
+    };
+    const std::vector<ProbeKlotz> absatz = {
+        {{-2000, -2000, -16}, {100, 2000, 0}, kNavSolid},
+        {{100, -2000, -16}, {2000, 2000, 32}, kNavSolid},
+    };
+    LaufWerte lw;
+    lw.zielGesetzt = true;
+    lw.ziel = {200.0F, 0.0F, 56.0F};
+    lw.maxTempo = 300.0F;
+    lw.gehTempo = 90.0F;
+    LaufZustand start;
+    start.ort = {0.0F, 0.0F, 24.125F};
+    start.amBoden = true;
+    const double d = std::sqrt(200.0 * 200.0 + (56.0 - 24.125) * (56.0 - 24.125));
+    const auto sprungTakt = [](const LaufPlan& p) -> const LaufTakt* {
+        for (const LaufTakt& k : p.takte) {
+            if (k.sprung) { return &k; }
+        }
+        return nullptr;
+    };
+    // SP1
+    {
+        const auto welt = baueWelt(absatz);
+        LaufWerte ohne = lw;
+        const LaufPlan rot = planeLauf(*welt, start, ohne, 0.0, 12000.0);
+        pruefe(rot.nie && rot.ankunftMs < 0.0 && sprungTakt(rot) == nullptr,
+               "SP1a ohne SCF_NAV_CAN_JUMP: steht vor dem Absatz, kommt nie an (wie bis rc604)");
+        LaufWerte mit = lw;
+        mit.kannSpringen = true;
+        const LaufPlan p = planeLauf(*welt, start, mit, 0.0, 12000.0);
+        const LaufTakt* k = sprungTakt(p);
+        // Erstes Denkbild 50 (blockedDebounceTime), "level.time -
+        // blockedDebounceTime > 2000" zuerst bei 2100.
+        const double vx = 200.0;
+        const double vz = (56.0 - 24.125) + 0.5 * 800.0 * 1.0;
+        pruefe(k != nullptr && nah(k->t, 2100.0, 0.1) && nah(k->sprungTempo[0], vx, 0.01) && nah(k->sprungTempo[1], 0.0, 0.01) &&
+                   nah(k->sprungTempo[2], vz, 0.01),
+               "SP1b blockiert -> Sprung bei 2100 mit shotVel 200 0 " + std::to_string(vz) + " (" +
+                   (k != nullptr ? std::to_string(k->t) + ": " + std::to_string(k->sprungTempo[0]) + " " +
+                                       std::to_string(k->sprungTempo[1]) + " " + std::to_string(k->sprungTempo[2])
+                                 : std::string("kein Sprung")) + ")");
+        const float zEnde = p.takte.empty() ? 0.0F : p.takte.back().ort[2];
+        pruefe(p.ankunftMs > 2100.0 && !p.nie && nah(zEnde, 56.125, 0.2),
+               "SP1c landet oben und kommt an (" + std::to_string(p.ankunftMs) + " ms, z " + std::to_string(zEnde) + ")");
+        // rc605: SET_NO_ACROBATICS - NPC_CanTryJump (NPC_move.cpp:330 MD)
+        // verweigert den Sprung trotz SCF_NAV_CAN_JUMP.
+        LaufWerte akro = mit;
+        akro.keineAkrobatik = true;
+        const LaufPlan pa = planeLauf(*welt, start, akro, 0.0, 12000.0);
+        pruefe(sprungTakt(pa) == nullptr && pa.ankunftMs < 0.0,
+               "SP1d SET_NO_ACROBATICS true: springt nicht, kommt nie an (" +
+                   (sprungTakt(pa) != nullptr ? "Sprung bei " + std::to_string(sprungTakt(pa)->t) : std::string("kein Sprung")) + ")");
+
+        // rc605 FU4: die Animationskette des Sprungs. NPC_JumpAnimation setzt
+        // BOTH + HOLD (Laenge 400), der Pmove nimmt den "kickoff"-Zweig von
+        // PM_GroundTrace -> PM_JumpForDir: Beine BOTH_JUMP1 ohne HOLD, der
+        // Oberkoerper behaelt BOTH_FORCEJUMP1, bis sein Timer ablaeuft (PM_DropTimers
+        // in den Pmoves 2100..2450), dann folgt er den Beinen (PM_TorsoAnimation).
+        // Landung: PM_CrashLand (delta = |vz| / 10, jumpZStart 0) ->
+        // PM_GetLandingAnim(BOTH_JUMP1) = BOTH_LAND1 und velocity x/y halb;
+        // PM_ForceJumpingAnim(BOTH_JUMP1) und Oberkoerper == Beine -> BOTH, HOLD
+        // 300; danach waehlt PM_Footsteps.
+        const auto kette = [&](int art, int sprungMs, std::string& text) {
+            LaufWerte kw = mit;
+            kw.sprungAnimArt = art;
+            kw.sprungAnimMs = sprungMs;
+            kw.landMs = 300;
+            kw.forceLandMs = 350;
+            LaufPlan kp = planeLauf(*welt, start, kw, 0.0, 12000.0);
+            std::size_t ab = kp.takte.size();
+            std::size_t land = kp.takte.size();
+            for (std::size_t i = 0; i < kp.takte.size(); ++i) {
+                if (kp.takte[i].sprung && ab == kp.takte.size()) { ab = i; }
+                if (ab < i && land == kp.takte.size() && i < kp.zustaende.size() && kp.zustaende[i].amBoden) { land = i; }
+            }
+            text.clear();
+            for (std::size_t i = (ab >= 1 && ab < kp.takte.size()) ? ab - 1 : 0; i < kp.takte.size() && i < land + 9; ++i) {
+                const LaufTakt& k = kp.takte[i];
+                if (i > ab + 9 && i + 2 < land) { continue; }
+                text += " " + std::to_string(static_cast<int>(k.t)) + ":" + std::to_string(k.beinAnim) + "@" +
+                        std::to_string(static_cast<int>(k.beinAnimAb)) + "/" + std::to_string(k.torsoAnim) + "@" +
+                        std::to_string(static_cast<int>(k.torsoAnimAb));
+            }
+            return std::make_tuple(kp, ab, land);
+        };
+        std::string txt;
+        {
+            const auto [kp, ab, land] = kette(0, 400, txt);
+            bool ok = ab < kp.takte.size() && land < kp.takte.size() && land > 0;
+            if (ok) {
+                const LaufTakt& k0 = kp.takte[ab];
+                ok = k0.beinAnim == kSaJump1 && nah(k0.beinAnimAb, 2100.0, 0.1) && k0.torsoAnim == kSaSprung &&
+                     nah(k0.torsoAnimAb, 2100.0, 0.1);
+                for (std::size_t i = ab; ok && i < land; ++i) {
+                    const LaufTakt& k = kp.takte[i];
+                    const bool torsoFrei = k.t >= 2450.0 - 0.1;
+                    ok = k.beinAnim == kSaJump1 && nah(k.beinAnimAb, 2100.0, 0.1) &&
+                         (torsoFrei ? k.torsoAnim == kSaKeine : k.torsoAnim == kSaSprung);
+                }
+                const LaufTakt& kl = kp.takte[land];
+                const double tl = kl.t;
+                // velocity x 200 vor der Landung; halb (100), dann PM_Friction
+                // im selben Pmove - ohne "stick landings some" blieben ueber 100.
+                const float vxLand = kp.zustaende[land].tempoVek[0];
+                txt += " | vx " + std::to_string(kp.zustaende[land - 1].tempoVek[0]) + " -> " + std::to_string(vxLand);
+                ok = ok && kl.beinAnim == kSaLand1 && nah(kl.beinAnimAb, tl, 0.1) && kl.torsoAnim == kSaKeine &&
+                     nah(kp.zustaende[land - 1].tempoVek[0], 200.0, 0.5) && vxLand <= 100.0F;
+                for (std::size_t i = land; ok && i < kp.takte.size(); ++i) {
+                    const LaufTakt& k = kp.takte[i];
+                    ok = k.t < tl + 300.0 - 0.1 ? (k.beinAnim == kSaLand1 && nah(k.beinAnimAb, tl, 0.1)) : k.beinAnim == kSaKeine;
+                }
+                ok = ok && kp.takte.back().t >= tl + 300.0 - 0.1;
+            }
+            pruefe(ok, "SP1e NPC_TryJump BOTH_FORCEJUMP1: Beine BOTH_JUMP1 ab 2100, Oberkoerper bis 2450, Landung BOTH_LAND1 "
+                       "300 ms, velocity x halb (" + txt + ")");
+        }
+        {
+            // SP1f: BOTH_FORCEJUMP1 laenger als der Flug - der Oberkoerper behaelt
+            // ihn bei der Landung, BOTH_LAND1 nur auf den Beinen.
+            const auto [kp, ab, land] = kette(0, 2000, txt);
+            const bool ok = land < kp.takte.size() && land > 0 && kp.takte[land].beinAnim == kSaLand1 &&
+                            kp.takte[land].torsoAnim == kSaSprung && nah(kp.takte[land].torsoAnimAb, 2100.0, 0.1) &&
+                            kp.takte[land - 1].beinAnim == kSaJump1;
+            pruefe(ok, "SP1f langer BOTH_FORCEJUMP1: Landung nur auf den Beinen, Oberkoerper behaelt ihn (" + txt + ")");
+        }
+        {
+            // SP1g: BOTH_FLIP_F (PM_FlippingAnim) - kein PM_JumpForDir, ganzer
+            // Koerper in der Luft; bei der Landung torsoAnimTimer = 0, BOTH_LAND1
+            // auf den Beinen (PM_ForceJumpingAnim kennt BOTH_FLIP_F nicht), und
+            // PM_TorsoAnimation laesst den Oberkoerper den Beinen folgen.
+            const auto [kp, ab, land] = kette(1, 2000, txt);
+            const bool ok = ab < kp.takte.size() && land < kp.takte.size() && land > 0 && kp.takte[ab].beinAnim == kSaSprung &&
+                            kp.takte[land - 1].beinAnim == kSaSprung && kp.takte[land - 1].torsoAnim == kSaSprung &&
+                            kp.takte[land].beinAnim == kSaLand1 && kp.takte[land].torsoAnim == kSaKeine;
+            pruefe(ok, "SP1g BOTH_FLIP_F: ganzer Koerper in der Luft, Landung BOTH_LAND1, Oberkoerper folgt (" + txt + ")");
+        }
+    }
+    // SP2
+    {
+        std::vector<ProbeKlotz> mitDecke = absatz;
+        mitDecke.push_back({{40, -2000, 170}, {160, 2000, 300}, kNavSolid});
+        const auto welt = baueWelt(mitDecke);
+        LaufWerte mit = lw;
+        mit.kannSpringen = true;
+        const LaufPlan p = planeLauf(*welt, start, mit, 0.0, 12000.0);
+        const LaufTakt* k = sprungTakt(p);
+        const double s3 = d + 50.0;
+        const double vx = 200.0 / d * s3;
+        const double vz = (56.0 - 24.125) / d * s3 + (d / s3) * 0.5 * 800.0;
+        pruefe(k != nullptr && nah(k->sprungTempo[0], vx, 0.05) && nah(k->sprungTempo[2], vz, 0.05) && p.ankunftMs > 0.0,
+               "SP2 Decke: 1. Bahn trifft, 2. (shotSpeed - 50) auch, 3. (shotSpeed + 50) geht: " + std::to_string(vx) + " " +
+                   std::to_string(vz) + " (" +
+                   (k != nullptr ? std::to_string(k->sprungTempo[0]) + " " + std::to_string(k->sprungTempo[2]) : std::string("kein Sprung")) +
+                   ", Ankunft " + std::to_string(p.ankunftMs) + ")");
+    }
+    // SP3
+    {
+        // c ist ein waypoint_navgoal mit "radius" 8: so gilt c erst nahe als
+        // erreicht (mReachedRadius = Max(radius * 3, mRadius * 0.4), NAV::
+        // FindPath) - ein Wegpunkt ohne Spuren beim Bau hat den groessten
+        // Radius, und UpdatePath naehme c schon 400 vorher vom Pfad.
+        std::string text = wegpunkt("a", "-60 0 24", "b") + wegpunkt("d", "600 0 56") + wegpunkt("e", "700 80 56", "d");   // y nicht ueberall 0: sonst hat das Zellraster keine Breite
+        text += "{\n\"classname\" \"waypoint\"\n\"targetname\" \"b\"\n\"origin\" \"40 0 24\"\n\"targetJump\" \"c\"\n}\n";
+        text += "{\n\"classname\" \"waypoint_navgoal\"\n\"targetname\" \"c\"\n\"origin\" \"200 0 56\"\n\"radius\" \"8\"\n\"target\" \"d\"\n}\n";
+        const MapData m = karte(text.c_str());
+        const auto mitSpur = baueWelt(absatz);
+        auto welt = std::make_shared<NavWelt>(*navWeltAusEntities(m.entities));
+        welt->spur = mitSpur->spur;
+        welt->boden = mitSpur->boden;
+        LaufWerte w3 = lw;
+        w3.ziel = {600.0F, 0.0F, 56.0F};
+        const LaufPlan rot = planeLauf(*welt, start, w3, 0.0, 15000.0);
+        pruefe(rot.ankunftMs < 0.0 && sprungTakt(rot) == nullptr, "SP3a Sprungkante ohne SCF_NAV_CAN_JUMP: ungueltig, kommt nicht an");
+        w3.kannSpringen = true;
+        const LaufPlan p = planeLauf(*welt, start, w3, 0.0, 15000.0);
+        const LaufTakt* k = sprungTakt(p);
+        pruefe(k != nullptr && k->t < 500.0 && k->ort[0] < 100.0F && p.ankunftMs > 0.0,
+               "SP3b Sprungkante b -> c: STEER::Path springt gleich vor dem Absatz ab und kommt an (" +
+                   (k != nullptr ? std::to_string(k->t) + " ms bei x " + std::to_string(k->ort[0]) : std::string("kein Sprung")) +
+                   ", Ankunft " + std::to_string(p.ankunftMs) + ")");
+        // rc605: navAStar (NAV::FindPath fuer Proben) mit is_valid fuer
+        // Springer (g_navigator.cpp:551-556 MD). Eigenes Netz ohne
+        // Selbstverbindung (spawnflags 4 = WN_NOAUTOCONNECT): p -> q nur ueber
+        // die Sprungkante (oben verbindet NAV a und c selbst); r und s nur, weil
+        // NAV ab 4 Knoten ein Netz baut (g_navigator.cpp:1469 ff., size_nodes <= 3).
+        const std::string t2 = R"({
+"classname" "waypoint"
+"targetname" "p"
+"origin" "0 0 24"
+"spawnflags" "4"
+"targetJump" "q"
+}
+{
+"classname" "waypoint"
+"targetname" "q"
+"origin" "300 40 24"
+"spawnflags" "4"
+}
+{
+"classname" "waypoint"
+"targetname" "r"
+"origin" "-900 600 24"
+"spawnflags" "4"
+}
+{
+"classname" "waypoint"
+"targetname" "s"
+"origin" "-900 900 24"
+"spawnflags" "4"
+"target" "r"
+}
+)";
+        const MapData m2 = karte(t2.c_str());
+        const auto w2 = navWeltAusEntities(m2.entities);
+        const int kp = (w2 && w2->netz) ? w2->netz->knotenNamens("p") : -1;
+        const int kq = (w2 && w2->netz) ? w2->netz->knotenNamens("q") : -1;
+        const bool ohneSprung = w2 && w2->netz && navAStar(*w2->netz, kp, kq);
+        std::vector<int> pfadSprung;
+        const bool mitSprung = w2 && w2->netz && navAStar(*w2->netz, kp, kq, &pfadSprung, true);
+        pruefe(kp > 0 && kq > 0 && !ohneSprung && mitSprung && pfadSprung.size() == 2,
+               "SP3c navAStar p -> q: ohne SCF_NAV_CAN_JUMP kein Weg, mit ueber die Sprungkante (" +
+                   std::to_string(ohneSprung) + "/" + std::to_string(mitSprung) + ", " + std::to_string(pfadSprung.size()) + " Knoten)");
+    }
+}
+
+// --- rc605: BS_JUMP (NPC_BSJump, NPC_behavior.cpp:717-962 MD) ----------------
+// BJ1: ueber eine Luecke (Boden bis x 100, Plattform ab x 300, Ziel 400 weit auf
+// gleicher Hoehe). JS_FACING im ersten Denkbild (Gier 0, Fehler 0 <
+// MIN_ANGLE_ERROR) -> BOTH_CROUCH1 (500 ms) -> nach 10 Pmoves bei 550 der
+// Sprung: p1 = Figur, xy = (400 - (sqrt(100 + 0) - sqrt(100))) * 0.5 = 200,
+// apex 100 ueber ihr, time = sqrt(100 / 400) = 0.5, velocity = (200 / 0.5, 0,
+// 0.5 * 800) = (400, 0, 400). Landung nach 1 s bei x 400, BOTH_LAND1 (300 ms),
+// dann UpdateGoal -> Ankunft. Ohne BS_JUMP geht sie in die Luecke.
+void bsSprung605() {
+    std::printf("\n== rc605: BS_JUMP (BJ1) ==\n");
+    const std::vector<ProbeKlotz> luecke = {
+        {{-2000, -2000, -16}, {100, 2000, 0}, kNavSolid},
+        {{300, -2000, -16}, {2000, 2000, 0}, kNavSolid},
+        {{-2000, -2000, -1016}, {2000, 2000, -1000}, kNavSolid},
+    };
+    auto welt = std::make_shared<NavWelt>();
+    welt->spur = [luecke](const NavVec& a, const NavVec& mi, const NavVec& ma, const NavVec& b, int, std::uint32_t maske) {
+        return probeSpur(luecke, a, mi, ma, b, maske);
+    };
+    welt->boden = [](float x, float, float zOben, float zUnten, float& z) {
+        const float oben = (x < 100.0F || x >= 300.0F) ? 0.0F : -1000.0F;
+        if (oben > zOben || oben < zUnten) { return false; }
+        z = oben;
+        return true;
+    };
+    LaufWerte lw;
+    lw.zielGesetzt = true;
+    lw.ziel = {400.0F, 0.0F, 24.125F};
+    lw.maxTempo = 300.0F;
+    lw.gehTempo = 90.0F;
+    lw.hockeMs = 500;
+    lw.landMs = 300;
+    LaufZustand start;
+    start.ort = {0.0F, 0.0F, 24.125F};
+    start.amBoden = true;
+    const LaufPlan rot = planeLauf(*welt, start, lw, 0.0, 8000.0);
+    pruefe(rot.ankunftMs < 0.0, "BJ1a ohne BS_JUMP: geht in die Luecke, kommt nicht an");
+    LaufWerte bj = lw;
+    bj.bsJump = true;
+    const LaufPlan p = planeLauf(*welt, start, bj, 0.0, 8000.0);
+    const LaufTakt* sp = nullptr;
+    double hocke = -1.0;
+    double land = -1.0;
+    for (const LaufTakt& k : p.takte) {
+        if (k.sprung && sp == nullptr) { sp = &k; }
+        if (k.bsAnim == 1 && hocke < 0.0) { hocke = k.bsAnimAb; }
+        if (k.bsAnim == 3 && land < 0.0) { land = k.bsAnimAb; }
+    }
+    pruefe(sp != nullptr && nah(hocke, 50.0, 0.1) && nah(sp->t, 550.0, 0.1) && nah(sp->sprungTempo[0], 400.0, 0.01) &&
+               nah(sp->sprungTempo[1], 0.0, 0.01) && nah(sp->sprungTempo[2], 400.0, 0.01),
+           "BJ1b BOTH_CROUCH1 bei 50, Sprung bei 550 mit velocity 400 0 400 (" +
+               (sp != nullptr ? std::to_string(hocke) + " / " + std::to_string(sp->t) + ": " + std::to_string(sp->sprungTempo[0]) + " " +
+                                    std::to_string(sp->sprungTempo[2])
+                              : std::string("kein Sprung")) + ")");
+    const float xEnde = p.takte.empty() ? 0.0F : p.takte.back().ort[0];
+    pruefe(land > 1400.0 && land < 1700.0 && p.ankunftMs >= land + 300.0 && p.ankunftMs <= land + 400.0 && std::fabs(xEnde - 400.0F) < 12.0F,
+           "BJ1c landet nach 1 s (BOTH_LAND1 bei " + std::to_string(land) + "), Ankunft nach der Landeanimation (" +
+               std::to_string(p.ankunftMs) + " ms, x " + std::to_string(xEnde) + ")");
+    // rc605 FU4: die Kette auf den Beinen: BOTH_CROUCH1 (50), PM_Footsteps im
+    // Stand, wenn sein Timer im Pmove 500 ablaeuft, PM_JumpForDir BOTH_JUMP1 im
+    // Absprung (550), BOTH_INAIR1 ein Denkbild spaeter (600), PM_CrashLand
+    // BOTH_LAND1 im Pmove der Landung - NPC_BSJump setzt es ein Denkbild spaeter
+    // noch einmal, ohne Neubeginn.
+    {
+        std::string txt;
+        std::size_t iLand = p.takte.size();
+        for (std::size_t i = 0; i < p.takte.size(); ++i) {
+            const LaufTakt& k = p.takte[i];
+            if (k.t > 560.0 && iLand == p.takte.size() && i < p.zustaende.size() && p.zustaende[i].amBoden) { iLand = i; }
+            if (k.t < 40.0 || (k.t > 110.0 && k.t < 440.0) || (k.t > 660.0 && iLand == p.takte.size() && k.t < 1300.0)) { continue; }
+            if (iLand != p.takte.size() && i > iLand + 1) { break; }
+            txt += " " + std::to_string(static_cast<int>(k.t)) + ":" + std::to_string(k.beinAnim) + "@" +
+                   std::to_string(static_cast<int>(k.beinAnimAb));
+        }
+        const auto bei = [&](double t) -> const LaufTakt* {
+            for (const LaufTakt& k : p.takte) {
+                if (nah(k.t, t, 0.1)) { return &k; }
+            }
+            return nullptr;
+        };
+        const LaufTakt* k50 = bei(50.0);
+        const LaufTakt* k450 = bei(450.0);
+        const LaufTakt* k500 = bei(500.0);
+        const LaufTakt* k550 = bei(550.0);
+        const LaufTakt* k600 = bei(600.0);
+        bool ok = k50 && k450 && k500 && k550 && k600 && iLand > 0 && iLand + 1 < p.takte.size();
+        ok = ok && k50->beinAnim == kSaCrouch1 && nah(k50->beinAnimAb, 50.0, 0.1) && k450->beinAnim == kSaCrouch1 &&
+             k500->beinAnim == kSaStand1 && k550->beinAnim == kSaJump1 && nah(k550->beinAnimAb, 550.0, 0.1) &&
+             k600->beinAnim == kSaInAir1 && nah(k600->beinAnimAb, 600.0, 0.1);
+        if (ok) {
+            const LaufTakt& kl = p.takte[iLand];
+            const LaufTakt& kn = p.takte[iLand + 1];
+            ok = p.takte[iLand - 1].beinAnim == kSaInAir1 && kl.beinAnim == kSaLand1 && nah(kl.beinAnimAb, kl.t, 0.1) &&
+                 kl.torsoAnim == kSaKeine && kn.beinAnim == kSaLand1 && nah(kn.beinAnimAb, kl.t, 0.1) && kn.bsAnim == 3;
+        }
+        pruefe(ok, "BJ1d Beine: BOTH_CROUCH1 50, BOTH_STAND1 500, BOTH_JUMP1 550, BOTH_INAIR1 600, BOTH_LAND1 ab der Landung (" +
+                       txt + ")");
+    }
 }
 
 int main(int argc, char** argv) {
@@ -3641,9 +4515,15 @@ int main(int argc, char** argv) {
     teil3Patches();
     teil3Winkel();
     regelwerkVerhaltenTakt();   // rc601 integ
+    regelwerkDrehTakt();        // rc604 fix604b (A1)
     knotenGrenze();   // rc602 kartenpruefung
     tuerLaufKoerper();   // rc603 fix603
     koerperTaktNachPause();   // rc603 fix603 (dooku5)
+    koerperFest();   // rc604 fix604 (col1)
+    festWarten();    // rc605 fix605 (TID_RESIZE)
+    netzRasterProben();   // rc604 fix604 (md_roc_jedi)
+    spruenge605();        // rc605: NPC-Spruenge
+    bsSprung605();        // rc605: BS_JUMP
     std::printf("\n%s (%d Fehlschlaege)\n", fehler != 0 ? "FEHLGESCHLAGEN" : "alle Bewegungsproben bestanden", fehler);
     return fehler != 0 ? 1 : 0;
 }

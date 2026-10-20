@@ -1,6 +1,7 @@
 #include "bhed/camtrack.h"
 
 #include "bhed/clock.h"
+#include "bhed/regelwerk.h"
 
 #include <algorithm>
 #include <cctype>
@@ -427,7 +428,11 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags, const RoffL
         const RoffBild& b = r.bilder[roffLauf.bild];
         float o[3] = {b.ort[0], b.ort[1], b.ort[2]};
         float w[3] = {b.winkel[0], b.winkel[1], b.winkel[2]};
-        if (r.fassung == kRoffFassung2) {
+        // rc604 fix604 (JK2 Stufe 3): CGCam_Roff von Jedi Outcast kennt weder
+        // Notizen noch CAMERA_CUT (codeJK2/cgame/cg_camera.cpp:1385-1464) - kein
+        // "cut", kein "fov"/"fovaccel"/"fovzoom".
+        const bool jk2 = regelwerkJediOutcast();
+        if (r.fassung == kRoffFassung2 && !jk2) {
             // "since we just hit a new frame, clear our CUT flag"
             roffLauf.schnitt = false;
             // Nur die ERSTE Notiz des Bildes (mNoteTrackIndexes[mStartNote]);
@@ -441,6 +446,8 @@ CameraTrack buildCameraTrack(const Script& s, const TagLookup& tags, const RoffL
         }
         // "Yeah, um, I guess this just has to be negated?" - ang[ROLL] = -ang[ROLL];
         w[2] = -w[2];
+        // rc604 fix604: Jedi Outcast dreht auch PITCH um (codeJK2/cgame/cg_camera.cpp:1418).
+        if (jk2) { w[0] = -w[0]; }
         if (roffLauf.bild > 0) {
             if (!folgt) {
                 for (int k = 0; k < 3; ++k) { ang[k] += schwenk.ziel[k]; }   // VectorAdd( angles, angles2, angles )

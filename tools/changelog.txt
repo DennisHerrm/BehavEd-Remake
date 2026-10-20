@@ -6,6 +6,208 @@
 #   [en] ... [de] ... [zh] ... [ja] ...   (je Sprache Zeilen mit "- ")
 # Zeilen mit # am Anfang sind Kommentare. Jede Fassung braucht alle vier Sprachen.
 
+## rc604 2026-10-20
+[en]
+- Jedi Outcast (JK2) joins OpenJK and Movie Duels as a third rule set: its own command set (from the JK2 game code), its own list of game folders, the 72-bone JK2 skeleton, NPCs from NPCs.cfg, the player Kyle, lightsabers without .sab files and the JK2 NPC classes. It is detected automatically from the game folder or from a loaded JK2 mission.
+- NPCs walk like in JK2: JK2's navigator with the waypoint network from the map's .nav file, JK2's running and walking speeds, slowing down before the goal. The camera, NPC weapons, lightsaber blades, the swamp water in yavin_swamp, rain and snow follow JK2 as well.
+- NPCs that turn on the spot now also turn only in think frames with behaviour (every 100 ms, like the game).
+- Scripts a map runs when a Jedi mind trick hits an NPC (mindtrickscript) are listed with the map's scripts.
+- Each mission tab keeps the game folders of its game: with a Jedi Outcast mission in one tab and a Jedi Academy mission in another, switching tabs switches the game folders and the rule set with them (before, the other tab lost its map and read the wrong game's files).
+- NPCs start every map with no blocked waypoint connections, like the game - the connections stored as blocked in the map's .nav file no longer make them take detours.
+- Walking figures are blocked by exactly what blocks them in the game: invisible (`SET_INVISIBLE true`) or non-solid (`SET_SOLID false`) figures no longer stand in the way, figures that only stand in the map now do, a killed figure stays in the way until it becomes a corpse (5 s in Movie Duels, 0.5 s in OpenJK), and walls or doors that a script moves or removes are where the script has them.
+- The gravity of figures on moving floors and elevators is computed about 60 times faster with the same result (md_roc_jedi: 37 s → 0.4 s per cutscene).
+- Under the OpenJK rule set NPCs turn only in think frames with behaviour (every 100 ms, like the game), so turns take about twice as long as under Movie Duels.
+- `SET_ORIGIN` and `SET_ANGLES` with `$tag( "name", ORIGIN )$` / `ANGLES` put the figure at the ref_tag or navgoal of that name, like the game (before: at 0 0 0 - the rancor and the prisoners in t2_rancor and Kyle at the end of t1_sour fell from the map origin and never walked); without such a tag the command does nothing.
+- A figure made solid again (`SET_SOLID true`) while it stands inside another one becomes solid only when it is free, and a `dowait` on that `set` waits as long as in the game.
+- A killed Mark1 or Interrogator never becomes a corpse and stays in the way, like the game.
+- An exploding laser trip mine uses its targets like the game: doors, walls and counters behind it switch (t3_byss: 2 or 4 mines on a counter that switches a wall).
+- NPCs that know force jump jump like in the game: across the jump connections of the waypoint network and towards their goal after being blocked for 2 seconds.
+- NPCs in the behaviour state BS_JUMP turn to their navgoal, crouch, jump there in one arc and land, like in the game; a dowait on the navgoal ends after the landing.
+- Jumps are animated like the game: the legs switch to the jump pose as the NPC leaves the ground while the upper body finishes the jump animation, and the NPC plays the landing animation when it touches down.
+- An NPC with SET_NO_ACROBATICS true does not jump, like in the game.
+- Memory no longer grows when you switch tabs or edit (taspir2 with 39 tabs: over 18 GB after 18 tabs, now about 1.1 GB). Figures share one copy of each model; the models of a previous map are released.
+- A script tab shows only the figures it needs: actors of other cutscenes that the script never uses are not drawn, block nobody and load no model (md_am_sith credits: 10 instead of 38 figures). An empty tab still shows the map with every figure.
+- Preparing a scene again no longer loads the textures of models that belong to effects (trip mines, turrets) a second time, so memory stays flat across tabs on every map.
+- A script started by a trigger, a script runner or a use now begins on the entity's next update, like the game (one frame later when that entity has already been updated in the frame). An NPC's spawn script still starts at once.
+- Under the OpenJK rule set every note of a ROFF frame fires; `loop sfx` notes give the entity a looping sound, a `USE <script>` note starts that script on the entity, and `loop rof absolute|relative` restarts the path like the game (the `play` task then never finishes). Movie Duels and Jedi Outcast still fire only the first note.
+- A later `play` on the same entity stops the notes of the old ROFF path, so `USE` scripts planned from it no longer run (a `move`, or a `play` whose file is missing, leaves the old path running, as in the game).
+- An exploding trip mine now also runs the scripts behind its targets (for example the usescript of a counter), with one count for scripts and moving parts.
+- Effects are drawn with every stage of their shader (blend mode, colour, tcMod, animMap per stage); explosions blend their two animated stages like the game.
+- Turrets, emplaced guns, E-Webs, sentry guns, panel turrets and the ion cannon stand with the models their spawn functions give them.
+- Laser trip mines hang on their wall and draw their beam when they are switched on; trip mines that wait for a use stay hidden.
+- Beams of fx_target_beam fire towards their target.
+- Map models without an origin key stand at the world origin, like in the game.
+- Under Movie Duels fx_lava fills the air with lava particles like the game's weather system.
+- The drivable AT-ST (misc_atst_drivable) stands in its open-hatch pose from map start.
+- Entities the map marks for other difficulties (or `notsingle`) are left out, as the game removes them when the map loads - figures, models, turrets, effects, brush models and use targets (638 such entities on 48 single-player maps).
+- Such removed entities are also gone from the mover simulation (no door, door trigger, plat or target_speaker sound) and from the walking traces, and a script that affects one moves nothing.
+- Effect stages with `alphaGen entity` take the particle's alpha (its fade) instead of a fixed 1.
+- fx_target_beam fires when a script or trigger uses it: a one-shot beam once per use, other beams are switched on (first shot 50 ms later) or off; with `wait -1` later uses do nothing.
+- Laser trip mines play the arming sound (warning.wav) and the hum loop (hum_loop.wav) when they arm, audible where the game plays them.
+- Figure shader stages with tcMod (turb, rotate, scroll ...) move like in the game, for example the shimmer of the Emperor's hologram.
+- When an image of a figure shader is missing, the figure shows what the game shows: the stages before it, nothing if the first image is missing, or the engine's default box texture on a model without a skin.
+- Grass, bushes, flowers and rain splashes on the ground (`surfaceSprites`) are drawn like the game: blade for blade at the same places (the game's random placement per triangle, on curved surfaces on the engine's own patch triangles with their distance LOD), with their size variance, fading out with distance (further when the camera zooms in), swaying with `ssWindIdle`, leaning with the weather's wind, rain splashes (`ssFXWeather`) only while it rains, and fogged inside fog volumes, also in the camera preview and the sky portal. The stage is no longer drawn as a flat layer on the ground. Vertical, flattened, oriented and effect sprites, on 20 maps (yavin, dantooine, kamino, t2_rancor ...).
+- Laser trip mines work like in the game: every 100 ms the beam is traced again against the world, doors and other moving parts where they are at that moment, and the figures (their box, then their mesh); a figure in the beam sets the mine off (explosion effect and sound, hum off, the mine is gone 50 ms later - the figure plays on as scripted), and a mine that starts off is switched on and off by a use.
+- Sentry guns (misc_sentry_turret) unfold like in the game one second after the map starts or after a use switches them on and then slowly sweep from side to side while they have no target, and the ion cannon fires by itself like in the game (every `wait` ms, in bursts with BURSTS, switched by a use): the env/ion_cannon effect at the muzzle bolt and the recoil animation per shot; the ion cannon now has the double model size the game gives it.
+- fx_target_beam fires shot for shot like the game (link, use, a think every 100 ms with the pause from `wait`/`random`): each shot aims at where its target is at that moment (a beam on a moving func_train follows it), is traced against the world, doors and moving parts where they are and the figures' boxes, a beam switched back on waits out its pause, and a use before the beams are linked (100 ms after the map starts) does nothing.
+- The first stage of an effect shader follows its rgbGen/alphaGen like every other stage: without rgbGen it shows its image white instead of in the particle's colour, without alphaGen it does not fade with the particle, and `rgbGen vertex` without alphaGen fades with it (also on the further stages) - like the game, for example the fire of the blaster impacts (gfx/effects/fire_radial) no longer fades out.
+- An NPC that a script names but whose spawner the game removes for the chosen difficulty (or `notsingle`) no longer appears, and its `affect` blocks do not run; a use of an fx_runner before it is linked (400 ms after the map starts) does nothing, like the game.
+- Figure shaders with `deformVertexes` wave, bulge or move now move like in the game (in the model's own space, with the engine's 1024-step function tables) - the only such figure in the data is the shadow Yoda (md_yoda_shadow), whose smoke surfaces wave.
+- Effects that first appear while a scene plays (for example shots, impacts and what they start) are drawn with their images from the first moment; before, they and their follow-up effects got their images only when the scene was prepared again, which also added memory in one tab on some maps.
+- .pk3 archives of a game folder are sorted like the game (ignoring upper and lower case), so the right archive wins.
+- The German guide uses the program's own words for the events list, mode and editor; the guide describes the new behaviour in all four languages.
+- One more compiled script comes back byte for byte (a number IBIze rounds differently).
+[de]
+- Jedi Outcast (JK2) kommt als drittes Regelwerk zu OpenJK und Movie Duels: eigener Befehlssatz (aus dem JK2-Spielcode), eigene Spielordner-Liste, das JK2-Skelett mit 72 Knochen, NPCs aus NPCs.cfg, der Spieler Kyle, Lichtschwerter ohne .sab-Dateien und die NPC-Klassen von JK2. Es wird am Spielordner oder an einer geladenen JK2-Mission automatisch erkannt.
+- NPCs laufen wie in JK2: der Navigator von JK2 mit dem Wegnetz aus der .nav-Datei der Karte, die Lauf- und Gehtempi von JK2, Abbremsen vor dem Ziel. Auch Kamera, NPC-Waffen, Lichtschwertklingen, das Sumpfwasser in yavin_swamp, Regen und Schnee folgen JK2.
+- NPCs, die sich im Stand drehen, drehen sich jetzt ebenfalls nur in Denkbildern mit Verhalten (alle 100 ms, wie im Spiel).
+- Skripte, die eine Karte bei einem Jedi-Gedankentrick auf einen NPC startet (mindtrickscript), stehen bei den Skripten der Karte.
+- Jeder Missionsreiter behält die Spielordner seines Spiels: liegt in einem Reiter eine Mission von Jedi Outcast und in einem anderen eine von Jedi Academy, wechseln mit dem Reiter auch Spielordner und Regelwerk (vorher verlor der andere Reiter seine Karte und las die Dateien des falschen Spiels).
+- NPCs beginnen jede Karte ohne gesperrte Wegpunktverbindungen, wie im Spiel - die in der .nav-Datei der Karte als gesperrt gespeicherten lassen sie keine Umwege mehr gehen.
+- Laufende Figuren werden genau von dem aufgehalten, was sie im Spiel aufhält: unsichtbare (`SET_INVISIBLE true`) oder nicht feste Figuren (`SET_SOLID false`) stehen nicht mehr im Weg, Figuren, die nur in der Karte stehen, jetzt schon, eine getötete Figur steht im Weg, bis sie zur Leiche wird (5 s in Movie Duels, 0,5 s in OpenJK), und Wände oder Türen, die ein Skript bewegt oder entfernt, stehen dort, wo das Skript sie hat.
+- Die Schwerkraft von Figuren auf bewegten Böden und Aufzügen wird rund 60mal schneller berechnet, mit demselben Ergebnis (md_roc_jedi: 37 s → 0,4 s je Zwischensequenz).
+- Unter dem Regelwerk OpenJK drehen sich NPCs nur in Denkbildern mit Verhalten (alle 100 ms, wie im Spiel) - Drehungen dauern etwa doppelt so lange wie unter Movie Duels.
+- `SET_ORIGIN` und `SET_ANGLES` mit `$tag( "name", ORIGIN )$` / `ANGLES` setzen die Figur wie im Spiel an den ref_tag oder Navgoal dieses Namens (bisher auf 0 0 0 - der Rancor und die Gefangenen in t2_rancor und Kyle am Ende von t1_sour fielen vom Kartenursprung und liefen nie); ohne solchen TAG tut der Befehl nichts.
+- Eine Figur, die wieder fest wird (`SET_SOLID true`), während sie in einer anderen steht, wird erst fest, wenn sie frei ist, und ein `dowait` auf diesen `set` wartet so lange wie im Spiel.
+- Ein getöteter Mark1 oder Interrogator wird wie im Spiel nie zur Leiche und bleibt im Weg.
+- Eine explodierende Laserfalle benutzt wie im Spiel ihre Ziele: Türen, Wände und Zähler dahinter schalten (t3_byss: je 2 oder 4 Fallen auf einem Zähler, der eine Wand schaltet).
+- NPCs mit Machtsprung springen wie im Spiel: über die Sprungverbindungen des Wegpunktnetzes und, nach 2 Sekunden blockiert, zu ihrem Ziel.
+- NPCs im Verhaltenszustand BS_JUMP drehen sich zu ihrem Navgoal, gehen in die Hocke, springen in einem Bogen dorthin und landen, wie im Spiel; ein dowait auf das Navgoal endet nach der Landung.
+- Sprünge sind animiert wie im Spiel: beim Abheben wechseln die Beine in die Sprunghaltung, während der Oberkörper die Sprunganimation zu Ende spielt, und beim Aufsetzen spielt der NPC die Landeanimation.
+- Ein NPC mit SET_NO_ACROBATICS true springt nicht, wie im Spiel.
+- Der Speicher wächst beim Reiterwechsel und Bearbeiten nicht mehr (taspir2 mit 39 Reitern: über 18 GB nach 18 Reitern, jetzt etwa 1,1 GB). Figuren teilen sich eine Kopie je Modell; die Modelle einer vorigen Karte werden freigegeben.
+- Ein Skriptreiter zeigt nur die Figuren, die er braucht: Darsteller anderer Zwischensequenzen, die das Skript nie nutzt, werden nicht gezeichnet, halten niemanden auf und laden kein Modell (md_am_sith Credits: 10 statt 38 Figuren). Ein leerer Reiter zeigt die Karte weiter mit allen Figuren.
+- Wird eine Szene erneut vorbereitet, lädt sie die Texturen der Modelle von Effekten (Laserfallen, Geschütze) nicht noch einmal - der Speicher bleibt auf jeder Karte über alle Reiter gleich.
+- Ein Skript, das ein Trigger, ein Skriptstarter oder ein use startet, beginnt jetzt wie im Spiel beim nächsten Update der Entity (ein Bild später, wenn diese Entity in dem Bild schon dran war). Das spawnscript eines NPC startet weiter sofort.
+- Unter dem Regelwerk OpenJK feuert jede Notiz eines ROFF-Bilds; Notizen `loop sfx` geben der Entity einen Schleifenklang, eine Notiz `USE <Skript>` startet dieses Skript auf der Entity, und `loop rof absolute|relative` startet die Bahn wie im Spiel neu (die Aufgabe des `play` endet dann nie). Movie Duels und Jedi Outcast feuern weiter nur die erste Notiz.
+- Ein späteres `play` auf derselben Entity beendet die Notizen der alten ROFF-Bahn; daraus geplante `USE`-Skripte laufen nicht mehr (ein `move` oder ein `play` mit fehlender Datei lässt die alte Bahn wie im Spiel weiterlaufen).
+- Eine explodierende Laserfalle startet jetzt auch die Skripte hinter ihren Zielen (etwa das usescript eines Zählers), mit einem Zählerstand für Skripte und bewegliche Teile.
+- Effekte werden mit allen Stufen ihres Shaders gezeichnet (Mischart, Farbe, tcMod, animMap je Stufe); Explosionen überblenden wie im Spiel ihre zwei animierten Stufen.
+- Geschütze, Geschützstellungen, E-Webs, Wachgeschütze, Paneelgeschütze und die Ionenkanone stehen mit den Modellen ihrer Spawnfunktionen da.
+- Laserfallen hängen an ihrer Wand und ziehen ihren Strahl, wenn sie an sind; Fallen, die auf ein use warten, bleiben verborgen.
+- Strahlen von fx_target_beam feuern auf ihr Ziel.
+- Kartenmodelle ohne „origin“ stehen wie im Spiel am Nullpunkt der Welt.
+- Unter Movie Duels füllt fx_lava wie das Wettersystem des Spiels die Luft mit Lavateilchen.
+- Der AT-ST zum Einsteigen (misc_atst_drivable) steht ab dem Laden mit offener Luke da.
+- Entities, die die Karte für andere Schwierigkeiten (oder mit `notsingle`) markiert, fehlen, weil das Spiel sie beim Laden der Karte entfernt - Figuren, Modelle, Geschütze, Effekte, Brush-Modelle und Ziele von use (638 solche Entities auf 48 Einzelspielerkarten).
+- Solche entfernten Entities fehlen auch in der Mover-Simulation (keine Tür, kein Türauslöser, keine Plattform, kein target_speaker-Klang) und in den Spuren der laufenden Figuren; ein Skript, das eine davon anspricht, bewegt nichts.
+- Effektstufen mit `alphaGen entity` nehmen den Alphawert des Teilchens (seine Blende) statt einer festen 1.
+- fx_target_beam feuert, wenn ein Skript oder Auslöser ihn benutzt: ein Einzelschuss-Strahl einmal je Benutzung, andere Strahlen werden ein- (erster Schuss 50 ms später) oder ausgeschaltet; mit `wait -1` bewirken spätere Benutzungen nichts.
+- Laser-Stolperminen spielen beim Scharfwerden den Warnklang (warning.wav) und das Summen (hum_loop.wav), hörbar dort, wo das Spiel sie spielt.
+- Figurenstufen mit tcMod (turb, rotate, scroll ...) bewegen sich wie im Spiel, etwa das Flimmern des Imperator-Hologramms.
+- Fehlt ein Bild eines Figurenshaders, zeigt die Figur, was das Spiel zeigt: die Stufen davor, nichts, wenn schon das erste Bild fehlt, oder an einem Modell ohne Haut das Ersatzkästchen der Engine.
+- Gras, Büsche, Blumen und Regenspritzer auf dem Boden (`surfaceSprites`) zeichnet die Vorschau wie das Spiel: Halm für Halm an denselben Stellen (die Zufallsverteilung je Dreieck aus dem Spiel, auf gebogenen Flächen auf den Patch-Dreiecken der Engine mit ihrem Entfernungs-LOD), mit ihrer Größenstreuung, mit der Entfernung ausblendend (beim Heranzoomen der Kamera weiter), wiegend mit `ssWindIdle`, geneigt vom Wind des Wetters, Regenspritzer (`ssFXWeather`) nur, wenn es regnet, und in Nebelvolumen eingenebelt, auch in der Kameravorschau und im Himmelsportal. Die Stufe liegt nicht mehr als flache Schicht auf dem Boden. vertical, flattened, oriented und effect, auf 20 Karten (yavin, dantooine, kamino, t2_rancor ...).
+- Laserfallen arbeiten wie im Spiel: alle 100 ms wird der Strahl neu gespurt - gegen die Welt, Türen und andere bewegliche Teile dort, wo sie gerade sind, und die Figuren (ihr Kasten, dann ihr Netz); eine Figur im Strahl lässt die Falle hochgehen (Explosionseffekt und -klang, das Summen endet, 50 ms später ist die Falle fort - die Figur spielt weiter wie im Skript), und eine Falle, die aus beginnt, schaltet ein use ein und aus.
+- Wachgeschütze (misc_sentry_turret) klappen wie im Spiel eine Sekunde nach dem Kartenstart oder nach dem Einschalten per use auf und schwenken danach langsam hin und her, solange sie kein Ziel haben, und die Ionenkanone feuert wie im Spiel von selbst (alle `wait` ms, mit BURSTS in Salven, per use geschaltet): der Effekt env/ion_cannon am Mündungsbolzen und die Rückstoßanimation je Schuss; die Ionenkanone hat jetzt die doppelte Modellgröße, die das Spiel ihr gibt.
+- fx_target_beam feuert Schuss für Schuss wie im Spiel (link, use, ein think alle 100 ms mit der Pause aus `wait`/`random`): jeder Schuss zielt dorthin, wo sein Ziel gerade ist (ein Strahl auf einen fahrenden func_train folgt ihm), wird gegen die Welt, Türen und bewegliche Teile dort, wo sie sind, und die Kästen der Figuren gespurt, ein wieder eingeschalteter Strahl wartet seine Pause ab, und ein use, bevor die Strahlen verknüpft sind (100 ms nach dem Kartenstart), bewirkt nichts.
+- Die erste Stufe eines Effektshaders folgt wie jede weitere Stufe ihrem rgbGen/alphaGen: ohne rgbGen zeigt sie ihr Bild weiß statt in der Farbe des Teilchens, ohne alphaGen blendet sie nicht mit dem Teilchen aus, und `rgbGen vertex` ohne alphaGen blendet mit ihm aus (auch an den weiteren Stufen) - wie im Spiel; so blendet etwa das Feuer der Blastereinschläge (gfx/effects/fire_radial) nicht mehr aus.
+- Ein NPC, den ein Skript nennt, dessen Spawner das Spiel für die gewählte Schwierigkeit (oder wegen `notsingle`) entfernt, erscheint nicht mehr, und seine `affect`-Blöcke laufen nicht; ein use auf einen fx_runner, bevor er verknüpft ist (400 ms nach dem Kartenstart), bewirkt wie im Spiel nichts.
+- Figurenshader mit `deformVertexes` wave, bulge oder move bewegen sich jetzt wie im Spiel (im Raum des Modells, mit den Funktionstabellen der Engine in 1024 Schritten) - die einzige solche Figur in den Daten ist der Schatten-Yoda (md_yoda_shadow), dessen Rauchflächen wogen.
+- Effekte, die erst beim Abspielen einer Szene auftauchen (etwa Schüsse, Einschläge und was sie starten), werden vom ersten Moment an mit ihren Bildern gezeichnet; bisher bekamen sie und ihre Folgeeffekte ihre Bilder erst, wenn die Szene erneut vorbereitet wurde, was auf manchen Karten in einem Reiter zusätzlichen Speicher kostete.
+- Die .pk3-Archive eines Spielordners werden wie im Spiel sortiert (ohne Rücksicht auf Groß- und Kleinschreibung) - das richtige Archiv gewinnt.
+- Das deutsche Handbuch nennt Ereignisliste, Modus und Ereignis-Editor so wie das Programm; das Handbuch beschreibt das neue Verhalten in allen vier Sprachen.
+- Ein weiteres übersetztes Skript kommt Byte für Byte zurück (eine Zahl, die IBIze anders rundet).
+[zh]
+- Jedi Outcast(JK2)与 OpenJK、Movie Duels 并列为第三套规则:独立的命令集(来自 JK2 游戏代码)、独立的游戏目录列表、72 根骨骼的 JK2 骨架、来自 NPCs.cfg 的 NPC、玩家 Kyle、无需 .sab 文件的光剑以及 JK2 的 NPC 类别。可根据游戏目录或已加载的 JK2 任务自动识别。
+- NPC 像在 JK2 中一样行走:使用 JK2 的导航和地图 .nav 文件中的路点网络、JK2 的奔跑和步行速度,并在接近目标时减速。镜头、NPC 武器、光剑刃、yavin_swamp 的沼泽水以及雨和雪也都按 JK2 处理。
+- 原地转身的 NPC 现在也只在有行为的思考帧中转身(每 100 毫秒,与游戏一致)。
+- 地图在 NPC 受到绝地精神控制时运行的脚本(mindtrickscript)会列在地图的脚本中。
+- 每个任务标签页都保留其游戏的目录:一个标签页中是 Jedi Outcast 任务、另一个中是 Jedi Academy 任务时,切换标签页也会随之切换游戏目录和规则集(之前另一个标签页会丢失地图并读取错误游戏的文件)。
+- NPC 在每张地图开始时都没有被封锁的路点连接,与游戏中一样——地图 .nav 文件中保存为封锁的连接不再让它们绕路。
+- 行走的角色只会被游戏中同样会挡住它们的东西挡住:隐形(`SET_INVISIBLE true`)或非实体(`SET_SOLID false`)的角色不再挡路;只站在地图中的角色现在会挡路;被杀死的角色在变成尸体之前仍会挡路(Movie Duels 中 5 秒,OpenJK 中 0.5 秒);被脚本移动或移除的墙和门位于脚本所放置的位置。
+- 站在移动地面和电梯上的角色的重力计算速度提高约 60 倍,结果完全相同(md_roc_jedi:每段过场 37 秒 → 0.4 秒)。
+- 在 OpenJK 规则下,NPC 只在有行为的思考帧中转身(每 100 毫秒,与游戏一致),转身时间约为 Movie Duels 的两倍。
+- 带有 `$tag( "name", ORIGIN )$` / `ANGLES` 的 `SET_ORIGIN` 和 `SET_ANGLES` 会像游戏中一样把角色放到同名的 ref_tag 或导航目标处(以前放在 0 0 0——t2_rancor 中的兰克兽和囚犯以及 t1_sour 结尾的凯尔从地图原点坠落,从未行走);没有这样的标记时,命令不起作用。
+- 站在另一个角色体内时重新设为实体(`SET_SOLID true`)的角色,要等到不再重叠时才变成实体,对该 `set` 的 `dowait` 等待的时间与游戏中相同。
+- 被杀死的 Mark1 或 Interrogator 与游戏中一样永远不会变成尸体,并继续挡路。
+- 爆炸的激光绊雷会像游戏中一样触发它的目标:其后的门、墙和计数器随之切换(t3_byss:每 2 或 4 个绊雷连到一个切换墙壁的计数器)。
+- 会原力跳跃的 NPC 像游戏中一样跳跃:越过路点网中的跳跃连接,或被挡住 2 秒后跳向目标。
+- 处于行为状态 BS_JUMP 的 NPC 会像游戏中一样转向导航目标、蹲下、以一条弧线跳过去并落地;对导航目标的 dowait 在落地后结束。
+- 跳跃动画与游戏中一样:离地时双腿切换为跳跃姿势,上半身把跳跃动画播完;落地时 NPC 播放落地动画。
+- 设置了 SET_NO_ACROBATICS true 的 NPC 不会跳跃,与游戏中一样。
+- 切换标签页或编辑时内存不再增长(taspir2 有 39 个标签页:18 个标签页后超过 18 GB,现在约 1.1 GB)。角色共用每个模型的一份副本,上一张地图的模型会被释放。
+- 脚本标签页只显示它需要的角色:脚本从未使用的其他过场的演员不再绘制、不挡任何人、也不加载模型(md_am_sith 片尾:10 个而不是 38 个角色)。空白标签页仍显示地图上的所有角色。
+- 再次准备场景时,不再重复加载特效所属模型(激光绊雷、炮塔)的纹理,因此在每张地图上切换标签页时内存都保持不变。
+- 由触发器、脚本启动器或 use 启动的脚本现在像游戏中一样,在该实体的下一次更新时开始(如果该实体在本帧已更新过,则晚一帧)。NPC 的 spawnscript 仍然立即开始。
+- 在 OpenJK 规则下,ROFF 帧的每个注记都会触发;`loop sfx` 注记让实体播放循环声音,`USE <脚本>` 注记在该实体上启动这个脚本,`loop rof absolute|relative` 像游戏中一样重新开始路径(此时 `play` 的任务永不结束)。Movie Duels 和 Jedi Outcast 仍只触发第一个注记。
+- 同一实体上之后的 `play` 会停止旧 ROFF 路径的注记,由其安排的 `USE` 脚本不再运行(`move` 或文件缺失的 `play` 会像游戏中一样让旧路径继续运行)。
+- 爆炸的激光绊雷现在也会运行其目标后的脚本(例如计数器的 usescript),脚本和移动部件共用同一个计数。
+- 特效以其着色器的所有阶段绘制(每个阶段的混合方式、颜色、tcMod、animMap);爆炸会像游戏中一样交叉淡化两个动画阶段。
+- 炮塔、固定炮位、E-Web、哨戒炮、面板炮塔和离子炮以其生成函数指定的模型显示。
+- 激光绊雷挂在墙上,开启时射出光束;等待 use 的绊雷保持隐藏。
+- fx_target_beam 的光束射向其目标。
+- 没有 origin 键的地图模型像游戏中一样位于世界原点。
+- 在 Movie Duels 下,fx_lava 像游戏的天气系统一样让空中充满熔岩粒子。
+- 可驾驶的 AT-ST(misc_atst_drivable)从地图开始就以舱盖打开的姿势站立。
+- 地图标记为其他难度(或带 `notsingle`)的实体会被省略,因为游戏在加载地图时会移除它们——角色、模型、炮塔、特效、刷子模型和 use 目标(48 张单人地图上共 638 个这样的实体)。
+- 这些被移除的实体也不再出现在移动体模拟中(没有门、门触发区、平台或 target_speaker 声音)和行走角色的追踪中;脚本作用于它们时不会移动任何东西。
+- 带 `alphaGen entity` 的特效阶段使用粒子的透明度(其淡出),而不是固定的 1。
+- fx_target_beam 在脚本或触发器使用它时发射:单发光束每次使用发射一次,其他光束被打开(50 毫秒后第一次发射)或关闭;`wait -1` 时之后的使用无效。
+- 激光绊雷在启动时播放警告声(warning.wav)和嗡鸣循环(hum_loop.wav),在游戏会播放的位置可以听到。
+- 带 tcMod(turb、rotate、scroll……)的角色着色器阶段会像游戏中一样移动,例如皇帝全息影像的闪烁。
+- 角色着色器缺少图像时,角色显示游戏所显示的内容:之前的阶段;如果第一张图像就缺失则什么都不显示;没有皮肤的模型则显示引擎的默认方框纹理。
+- 地面上的草、灌木、花和雨滴溅花(`surfaceSprites`)与游戏一致:每一株都在相同的位置(游戏按三角形的随机分布;曲面上使用引擎自己的面片三角形及其距离 LOD),带有大小变化,随距离淡出(摄像机拉近时更远),随 `ssWindIdle` 摆动,被天气的风吹弯,雨滴溅花(`ssFXWeather`)只在下雨时出现,在雾体积中被雾覆盖,摄像机预览和天空门户中也是如此。该阶段不再作为平铺图层画在地面上。支持 vertical、flattened、oriented 和 effect,涉及 20 张地图(yavin、dantooine、kamino、t2_rancor 等)。
+- 激光绊雷的工作方式与游戏中相同:每 100 毫秒重新追踪一次光束——针对世界、门和其他移动部件当时所在的位置,以及角色(先是其包围盒,然后是其网格);角色进入光束会引爆绊雷(爆炸特效和声音,嗡鸣停止,50 毫秒后绊雷消失——角色仍按脚本继续),初始关闭的绊雷可通过 use 打开或关闭。
+- 哨戒炮(misc_sentry_turret)会像游戏中一样,在地图开始或被 use 打开一秒后展开,之后在没有目标时缓慢地左右转动;离子炮会像游戏中一样自行开火(每 `wait` 毫秒一次,带 BURSTS 时成串发射,可用 use 开关):每次射击在炮口挂点播放 env/ion_cannon 特效和后坐动画;离子炮现在具有游戏赋予的两倍模型尺寸。
+- fx_target_beam 像游戏中一样逐发射击(link、use、每 100 毫秒一次 think,间隔取自 `wait`/`random`):每一发都瞄准目标当时所在的位置(射向行驶中 func_train 的光束会跟随它),针对世界、门和移动部件当时的位置以及角色的包围盒进行追踪;重新打开的光束会等待其间隔结束;在光束完成链接之前(地图开始后 100 毫秒)的 use 不起作用。
+- 特效着色器的第一个阶段与其他阶段一样遵循其 rgbGen/alphaGen:没有 rgbGen 时以白色而非粒子颜色显示图像,没有 alphaGen 时不随粒子淡出,而没有 alphaGen 的 `rgbGen vertex` 会随粒子淡出(其他阶段也是如此)——与游戏一致,例如爆能枪命中的火焰(gfx/effects/fire_radial)不再淡出。
+- 脚本中点名、但其生成器因所选难度(或 `notsingle`)被游戏移除的 NPC 不再出现,其 `affect` 块也不会运行;在 fx_runner 完成链接之前(地图开始后 400 毫秒)对它的 use 与游戏中一样不起作用。
+- 带 `deformVertexes` wave、bulge 或 move 的角色着色器现在会像游戏中一样运动(在模型自身空间中,使用引擎 1024 级的函数表)——数据中唯一这样的角色是影子尤达(md_yoda_shadow),其烟雾表面会波动。
+- 在场景播放时才首次出现的特效(例如射击、命中以及它们引发的特效)从一开始就带着图像绘制;以前它们及其后续特效要等场景重新准备时才获得图像,在某些地图上还会在一个标签页中额外占用内存。
+- 游戏目录中的 .pk3 档案像游戏中一样排序(不区分大小写),正确的档案优先。
+- 德语手册对事件列表、模式和编辑器的称呼与程序一致;手册以四种语言描述了新的行为。
+- 又一个编译脚本可以逐字节还原(IBIze 对某个数字的舍入不同)。
+[ja]
+- OpenJK と Movie Duels に続く 3 つ目のルールとして Jedi Outcast(JK2)に対応しました。専用のコマンドセット(JK2 のゲームコードから作成)、専用のゲームフォルダー一覧、72 本のボーンの JK2 スケルトン、NPCs.cfg の NPC、プレイヤーの Kyle、.sab ファイル不要のライトセーバー、JK2 の NPC クラス。ゲームフォルダーや読み込んだ JK2 ミッションから自動で判別します。
+- NPC は JK2 と同じように歩きます。マップの .nav ファイルのウェイポイント網を使う JK2 のナビゲーター、JK2 の走行・歩行速度、目的地手前での減速。カメラ、NPC の武器、ライトセーバーの刃、yavin_swamp の沼の水、雨と雪も JK2 に従います。
+- その場で向きを変える NPC も、ビヘイビアのある思考フレームでのみ向きを変えるようになりました(ゲームと同じく 100 ms ごと)。
+- NPC がジェダイのマインドトリックを受けたときにマップが実行するスクリプト(mindtrickscript)が、マップのスクリプト一覧に表示されます。
+- ミッションのタブはそれぞれ自分のゲームのフォルダーを保ちます。あるタブに Jedi Outcast のミッション、別のタブに Jedi Academy のミッションがある場合、タブを切り替えるとゲームフォルダーとルールも一緒に切り替わります(以前はもう一方のタブがマップを失い、別のゲームのファイルを読んでいました)。
+- NPC はゲームと同じく、どのマップでもふさがれたウェイポイント接続なしで始まります。マップの .nav ファイルにふさがれたものとして保存された接続のせいで遠回りすることはなくなりました。
+- 歩くキャラクターは、ゲームで行く手をふさぐものだけにふさがれます。透明(`SET_INVISIBLE true`)や非固体(`SET_SOLID false`)のキャラクターはもう邪魔にならず、マップに立っているだけのキャラクターは邪魔になります。倒されたキャラクターは死体になるまで道をふさぎ(Movie Duels では 5 秒、OpenJK では 0.5 秒)、スクリプトが動かしたり削除したりした壁やドアは、スクリプトが置いた位置にあります。
+- 動く床やエレベーターに乗ったキャラクターの重力計算が約 60 倍速くなり、結果はまったく同じです(md_roc_jedi:カットシーンごとに 37 秒 → 0.4 秒)。
+- OpenJK ルールでは NPC はビヘイビアのある思考フレームでのみ向きを変えます(ゲームと同じく 100 ms ごと)。旋回には Movie Duels の約 2 倍の時間がかかります。
+- `$tag( "name", ORIGIN )$` / `ANGLES` を使った `SET_ORIGIN` と `SET_ANGLES` は、ゲームと同じくキャラクターを同じ名前の ref_tag またはナビゴールの位置に置きます(これまでは 0 0 0 に置かれ、t2_rancor のランコアと囚人、t1_sour の最後のカイルはマップ原点から落ち続けて歩きませんでした)。そのようなタグがなければコマンドは何もしません。
+- ほかのキャラクターの中に立ったまま再び固体にされた(`SET_SOLID true`)キャラクターは、重なりがなくなってから固体になり、その `set` への `dowait` はゲームと同じだけ待ちます。
+- 倒された Mark1 と Interrogator はゲームと同じく死体にならず、道をふさぎ続けます。
+- 爆発したレーザートリップマインはゲームと同じくターゲットを使い、その先のドア、壁、カウンターが切り替わります(t3_byss:2 個または 4 個のマインが壁を切り替えるカウンターにつながっています)。
+- フォースジャンプを持つ NPC はゲームと同じく跳びます。ウェイポイント網のジャンプ接続を越えるとき、また 2 秒ふさがれたあと目標へ向かって跳びます。
+- 行動状態 BS_JUMP の NPC はゲームと同じくナビゴールの方を向き、しゃがみ、弧を描いて跳んで着地します。ナビゴールへの dowait は着地のあとで終わります。
+- ジャンプはゲームと同じように動きます。地面を離れると脚はジャンプの姿勢に変わり、上半身はジャンプアニメーションを最後まで再生し、着地すると着地アニメーションを再生します。
+- SET_NO_ACROBATICS true の NPC はゲームと同じく跳びません。
+- タブの切り替えや編集でメモリが増え続けなくなりました(39 タブの taspir2:18 タブで 18 GB 超 → 現在約 1.1 GB)。キャラクターは各モデルのコピーを 1 つだけ共有し、前のマップのモデルは解放されます。
+- スクリプトのタブには、そのスクリプトに必要なキャラクターだけが表示されます。スクリプトが一度も使わない、ほかのカットシーンの出演者は描画されず、誰の邪魔にもならず、モデルも読み込まれません(md_am_sith のクレジット:38 人ではなく 10 人)。空のタブではこれまでどおりすべてのキャラクターが表示されます。
+- シーンを準備し直しても、エフェクトに属するモデル(レーザートリップマイン、タレット)のテクスチャーを再度読み込まなくなりました。どのマップでもタブを切り替えてもメモリは増えません。
+- トリガー、スクリプトランナー、use が開始したスクリプトは、ゲームと同じくそのエンティティの次の更新で始まるようになりました(そのフレームでエンティティがすでに更新済みなら 1 フレーム後)。NPC の spawnscript はこれまでどおりすぐに始まります。
+- OpenJK ルールでは ROFF フレームのすべてのノートが発動します。`loop sfx` ノートでエンティティにループサウンドが付き、`USE <スクリプト>` ノートはそのエンティティでスクリプトを開始し、`loop rof absolute|relative` はゲームと同じくパスを最初からやり直します(この場合 `play` のタスクは終わりません)。Movie Duels と Jedi Outcast は引き続き最初のノートだけです。
+- 同じエンティティへの後の `play` は古い ROFF パスのノートを止め、そこから予定された `USE` スクリプトは実行されなくなりました(`move` やファイルのない `play` では、ゲームと同じく古いパスが続きます)。
+- 爆発したレーザートリップマインは、ターゲットの先のスクリプト(カウンターの usescript など)も実行するようになりました。カウントはスクリプトと可動部で共通です。
+- エフェクトはシェーダーのすべてのステージで描かれます(ステージごとのブレンド、色、tcMod、animMap)。爆発はゲームと同じく 2 つのアニメーションステージをクロスフェードします。
+- タレット、据え置き砲、E-Web、セントリーガン、パネルタレット、イオン砲が、スポーン関数の与えるモデルで表示されます。
+- レーザートリップマインは壁に付き、オンのときはビームを出します。use を待つトリップマインは隠れたままです。
+- fx_target_beam のビームがターゲットに向けて発射されます。
+- origin キーのないマップモデルは、ゲームと同じくワールドの原点に立ちます。
+- Movie Duels では fx_lava がゲームの天候システムと同じく空中を溶岩の粒子で満たします。
+- 乗り込める AT-ST(misc_atst_drivable)が、マップ開始時からハッチを開けた姿勢で立ちます。
+- マップがほかの難易度用(または `notsingle`)と指定したエンティティは、ゲームがマップ読み込み時に取り除くため表示されません。キャラクター、モデル、タレット、エフェクト、ブラシモデル、use の対象が対象です(シングルプレイヤーマップ 48 枚で 638 個)。
+- こうして取り除かれたエンティティは、ムーバーのシミュレーション(ドア、ドアのトリガー、プラットフォーム、target_speaker の音)や歩くキャラクターのトレースにも現れず、それを対象にしたスクリプトは何も動かしません。
+- `alphaGen entity` のエフェクトステージは、固定の 1 ではなくパーティクルのアルファ(フェード)を使います。
+- fx_target_beam はスクリプトやトリガーで使われると発射します。単発のビームは使用ごとに 1 回、それ以外はオン(最初の発射は 50 ms 後)またはオフになり、`wait -1` では以降の使用は何もしません。
+- レーザートリップマインは起動時に警告音(warning.wav)とハム音のループ(hum_loop.wav)を、ゲームで聞こえる場所で鳴らします。
+- tcMod(turb、rotate、scroll など)を持つキャラクターのシェーダーステージがゲームと同じように動きます。たとえば皇帝のホログラムのゆらめきです。
+- キャラクターシェーダーの画像が欠けている場合、キャラクターはゲームと同じ表示になります。それより前のステージ、最初の画像が欠けていれば何も表示しない、スキンのないモデルではエンジンの既定の枠テクスチャです。
+- 地面の草・茂み・花・雨の跳ね(`surfaceSprites`)をゲームと同じように描画します。ゲームの三角形ごとのランダム配置により一本ずつ同じ場所に(曲面ではエンジン自身のパッチ三角形と距離 LOD を使用)、サイズのばらつき付きで、距離に応じて薄れ(カメラをズームするとより遠くまで)、`ssWindIdle` で揺れ、天候の風で傾き、雨の跳ね(`ssFXWeather`)は雨のときだけ、霧のボリューム内では霧がかかります(カメラプレビューとスカイポータルでも同様)。このステージが地面に平らなレイヤーとして描かれることはなくなりました。vertical・flattened・oriented・effect に対応し、20 マップ(yavin、dantooine、kamino、t2_rancor など)が対象です。
+- レーザートリップマインはゲームと同じように動作します。100 ms ごとにビームを、ワールド、その時点の位置にあるドアなどの動く部分、キャラクター(まずボックス、次にメッシュ)に対してトレースし直します。キャラクターがビームに入るとマインが爆発し(爆発エフェクトと音、ハム音が止まり、50 ms 後にマインは消えます。キャラクターはスクリプトどおりに動き続けます)、オフで始まるマインは use でオン・オフされます。
+- セントリーガン(misc_sentry_turret)はゲームと同じく、マップ開始または use でオンにされてから 1 秒後に展開して標的がない間はゆっくり左右に旋回し、イオン砲もゲームと同じく自動で発射します(`wait` ms ごと、BURSTS では連射、use で切り替え)。発射ごとに砲口のボルトで env/ion_cannon エフェクトと反動アニメーションが再生されます。イオン砲はゲームと同じく 2 倍のモデルサイズになりました。
+- fx_target_beam はゲームと同じく 1 発ずつ発射します(link、use、`wait`/`random` の間隔つきで 100 ms ごとの think)。各発射はその時点のターゲットの位置を狙い(走行中の func_train へのビームは列車を追います)、ワールド、その位置にあるドアや動く部分、キャラクターのボックスに対してトレースされます。再びオンにされたビームは間隔が過ぎるまで待ち、ビームがリンクされる前(マップ開始から 100 ms)の use は何も起こしません。
+- エフェクトシェーダーの最初のステージも他のステージと同じく rgbGen/alphaGen に従います。rgbGen がなければ画像をパーティクルの色ではなく白で表示し、alphaGen がなければパーティクルと一緒にフェードせず、alphaGen なしの `rgbGen vertex` は一緒にフェードします(他のステージも同様)。ゲームと同じく、たとえばブラスター着弾の炎(gfx/effects/fire_radial)はフェードアウトしなくなりました。
+- スクリプトが名前で呼ぶ NPC でも、選んだ難易度(または `notsingle`)のためにゲームがスポナーを取り除く場合は表示されず、その `affect` ブロックも実行されません。fx_runner がリンクされる前(マップ開始から 400 ms)の use は、ゲームと同じく何も起こしません。
+- `deformVertexes` の wave・bulge・move を持つキャラクターシェーダーが、ゲームと同じように動くようになりました(モデル自身の空間で、エンジンの 1024 段の関数テーブルを使用)。データ中で該当するキャラクターはシャドウ・ヨーダ(md_yoda_shadow)だけで、その煙の面が波打ちます。
+- シーンの再生中に初めて現れるエフェクト(射撃や着弾、それらが起こすエフェクトなど)は、最初から画像付きで描画されます。これまではそれらと後続エフェクトの画像がシーンを準備し直したときにようやく読み込まれ、一部のマップでは 1 つのタブでメモリも余分に使っていました。
+- ゲームフォルダーの .pk3 アーカイブはゲームと同じ順(大文字と小文字を区別しない)に並べられ、正しいアーカイブが優先されます。
+- ドイツ語のガイドは、イベント一覧・モード・エディターをプログラムと同じ言葉で呼ぶようになりました。ガイドは新しい動作を 4 つの言語で説明しています。
+- コンパイル済みスクリプトがさらに 1 本、バイト単位で同じに戻るようになりました(IBIze が別の丸め方をする数値)。
+
 ## rc603 2026-10-19
 [en]
 - Preview, walking: an NPC walking through a door no longer sways in front of an invisible obstacle - a figure that a script moves later (SET_COPY_ORIGIN, SET_ORIGIN) blocks others only from that moment on, like in the game. An NPC that starts walking right next to another figure (Dooku after the saber lock in Movie Duels' md_gd_jedi, and about twenty other cutscenes) no longer jumps hundreds of units at the first step - every step uses the game's frame time.

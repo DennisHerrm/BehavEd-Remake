@@ -271,10 +271,14 @@ void collectNames(MapData& out) {
 
     // Die Schluessel, unter denen eine Entity ein Skript nennt. Alle fuenf
     // kommen in Movie Duels vor; usescript und deathscript am haeufigsten.
+    // rc604 fix604 (JK2 Stufe 3): dazu "mindtrickscript" (behaviorSet
+    // [BSET_MINDTRICK], codeJK2/game/g_spawn.cpp:287, ebenso in code/game) -
+    // in JK2 an bespin_undercity, cairn_assembly und doom_detention.
     static const char* kScriptKeys[] = {"usescript", "spawnscript",
                                         "deathscript", "painscript",
                                         "awakescript", "angerscript",
-                                        "lostenemyscript", "blockedscript"};
+                                        "lostenemyscript", "blockedscript",
+                                        "mindtrickscript"};
 
     for (const MapEntity& e : out.entities) {
         addUnique(out.targetNames, e.targetname);

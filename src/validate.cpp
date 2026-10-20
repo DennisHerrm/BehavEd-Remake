@@ -2,8 +2,10 @@
 //
 // Grundsatz: ein unbekanntes set-Ziel ist eine ANMERKUNG, kein Fehler.
 // Beleg: SET_COLLIDABLE_ROFFS steht in zwei Raven-Skripten, aber weder im
-// JKA-SDK-Header noch in OpenJK - ein Ueberbleibsel aus JK2. Wer solche
-// Werte abweist, zerschiesst beim Oeffnen-und-Speichern fremde Skripte.
+// JKA-SDK-Header noch in OpenJK - auch nicht im JK2-Spielcode
+// (codeJK2/game/Q3_Interface.h, rc604 nachgesehen; data/jk2), also kein
+// JK2-Feld, sondern ein Name, den keine Engine kennt. Wer solche Werte
+// abweist, zerschiesst beim Oeffnen-und-Speichern fremde Skripte.
 
 #include "bhed/validate.h"
 #include "bhed/mpfelder.h"

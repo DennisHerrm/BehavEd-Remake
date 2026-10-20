@@ -2,6 +2,8 @@
 //
 // Die Zeilenangaben beziehen sich auf OpenJK, code/game/.
 #include "bhed/mover.h"
+#include "bhed/gegenstaende.h"   // rc604: spawntBeiSchwierigkeit
+#include "bhed/navlauf.h"        // rc604: kNavKartenSpawnMs
 
 #include <algorithm>
 #include <cctype>
@@ -467,12 +469,33 @@ float moverAnteil(double seitMs, double dauerMs, bool linear) {
     return static_cast<float>(std::sin(f * 3.14159265358979 * 0.5));
 }
 
-void MoverSim::baue(const MapData& map, const BspGeometry& geo,
+void MoverSim::baue(const MapData& karte, const BspGeometry& geo,
                     std::vector<MoverUse> uses, const FigurImKasten& figur,
                     double endeMs) {
+    // rc604: G_SpawnGEntityFromSpawnVars gibt jede Entity mit "notsingle"
+    // oder dem Bit der Schwierigkeit frei, bevor ihre Spawnfunktion laeuft
+    // (code/game/g_spawn.cpp:1064-1075, 1096-1101 OpenJK; :1260-1265 MD):
+    // keine Tuer, kein Ausloesefeld (Think_SpawnNewDoorTrigger), kein
+    // Lautsprecher, kein Ziel fuer G_Find. Der Platz in der Liste bleibt
+    // (die Nummern der Entities gelten weiter), aber leer - worldspawn nicht,
+    // die laeuft ueber SP_worldspawn (G_SpawnEntitiesFromString).
+    MapData gefiltert;
+    const MapData* quelle = &karte;
+    if (spielstufe >= 0) {
+        gefiltert = karte;
+        for (MapEntity& e : gefiltert.entities) {
+            if (e.classname != "worldspawn" && !spawntBeiSchwierigkeit(e, spielstufe)) {
+                e = MapEntity{};
+            }
+        }
+        quelle = &gefiltert;
+    }
+    const MapData& map = *quelle;
     mover_.clear();
     tuerWechsel_.clear();   // rc601 (bewegung, teil 3)
     fx_.clear();
+    strahl_.clear();   // rc604
+    entityUse_.clear();   // rc604: Fallen, Ionenkanonen, Wachgeschuetze
     auf_.clear();
     bruch_.clear();
     bruchFx_.clear();
@@ -512,6 +535,15 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
     // --- fx_runner, die auf ein use warten --------------------------------
     struct Runner { std::size_t entity; bool oneShot; bool an = false; std::size_t offen = 0; };
     std::vector<Runner> runner;
+    // rc604: fx_target_beam (code/game/g_fx.cpp:994-1167 OpenJK)
+    struct Strahl {
+        std::size_t entity;
+        bool oneShot;
+        bool an = false;
+        std::size_t offen = 0;
+        double ohneUseAb = -1.0;   // wait < 0: ab dem ersten fire_start kein use mehr
+    };
+    std::vector<Strahl> strahlen;
     // Sichtbarkeit, Drehung, Pendeln: Mover mit use-Umschalter
     std::vector<int> moverVonEntity(map.entities.size(), -1);
     // Zerbrechliches, Zuege, Lautsprecher, Lichter: Entity -> Index
@@ -533,6 +565,33 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
             if ((sf & 3) != 0) {
                 runner.push_back(Runner{ei, (sf & 2) != 0});
             }
+            continue;
+        }
+        // rc604: fx_target_beam_link (g_fx.cpp:1124-1167 OpenJK) - ohne target
+        // (G_Find findet nichts) gibt G_FreeEntity den Strahl frei. STARTOFF (1)
+        // und ONE_SHOT (8) warten auf ein use, sonst laeuft think ab dem Laden.
+        // Die use-Funktion setzt link immer; fx_target_beam_set_debounce
+        // (:994-1008) nimmt sie bei wait < 0 im ersten fire_start wieder weg.
+        if (e.classname == "fx_target_beam") {
+            const std::string ziel = text(e, "target");
+            bool zielDa = false;
+            for (const MapEntity& z : map.entities) {
+                if (!ziel.empty() && z.targetname == ziel) {
+                    zielDa = true;
+                    break;
+                }
+            }
+            if (!zielDa) { continue; }
+            const int sf = ganz(e, "spawnflags");
+            Strahl st{ei, (sf & 8) != 0};
+            const bool warteNie = zahl(e, "wait", 0.0F) < 0.0F;
+            if ((sf & (1 | 8)) == 0) {
+                strahl_.push_back(FxRunnerStart{ei, -1.0, false, -1.0});
+                st.an = true;
+                st.offen = strahl_.size() - 1;
+                if (warteNie) { st.ohneUseAb = 0.0; }   // feuert schon beim Laden
+            }
+            strahlen.push_back(st);
             continue;
         }
         if (e.classname == "misc_model_breakable") {
@@ -1425,6 +1484,11 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
     };
 
     // G_UseTargets2: alles mit diesem targetname
+    // rc605 (fix605): target_counter - count (SP_target_counter: ohne 2,
+    // max_health = count) und bounceCount je Entity (g_target.cpp:579-641
+    // OpenJK, :647-715 MD).
+    struct Zaehler { int count = 2; int max = 2; int bounce = 0; };
+    std::map<std::size_t, Zaehler> zaehler;
     benutze = [&](const std::string& ziel, double t, int tiefe, const std::string& ausloeser) {
         if (ziel.empty() || tiefe > 16) {
             return;
@@ -1502,7 +1566,42 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 }
                 continue;
             }
+            if (e.classname == "fx_target_beam") {
+                entityUse_.emplace_back(ei, t);   // rc604: fuer zielStrahlFeuer
+                // fx_target_beam_use (g_fx.cpp:1091-1109 OpenJK): ONE_SHOT feuert
+                // sofort (fx_target_beam_fire), think bleibt aus; sonst think an
+                // (nextthink = level.time + 50 -> fire_start) oder aus.
+                for (Strahl& st : strahlen) {
+                    if (st.entity != ei) { continue; }
+                    if (st.ohneUseAb >= 0.0 && t >= st.ohneUseAb) { continue; }   // e_UseFunc = useF_NULL
+                    if (st.oneShot) {
+                        strahl_.push_back(FxRunnerStart{ei, t, true, -1.0});
+                    } else if (!st.an) {
+                        strahl_.push_back(FxRunnerStart{ei, t + 50.0, false, -1.0});
+                        st.an = true;
+                        st.offen = strahl_.size() - 1;
+                        if (zahl(e, "wait", 0.0F) < 0.0F) { st.ohneUseAb = t + 50.0; }
+                    } else {
+                        strahl_[st.offen].bisMs = t;
+                        st.an = false;
+                    }
+                }
+                continue;
+            }
+            if (e.classname == "misc_trip_mine" || e.classname == "misc_ion_cannon" ||
+                e.classname == "misc_sentry_turret") {
+                // rc604: misc_trip_mine_activate (g_misc.cpp:1799-1817 OpenJK),
+                // ion_cannon_use (g_turret.cpp:2028-2041), pas_use (:1395-1411) -
+                // was daraus folgt, rechnen laserfalleLauf, ionenkanoneLauf und
+                // pasAufklappenMs.
+                entityUse_.emplace_back(ei, t);
+                continue;
+            }
             if (e.classname == "fx_runner") {
+                // rc604: e_UseFunc setzt erst fx_runner_link, 400 ms nach dem
+                // Spawnen (SP_fx_runner, code/game/g_fx.cpp:262-263, 226-230
+                // OpenJK) - ein use davor trifft keine use-Funktion.
+                if (t < kNavKartenSpawnMs + 400.0) { continue; }
                 for (Runner& r : runner) {
                     if (r.entity != ei) { continue; }
                     if (r.oneShot) {
@@ -1518,8 +1617,40 @@ void MoverSim::baue(const MapData& map, const BspGeometry& geo,
                 }
                 continue;
             }
-            if (tiefe < 0 && (e.classname == "target_relay" || e.classname == "target_delay")) {
+            if (tiefe < 0 && (e.classname == "target_relay" || e.classname == "target_delay" ||
+                              e.classname == "target_counter")) {
                 continue;   // die Ziele kamen schon einzeln
+            }
+            if (e.classname == "target_counter") {
+                // rc605 (fix605): target_counter_use (g_target.cpp:579-626 OpenJK):
+                // bei count 0 nichts; sonst count--; bleibt etwas, target2
+                // (G_UseTargets2); sonst G_UseTargets - und mit bounceCount
+                // (-1: immer) wieder von vorn. Unaufgeloest kommen nur die uses,
+                // die der Nachbau nicht kennt (die Ziele einer misc_trip_mine,
+                // WP_Explode) - der Nachbau rechnet seine Zaehler selbst
+                // (ablauf.cpp), ohne den Stand von hier.
+                auto it = zaehler.find(ei);
+                if (it == zaehler.end()) {
+                    Zaehler z;
+                    z.count = ganz(e, "count");
+                    if (z.count == 0) { z.count = 2; }
+                    z.max = z.count;
+                    z.bounce = ganz(e, "bounceCount");
+                    it = zaehler.emplace(ei, z).first;
+                }
+                Zaehler& z = it->second;
+                if (z.count == 0) { continue; }
+                --z.count;
+                if (z.count != 0) {
+                    benutze(text(e, "target2"), t, tiefe + 1, ausloeser);
+                    continue;
+                }
+                benutze(text(e, "target"), t, tiefe + 1, ausloeser);
+                if (z.count == 0 && z.bounce != 0) {
+                    z.count = z.max;
+                    if (z.bounce > 0) { --z.bounce; }
+                }
+                continue;
             }
             if (e.classname == "target_relay") {
                 // target_relay_use: nach "delay" die Ziele
@@ -2016,4 +2147,476 @@ bool tuerStellungen(const MapEntity& e, const BspGeometry& geo, float pos1[3], f
     }
     return true;
 }
+}  // namespace bhed
+
+// =====================================================================
+// rc604: misc_trip_mine - laserTrapThink, WP_Explode, misc_trip_mine_activate
+// =====================================================================
+namespace bhed {
+
+LaserfalleErgebnis laserfalleLauf(const LaserfalleEingabe& e, const LaserfalleSpurFn& spur) {
+    LaserfalleErgebnis r;
+    constexpr double kFrametime = 100.0;   // FRAMETIME (g_local.h)
+    constexpr double kUnendlich = 1.0e300;
+    enum class Denken : std::uint8_t { Nichts, Falle, Frei };
+    Denken denken = Denken::Nichts;
+    double naechstes = kUnendlich;   // nextthink
+    bool feuert = false;             // EF_FIRING
+    if (e.sichtbarAbSpawn) { r.sichtbarAbMs = e.spawnMs; }
+    // SP_misc_trip_mine (g_misc.cpp:1854-1857 OpenJK): an ohne targetname oder
+    // mit START_ON -> misc_trip_mine_activate: think ein FRAMETIME spaeter.
+    if (e.anAbSpawn) {
+        denken = Denken::Falle;
+        naechstes = e.spawnMs + kFrametime;
+    }
+    const auto schliesse = [&r](double t) {
+        if (!r.strahlen.empty() && r.strahlen.back().bisMs < 0.0) { r.strahlen.back().bisMs = t; }
+        if (!r.summen.empty() && r.summen.back().second < 0.0) { r.summen.back().second = t; }
+    };
+    std::size_t ui = 0;
+    const float mn[3] = {-4.0F, -4.0F, -4.0F};
+    const float mx[3] = {4.0F, 4.0F, 4.0F};
+    for (int grenze = 0; grenze < 1000000; ++grenze) {
+        while (ui < e.uses.size() && (!e.hatUse || e.uses[ui] < e.spawnMs)) { ++ui; }
+        const double tUse = ui < e.uses.size() ? e.uses[ui] : kUnendlich;
+        const double tDenk = denken == Denken::Nichts ? kUnendlich : naechstes;
+        if (std::min(tUse, tDenk) > e.endeMs) { break; }
+        if (tUse < tDenk) {
+            ++ui;
+            if (denken == Denken::Falle) {
+                // misc_trip_mine_activate, Zweig "aus" (g_misc.cpp:1801-1807):
+                // EF_FIRING und loopSound weg, kein think mehr.
+                feuert = false;
+                schliesse(tUse);
+                denken = Denken::Nichts;
+                naechstes = kUnendlich;
+            } else {
+                // Zweig "an" (g_misc.cpp:1808-1816): think = laserTrapThink in
+                // FRAMETIME, EF_NODRAW weg. (Auch in den 50 ms nach WP_Explode:
+                // das think G_FreeEntity wird dann ersetzt.)
+                denken = Denken::Falle;
+                naechstes = tUse + kFrametime;
+                if (r.sichtbarAbMs >= 1.0e299) { r.sichtbarAbMs = tUse; }
+            }
+            continue;
+        }
+        const double t = tDenk;
+        if (denken == Denken::Frei) {
+            r.wegMs = t;   // G_FreeEntity (WP_Explode, g_weapon.cpp:228-229)
+            break;
+        }
+        // laserTrapThink (wp_trip_mine.cpp:130-175 OpenJK)
+        if (!feuert) {
+            r.scharfMs.push_back(t);
+            r.summen.emplace_back(t, -1.0);
+            feuert = true;
+        }
+        naechstes = t + kFrametime;
+        float ende[3];
+        for (int q = 0; q < 3; ++q) { ende[q] = e.ort[q] + 2048.0F * e.richtung[q]; }
+        const LaserfalleSpur s = spur(t, e.origin2, mn, mx, ende);
+        if (s.figur || s.startsolid) {
+            // WP_Explode: loopSound 0, Effekt, think G_FreeEntity in 50 ms;
+            // EF_FIRING weg - der Strahl dieses Bildes wird nicht gezeichnet.
+            r.explosionen.push_back(t);
+            schliesse(t);
+            feuert = false;
+            denken = Denken::Frei;
+            naechstes = t + 50.0;
+            continue;
+        }
+        // pos4 = tr.endpos: das Ende des Strahls bis zum naechsten Denken.
+        if (!r.strahlen.empty() && r.strahlen.back().bisMs < 0.0) {
+            const LaserfalleStrahl& alt = r.strahlen.back();
+            if (alt.ende[0] == s.endpos[0] && alt.ende[1] == s.endpos[1] && alt.ende[2] == s.endpos[2]) { continue; }
+            r.strahlen.back().bisMs = t;
+        }
+        LaserfalleStrahl neu;
+        neu.abMs = t;
+        for (int q = 0; q < 3; ++q) { neu.ende[q] = s.endpos[q]; }
+        r.strahlen.push_back(neu);
+    }
+    return r;
+}
+
+KastenSpur figurKastenSpur(const float start[3], const float ende[3], const float mins[3], const float maxs[3],
+                      const float kastenMin[3], const float kastenMax[3]) {
+    // CM_TraceThroughBrush (code/qcommon/cm_trace.cpp) mit den sechs
+    // achsparallelen Seiten des Kastens (CM_TempBoxModel); dist -
+    // DotProduct(offsets[signbits], normal) weitet jede Seite um den Kasten
+    // der Spur.
+    constexpr float kEpsilon = 0.125F;   // SURFACE_CLIP_EPSILON
+    KastenSpur r;
+    float enterFrac = -1.0F;
+    float leaveFrac = 1.0F;
+    bool getout = false;
+    bool startout = false;
+    for (int seite = 0; seite < 6; ++seite) {
+        const int achse = seite >> 1;
+        const bool positiv = (seite & 1) == 0;
+        // +Achse: normal +1, dist = kastenMax, offsets[signbits] = mins;
+        // -Achse: normal -1, dist = -kastenMin, offsets = maxs.
+        const float dist = positiv ? kastenMax[achse] - mins[achse] : -kastenMin[achse] + maxs[achse];
+        const float d1 = (positiv ? start[achse] : -start[achse]) - dist;
+        const float d2 = (positiv ? ende[achse] : -ende[achse]) - dist;
+        if (d2 > 0.0F) { getout = true; }
+        if (d1 > 0.0F) { startout = true; }
+        if (d1 > 0.0F && (d2 >= kEpsilon || d2 >= d1)) { return r; }
+        if (d1 <= 0.0F && d2 <= 0.0F) { continue; }
+        if (d1 > d2) {
+            float f = (d1 - kEpsilon) / (d1 - d2);
+            if (f < 0.0F) { f = 0.0F; }
+            if (f > enterFrac) {
+                enterFrac = f;
+                for (float& n : r.normale) { n = 0.0F; }
+                r.normale[achse] = positiv ? 1.0F : -1.0F;   // clipplane
+            }
+        } else {
+            float f = (d1 + kEpsilon) / (d1 - d2);
+            if (f > 1.0F) { f = 1.0F; }
+            if (f < leaveFrac) { leaveFrac = f; }
+        }
+    }
+    if (!startout) {
+        for (float& n : r.normale) { n = 0.0F; }
+        r.startsolid = true;
+        if (!getout) {
+            r.allsolid = true;
+            r.fraction = 0.0F;
+        }
+        return r;
+    }
+    if (enterFrac < leaveFrac && enterFrac > -1.0F && enterFrac < r.fraction) {
+        r.fraction = enterFrac < 0.0F ? 0.0F : enterFrac;
+    } else {
+        for (float& n : r.normale) { n = 0.0F; }
+    }
+    return r;
+}
+
+bool g2RadiusTreffer(const std::vector<float>& ecken, const std::vector<std::uint32_t>& idx, const float start[3],
+                     const float ende[3], float radius) {
+    // G2_RadiusTracePolys (code/rd-vanilla/G2_misc.cpp:1254-1460 OpenJK),
+    // woertlich: zwei Achsen quer zum Strahl (basis1/basis2, theta 0), s/t/u
+    // je Ecke, sechs Seitenbits; die ganze Flaeche faellt weg, wenn eine Seite
+    // alle Ecken ausschliesst, ein Dreieck trifft, wenn keine Seite alle drei
+    // seiner Ecken ausschliesst.
+    const auto kreuz = [](const float a[3], const float b[3], float o[3]) {
+        o[0] = a[1] * b[2] - a[2] * b[1];
+        o[1] = a[2] * b[0] - a[0] * b[2];
+        o[2] = a[0] * b[1] - a[1] * b[0];
+    };
+    const auto punkt = [](const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+    const auto normiere = [&punkt](float v[3]) {
+        const float l = std::sqrt(punkt(v, v));
+        if (l != 0.0F) {
+            const float il = 1.0F / l;
+            for (int q = 0; q < 3; ++q) { v[q] *= il; }
+        }
+    };
+    if (radius == 0.0F || ecken.size() < 3U) { return false; }
+    float basis1[3];
+    float basis2[3] = {0.0F, 0.0F, 1.0F};
+    float dir[3] = {ende[0] - start[0], ende[1] - start[1], ende[2] - start[2]};
+    kreuz(dir, basis2, basis1);
+    if (punkt(basis1, basis1) < 0.1F) {
+        basis2[0] = 0.0F;
+        basis2[1] = 1.0F;
+        basis2[2] = 0.0F;
+        kreuz(dir, basis2, basis1);
+    }
+    kreuz(dir, basis1, basis2);
+    normiere(basis1);
+    normiere(basis2);
+    const float c = std::cos(0.0F);
+    const float sn = std::sin(0.0F);
+    float taxis[3];
+    float saxis[3];
+    for (int q = 0; q < 3; ++q) {
+        taxis[q] = basis1[q] * (0.5F * c / radius) + basis2[q] * (0.5F * sn / radius);
+        saxis[q] = basis1[q] * (-0.5F * sn / radius) + basis2[q] * (0.5F * c / radius);
+    }
+    const float f = punkt(dir, dir);
+    if (f == 0.0F) { return false; }
+    for (float& d : dir) { d /= f; }
+    const std::size_t n = ecken.size() / 3U;
+    std::vector<int> eckBits(n, 0);
+    int flags = 63;
+    for (std::size_t j = 0; j < n; ++j) {
+        const float delta[3] = {ecken[j * 3] - start[0], ecken[j * 3 + 1] - start[1], ecken[j * 3 + 2] - start[2]};
+        const float s = punkt(delta, saxis) + 0.5F;
+        const float t = punkt(delta, taxis) + 0.5F;
+        const float u = punkt(delta, dir);
+        int v = 0;
+        if (s > 0.0F) { v |= 1; }
+        if (s < 1.0F) { v |= 2; }
+        if (t > 0.0F) { v |= 4; }
+        if (t < 1.0F) { v |= 8; }
+        if (u > 0.0F) { v |= 16; }
+        if (u < 1.0F) { v |= 32; }
+        v = ~v;
+        flags &= v;
+        eckBits[j] = v;
+    }
+    if (flags != 0) { return false; }
+    for (std::size_t j = 0; j + 2 < idx.size(); j += 3) {
+        if (idx[j] >= n || idx[j + 1] >= n || idx[j + 2] >= n) { continue; }
+        if ((63 & eckBits[idx[j]] & eckBits[idx[j + 1]] & eckBits[idx[j + 2]]) == 0) { return true; }
+    }
+    return false;
+}
+
+}  // namespace bhed
+
+// =====================================================================
+// rc604: Knochenanimation der Geschuetze, ion_cannon_think, pas_think
+// =====================================================================
+namespace bhed {
+
+void g2Bild(const KnochenAnim& a, double ms, int& bild, int& naechstes, float& lerp) {
+    // G2_TimingModel (code/rd-vanilla/tr_ghoul2.cpp:951-1150 OpenJK) fuer
+    // animSpeed > 0 ohne Schleife: BONE_ANIM_OVERRIDE_FREEZE haelt am Ende
+    // endFrame - 1.
+    float zeit = static_cast<float>((ms - a.startMs) / 50.0);
+    if (zeit < 0.0F) { zeit = 0.0F; }
+    const float neu = static_cast<float>(a.startFrame) + zeit * a.speed;
+    const float ende = static_cast<float>(a.endFrame);
+    if (a.endFrame - a.startFrame != 0 && a.speed > 0.0F && neu > ende - 1.0F) {
+        bild = a.endFrame - 1;
+        naechstes = bild;
+        lerp = 0.0F;
+        return;
+    }
+    bild = static_cast<int>(neu);
+    lerp = neu - static_cast<float>(bild);
+    naechstes = bild + 1;
+    if (naechstes >= a.endFrame) { naechstes = a.endFrame - 1; }
+}
+
+namespace {
+// Q_flrand(-1, 1) / Q_irand(lo, hi) der Vorschau: stabil aus einer Saat (die
+// Folge des Spiels haengt an seinem Zufallsgenerator und ist nicht
+// nachzurechnen).
+float flrandMinusEins(std::uint64_t saat, int n) {
+    std::uint64_t h = saat ^ (0x9e3779b97f4a7c15ULL * static_cast<std::uint64_t>(n + 1));
+    h ^= h >> 33U;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33U;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33U;
+    return static_cast<float>(static_cast<double>(h >> 11U) / 9007199254740992.0) * 2.0F - 1.0F;
+}
+int irand(std::uint64_t saat, int n, int lo, int hi) {
+    const float f = (flrandMinusEins(saat, n) + 1.0F) * 0.5F;
+    int r = lo + static_cast<int>(f * static_cast<float>(hi - lo + 1));
+    if (r > hi) { r = hi; }
+    return r;
+}
+}  // namespace
+
+IonenkanoneErgebnis ionenkanoneLauf(const IonenkanoneEingabe& e) {
+    // SP_misc_ion_cannon (code/game/g_turret.cpp:2064-2130 OpenJK): wait 1500
+    // (mindestens 500), random 400, delay 6000 (mindestens 1000); ohne
+    // START_OFF denkt sie ab spawn + wait + Q_flrand(-1,1) * random, BURSTS:
+    // count = Q_irand(0,5). ion_cannon_use (:2028-2041): ohne think -> think in
+    // FRAMETIME ("fires right on being used"), sonst think weg.
+    // ion_cannon_think (:1930-1976): BURSTS ohne count -> nextthink = delay +
+    // Q_flrand * random, count neu, kein Schuss; sonst count--, Schuss
+    // (G_PlayEffect "env/ion_cannon" am Bolzen *flash02, G_UseTargets2),
+    // Animation 0..8 mit 0.6 (BONE_ANIM_OVERRIDE_FREEZE), nextthink = wait +
+    // Q_flrand * random.
+    IonenkanoneErgebnis r;
+    constexpr double kUnendlich = 1.0e300;
+    float wait = e.wait == 0.0F ? 1500.0F : (e.wait < 500.0F ? 500.0F : e.wait);
+    const float random = e.random == 0.0F ? 400.0F : e.random;
+    float delay = e.delay == 0.0F ? 6000.0F : (e.delay < 1000.0F ? 1000.0F : e.delay);
+    int wurf = 0;
+    bool denkt = !e.startOff;
+    double naechstes = denkt ? e.spawnMs + wait + flrandMinusEins(e.saat, wurf++) * random : kUnendlich;
+    int count = e.bursts ? irand(e.saat, wurf++, 0, 5) : 0;
+    std::size_t ui = 0;
+    for (int grenze = 0; grenze < 1000000; ++grenze) {
+        while (ui < e.uses.size() && e.uses[ui] < e.spawnMs) { ++ui; }
+        const double tUse = ui < e.uses.size() ? e.uses[ui] : kUnendlich;
+        const double tDenk = denkt ? naechstes : kUnendlich;
+        if (std::min(tUse, tDenk) > e.endeMs) { break; }
+        if (tUse < tDenk) {
+            ++ui;
+            if (!denkt) {
+                denkt = true;
+                naechstes = tUse + 100.0;   // FRAMETIME
+            } else {
+                denkt = false;
+            }
+            continue;
+        }
+        const double t = tDenk;
+        if (e.bursts) {
+            if (count != 0) {
+                --count;
+            } else {
+                naechstes = t + delay + flrandMinusEins(e.saat, wurf++) * random;
+                count = irand(e.saat, wurf++, 0, 5);
+                continue;
+            }
+        }
+        r.schuesse.push_back(t);
+        naechstes = t + wait + flrandMinusEins(e.saat, wurf++) * random;
+    }
+    (void)delay;
+    (void)wait;
+    return r;
+}
+
+double pasAufklappenMs(bool startOff, double spawnMs, const std::vector<double>& uses, double endeMs) {
+    // SP_PAS (code/game/g_turret.cpp:1784-1890 OpenJK): ohne START_OFF denkt
+    // pas_think ab spawn + 1000. pas_use (:1395-1411) kippt spawnflags & 1: an
+    // -> think in 50 ms, aus -> kein think. Das erste pas_think (damage 0)
+    // klappt auf: G2API_SetBoneAnimIndex(rootBone, 0, 11, FREEZE, 0.8).
+    bool aus = startOff;
+    double denken = aus ? 1.0e300 : spawnMs + 1000.0;
+    for (const double u : uses) {
+        if (u < spawnMs) { continue; }
+        if (u > endeMs) { break; }
+        if (denken <= u) { break; }   // schon gedacht -> aufgeklappt
+        aus = !aus;
+        denken = aus ? 1.0e300 : u + 50.0;
+    }
+    return denken <= endeMs ? denken : -1.0;
+}
+
+std::vector<PasSchwenk> pasSchwenkLauf(bool startOff, double spawnMs, const std::vector<double>& uses, double endeMs,
+                                       float gier, int count) {
+    // AngleNormalize360 (q_math.cpp): auf 65536 Stufen.
+    const auto norm360 = [](float a) {
+        return static_cast<float>((360.0 / 65536) * (static_cast<int>(a * (65536 / 360.0)) & 65535));
+    };
+    std::vector<PasSchwenk> r;
+    bool aus = startOff;
+    bool aufgeklappt = false;   // ent->damage
+    double denken = aus ? 1.0e300 : spawnMs + 1000.0;
+    float speed = gier;         // SP_PAS: base->speed = base->s.angles[YAW]
+    std::size_t naechsterUse = 0;
+    while (true) {
+        while (naechsterUse < uses.size() && uses[naechsterUse] < spawnMs) { ++naechsterUse; }
+        const bool useZuerst = naechsterUse < uses.size() && uses[naechsterUse] <= endeMs && uses[naechsterUse] < denken;
+        if (useZuerst) {
+            // pas_use (g_turret.cpp:1395-1411 OpenJK): spawnflags ^= 1; aus ->
+            // nextthink 0, an -> level.time + 50.
+            const double u = uses[naechsterUse++];
+            aus = !aus;
+            denken = aus ? 1.0e300 : u + 50.0;
+            continue;
+        }
+        if (denken > endeMs) { break; }
+        if (!aufgeklappt) {
+            // "let us do our animation": damage = 1, nextthink + 1200.
+            aufgeklappt = true;
+            denken += 1200.0;
+            continue;
+        }
+        // count > 0: ohne Feind schiesst es nie (count-- nur mit ent->enemy).
+        speed = norm360(speed);
+        const auto levelZeit = static_cast<int>(std::lround(denken - spawnMs + 1000.0));
+        // "no enemy, so make us slowly sweep back and forth": sin() der C-Bibliothek (double).
+        const auto diff = static_cast<float>(std::sin(static_cast<float>(levelZeit) * 0.0001F + static_cast<float>(count)) * 2.0F);
+        if (std::fabs(diff) > 0.25F) {
+            if (std::fabs(diff) > 10.0F) {
+                speed += diff > 0.0F ? -10.0F : 10.0F;
+            } else {
+                speed -= diff;
+            }
+        }
+        // back_angles = (0, 0, speed - s.angles[YAW]) fuer bone_hinge; front_angles
+        // (-random, 0, 0) bleiben ohne Feind 0 (random wird nie gesetzt).
+        r.push_back(PasSchwenk{denken, speed - gier});
+        denken += 100.0;   // FRAMETIME
+    }
+    return r;
+}
+
+}  // namespace bhed
+
+// =====================================================================
+// rc604: fx_target_beam - link, use, think, Abklingzeit (g_fx.cpp OpenJK)
+// =====================================================================
+namespace bhed {
+
+std::vector<double> zielStrahlFeuer(const ZielStrahlEingabe& e) {
+    // SP_fx_target_beam (code/game/g_fx.cpp:1186-1225 OpenJK): wait/random in
+    // Sekunden * 1000, think fx_target_beam_link nach START_TIME_LINK_ENTS.
+    // fx_target_beam_link (:1124-1167): attackDebounceTime = level.time,
+    // e_UseFunc erst jetzt (ein use davor trifft keine use-Funktion);
+    // STARTOFF: kein think, sonst ohne ONE_SHOT think in FRAMETIME.
+    // fx_target_beam_think (:1112-1121): solange attackDebounceTime > level.time
+    // in FRAMETIME wieder, sonst fx_target_beam_fire_start (:1081-1088):
+    // fx_target_beam_set_debounce (:994-1008: wait >= FRAMETIME -> level.time +
+    // wait + Q_irand(-random, random), wait < 0 -> e_UseFunc = NULL, sonst
+    // FRAMETIME + Q_irand), think in FRAMETIME, fx_target_beam_fire.
+    // fx_target_beam_use (:1091-1109): ONE_SHOT feuert sofort und nimmt das
+    // think weg; ohne think -> think in 50 ms; sonst think weg.
+    std::vector<double> feuer;
+    constexpr double kFrametime = 100.0;
+    constexpr double kUnendlich = 1.0e300;
+    const double linkMs = e.spawnMs + kFrametime;   // START_TIME_LINK_ENTS = FRAMETIME * 1
+    if (linkMs > e.endeMs || !e.zielDa) { return feuer; }
+    double abkling = linkMs;   // attackDebounceTime
+    bool denkt = false;
+    double naechstes = kUnendlich;
+    bool useDa = true;
+    if (!e.startOff && !e.oneShot) {
+        denkt = true;
+        naechstes = linkMs + kFrametime;
+    }
+    std::size_t ui = 0;
+    int wurf = 0;
+    const auto irand = [&e, &wurf](float r) {
+        // Q_irand(-random, random): stabil aus der Saat (siehe ionenkanoneLauf).
+        if (r <= 0.0F) { return 0.0; }
+        std::uint64_t h = e.saat ^ (0x9e3779b97f4a7c15ULL * static_cast<std::uint64_t>(++wurf));
+        h ^= h >> 31U;
+        h *= 0xbf58476d1ce4e5b9ULL;
+        h ^= h >> 27U;
+        const int lo = -static_cast<int>(r);
+        const int hi = static_cast<int>(r);
+        return static_cast<double>(lo + static_cast<int>(h % static_cast<std::uint64_t>(hi - lo + 1)));
+    };
+    for (int grenze = 0; grenze < 1000000; ++grenze) {
+        while (ui < e.uses.size() && e.uses[ui] < linkMs) { ++ui; }   // vor dem link: keine use-Funktion
+        const double tUse = ui < e.uses.size() ? e.uses[ui] : kUnendlich;
+        const double tDenk = denkt ? naechstes : kUnendlich;
+        if (std::min(tUse, tDenk) > e.endeMs) { break; }
+        if (tUse < tDenk) {
+            ++ui;
+            if (!useDa) { continue; }
+            if (e.oneShot) {
+                feuer.push_back(tUse);   // fx_target_beam_fire, danach thinkF_NULL
+                denkt = false;
+            } else if (!denkt) {
+                denkt = true;
+                naechstes = tUse + 50.0;
+            } else {
+                denkt = false;
+            }
+            continue;
+        }
+        const double t = tDenk;
+        if (abkling > t) {
+            naechstes = t + kFrametime;
+            continue;
+        }
+        // fx_target_beam_fire_start
+        if (e.waitMs >= kFrametime) {
+            abkling = t + e.waitMs + irand(e.randomMs);
+        } else if (e.waitMs < 0.0F) {
+            useDa = false;
+        } else {
+            abkling = t + kFrametime + irand(e.randomMs);
+        }
+        naechstes = t + kFrametime;
+        feuer.push_back(t);
+    }
+    return feuer;
+}
+
 }  // namespace bhed

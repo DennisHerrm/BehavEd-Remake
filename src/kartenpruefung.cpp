@@ -159,6 +159,11 @@ bool weltKennt(const std::string& k) {
         "tcmod turb", "tcmod scale", "tcmod scroll", "tcmod stretch", "tcmod transform", "tcmod rotate",
         "deformvertexes autosprite", "deformvertexes autosprite2", "deformvertexes bulge",
         "deformvertexes wave", "deformvertexes normal", "deformvertexes move",
+        // rc604: surfaceSprites als Halme wie RB_DrawSurfaceSprites
+        // (gui/app_gras.cpp, bhed/grasflaechen.h) - die Stufe liegt nicht
+        // mehr als Schicht auf dem Boden.
+        "surfacesprites vertical", "surfacesprites oriented", "surfacesprites effect",
+        "surfacesprites flattened",
     };
     return kJa.count(k) != 0U;
 }
@@ -212,27 +217,42 @@ std::vector<std::string> fehlendeMerkmale(const ShaderAnweisungen& s, Zusammenha
         return fehlt;
     }
     if (z == Zusammenhang::Effekt) {
-        // Effektteilchen (efxdraw.cpp): EIN Bild je Teilchen mit der Mischart
-        // der Bildstufe; seit rc602 geht eine glow-Stufe ins Gluehen
-        // (zeichneGluehen, Durchgang 1c). Weitere Stufen zeichnen sie nicht.
-        int stufen = 0;
+        // Effektteilchen (efxdraw.cpp): seit rc604 fix604b ALLE Stufen des
+        // Shaders wie RB_IterateStagesGeneric (tr_shade.cpp) - je Stufe
+        // blendFunc, rgbGen/alphaGen, tcMod, animMap (gui/app_view3d.cpp,
+        // effektStufeFarbe). Es fehlt, was auch die Welt nicht nachbildet.
         for (const auto& st : s.stufen) {
-            if (!st.empty()) { ++stufen; }
+            for (const std::string& k : st) {
+                // rc604: Halme zeichnet die Vorschau nur auf Kartenflaechen -
+                // auf einem Effektteilchen bleibt surfaceSprites eine Luecke.
+                if (k.rfind("surfacesprites", 0) == 0) {
+                    dazu(fehlt, "effekt: " + k);
+                    continue;
+                }
+                if (k.rfind("ss", 0) == 0 || ohneLuecke(k) || !spielKennt(k) || weltKennt(k)) { continue; }
+                dazu(fehlt, "effekt: " + k);
+            }
         }
-        if (stufen > 1) { dazu(fehlt, "effekt: weitere stufe"); }
         return fehlt;
     }
     // Figur (zeichneFigurIn): seit rc602 ALLE Stufen des Skripts (Skript vor
     // Bild, rgbGen/alphaGen nach ComputeColors, tcGen environment, animMap,
-    // glow) - bhed/figurstufen.h. Es fehlen tcMod, deformVertexes, videoMap
+    // glow) - bhed/figurstufen.h; seit rc604 fix604b auch tcMod (die Kette wie
+    // an der Karte, gpumap_win32.cpp texModWerte), seit rc604 deformVertexes
+    // wave, bulge und move (der Figuren-Vertexshader, gpushader.cpp). Es
+    // fehlen die uebrigen deformVertexes (normal, autosprite, ...), videoMap
     // und die seltenen alphaGen dot/oneMinusDot/portal/entity.
     (void)hautName;
     for (const std::string& k : s.oben) {
-        if (k.rfind("deformvertexes", 0) == 0) { dazu(fehlt, "figur: " + k); }
+        if (k.rfind("deformvertexes", 0) == 0 && k != "deformvertexes wave" && k != "deformvertexes bulge" &&
+            k != "deformvertexes move") {
+            dazu(fehlt, "figur: " + k);
+        }
     }
     for (const auto& st : s.stufen) {
         for (const std::string& k : st) {
-            if (k.rfind("tcmod", 0) == 0 || k == "videomap" || k == "alphagen dot" || k == "alphagen oneminusdot" ||
+            if ((k.rfind("tcmod", 0) == 0 && !weltKennt(k)) || k == "videomap" || k == "alphagen dot" ||
+                k == "alphagen oneminusdot" ||
                 k == "alphagen portal" || k == "alphagen entity" || k == "alphagen oneminusentity") {
                 dazu(fehlt, "figur: " + k);
             }

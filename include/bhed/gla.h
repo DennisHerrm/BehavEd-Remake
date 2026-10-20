@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bhed {
@@ -135,6 +136,15 @@ struct GlaAnimation {
     // worldMatrices. Ohne sie mischte ein Bein gegen einen Oberkoerper.
     void worldMatricesLerp(int frameA, int frameB, float t,
                            const std::vector<BoneFrameOverride>& over,
+                           std::vector<BoneMatrix>& out) const;
+    // rc605 FU4: dazu G2API_SetBoneAngles mit BONE_ANGLES_POSTMULT je Knochen
+    // (Knochen, Matrix aus G2_Generate_Matrix ohne die Basispose): G2_TransformBone
+    // multipliziert die Endmatrix des Knochens von rechts mit BasePose * M *
+    // BasePoseInv (tr_ghoul2.cpp:1800-1812, G2_bones.cpp G2_Generate_Matrix
+    // OpenJK) - hier, mit out = Endmatrix * BasePose, out * M; der Teilbaum erbt es.
+    void worldMatricesLerp(int frameA, int frameB, float t,
+                           const std::vector<BoneFrameOverride>& over,
+                           const std::vector<std::pair<int, BoneMatrix>>& nachMal,
                            std::vector<BoneMatrix>& out) const;
 
     // Dasselbe, aber mit einem eigenen Bild fuer einzelne Teilbaeume.

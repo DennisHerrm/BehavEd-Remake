@@ -47,6 +47,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -722,6 +723,14 @@ struct Actor {    std::string name;        // der Name aus dem affect
     // rc601 integ: "rank" der .npc (klein wie gelesen) - fuer den Takt des
     // Verhaltens unter OpenJK (npcVerhaltenTaktMs, bhed/navlauf.h).
     std::string rang;
+    // rc605 (fix605): "class" der .npc (klein wie gelesen) - Mark1 und
+    // Interrogator werden nach dem Tod nie zur Leiche (ablaufBleibtFest).
+    std::string klasse;
+    // rc605: SCF_NAV_CAN_JUMP (npcKannSpringen, bhed/navlauf.h) und die
+    // Animation von NPC_JumpAnimation (npcSprungAnim) - fuer NPC-Spruenge im Weg.
+    bool kannSpringen = false;
+    bool keineAkrobatik = false;   // rc605: SET_NO_ACROBATICS (zur Zeit des Plans)
+    std::string sprungAnim;
     bool startHatSaber = false;
     bool startDual = false;
     std::array<SaberZustand, 2> startSaber{};
@@ -751,6 +760,8 @@ struct Actor {    std::string name;        // der Name aus dem affect
     bool zielGesetzt = false;
     float zielOrt[3]{};
     double zielRadius = 12.0;
+    bool zielMitRadius = false; // rc604 fix604 (JK2): NAVGOAL_USE_RADIUS
+    bool zielMarke = true;      // rc604 fix604 (JK2): ein TAG - SVF_NAVGOAL des tempGoal
     Path zielPfad;              // die Zeile des SET_NAVGOAL
     int wegIndex = -1;          // der laufende WalkTo in steps, -1 keiner
     bool wegInFahrt = false;    // er begann aus voller Fahrt (ohne Anlauf)
@@ -918,6 +929,8 @@ struct SzenenHilfe {
     // - im Spiel stehen sie da (md_am_sith: NPC_Droid_R2D2 neben ani1).
     // Aus: nur die Figuren der Skripte (wie bis rc601; die Proben rechnen so).
     bool kartenFiguren = false;
+    // rc604 fix604: diese Kartenfiguren nicht (Ablauf::fremdeDarsteller, klein).
+    const std::set<std::string>* fremdeDarsteller = nullptr;
 };
 
 [[nodiscard]] Scene buildScene(const Script& s, const MapData& map,
@@ -1017,6 +1030,9 @@ struct NpcDef {
     // `class` (z.B. "CLASS_VADER") und `rank` (z.B. "lt"), klein wie gelesen.
     std::string klasse;
     std::string rang;
+    // rc605: FP_LEVITATION der .npc (NPC_ParseParms: Kraefte als Schluessel,
+    // COM_ParseInt, ueber FORCE_LEVEL_5 gekappt) - 0: nicht genannt.
+    int levitation = 0;
     // `scale` / `scaleX` / `scaleY` / `scaleZ` in Prozent, als Faktor
     // (NPC_ParseParms, NPC_stats.cpp: s.modelScale = n / 100, nur wenn
     // n != 100 und nicht negativ). Die Juenglinge der Mod haben 50.
@@ -1042,7 +1058,18 @@ struct NpcDef {
 
 using NpcMap = std::map<std::string, NpcDef>;   // Typ -> Beschreibung
 
-void parseNpcFile(const std::string& text, NpcMap& out);
+// rc604 jk2: Jedi Outcast liest ext_data/NPCs.cfg (dann ext_data/*.npc) in
+// EINEN Puffer und sucht den Namen von vorn (NPC_LoadParms,
+// codeJK2/game/NPC_stats.cpp:2223-2249; NPC_ParseParms) - der ERSTE Eintrag
+// gewinnt. "class kyle" und "playerTeam player" stehen dort ohne Vorsatz:
+// TranslateClassName/TranslateTeamName (NPC_stats.cpp:139-163) gegen die
+// Tabellen ClassNames/TeamNames - hier gleich als "CLASS_KYLE"/"TEAM_PLAYER"
+// abgelegt, wie es die JKA-Dateien schreiben.
+void parseNpcFile(const std::string& text, NpcMap& out, bool jk2 = false);
+// rc604 jk2: TranslateClassName/TranslateTeamName von JK2 - unbekannt ergibt
+// "CLASS_NONE" bzw. "TEAM_FREE".
+[[nodiscard]] std::string jk2KlassenName(const std::string& wert);
+[[nodiscard]] std::string jk2TeamName(const std::string& wert);
 
 // --- Lichtschwerter ----------------------------------------------------
 //
@@ -1187,6 +1214,9 @@ void parseWeaponsDat(const std::string& text, WeaponMap& out);
 [[nodiscard]] std::string npcTeamWaffe(const std::string& team,
                                        const std::string& npcType,
                                        int spawnflags);
+// rc604 fix604 (JK2 Stufe 3): dasselbe nach Jedi Outcast (codeJK2/game/
+// NPC_spawn.cpp:401-670) - dort die einzige Quelle der Waffe.
+[[nodiscard]] std::string npcTeamWaffeJk2(const std::string& team, const std::string& npcType, int spawnflags);
 
 // Haelt die Figur ein Schwert, so dass seine Klingen wachsen und gezeichnet
 // werden? ps.weapon == WP_SABER - oder unbekannt (siehe ActorState::waffe).
@@ -1219,6 +1249,10 @@ int modellIndex(Actor& a, const std::string& pfad);
 // Leerer Name: die Vorgaben von WP_SaberSetDefaults.
 int saberArtIndex(Actor& a, const std::string& name, int fach,
                   const SzenenHilfe* hilfe);
+// rc604 jk2: das Schwert einer Figur in Jedi Outcast (keine .sab) - Griff,
+// Laenge, Farbe und Klaenge nach Klasse und NPCs.cfg (codeJK2 WP_SetSaberModel,
+// WP_SaberInitBladeData). def darf nullptr sein.
+int saberArtJk2(Actor& a, const NpcDef* def);
 // Das Weltmodell einer Waffe als Index in Actor::modelle; -1, wenn weapons.dat
 // fehlt oder die Waffe dort nicht steht.
 int waffenModellIndex(Actor& a, const std::string& waffe, bool kotor,
@@ -1343,8 +1377,14 @@ struct NavZiel {
     bool marke = false;      // ein TAG (ref_tag, waypoint_navgoal): die Aufgabe haelt
     float ort[3]{};
     double radius = 12.0;    // NPCInfo->goalRadius
+    // rc604 fix604 (JK2 Stufe 3): NAVGOAL_USE_RADIUS (codeJK2/game/g_nav.cpp:1356)
+    bool mitRadius = false;
 };
 [[nodiscard]] NavZiel navZielAufloesen(const MapData& map, const std::string& name);
+// rc605 (fix605): ein Vektor aus $tag( "name", ORIGIN|ANGLES )$ wie ICARUS
+// (CTaskManager::Get -> CQuake3GameInterface::GetTag -> TAG_GetOrigin/Angles).
+// false: kein tag()-Ausdruck oder kein solcher TAG - dann scheitert der set.
+[[nodiscard]] bool tagVektor(const MapData& map, const std::string& ausdruck, float out[3]);
 
 // G_Find( NULL, FOFS(targetname), name ) - so wie SET_WATCHTARGET,
 // SET_VIEWTARGET und ein Laufziel ohne TAG ihr Ziel finden: ohne
@@ -1370,6 +1410,9 @@ struct NavZiel {
 // rc601 (bewegung, teil 3): Fallen und Vorlauf je Figur fuer den Ablauf
 // (AblaufWelt::vorlauf) - dieselbe Regel wie der erste Plan in der Szene.
 [[nodiscard]] std::function<int(const std::string& figur)> ablaufVorlauf(const Scene& s);
+// rc605 (fix605): AblaufWelt::bleibtFest aus der Szene - Figuren der Klasse
+// CLASS_MARK1 oder CLASS_INTERROGATOR (.npc "class").
+[[nodiscard]] std::function<bool(const std::string& figur)> ablaufBleibtFest(const Scene& s);
 
 // rc601 (bewegung, Durchsicht 2): was die Engine beim Spawnen nach der
 // Schwierigkeit (g_spskill, SzenenHilfe::schwierigkeit) an den Werten der .npc
@@ -1393,6 +1436,12 @@ void npcWerteBeimSpawnen(const NpcDef& def, const std::string& npcTyp, int schwi
 // stats.yawSpeed (yawRate, schon als Grad/s). waffe "" heisst: die beim
 // Spawnen (Actor::startWaffe); "drop" legt sie ab (WP_NONE).
 [[nodiscard]] float npcDrehrate(const Actor& a, const std::string& waffe, float yawRate);
+// rc604 fix604b (A1): der Takt, in dem NPC_UpdateAngles die Figur wirklich
+// dreht (GierLauf::taktMs) - npcVerhaltenTaktMs mit der Waffe in der Hand
+// ("" = Startwaffe), dem Rang und der Spielstufe des Regelwerks. Jedi Outcast
+// bleibt bei 50 (Auftrag fix604b: JK2 unveraendert, siehe NOTIZEN_fix604b.md).
+[[nodiscard]] int npcDrehTaktMs(const Actor& a, const std::string& waffe);
+[[nodiscard]] int npcDrehTaktMs(const std::string& waffe, const std::string& rang);
 // Fuer den Ablauf (AblaufWelt::drehrateNpc/drehrateYaw): dasselbe je Name,
 // und die yawSpeed-Rate beim Spawnen (.npc, Schwierigkeit). -1: unbekannt.
 [[nodiscard]] std::function<float(const std::string& figur, const std::string& waffe, float yawRate)> ablaufDrehrate(
@@ -1447,7 +1496,23 @@ struct GierLauf {
     double t0 = 0.0;
     float ziel = 0.0F;                 // desiredYaw
     float rate = kNpcTurnDegPerSec;    // Grad je Sekunde: (60 + 3*yawSpeed)
+    // rc604 fix604b (A1): OpenJK dreht nur in Denkbildern mit Verhalten - im
+    // Zweig ohne Verhalten ueberschreibt memcpy(&ucmd, &NPCInfo->last_ucmd)
+    // die Winkel, die NPC_UpdateAngles eben gerechnet hat (code/game/NPC.cpp:
+    // 2515-2520). taktMs ist npcVerhaltenTaktMs (50: jedes Denkbild, Movie
+    // Duels), denkNullMs das erste NPC_Think (LaufZustand::denkNullMs, dieselbe
+    // Vorgabe: Kartenstart + 150 ms - so rechnen Szene und Ablauf dieselbe Phase).
+    int taktMs = 50;
+    double denkNullMs = kNavKartenSpawnMs + 150.0;
     [[nodiscard]] float bei(double t) const noexcept;
+    // Dreht die Figur im Denkbild tf? (nextBStateThink <= level.time)
+    [[nodiscard]] bool drehBild(double tf) const noexcept;
+    // Die Waffe in der Hand wechselt den Takt (SET_WEAPON).
+    void taktAb(double t, int takt) noexcept {
+        yaw0 = bei(t);
+        t0 = t;
+        taktMs = takt;
+    }
     // desiredYaw wechselt (STEER, Watchtarget, SET_DYAW).
     void zielAb(double t, float neu) noexcept {
         yaw0 = bei(t);
@@ -1473,6 +1538,17 @@ struct GierLauf {
 // dem der Fehler schon null ist (NPC_utils.cpp:388-391), also ein Bild nach
 // dem letzten Schritt. Mindestens ein Denkbild. Negativ: nie (Drehrate 0).
 [[nodiscard]] double drehHalteMs(float fehler, float rate) noexcept;
+// rc604 fix604b (A1): der Takt, in dem NPC_UpdateAngles wirklich dreht
+// (GierLauf::taktMs/denkNullMs) und der Zeitpunkt, ab dem gezaehlt wird. Die
+// Meldung "exact" kommt in jedem Denkbild (auch ohne Verhalten ruft NPC_Think
+// NPC_UpdateAngles, NPC.cpp:2518), gedreht wird nur mit Verhalten.
+struct DrehTakt {
+    int ms = 50;
+    double nullMs = 0.0;
+    double abMs = 0.0;
+    [[nodiscard]] bool dreht(double tf) const noexcept;
+};
+[[nodiscard]] double drehHalteMs(float fehler, float rate, const DrehTakt& takt) noexcept;
 // rc601 (bewegung, teil 3): ANGLE2SHORT wie im Spiel. NPC_UpdateAngles schreibt
 // ucmd.angles[YAW] = ANGLE2SHORT(targetYaw + error) - delta_angles[YAW]
 // (NPC_utils.cpp:366 MD), PM_UpdateViewAngles macht daraus mit "short temp"
@@ -1482,6 +1558,7 @@ struct GierLauf {
 // TID_ANGLE_FACE fertig ist, Denkbild fuer Denkbild.
 [[nodiscard]] float npcGierSchritt(float yaw, float ziel, float rate) noexcept;
 [[nodiscard]] double drehHalteMs(float yaw, float ziel, float rate) noexcept;
+[[nodiscard]] double drehHalteMs(float yaw, float ziel, float rate, const DrehTakt& takt) noexcept;
 
 // =====================================================================
 // Paket bewegung (rc601): Schwerkraft wie Pmove
@@ -1603,6 +1680,34 @@ struct BodenRaster {
     [[nodiscard]] bool leer() const noexcept { return dreiecke.empty(); }
 };
 [[nodiscard]] BodenRaster baueBodenRaster(const BspMesh& netz, const std::vector<bool>& fest, float zelle = 64.0F);
+
+// rc604 fix604: netzTreffer fuer SENKRECHTE Strahlen ueber ein Raster - Bit
+// fuer Bit dasselbe Ergebnis, nur ohne jedes Dreieck zu fragen. Je Zelle in
+// X/Y die Dreiecke, deren Kasten (X/Y, um 1 + 0,001 * Kantenlaenge weiter)
+// sie beruehrt; Dreiecke, die strahlDreieck fuer einen senkrechten Strahl
+// immer verwirft (det genau 0: senkrecht an einer Achse oder mit einer
+// senkrechten Kante), fehlen; fast senkrechte (Flaeche in X/Y unter 0,01 *
+// Kante^2) stehen in den Zellen eines schmalen Streifens um ihre Gerade, wenn
+// `reichweite` sagt, wie weit ein Strahl vom Nullpunkt des Netzes kommt
+// (sonst und ausserhalb fragt es sie immer). Herleitung bei baueNetzRaster.
+struct NetzRaster {
+    float x0 = 0.0F;
+    float y0 = 0.0F;
+    float zelle = 32.0F;
+    int nx = 0;
+    int ny = 0;
+    std::vector<std::uint32_t> anfang;   // je Zelle, CSR (nx*ny+1)
+    std::vector<std::uint32_t> liste;    // erster Index des Dreiecks in netz.indexes
+    std::vector<std::uint32_t> immer;    // ebenso, fast senkrecht (ausserhalb des Rasters alle)
+    bool streifen = false;               // die aus `immer` stehen auch in den Zellen
+    bool gebaut = false;
+};
+[[nodiscard]] NetzRaster baueNetzRaster(const BspMesh& netz, const std::vector<bool>& fest, float zelle = 32.0F,
+                                        float reichweite = 0.0F);
+// Wie netzTreffer (dasselbe `fest` wie beim Bauen); nicht senkrechte Strahlen
+// gehen an netzTreffer.
+[[nodiscard]] bool netzTrefferRaster(const BspMesh& netz, const NetzRaster& r, const std::vector<bool>& fest,
+                                     const float von[3], const float bis[3], float treffer[3]);
 // Der hoechste Treffer bei (x, y) zwischen zOben und zUnten.
 [[nodiscard]] bool rasterTreffer(const BodenRaster& r, float x, float y, float zOben, float zUnten, float& z);
 

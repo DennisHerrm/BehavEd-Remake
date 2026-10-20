@@ -24,6 +24,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -212,6 +213,135 @@ struct MoverKlang {
 [[nodiscard]] std::map<std::string, std::vector<std::string>>
 leseBmodelSets(const std::string& text);
 
+// --- rc604: misc_trip_mine - laserTrapThink in jedem FRAMETIME --------------
+//
+// laserTrapThink (code/game/wp_trip_mine.cpp:130-175 OpenJK): beim ersten
+// Durchgang "arm me" (warning.wav, s.loopSound hum_loop.wav, EF_FIRING), dann
+// alle FRAMETIME (100 ms) eine Kastenspur (+-4) MASK_SHOT von s.origin2 bis
+// trBase + 2048 * movedir; pos4 = tr.endpos (das Ende des Strahls). Trifft sie
+// einen Client oder beginnt im Festen: WP_Explode (g_weapon.cpp:185-230 OpenJK)
+// - Schleife aus, G_PlayEffect(fxID "tripMine/explosion", currentOrigin,
+// AngleVectors(s.angles)), G_UseTargets, EF_FIRING weg, nach 50 ms
+// G_FreeEntity. misc_trip_mine_activate (g_misc.cpp:1799-1817 OpenJK) ist die
+// use-Funktion: denkt die Falle (thinkF_laserTrapThink), schaltet sie aus
+// (EF_FIRING, loopSound, think weg); sonst denkt sie ein FRAMETIME spaeter
+// wieder und EF_NODRAW faellt weg.
+struct LaserfalleSpur {
+    float endpos[3]{};
+    float normale[3]{};   // trace.plane.normal (rc604: fuer fx_target_beam)
+    bool startsolid = false;
+    bool figur = false;   // tr.entityNum ist ein Client
+};
+// Die Spur zur Zeit ms (die Mover und Figuren dann an ihrem Platz).
+using LaserfalleSpurFn = std::function<LaserfalleSpur(double ms, const float start[3], const float mins[3],
+                                                      const float maxs[3], const float ende[3])>;
+struct LaserfalleEingabe {
+    float ort[3]{};        // s.pos.trBase = currentOrigin (WP_Stick)
+    float richtung[3]{};   // movedir = trace.plane.normal (touchLaserTrap)
+    float origin2[3]{};    // s.origin2 (Kastenspur von endpos + 32 * Normale zurueck)
+    bool anAbSpawn = false;        // !targetname || START_ON: misc_trip_mine_activate im Spawn
+    bool sichtbarAbSpawn = true;   // !(targetname && START_OFF): sonst EF_NODRAW
+    bool hatUse = false;           // targetname: e_UseFunc = misc_trip_mine_activate
+    double spawnMs = 0.0;
+    std::vector<double> uses;      // nach Zeit
+    double endeMs = 0.0;
+};
+struct LaserfalleStrahl {
+    double abMs = 0.0;
+    double bisMs = -1.0;   // -1: offen
+    float ende[3]{};       // pos4
+};
+struct LaserfalleErgebnis {
+    std::vector<LaserfalleStrahl> strahlen;
+    std::vector<double> scharfMs;                          // warning.wav (Temp-Entity)
+    std::vector<std::pair<double, double>> summen;         // hum_loop.wav ab .. bis (-1 offen)
+    std::vector<double> explosionen;                       // WP_Explode
+    double sichtbarAbMs = 1.0e300;                         // 1e300: nie gezeichnet (EF_NODRAW)
+    double wegMs = -1.0;                                   // G_FreeEntity (< 0: bleibt)
+};
+[[nodiscard]] LaserfalleErgebnis laserfalleLauf(const LaserfalleEingabe& e, const LaserfalleSpurFn& spur);
+
+// CM_TransformedBoxTrace gegen einen Kasten ohne Drehung (CM_TempBoxModel,
+// cm_test.cpp/cm_trace.cpp: CM_TraceThroughBrush mit SURFACE_CLIP_EPSILON
+// 0.125) - der Kasten einer Figur fuer die Spuren der anderen.
+struct KastenSpur {
+    float fraction = 1.0F;
+    bool startsolid = false;
+    bool allsolid = false;
+    float normale[3]{};   // clipplane->normal der getroffenen Seite
+};
+[[nodiscard]] KastenSpur figurKastenSpur(const float start[3], const float ende[3], const float mins[3], const float maxs[3],
+                                    const float kastenMin[3], const float kastenMax[3]);
+
+// G2_RadiusTracePolys (code/rd-vanilla/G2_misc.cpp:1254-1460 OpenJK): trifft
+// der Strahl start..ende mit dem Radius (G2_RETURNONHIT, fRadius = halbe
+// Kastenbreite der Spur) ein Dreieck einer Flaeche? `ecken` xyz je Ecke im
+// selben Raum wie start/ende, `idx` je drei eine Dreiecksfolge.
+[[nodiscard]] bool g2RadiusTreffer(const std::vector<float>& ecken, const std::vector<std::uint32_t>& idx,
+                                   const float start[3], const float ende[3], float radius);
+
+// --- rc604: Geschuetze mit Knochenanimation ------------------------------
+// G2API_SetBoneAnimIndex(rootBone, startFrame, endFrame, BONE_ANIM_OVERRIDE_FREEZE,
+// speed, cg.time) - ab startMs.
+struct KnochenAnim {
+    double startMs = 0.0;
+    int startFrame = 0;
+    int endFrame = 0;
+    float speed = 1.0F;
+};
+// G2_TimingModel (code/rd-vanilla/tr_ghoul2.cpp:951-1150 OpenJK) ohne Schleife:
+// das Bild, das naechste und der Anteil dazwischen zur Zeit ms.
+void g2Bild(const KnochenAnim& a, double ms, int& bild, int& naechstes, float& lerp);
+// misc_ion_cannon: SP_misc_ion_cannon / ion_cannon_use / ion_cannon_think
+// (code/game/g_turret.cpp:1930-2130 OpenJK). Q_flrand/Q_irand stabil aus `saat`.
+struct IonenkanoneEingabe {
+    bool startOff = false;   // spawnflags 1
+    bool bursts = false;     // spawnflags 2
+    float wait = 0.0F;
+    float random = 0.0F;
+    float delay = 0.0F;
+    double spawnMs = 0.0;
+    std::vector<double> uses;
+    double endeMs = 0.0;
+    std::uint64_t saat = 1;
+};
+struct IonenkanoneErgebnis {
+    std::vector<double> schuesse;   // je Schuss: Effekt am Bolzen, Animation 0..8 mit 0.6
+};
+[[nodiscard]] IonenkanoneErgebnis ionenkanoneLauf(const IonenkanoneEingabe& e);
+// misc_sentry_turret: wann das erste pas_think aufklappt (-1: nie bis endeMs).
+[[nodiscard]] double pasAufklappenMs(bool startOff, double spawnMs, const std::vector<double>& uses, double endeMs);
+// rc605 FU4: misc_sentry_turret ohne Feind - der Schwenk aus pas_think
+// (g_turret.cpp:2041-2140 MD, 1580-1700 OpenJK): nach jedem pas_think ab dem
+// zweiten (das erste klappt auf, dann nextthink + 1200, danach FRAMETIME 100)
+// die Gier von bone_hinge, speed - s.angles[YAW]. pas_use schaltet aus (kein
+// think mehr) und an (think in 50 ms). level.time = Szene - spawnMs + 1000
+// (G_InitGame mit sv.time 1000, sv_init.cpp:288 OpenJK). count ist die
+// Munition (SP_PAS: 0 -> 150); ohne Feind wird nie geschossen.
+struct PasSchwenk {
+    double ms = 0.0;
+    float gier = 0.0F;
+};
+[[nodiscard]] std::vector<PasSchwenk> pasSchwenkLauf(bool startOff, double spawnMs, const std::vector<double>& uses, double endeMs,
+                                                     float gier, int count);
+
+// --- rc604: fx_target_beam - wann der Strahl feuert ------------------------
+// fx_target_beam_link / _use / _think / _fire_start / _set_debounce
+// (code/game/g_fx.cpp:994-1225 OpenJK). Q_irand(-random, random) stabil aus `saat`.
+struct ZielStrahlEingabe {
+    bool startOff = false;   // spawnflags 1
+    bool oneShot = false;    // spawnflags 8
+    bool zielDa = true;      // G_Find(target) - sonst G_FreeEntity im link
+    float waitMs = 0.0F;     // "wait" * 1000
+    float randomMs = 0.0F;   // "random" * 1000
+    double spawnMs = 0.0;
+    std::vector<double> uses;
+    double endeMs = 0.0;
+    std::uint64_t saat = 1;
+};
+// Die Zeiten von fx_target_beam_fire (je ein EV_TARGET_BEAM_DRAW).
+[[nodiscard]] std::vector<double> zielStrahlFeuer(const ZielStrahlEingabe& e);
+
 class MoverSim {
 public:
     // Steht eine Figur zum Zeitpunkt ms im Kasten mins..maxs? Fuer die
@@ -235,6 +365,13 @@ public:
     [[nodiscard]] Stand at(int modell, double ms) const;
 
     [[nodiscard]] const std::vector<FxRunnerStart>& fxStarts() const { return fx_; }
+    // rc604: fx_target_beam - wann ein Strahl feuert (fx_target_beam_use,
+    // code/game/g_fx.cpp:1091-1109 OpenJK). ms < 0: laeuft ab dem Laden
+    // (fx_target_beam_link ohne STARTOFF/ONE_SHOT); oneShot: ein Schuss.
+    [[nodiscard]] const std::vector<FxRunnerStart>& strahlStarts() const { return strahl_; }
+    // rc604: die uses von misc_trip_mine (misc_trip_mine_activate), misc_ion_cannon
+    // (ion_cannon_use) und misc_sentry_turret (pas_use) - je Entity nach Zeit.
+    [[nodiscard]] const std::vector<std::pair<std::size_t, double>>& entityUses() const { return entityUse_; }
 
     // Fuer Proben und Protokoll: wann welche Tuer aufging.
     struct Oeffnung {
@@ -251,6 +388,12 @@ public:
     // Engine nimmt es nur, wenn cgs.model_draw dafuer etwas geladen hat
     // (CG_Chunks), sonst die Stuecke des Materials.
     std::function<bool(const std::string&)> dateiDa;
+    // rc604: g_spskill (0 leicht, 1 mittel, 2 schwer) - vor baue() setzen.
+    // Entities mit "notsingle" oder dem Bit spawnflags & (1 << (8 + g_spskill))
+    // gibt G_SpawnGEntityFromSpawnVars frei (code/game/g_spawn.cpp:1064-1075,
+    // 1096-1101 OpenJK; :1260-1265 MD): fuer die Simulation gibt es sie dann
+    // nicht. -1: nichts entfernen.
+    int spielstufe = -1;
 
     [[nodiscard]] const std::vector<Bruch>& brueche() const { return bruch_; }
     [[nodiscard]] const std::vector<BruchEffekt>& bruchEffekte() const { return bruchFx_; }
@@ -342,6 +485,8 @@ private:
     std::vector<Mover> mover_;
     std::vector<int> nachModell_;   // Modell -> Index in mover_, -1
     std::vector<FxRunnerStart> fx_;
+    std::vector<FxRunnerStart> strahl_;   // rc604: fx_target_beam
+    std::vector<std::pair<std::size_t, double>> entityUse_;   // rc604: Fallen, Ionenkanonen, Wachgeschuetze
     std::vector<Oeffnung> auf_;
     std::vector<Bruch> bruch_;
     std::vector<BruchEffekt> bruchFx_;

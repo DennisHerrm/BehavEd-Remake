@@ -243,7 +243,7 @@ bool figurProbe(std::size_t ai, double ms, FigurProbe& out) {
         return false;
     }
     const Actor& a = g_app->scene.actors[ai];
-    App::ActorAssets& assets = g_app->actorAssets[ai];
+    const App::ActorAssets& assets = *g_app->actorAssets[ai];
     if (assets.model.empty() || !a.haveStart || a.brushModel > 0) {
         return false;
     }

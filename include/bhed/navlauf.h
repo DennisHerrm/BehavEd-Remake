@@ -136,6 +136,41 @@ struct NavKante {
     [[nodiscard]] int groesse() const noexcept { return hat(GroesseMittel) ? 1 : 2; }
 };
 
+// rc604 fix604 (JK2 Stufe 3): das Wegnetz von Jedi Outcast - CNavigator
+// (codeJK2/game/g_navigator.cpp). Knoten zaehlen ab 0 (m_nodes), Kanten
+// stehen je Knoten in der Reihenfolge von CNode::AddEdge, raenge[id] ist
+// m_ranks (CalculatePath, -1 kein Weg). Das Spiel laedt maps/<karte>.nav,
+// wenn dessen Pruefsumme zur .bsp passt (CNavigator::Load, g_main.cpp:690);
+// sonst baut es das Netz aus den Wegpunkten (SP_waypoint, NAV_CalculatePaths
+// - nur die Verbindungen target..target4, HardConnect, g_nav.cpp:1725-1829).
+struct NavNetzJk2 {
+    struct Kante {          // CNode::edge_t
+        int id = 0;
+        int kosten = 0;
+        unsigned char flags = 0;   // EFLAG_BLOCKED 1
+    };
+    struct Knoten {
+        NavVec punkt{};
+        int flags = 0;
+        int radius = 0;
+        std::vector<Kante> kanten;
+        std::vector<int> raenge;
+    };
+    struct Fehl {           // failedEdge_t (MAX_FAILED_EDGES 32)
+        int a = -1;
+        int b = -1;
+        int entity = 1023;  // ENTITYNUM_NONE
+    };
+    std::vector<Knoten> knoten;
+    std::vector<Fehl> fehl;         // die belegten Plaetze, in ihrer Reihenfolge
+    bool ausDatei = false;          // aus maps/<karte>.nav
+    // G_EntIsUnlockedDoor je Entity (Index in MapData::entities) beim Spawnen:
+    // eine func_door, die sich von selbst oeffnet (g_mover.cpp:1328-1390).
+    // MOVER_LOCKED zur Zeit steht im Mover-Plan (NavMoverPlan::Stand).
+    std::vector<signed char> tuerFrei;
+    [[nodiscard]] int kanteFehl(int a, int b) const;   // EdgeFailed: Platz oder -1
+};
+
 struct NavNetz {
     std::vector<NavKnoten> knoten;   // [0] Platzhalter
     std::vector<NavKante> kanten;    // [0] Platzhalter
@@ -171,6 +206,8 @@ struct NavNetz {
     // Das Netz aendert sich nach dem Bau nicht mehr; geteilt, damit NavNetz
     // kopierbar bleibt (wer eine Kopie aendert, setzt es zurueck).
     std::shared_ptr<std::vector<std::atomic<signed char>>> regionGueltig;
+    // rc604 fix604: das Netz von Jedi Outcast (nur mit navJk2Regeln gebaut).
+    std::shared_ptr<const NavNetzJk2> jk2;
 
     int kantenZahl = -1;                                   // nach dem Bau, -1: zaehlen
     [[nodiscard]] int kanteZwischen(int a, int b) const;   // get_edge_across
@@ -209,6 +246,11 @@ struct NavBauHilfe {
     // spurt alles mit `spur`, die zweite Tuerspur ohne die getroffene Tuer.
     std::function<bool(int entity, NavVec& pos1, NavVec& pos2)> tuerStellungen;
     NavSpurVersetztFn spurVersetzt;
+    // rc604 fix604 (JK2): maps/<karte>.nav (leer: keine) und die Pruefsumme der
+    // .bsp (Com_BlockChecksum, navBlockPruefsumme) - passt sie, gilt die Datei.
+    std::string jk2Nav;
+    bool jk2SummeDa = false;
+    int jk2KartenSumme = 0;
 };
 
 // Das Netz so, wie die Engine es beim Laden baut: SP_waypoint,
@@ -308,6 +350,18 @@ struct NavWelt {
     // gemeinsamen Takt aller Figuren, navKoerperLauf). Spuren mit
     // CONTENTS_BODY in der Maske treffen sie.
     const std::vector<NavKoerperKasten>* koerper = nullptr;
+    // rc604 fix604: die clipmask der rechnenden Figur ohne CONTENTS_BODY (nur
+    // im gemeinsamen Takt): Q3_SetSolid(false) nimmt CONTENTS_BODY aus der
+    // clipmask (Q3_Interface.cpp:6106-6112 MD / 5662-5668 OpenJK), NPC_Begin
+    // mit SFB_NOTSOLID setzt MASK_NPCSOLID & ~CONTENTS_BODY (NPC_spawn.cpp:
+    // 1895-1904 MD / 1152-1161 OpenJK). Pmove spurt mit pm.tracemask =
+    // ent->clipmask (g_active.cpp:11036 MD / 5393 OpenJK) - die anderen Figuren halten das Pmove nicht
+    // auf. STEER/NAV spuren weiter mit MASK_NPCSOLID (MoveTrace,
+    // g_navigator.cpp:860 MD) und weichen ihnen aus.
+    bool pmOhneKoerper = false;
+    // rc604 fix604 (JK2): gi.inPVS fuer NAV_ClearPathToPoint und
+    // GetBestPathBetweenEnts (leer: alles sichtbar).
+    NavPvsFn pvs;
 };
 
 // --- Laufen ------------------------------------------------------------------
@@ -387,6 +441,56 @@ struct LaufZustand {
     signed char letzterVor = 0;
     signed char letzterSeit = 0;
     bool letzteGehTaste = false;
+    // rc604 fix604 (JK2): NPCInfo->currentSpeed (NPC_Accelerate), distToGoal,
+    // consecutiveBlockedMoves. Die Wegpunkte (wegpunkt ...) zaehlen dann
+    // Knoten + 1 (0: WAYPOINT_NONE).
+    int jk2Tempo = 0;
+    float jk2ZielAbstand = 0.0F;
+    int jk2Blockiert = 0;
+    // ent->failedWaypoints (Knoten + 1, 0 frei; MAX_FAILED_NODES 8) und
+    // failedWaypointCheckTime (CNavigator::AddFailedNode/CheckFailedNodes).
+    std::array<short, 8> jk2FehlKnoten{};
+    int jk2FehlPruefBis = 0;
+    // rc605: NPC-Spruenge (NPC_move.cpp:109-718 MD / 59-616 OpenJK) und der
+    // Merker "blockiert" von STEER (g_navigator.cpp:4216-4310 MD).
+    struct Sprung {
+        bool springt = false;         // ps.pm_flags & PMF_JUMPING
+        bool laeuft = false;          // NPCInfo->jumpTime
+        NavVec ziel{};                // NPCInfo->jumpDest
+        float maxXY = 750.0F;         // jumpMaxXYDist
+        float maxZ = -450.0F;         // jumpMazZDist
+        int zurueckBis = 0;           // jumpBackupTime
+        int zurueckSperreBis = kNavNie;   // TIMER "jumpBackupDebounce"
+        int naechsterAb = 0;          // jumpNextCheckTime
+        float zStart = 0.0F;          // ps.forceJumpZStart
+        bool blockiert = false;       // aiFlags & NPCAI_BLOCKED
+        int blockiertSeit = 0;        // blockedDebounceTime
+        bool blockiertEnt = false;    // blockedTargetEntity (das tempGoal)
+        NavVec blockiertOrt{};        // blockedTargetPosition
+        // rc605: BS_JUMP (NPC_BSJump, NPC_behavior.cpp:717-962 MD) - jumpState
+        // (0 JS_WAITING, 1 JS_FACING, 2 JS_CROUCHING, 3 JS_JUMPING, 4
+        // JS_LANDING), ps.legsAnimTimer und die zuletzt gesetzte Animation
+        // (1 BOTH_CROUCH1, 2 BOTH_INAIR1, 3 BOTH_LAND1) mit ihrem Beginn.
+        bool bsAktiv = false;
+        int bsZustand = 0;
+        int beinTimer = 0;
+        int bsAnim = 0;
+        int bsAnimAb = 0;
+        // rc605 FU4: die Sprungkette auf Beinen und Oberkoerper (SprungAnim-
+        // Codes) - ps.legsAnim/torsoAnim, solange sie aus NPC_JumpAnimation,
+        // PM_JumpForDir, NPC_BSJump oder PM_CrashLand stammen (0: PM_Footsteps
+        // bzw. der Oberkoerper folgt den Beinen), ihr Beginn, ps.torsoAnimTimer
+        // und ob die Figur seit dem letzten Boden ueber den "kickoff"-Zweig von
+        // PM_GroundTrace abhob (dann ist jumpZStart 0, bg_pmove.cpp:7475-7512 MD).
+        int beinAnim = 0;
+        int beinAnimAb = 0;
+        int torsoAnim = 0;
+        int torsoAnimAb = 0;
+        int torsoTimer = 0;
+        bool abgehoben = false;
+        bool operator==(const Sprung&) const = default;
+    };
+    Sprung sprung;
     [[nodiscard]] bool hatVorlauf() const noexcept { return gesetztMs > -1.0e299; }
     void vorlaufErledigt() noexcept {
         gesetztMs = -1.0e300;
@@ -449,6 +553,39 @@ struct LaufWerte {
     // (NPC.cpp:2359-2368 MD), OpenJK 100 (NPC.cpp:2481-2488) - siehe
     // npcVerhaltenTaktMs.
     int verhaltenTaktMs = 50;
+    // rc604 fix604 (JK2): NAVGOAL_USE_RADIUS im goalRadius (ein
+    // waypoint_navgoal mit "radius", g_nav.cpp:1356) und SVF_NAVGOAL des
+    // tempGoal (ein TAG, NPC_SetMoveGoal isNavGoal, Q3_Interface.cpp:1988).
+    bool zielMitRadius = false;
+    bool zielNavgoal = true;
+    // s.weapon == WP_SABER (NAV_TestBestNode, NAVNEW_MoveToGoal: Jedi springen
+    // nicht ueber 64 hinauf).
+    bool schwert = false;
+    // rc605: SCF_NAV_CAN_JUMP ohne SCF_NO_ACROBATICS (NPC_CanTryJump,
+    // NPC_move.cpp:327-342 MD): jede Figur mit FP_LEVITATION > 0 in der .npc
+    // und CLASS_HOWLER (NPC_spawn.cpp:588-602 MD / 386-400 OpenJK). Nur dann
+    // gelten Sprungkanten (is_valid, g_navigator.cpp:551-556) und STEER
+    // versucht NPC_TryJump. weltSchwerkraft ist g_gravity (EvaluateTrajectory
+    // TR_GRAVITY, bg_misc.cpp:323-327 MD) neben ps.gravity (schwerkraft).
+    bool kannSpringen = false;
+    // rc605: SET_NO_ACROBATICS (Q3_SetNoAcrobatics, Q3_Interface.cpp:5623-5647
+    // MD): NPC_CanTryJump verweigert jeden Sprung (NPC_move.cpp:330 MD); die
+    // Sprungkanten bleiben gueltig (is_valid fragt nur SCF_NAV_CAN_JUMP).
+    bool keineAkrobatik = false;
+    float weltSchwerkraft = 800.0F;
+    // rc605: Verhaltenszustand BS_JUMP (NPC_BSJump statt NPC_MoveToGoal) und
+    // die Laengen von BOTH_CROUCH1 und BOTH_LAND1 dieser Figur in ms
+    // (ps.legsAnimTimer nach NPC_SetAnim ... SETANIM_FLAG_HOLD).
+    bool bsJump = false;
+    int hockeMs = 0;
+    int landMs = 0;
+    // rc605 FU4: NPC_JumpAnimation dieser Figur (npcSprungAnimArt: 0
+    // BOTH_FORCEJUMP1, 1 eine PM_FlippingAnim wie BOTH_FLIP_F, 2 BOTH_JUMP1) und
+    // ihre Laenge (ps.torsoAnimTimer nach SETANIM_FLAG_HOLD); landMs gilt auch
+    // fuer NPC_TryJump (PM_CrashLand), forceLandMs ist BOTH_FORCELAND1.
+    int sprungAnimArt = 0;
+    int sprungAnimMs = 0;
+    int forceLandMs = 0;
 };
 
 // rc601 integ: der Takt des Verhaltens eines NPC in ms (LaufWerte::
@@ -460,6 +597,29 @@ struct LaufWerte {
 // rang ist der "rank" der .npc (TranslateRankName, NPC_stats.cpp:222-268:
 // unbekannt/fehlt = RANK_CIVILIAN); waffe der WP_-Name in der Hand.
 [[nodiscard]] int npcVerhaltenTaktMs(bool movieDuels, const std::string& waffe, int spielstufe, const std::string& rang);
+
+// rc605: die Sprunganimation von NPC_JumpAnimation (NPC_move.cpp:413-511 MD /
+// 343-368 OpenJK) aus .npc-Klasse ("CLASS_..."), Waffe in der Hand und Rang;
+// g_ActivateAnimationStyle ist 0 (CVAR_ROM, g_main.cpp:991 MD). CLASS_ALORA
+// waehlt mit Q_irand(0, 3) zwischen BOTH_ALORA_FLIP_1..3 und BOTH_FLIP_F -
+// hier die Mitte der Konvention: BOTH_ALORA_FLIP_2 (Q_irand(0,3) != 0 in drei
+// von vier Faellen).
+[[nodiscard]] std::string npcSprungAnim(bool movieDuels, const std::string& klasse, const std::string& waffe, const std::string& rang);
+// rc605: SCF_NAV_CAN_JUMP beim Spawnen (NPC_spawn.cpp:588-602 MD).
+[[nodiscard]] bool npcKannSpringen(const std::string& klasse, int levitation);
+// rc605 FU4: LaufWerte::sprungAnimArt zum Namen aus npcSprungAnim.
+[[nodiscard]] int npcSprungAnimArt(const std::string& anim);
+// rc605 FU4: Codes der Sprungkette (LaufTakt::beinAnim/torsoAnim).
+enum SprungAnim : int {
+    kSaKeine = 0,       // Beine: PM_Footsteps waehlt; Oberkoerper: folgt den Beinen
+    kSaSprung = 1,      // NPC_JumpAnimation (npcSprungAnim)
+    kSaJump1 = 2,       // BOTH_JUMP1 (PM_JumpForDir)
+    kSaLand1 = 3,       // BOTH_LAND1
+    kSaCrouch1 = 4,     // BOTH_CROUCH1 (NPC_BSJump)
+    kSaInAir1 = 5,      // BOTH_INAIR1 (NPC_BSJump)
+    kSaForceLand1 = 6,  // BOTH_FORCELAND1
+    kSaStand1 = 7,      // BOTH_STAND1 (PM_Footsteps im Stand waehrend BS_JUMP)
+};
 
 struct LaufTakt {
     double t = 0.0;               // das Denkbild
@@ -490,6 +650,23 @@ struct LaufTakt {
     // rechnen 200 (LaufWerte::spawnVorlauf). Der gemeinsame Takt rechnet ein
     // Denkbild, in dem er abweicht, mit derselben Bildzeit.
     int msec = 50;
+    // rc605: in diesem Denkbild sprang die Figur ab (NPC_TryJump -> NPC_Jump
+    // setzte ps.velocity vor dem Pmove) - sprungTempo ist dieses shotVel.
+    bool sprung = false;
+    NavVec sprungTempo{};
+    // rc605: BS_JUMP - die Animation von NPC_BSJump nach diesem Denkbild (0 keine,
+    // 1 BOTH_CROUCH1, 2 BOTH_INAIR1, 3 BOTH_LAND1) und seit wann.
+    int bsAnim = 0;
+    double bsAnimAb = 0.0;
+    // rc605 FU4: Beine und Oberkoerper der Sprungkette nach diesem Denkbild
+    // (SprungAnim; torsoAnim 0: folgt den Beinen) und seit wann.
+    int beinAnim = 0;
+    double beinAnimAb = 0.0;
+    int torsoAnim = 0;
+    double torsoAnimAb = 0.0;
+    // rc605 (Probe): 1 STEER::GoTo, 2 NAV::GoTo, 3 STEER::Stop; +10 STEER::Blocked
+    // in diesem Denkbild (0: kein NPC_MoveToGoal).
+    int weg = 0;
 };
 
 struct LaufPlan {
@@ -562,6 +739,18 @@ struct LaufPlan {
 // Schalter nicht; die Tabelle steht in NOTIZEN_bewegung.md §10.
 void navMovieDuelsRegeln(bool an);
 [[nodiscard]] bool navMovieDuelsRegeln();
+// rc604 fix604 (JK2 Stufe 3): Jedi Outcast - NPC_MoveToGoal mit dem alten
+// Navigator (codeJK2/game/NPC_move.cpp, g_navnew.cpp, g_navigator.cpp) und
+// dem Tempo aus ClientThink_real (g_active.cpp:2358-2484) statt STEER/NAV.
+// Gesetzt vom zentralen Schalter (regelwerkAnwendenSpiel).
+void navJk2Regeln(bool an);
+[[nodiscard]] bool navJk2Regeln();
+// Com_BlockChecksum (md4.c): MD4, die vier Worte verknuepft - die Pruefsumme,
+// mit der CNavigator::Load eine .nav zur .bsp prueft.
+[[nodiscard]] int navBlockPruefsumme(const std::string& bytes);
+// CNavigator::Load (g_navigator.cpp:567-628) ohne Pruefsummenvergleich; leer,
+// wenn die Datei nicht taugt. `summe` bekommt die gespeicherte Pruefsumme.
+[[nodiscard]] std::shared_ptr<NavNetzJk2> navJk2Laden(const std::string& bytes, int& summe);
 
 // rc601 (bewegung, Durchsicht 2): Abkuerzungen, die am Ergebnis nichts
 // aendern (Zwischenspeicher fuer has_valid_edge je Regionspaar). Fuer die
@@ -611,7 +800,27 @@ struct NavFigurKoerper {
     double daAbMs = -1.0e300;      // CONTENTS_BODY ab (Spawn) ...
     double daBisMs = 1.0e300;      // ... bis (remove, kill: dann CONTENTS_CORPSE)
     std::vector<std::pair<double, NavVec>> orte;   // Ort ohne Plan ab einer Zeit (Spawn, SET_ORIGIN)
+    // rc604 fix604: contents und clipmask je Zeit. Bis fix604 war jede Figur
+    // von daAbMs bis daBisMs ein Koerper - auch eine unsichtbare (col1 in
+    // md_ga_sith intro_sith hielt dok1 sieben Sekunden auf).
+    bool sfbNichtFest = false;     // NPC_spawner spawnflags 64 (SFB_NOTSOLID): contents 0 ab NPC_Begin
+    std::vector<std::pair<double, signed char>> fest;   // Wechsel ab einer Zeit (kNavFest...), nach der Zeit
 };
+// NavFigurKoerper::fest - was ein Skriptbefehl an contents/clipmask aendert.
+// SET_INVISIBLE true: contents = 0 (Q3_SetInvisible, Q3_Interface.cpp:
+// 3101-3128 MD / 2901-2928 OpenJK; SET_INVISIBLE false stellt nichts zurueck).
+inline constexpr signed char kNavFestUnsichtbar = 0;
+// SET_SOLID false: contents CONTENTS_CORPSE (unsichtbar: 0), clipmask ohne
+// CONTENTS_BODY (Q3_SetSolid, Q3_Interface.cpp:6094-6113 MD / 5651-5667 OpenJK).
+inline constexpr signed char kNavFestNicht = 1;
+// SET_SOLID true: contents CONTENTS_BODY, clipmask mit CONTENTS_BODY - wenn
+// SpotWouldTelefrag2 keinen anderen Koerper findet; sonst versucht es
+// SolidifyOwner jedes FRAMETIME (100 ms) wieder (Q3_Interface.cpp:6031-6093 MD
+// / 5589-5650 OpenJK; SpotWouldTelefrag2 g_client.cpp:320-341 MD / 158 OpenJK).
+// Den Befehl selbst haelt das Skript so lange an (TID_RESIZE, Q3_Interface.cpp:
+// 9496-9504 MD) - rc605 (fix605): das rechnet der Ablauf mit seinen Orten nach
+// (ablauf.cpp, telefrag/solidify).
+inline constexpr signed char kNavFestJa = 2;
 struct NavKoerperErgebnis {
     std::vector<std::shared_ptr<const LaufPlan>> plaene;   // je Abschnitt
     int geaendert = 0;             // so viele weichen vom Plan ohne die anderen ab
@@ -634,8 +843,9 @@ struct NavKoerperErgebnis {
 // NAV::GetNearestNode(position, previous, goal, ignoreEnt, allowZOffset)
 [[nodiscard]] int navNaechsterKnoten(const NavWelt& welt, const NavVec& pos, int vorher, int ziel);
 // NAV::FindPath bis auf den Pfad: gibt es ein A* vom Knoten a zum Knoten b?
-// `pfad` (optional) bekommt die Knoten von a nach b.
-[[nodiscard]] bool navAStar(const NavNetz& netz, int a, int b, std::vector<int>* pfad = nullptr);
+// `pfad` (optional) bekommt die Knoten von a nach b. rc605: `springen` =
+// SCF_NAV_CAN_JUMP - dann gelten Sprungkanten (is_valid, g_navigator.cpp:551-556 MD).
+[[nodiscard]] bool navAStar(const NavNetz& netz, int a, int b, std::vector<int>* pfad = nullptr, bool springen = false);
 
 }  // namespace bhed
 #endif

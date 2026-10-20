@@ -99,6 +99,9 @@ add_library(bhed_core STATIC
   src/gegenstaende.cpp
   # rc602: Shaderstufen der Figuren (ComputeColors/ComputeTexCoords).
   src/figurstufen.cpp
+  # rc604: surfaceSprites (Gras, Buesche, Regenspritzer) wie
+  # tr_surfacesprites.cpp. Siehe bhed/grasflaechen.h.
+  src/grasflaechen.cpp
   # Waffe und Lichtschwerter einer Figur ueber die Zeit (SET_WEAPON,
   # SET_SABER*, Handmodelle). Siehe den Kopf der Datei.
   src/ausruestung.cpp
@@ -205,6 +208,10 @@ endif()
 target_sources(bhed_core PRIVATE src/eingebaut.cpp)
 include(${CMAKE_CURRENT_SOURCE_DIR}/tools/eingebaute_daten.cmake)
 file(GLOB BEHAVED_EINGEBAUT CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/data/base/*")
+# rc604: der Befehlssatz fuer Jedi Outcast (data/jk2, tools/gen_jk2daten.py)
+# kommt mit - im Programm unter "jk2/<name>", ausgepackt neben data/base.
+file(GLOB BEHAVED_EINGEBAUT_JK2 CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/data/jk2/*")
+list(APPEND BEHAVED_EINGEBAUT ${BEHAVED_EINGEBAUT_JK2})
 behaved_eingebaute_daten(bhed_core ${CMAKE_BINARY_DIR}/eingebaut/eingebaute_daten.inc ${BEHAVED_EINGEBAUT})
 
 # Werkzeug
@@ -215,7 +222,10 @@ target_link_libraries(bhed PRIVATE bhed_core)
 add_custom_command(TARGET bhed POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_CURRENT_SOURCE_DIR}/data/base
-          $<TARGET_FILE_DIR:bhed>/data/base)
+          $<TARGET_FILE_DIR:bhed>/data/base
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/data/jk2
+          $<TARGET_FILE_DIR:bhed>/data/jk2)
 
 # --- Oberflaeche -------------------------------------------------------
 #
@@ -267,6 +277,7 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
     gui/app_modell.cpp
     gui/app_animation.cpp
     gui/app_wetter.cpp
+    gui/app_gras.cpp
     gui/app_ton.cpp
     gui/app_saber.cpp
     # rc601 bewegung: Schwerkraft der Figuren gegen die Karte
@@ -345,7 +356,10 @@ if(WIN32 AND IMGUI_DIR AND EXISTS "${IMGUI_DIR}/imgui.cpp")
   add_custom_command(TARGET behaved POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/data/base
-            $<TARGET_FILE_DIR:behaved>/data/base)
+            $<TARGET_FILE_DIR:behaved>/data/base
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/data/jk2
+            $<TARGET_FILE_DIR:behaved>/data/jk2)
 elseif(WIN32)
   message(STATUS "Oberflaeche wird nicht gebaut: -DIMGUI_DIR=<pfad> setzen")
 endif()
@@ -420,7 +434,7 @@ if(BEHAVED_TESTS)
   # Die Proben des GPU-Wegs und des Gluehens. Sie lagen in tests/, wurden
   # aber nicht gebaut - Aenderungen an Konstantenlagen, Shadertext und
   # Zeichenliste liefen damit ungeprueft durch (rc568, gDeformSpread).
-  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren npcklasse kartenpruefung figurstufen)
+  foreach(t gpuconst gpudraw gpushader gpustate gpucam gpuskin efxtest ersetzen mover arbeiter saberkontakt saberspuren npcklasse kartenpruefung figurstufen grasflaechen)
     add_executable(${t}_probe tests/${t}.cpp)
     target_link_libraries(${t}_probe PRIVATE bhed_core)
     add_test(NAME ${t} COMMAND ${t}_probe)
@@ -490,6 +504,11 @@ if(BEHAVED_TESTS)
   add_test(NAME bewegung COMMAND bewegungtest
            ${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/intro_jedi.txt
            ${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/md_twj_jedi.ent)
+  # rc604 fix604 (JK2 Stufe 3): Laufen wie in Jedi Outcast (NPC_MoveToGoal,
+  # NPC_Accelerate, maps/<karte>.nav) - Teil 2 nur mit JK2-Installation.
+  add_executable(jk2navtest tests/jk2navtest.cpp)
+  target_link_libraries(jk2navtest PRIVATE bhed_core)
+  add_test(NAME jk2nav COMMAND jk2navtest)
   # ROFF-Bahnen (bhed/roff.h): kleine Dateien im Speicher, beide Fassungen,
   # Zeitplan, Mover- und Figurenweg, Notizen, kaputte Dateien.
   add_executable(rofftest tests/rofftest.cpp)

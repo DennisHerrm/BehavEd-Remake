@@ -3612,7 +3612,7 @@ std::vector<Schritt> kartenBreitSchritte() {
     }));
     add(pruefe("Figuren: Modelle geladen", [] {
         int mit = 0;
-        for (const App::ActorAssets& a : g_app->actorAssets) { if (!a.model.empty()) { ++mit; } }
+        for (const auto& a : g_app->actorAssets) { if (!a->model.empty()) { ++mit; } }
         diag::detail("Knopftest: Figuren " + std::to_string(g_app->scene.actors.size()) + ", mit Modell " +
                      std::to_string(mit));
         return mit > 0;
@@ -7810,6 +7810,312 @@ std::vector<std::string> reiterFolge(const std::string& mission) {
 }
 }  // namespace missionsliste
 
+// --- rc604: Jedi Outcast (BHED_EDITORTEST=jk2) -------------------------------
+//
+// Betreuer: "echtes Jedi Outcast" als drittes Regelwerk. Nachgestellt mit den
+// Original-Daten von JK2 (BHED_JK2_BASIS, sonst der Steam-Ordner "Jedi
+// Outcast/GameData/base"): Load mission mit assets0.pk3, kejim_post. Die
+// Spielordner der Einstellungen bleiben unberuehrt (rc603: die JK2-Ordner
+// gelten nur fuer die Sitzung).
+//   1. Vorher - Regelwerk OpenJK erzwungen = wie behaved bis rc603 mit
+//      JK2-Daten: keine NPC-Liste (nur NPCs.cfg), menschliche Figuren auf das
+//      JKA-Skelett umgelegt (53 Knochen gegen eine .gla mit 72).
+//   2. Nachher - automatisch: Jedi Outcast erkannt, Befehlssatz data/jk2,
+//      jede Figur mit NPC_type hat ihr Modell, menschliche Figuren auf dem
+//      JK2-Skelett (72 Knochen), Schwerter mit Griff und Farbe aus NPCs.cfg.
+//   3. Danach zurueck zu den eingerichteten Ordnern: Jedi Academy / Movie
+//      Duels wie zuvor, eine Mission von dort mit 53-Knochen-Skelett.
+namespace jk2probe {
+struct Befund {
+    int mitTyp = 0;          // Figuren mit NPC_type
+    int ohneModell = 0;      // davon ohne Modell (keine Beschreibung oder kein .glm)
+    int menschen = 0;        // Modelle mit "_humanoid"
+    int passend = 0;         // davon Knochen von Modell und Skelett gleich
+    int jk2Umgelegt = 0;     // JK2-Modell auf das JKA-Skelett umgelegt
+    std::size_t skelettKnochen = 0;
+    bool rhang = false;      // das Skelett kennt rhang_tag_bone (Schwert in der Hand)
+    std::string text;
+};
+Befund befund() {
+    Befund b;
+    std::string ohne;
+    for (std::size_t i = 0; i < g_app->scene.actors.size(); ++i) {
+        const Actor& a = g_app->scene.actors[i];
+        if (a.npcType.empty()) { continue; }
+        ++b.mitTyp;
+        std::string k = a.npcType;
+        for (char& c : k) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        const auto it = g_app->npcMap.find(k);
+        const bool md3 = it != g_app->npcMap.end() && it->second.playerModel.empty() && !it->second.legsModel.empty();
+        const bool modell = i < g_app->actorAssets.size() && g_app->actorAssets[i] != nullptr &&
+                            !g_app->actorAssets[i]->model.empty();
+        if (!modell && !md3) {
+            ++b.ohneModell;
+            if (ohne.size() < 200) { ohne += " " + a.name + "(" + a.npcType + ")"; }
+            continue;
+        }
+        if (!modell) { continue; }
+        const App::ActorAssets& aa = *g_app->actorAssets[i];
+        if (aa.model.animFile.find("_humanoid") == std::string::npos) { continue; }
+        ++b.menschen;
+        b.jk2Umgelegt += aa.model.jk2Umgewandelt ? 1 : 0;
+        if (aa.skeleton != nullptr) {
+            b.skelettKnochen = aa.skeleton->anim.bones.size();
+            for (const GlaBone& kn : aa.skeleton->anim.bones) { b.rhang = b.rhang || kn.name == "rhang_tag_bone"; }
+            if (static_cast<int>(aa.skeleton->anim.bones.size()) == aa.model.numBones) { ++b.passend; }
+        }
+    }
+    b.text = std::to_string(g_app->scene.actors.size()) + " Figuren, " + std::to_string(b.mitTyp) + " mit NPC_type, " +
+             std::to_string(b.ohneModell) + " ohne Modell" + (ohne.empty() ? std::string() : " [" + ohne + " ]") + ", " +
+             std::to_string(b.menschen) + " menschlich, davon " + std::to_string(b.passend) +
+             " mit passendem Skelett, " + std::to_string(b.jk2Umgelegt) + " auf JKA umgelegt, Skelett " +
+             std::to_string(b.skelettKnochen) + " Knochen" + (b.rhang ? " (rhang_tag_bone)" : "") + ", NPC-Typen " +
+             std::to_string(g_app->npcMap.size());
+    return b;
+}
+// mitModell: mindestens eine Figur hat ihr Modell (unter OpenJK-Regeln mit
+// JK2-Daten hat keine eines - das ist der nachgestellte Fehler).
+bool figurenGeladen(bool mitModell = true) {
+    if (g_app->map.empty() || !g_app->camTrackValid || g_app->scene.actors.empty() ||
+        g_app->actorAssets.size() != g_app->scene.actors.size() || !g_app->npcMapRead) {
+        return false;
+    }
+    if (!mitModell) { return true; }
+    for (const auto& a : g_app->actorAssets) {
+        if (a != nullptr && !a->model.empty()) { return true; }
+    }
+    return false;
+}
+bool hatZiel(const char* wert) {
+    const auto it = g_app->db.typesets.find("OBJECTIVES");
+    if (it == g_app->db.typesets.end()) { return false; }
+    for (const auto& e : it->second.entries) {
+        if (e.name == wert) { return true; }
+    }
+    return false;
+}
+struct Zustand {
+    std::string jk2;
+    std::string jkaArchiv;               // eine pk3 aus den eingerichteten Ordnern (Movie Duels base)
+    std::vector<std::string> vorherJka;  // settings.gamePaths
+    std::vector<std::string> vorherJk2;  // settings.gamePathsJk2
+    int vorherRegel = 0;
+    Befund rot;
+    int jk2Reiter = -1;   // rc604: Reiter mit kejim_post
+    int jkaReiter = -1;   // rc604: Reiter mit md_am_sith
+};
+}  // namespace jk2probe
+
+std::vector<Schritt> jk2Schritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto z = std::make_shared<jk2probe::Zustand>();
+    add(tu("JK2: Ausgangslage (Original-Jedi-Outcast, eingerichtete Spielordner)", [=] {
+        const char* e = std::getenv("BHED_JK2_BASIS");
+        z->jk2 = e != nullptr ? e : "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Jedi Outcast\\GameData\\base";
+        z->vorherJka = g_app->settings.gamePaths;
+        z->vorherJk2 = g_app->settings.gamePathsJk2;
+        z->vorherRegel = g_app->settings.regelwerk;
+        for (const std::string& o : g_app->settings.gamePaths) {
+            std::error_code ec;
+            if (z->jkaArchiv.empty() && std::filesystem::is_regular_file(std::filesystem::u8path(o + "\\assets1.pk3"), ec)) {
+                z->jkaArchiv = o + "\\assets1.pk3";
+            }
+        }
+        g_app->missionPickOpen = false;
+        diag::detail("Knopftest: JK2 - Spiel \"" + z->jk2 + "\", Regelwerk vorher " +
+                     regelwerkSchluessel(z->vorherRegel) + ", JKA-Archiv \"" + z->jkaArchiv + "\"");
+    }));
+    add(pruefe("JK2: Original-Daten (assets0.pk3) vorhanden", [=] {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(std::filesystem::u8path(z->jk2 + "\\assets0.pk3"), ec);
+    }));
+    // --- 1. Vorher: OpenJK-Regeln erzwungen (behaved bis rc603) -------------
+    add(tu("JK2 vorher: Regelwerk OpenJK erzwungen, Load mission assets0.pk3", [=] {
+        g_app->settings.regelwerk = kRegelwerkOpenJK;
+        (void)regelwerkPruefen();
+        missionenAusArchiv(z->jk2 + "\\assets0.pk3");
+    }));
+    add(warteBis("JK2: kejim_post in der Auswahl", [] { return missionsliste::hat("kejim_post", true); }, 3500));
+    add(pruefe("JK2: Load mission nennt 25 spielbare Missionen von Jedi Outcast", [] {
+        diag::detail("Knopftest: JK2 - Missionen: " + missionsliste::liste());
+        int spielbar = 0;
+        for (const Mission& m : g_app->missions) { spielbar += m.playable() ? 1 : 0; }
+        return spielbar == 25 && missionsliste::hat("yavin_final", true);
+    }));
+    add(waehleInListe("kejim_post", false, 0, "##missionpick"));
+    add(warteBis("JK2 vorher: kejim_post geladen, Figuren aufgebaut", [] {
+        return g_app->map.path.find("kejim_post") != std::string::npos && jk2probe::figurenGeladen(false);
+    }, 3000));
+    add(pruefe("JK2 vorher (nachgestellt): mit OpenJK-Regeln fehlen NPC-Modelle und das Skelett passt nicht", [=] {
+        z->rot = jk2probe::befund();
+        diag::detail("Knopftest: JK2 vorher (OpenJK-Regeln) - " + z->rot.text + ", Befehlssatz " +
+                     (jk2probe::hatZiel("ARTUS_DETENTION_OBJ1") ? "JK2" : "JKA"));
+        return !regelwerkJediOutcast() && (z->rot.ohneModell > 0 || z->rot.passend < z->rot.menschen);
+    }));
+    // --- 2. Nachher: automatisch -> Jedi Outcast ----------------------------
+    add(tu("JK2: Regelwerk automatisch", [] {
+        g_app->settings.regelwerk = kRegelwerkAuto;
+        (void)regelwerkPruefen();
+    }));
+    add(warteBis("JK2: Jedi Outcast angewandt, Figuren neu geladen", [] {
+        return regelwerkJediOutcast() && jk2probe::figurenGeladen() && g_app->npcMapRead;
+    }, 3000));
+    add(pruefe("JK2: Regelwerk Jedi Outcast erkannt (automatisch, am Ordner der Mission)", [] {
+        diag::detail("Knopftest: JK2 - " + regelwerkStatusZeile() + ", Ghoul2 JK2 " + std::to_string(ghoul2Jk2()));
+        return regelwerkJediOutcast() && ghoul2Jk2() && regelwerkSpielErmitteln() == kRegelwerkJediOutcast;
+    }));
+    add(pruefe("JK2: Befehlssatz data/jk2 (JK2-Missionsziele in OBJECTIVES)", [] {
+        diag::detail("Knopftest: JK2 - Befehlssatz " + g_app->befehlssatzOrdner);
+        return jk2probe::hatZiel("ARTUS_DETENTION_OBJ1") && g_app->befehlssatzOrdner.size() >= 3 &&
+               g_app->befehlssatzOrdner.compare(g_app->befehlssatzOrdner.size() - 3, 3, "jk2") == 0;
+    }));
+    add(pruefe("JK2: jede Figur mit NPC_type hat ihr Modell (NPCs.cfg, kein \"ohne Modell\")", [=] {
+        const jk2probe::Befund b = jk2probe::befund();
+        diag::detail("Knopftest: JK2 nachher - " + b.text);
+        return b.mitTyp > 0 && b.ohneModell == 0 && g_app->npcMap.count("kyle") == 1;
+    }));
+    add(pruefe("JK2: menschliche Figuren auf dem JK2-Skelett (72 Knochen, rhang_tag_bone), keine umgelegt", [] {
+        const jk2probe::Befund b = jk2probe::befund();
+        return b.menschen > 0 && b.passend == b.menschen && b.jk2Umgelegt == 0 && b.skelettKnochen == 72 && b.rhang;
+    }));
+    add(pruefe("JK2: der Spieler ist kyle (Modell kyle, CLASS_KYLE)", [] {
+        const auto it = g_app->npcMap.find("player");
+        return it != g_app->npcMap.end() && it->second.playerModel == "kyle" && it->second.klasse == "CLASS_KYLE";
+    }));
+    add(pruefe("JK2: Schwerter ohne .sab - Griff im Archiv, Laenge und Farbe aus Klasse und NPCs.cfg", [] {
+        std::string bericht;
+        bool ok = true;
+        for (const char* typ : {"desann", "tavion", "luke", "kyle", "reborn", "rebornboss", "shadowtrooper", "player"}) {
+            const auto it = g_app->npcMap.find(typ);
+            if (it == g_app->npcMap.end()) {
+                bericht += std::string(" ") + typ + ":fehlt";
+                ok = false;
+                continue;
+            }
+            Actor a;
+            a.name = typ;
+            a.npcType = typ;
+            const int art = saberArtJk2(a, &it->second);
+            const SaberArt& sa = a.saberArten[static_cast<std::size_t>(art)];
+            const std::string griff = a.modelle[static_cast<std::size_t>(sa.modell)];
+            std::string daten;
+            const bool griffDa = readFromArchives(griff, daten);
+            std::string soll = it->second.saberFarbe[0][0];
+            for (char& c : soll) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+            if (soll.empty()) { soll = "red"; }
+            const bool farbeOk = soll == "random" || sa.klinge[0].farbe == soll;
+            ok = ok && griffDa && farbeOk;
+            bericht += std::string(" ") + typ + ":" + griff.substr(griff.find("weapons2/") + 9) + "/" +
+                       std::to_string(static_cast<int>(sa.klinge[0].max)) + "/" + sa.klinge[0].farbe +
+                       (griffDa ? "" : "(Griff fehlt)") + (farbeOk ? "" : "(Farbe falsch)");
+        }
+        diag::detail("Knopftest: JK2 Schwerter -" + bericht);
+        return ok;
+    }));
+    // rc604 fix604 (JK2 Stufe 3): das Wegnetz aus maps/kejim_post.nav und ein
+    // Weg darueber mit den Spuren der Vorschau (Welt, Brush-Entities, PVS).
+    add(pruefe("JK2: Wegnetz aus kejim_post.nav, eine Figur laeuft ueber das Netz (NAVNEW_MoveToGoal)", [] {
+        const std::shared_ptr<const NavWelt> welt = navWeltVorschau();
+        const NavNetzJk2* n = (welt && welt->netz) ? welt->netz->jk2.get() : nullptr;
+        if (n == nullptr || n->knoten.size() < 194U) {
+            diag::detail("Knopftest: JK2 Wegnetz fehlt");
+            return false;
+        }
+        LaufZustand z;
+        z.ort = n->knoten[1].punkt;
+        z.denkNullMs = 0.0;
+        LaufWerte w;
+        w.zielGesetzt = true;
+        w.ziel = n->knoten[193].punkt;
+        w.maxTempo = 150.0F;
+        w.gehTempo = 50.0F;
+        w.verhaltenTaktMs = 100;
+        w.fallen = true;
+        const LaufPlan p = planeLauf(*welt, z, w, 0.0, 60000.0);
+        int ersterKnoten = 0;
+        for (const LaufTakt& t : p.takte) {
+            if (ersterKnoten == 0 && t.tempo > 0) { ersterKnoten = t.stueck; }
+        }
+        diag::detail("Knopftest: JK2 Wegnetz - " + std::to_string(n->knoten.size()) + " Knoten" +
+                     (n->ausDatei ? " aus der .nav" : "") + ", Weg 1 -> 193: erster Knoten " + std::to_string(ersterKnoten - 1) +
+                     ", angekommen " + std::to_string(static_cast<int>(p.ankunftMs)) + " ms");
+        return n->ausDatei && n->knoten.size() == 239U && p.ankunftMs > 0.0 && ersterKnoten > 0;
+    }));
+    add(pruefe("JK2: die Spielordner der Einstellungen bleiben unberuehrt", [=] {
+        return g_app->settings.gamePaths == z->vorherJka && g_app->settings.gamePathsJk2 == z->vorherJk2;
+    }));
+    // --- rc604: zwei Missionsreiter verschiedener Spiele -------------------
+    // Die Spielordner der Sitzung waren EINE Liste fuer alle Reiter: lud man
+    // in einem zweiten Reiter eine Mission von Jedi Academy, zeigte der
+    // JK2-Reiter danach Dateien und Regeln von Jedi Academy. Jeder Reiter mit
+    // Karte behaelt jetzt die Spielordner seines Spiels.
+    add(tu("Reiter: neuer leerer Reiter, Load mission (Jedi Academy)", [=] {
+        z->jk2Reiter = g_app->activeTab;
+        neuerReiter();
+        missionenAusArchiv(z->jkaArchiv);
+    }));
+    add(warteBis("Reiter: md_am_sith in der Auswahl", [] { return missionsliste::hat("md_am_sith", true); }, 3500));
+    add(waehleInListe("md_am_sith", false, 0, "##missionpick"));
+    add(warteBis("Reiter: md_am_sith geladen, Jedi Academy", [] {
+        return g_app->map.path.find("md_am_sith") != std::string::npos && !regelwerkJediOutcast();
+    }, 3000));
+    add(tu("Reiter: zurueck zum JK2-Reiter", [=] {
+        z->jkaReiter = g_app->activeTab;
+        activateTab(z->jk2Reiter);
+    }));
+    add(warteBis("Reiter: JK2-Reiter zeigt kejim_post", [] { return g_app->map.path.find("kejim_post") != std::string::npos; }, 600));
+    add(pause(0.5));
+    add(pruefe("Reiter: der JK2-Reiter behaelt die Spielordner und Regeln von Jedi Outcast", [=] {
+        bool jk2Ordner = false;
+        for (const std::string& o : aktiveSpielordner()) { jk2Ordner = jk2Ordner || jediOutcastOrdner(o); }
+        diag::detail("Knopftest: Reiter JK2 - " + regelwerkStatusZeile() + ", JK2-Ordner " + std::to_string(jk2Ordner) +
+                     ", Reiter " + std::to_string(z->jk2Reiter) + "/" + std::to_string(z->jkaReiter));
+        return jk2Ordner && regelwerkJediOutcast();
+    }));
+    add(tu("Reiter: zum Reiter von Jedi Academy", [=] { activateTab(z->jkaReiter); }));
+    add(warteBis("Reiter: md_am_sith wieder da", [] { return g_app->map.path.find("md_am_sith") != std::string::npos; }, 600));
+    add(pause(0.5));
+    add(pruefe("Reiter: der Reiter von Jedi Academy behaelt dessen Spielordner und Regeln", [=] {
+        bool jk2Ordner = false;
+        for (const std::string& o : aktiveSpielordner()) { jk2Ordner = jk2Ordner || jediOutcastOrdner(o); }
+        diag::detail("Knopftest: Reiter JKA - " + regelwerkStatusZeile() + ", JK2-Ordner " + std::to_string(jk2Ordner));
+        return !jk2Ordner && !regelwerkJediOutcast();
+    }));
+    add(tu("Reiter: zurueck zum JK2-Reiter", [=] { activateTab(z->jk2Reiter); }));
+    add(pause(0.5));
+    // --- 3. Danach: zurueck zu Jedi Academy / Movie Duels -------------------
+    add(tu("JK2: zurueck zu den eingerichteten Spielordnern", [] {
+        g_app->missionPickOpen = false;
+        setzeSitzungsSpielordner({});
+        (void)regelwerkPruefen();
+    }));
+    add(warteBis("JK2: wieder Jedi Academy", [] { return !regelwerkJediOutcast(); }, 600));
+    add(pruefe("JKA danach: Regelwerk nicht JK2, Befehlssatz data/base, Ghoul2 wie JKA, eingerichtete Ordner", [=] {
+        diag::detail("Knopftest: JK2 danach - " + regelwerkStatusZeile() + ", Befehlssatz " + g_app->befehlssatzOrdner);
+        return !regelwerkJediOutcast() && !ghoul2Jk2() && !jk2probe::hatZiel("ARTUS_DETENTION_OBJ1") &&
+               &aktiveSpielordner() == &g_app->settings.gamePaths;
+    }));
+    add(tu("JKA danach: Load mission aus dem eingerichteten Ordner (md_am_sith)", [=] {
+        if (!z->jkaArchiv.empty()) { missionenAusArchiv(z->jkaArchiv); }
+    }));
+    add(warteBis("JKA danach: md_am_sith in der Auswahl", [] { return missionsliste::hat("md_am_sith", true); }, 3500));
+    add(waehleInListe("md_am_sith", false, 0, "##missionpick"));
+    add(warteBis("JKA danach: md_am_sith geladen, Figuren mit Modell", [] {
+        return g_app->map.path.find("md_am_sith") != std::string::npos && jk2probe::figurenGeladen();
+    }, 3000));
+    add(pruefe("JKA danach: menschliche Figuren auf dem JKA-Skelett (53 Knochen), Regelwerk nicht JK2", [] {
+        const jk2probe::Befund b = jk2probe::befund();
+        diag::detail("Knopftest: JKA danach - " + b.text + ", " + regelwerkStatusZeile());
+        return !regelwerkJediOutcast() && b.menschen > 0 && b.passend == b.menschen && b.skelettKnochen == 53;
+    }));
+    add(tu("JK2: Regelwerk wie vorher", [=] {
+        g_app->missionPickOpen = false;
+        g_app->settings.regelwerk = z->vorherRegel;
+    }));
+    return s;
+}
+
 std::vector<Schritt> missionsListeSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
@@ -8521,7 +8827,7 @@ std::vector<Schritt> saberSchritte() {
                  (static_cast<std::size_t>(fi) < g_app->figurGezeichnet.size()
                       ? saberVek(g_app->figurGezeichnet[static_cast<std::size_t>(fi)].data())
                       : std::string("-")) +
-                 ", Modell leer " + std::to_string(g_app->actorAssets[static_cast<std::size_t>(fi)].model.empty()) +
+                 ", Modell leer " + std::to_string(g_app->actorAssets[static_cast<std::size_t>(fi)]->model.empty()) +
                  ", Kamera " + saberVek(g_app->cam.pos);
         }
         for (const SaberGezeichnet& k : saberGezeichnetesBild()) {
@@ -14673,6 +14979,8 @@ std::vector<Schritt> kartenPruefungSchritte() {
                      // --- Was behaved zeichnet, gemessen ---------------------
                      std::set<std::size_t> modellEnt;
                      for (const App::MapModel& mm : g_app->mapModels) { modellEnt.insert(mm.entity); }
+                     // rc604 fix604b (B3): Ghoul2-Modelle der Spawnfunktionen (Geschuetze, Gegenstaende).
+                     for (const App::GegenstandGlm& gg : g_app->gegenstandGlm) { modellEnt.insert(gg.entity); }
                      std::map<int, int> figurEnt;   // Entity -> Figur
                      for (std::size_t i = 0; i < g_app->scene.actors.size(); ++i) {
                          const int ke = g_app->scene.actors[i].kartenEntity;
@@ -14687,7 +14995,9 @@ std::vector<Schritt> kartenPruefungSchritte() {
                          if (c.empty() || c == "worldspawn") { continue; }
                          ++klassen[c];
                          const Gegenstandsliste& gl = kp::gegenstaende(md);
-                         if (!kartenpruefung::imSpiel(c, md, &gl)) {
+                         // rc604: notsingle/Schwierigkeit - G_SpawnGEntityFromSpawnVars
+                         // entfernt die Entity vor ihrer Spawnfunktion.
+                         if (!kartenpruefung::imSpiel(c, md, &gl) || !spawntBeiSchwierigkeit(e, regelwerkSpielstufe())) {
                              ++nichtImSpiel[c];
                              continue;
                          }
@@ -14713,11 +15023,22 @@ std::vector<Schritt> kartenPruefungSchritte() {
                                  da = true;
                              }
                          }
-                         if (c.rfind("NPC_", 0) == 0) {
+                         // rc604 fix604b (B5): misc_trip_mine mit targetname und START_OFF (4)
+                         // ist EF_NODRAW bis zum use (SP_misc_trip_mine, g_misc.cpp:1860-1866).
+                         if (!da && c == "misc_trip_mine" && e.find("targetname") != nullptr) {
+                             int msf = 0;
+                             if (const std::string* x = e.find("spawnflags")) { msf = std::atoi(x->c_str()); }
+                             if ((msf & 4) != 0) {
+                                 ++wartet[c];
+                                 da = true;
+                             }
+                         }
+                         // rc604: misc_atst_drivable steht als Kartenfigur da (AT-ST).
+                         if (c.rfind("NPC_", 0) == 0 || c == "misc_atst_drivable") {
                              const auto f = figurEnt.find(static_cast<int>(i));
                              if (f != figurEnt.end()) {
                                  const std::size_t fi = static_cast<std::size_t>(f->second);
-                                 const bool modell = fi < g_app->actorAssets.size() && !g_app->actorAssets[fi].model.empty();
+                                 const bool modell = fi < g_app->actorAssets.size() && !g_app->actorAssets[fi]->model.empty();
                                  if (!modell) {
                                      npcOhneModell.insert(c + " (" + g_app->scene.actors[fi].npcType + ")");
                                  }
@@ -14748,7 +15069,21 @@ std::vector<Schritt> kartenPruefungSchritte() {
                                  }
                              }
                              da = true;   // laeuft, sofern die Datei da ist (sonst auch im Spiel nichts)
-                         } else if (c == "fx_rain" || c == "fx_snow" || art == "Portal") {
+                         } else if (c == "fx_target_beam") {
+                             // rc604 fix604b (B6): Strahl laeuft (Kopie "...#tb<i>") oder wartet auf use.
+                             const std::string* tn = e.find("targetname");
+                             int tsf = 0;
+                             if (const std::string* s = e.find("spawnflags")) { tsf = std::atoi(s->c_str()); }
+                             for (const auto& [pfad, fx] : g_app->effects) {
+                                 (void)fx;
+                                 const std::string ende = "#tb" + std::to_string(i);
+                                 if (pfad.size() > ende.size() && pfad.compare(pfad.size() - ende.size(), ende.size(), ende) == 0) { da = true; }
+                             }
+                             if (!da && (tsf & (1 | 8)) != 0 && tn != nullptr) {
+                                 ++wartet[c];
+                                 da = true;
+                             }
+                         } else if (c == "fx_rain" || c == "fx_snow" || c == "fx_lava" || art == "Portal") {
                              da = true;   // app_wetter.cpp, Portale/Himmelsportal (app_view3d.cpp)
                          }
                          if (!da) { ++nichtGezeichnet[c]; }
@@ -14774,7 +15109,8 @@ std::vector<Schritt> kartenPruefungSchritte() {
                      }
                      std::set<std::string> figurShader;
                      int figurTexFehlt = 0;
-                     for (const App::ActorAssets& aa : g_app->actorAssets) {
+                     for (const auto& zeiger : g_app->actorAssets) {
+                         const App::ActorAssets& aa = *zeiger;
                          figurTexFehlt += aa.textures.missing;
                          for (const GlmSurface& sf : aa.model.surfaces) {
                              if (sf.skinnedOff || (sf.flags & (GlmSurface::kFlagBolt | GlmSurface::kFlagOff)) != 0U) { continue; }
@@ -16088,6 +16424,147 @@ std::vector<Schritt> gluehenMoverSchritte() {
     return s;
 }
 
+// --- rc604: surfaceSprites (Gras) wie im Spiel - "gras" ---------------------
+//
+// yavin1b: textures/yavin/ground_grasssprite_phong_vertex traegt eine Stufe
+// `surfaceSprites vertical`. Die Engine zeichnet sie NICHT als Schicht
+// (tr_shade.cpp:1888 MD: continue), sondern als Halme
+// (RB_DrawSurfaceSprites, tr_surfacesprites.cpp:1440). Prueft: (a) keine
+// solche Stufe liegt als flache Schicht auf dem Boden, (b) auf der groessten
+// Grasflaeche stehen Halme - gezaehlt und als Bildpunkte (mit/ohne).
+std::vector<Schritt> grasSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto ohne = std::make_shared<std::vector<std::uint8_t>>();
+    auto ziel = std::make_shared<std::array<float, 3>>(std::array<float, 3>{0, 0, 0});
+    add(tu("Gras: yavin1b laden", [] {
+        g_app->leftMode = 1;
+        if (!loadMapFromArchive("maps/yavin1b.bsp")) { diag::detail("Knopftest: Gras - yavin1b nicht geladen"); }
+    }));
+    add(warteBis("Gras: Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(pruefe("Gras: keine surfaceSprites-Stufe als flache Schicht (tr_shade.cpp:1888), alle als Halme", [] {
+        std::size_t stufen = 0;
+        for (const auto& v : g_app->grasStufen) { stufen += v.size(); }
+        diag::detail("Knopftest: Gras - als Schicht " + std::to_string(g_app->grasFlachSchichten) + ", als Halme " +
+                     std::to_string(stufen));
+        return g_app->grasFlachSchichten == 0 && stufen > 0U;
+    }));
+    auto stelle = [=](bool gras) {
+        g_app->leftMode = 1;
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 0.0;
+        g_app->showEffects = false;
+        g_app->showActors = false;
+        g_app->zeigeGras = gras;
+        for (int k = 0; k < 3; ++k) { g_app->cam.pos[k] = (*ziel)[static_cast<std::size_t>(k)]; }
+        g_app->cam.pos[2] += 72.0F;
+        g_app->cam.angles[0] = 30.0F;   // 30 Grad nach unten
+        g_app->cam.angles[1] = 45.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    };
+    add(tu("Gras: ueber die groesste Grasflaeche, Halme aus", [=] {
+        float m[3] = {0, 0, 0};
+        const bool da = grasTestZiel(m);
+        for (int k = 0; k < 3; ++k) { (*ziel)[static_cast<std::size_t>(k)] = m[k]; }
+        diag::detail("Knopftest: Gras - Ziel " + std::string(da ? "" : "NICHT ") + "gefunden: " + std::to_string(m[0]) +
+                     " " + std::to_string(m[1]) + " " + std::to_string(m[2]));
+        stelle(false);
+    }));
+    add(gezeichnet("Gras aus"));
+    add(tu("Gras: noch ein Bild", [] { g_app->mapDirty = true; }));
+    add(gezeichnet("Gras aus (zweites Bild)"));
+    add(foto("gras_aus"));
+    add(tu("Gras: Bild ohne Halme merken", [=] {
+        int w = 0;
+        int h = 0;
+        if (!gpu::leseFarbe(*ohne, w, h)) { ohne->clear(); }
+    }));
+    add(tu("Gras: Halme an", [=] { stelle(true); }));
+    add(gezeichnet("Gras an"));
+    add(tu("Gras: noch ein Bild", [] { g_app->mapDirty = true; }));
+    add(gezeichnet("Gras an (zweites Bild)"));
+    add(foto("gras_an"));
+    add(pruefe("Gras: auf der Grasflaeche stehen Halme (Vierecke und sichtbare Bildpunkte)", [=] {
+        std::vector<std::uint8_t> mit;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(mit, w, h);
+        std::size_t anders = 0;
+        const std::size_t n = std::min(mit.size(), ohne->size()) / 4U;
+        for (std::size_t i = 0; gelesen && i < n; ++i) {
+            const int d = std::abs(int(mit[i * 4]) - int((*ohne)[i * 4])) +
+                          std::abs(int(mit[i * 4 + 1]) - int((*ohne)[i * 4 + 1])) +
+                          std::abs(int(mit[i * 4 + 2]) - int((*ohne)[i * 4 + 2]));
+            if (d > 24) { ++anders; }
+        }
+        const double anteil = n > 0U ? static_cast<double>(anders) / static_cast<double>(n) : 0.0;
+        diag::detail("Knopftest: Gras - Vierecke " + std::to_string(g_app->grasVierecke) + " auf " +
+                     std::to_string(g_app->grasFlaechen) + " Flaechen, Bildpunkte anders " + std::to_string(anders) +
+                     " von " + std::to_string(n) + " (" + std::to_string(anteil * 100.0) + " %)");
+        return g_app->grasVierecke > 50 && anteil > 0.02;
+    }));
+    add(pruefe("Gras: eine Nebensicht (Kameravorschau, Himmelsportal) baut fuer dieselbe Kamera dieselben Halme", [] {
+        baueGrasNetzNeben(g_app->cam, g_app->grasReichweite);
+        diag::detail("Knopftest: Gras - Nebensicht " + std::to_string(g_app->grasViereckeNeben) + ", Hauptsicht " +
+                     std::to_string(g_app->grasVierecke));
+        return g_app->grasViereckeNeben == g_app->grasVierecke && g_app->grasVierecke > 0;
+    }));
+    // Die grossen Grasflaechen anderer Karten: zeichnet es, und was kostet es?
+    // (Effekte aus - die Zeit "Effekte" ist dann die der Halme.)
+    struct Probe {
+        const char* karte;
+        bool mussHalme;
+        bool patch = false;   // auf einen Patch zielen (Dreiecke wie RB_SurfaceGrid)
+    };
+    static const Probe kProben[] = {{"maps/duel_yavin.bsp", true},
+                                    {"maps/duel_dantooine_enclave.bsp", true},
+                                    {"maps/duel_dantooine_enclave.bsp", true, true},
+                                    {"maps/t2_rancor.bsp", true},
+                                    {"maps/t2_trip.bsp", true},
+                                    {"maps/duel_kamino.bsp", false}};
+    for (const Probe& pr : kProben) {
+        const std::string karte = pr.karte;
+        const bool muss = pr.mussHalme;
+        const bool patch = pr.patch;
+        add(tu("Gras: " + karte + " laden", [karte] {
+            g_app->leftMode = 1;
+            if (!loadMapFromArchive(karte)) { diag::detail("Knopftest: Gras - " + karte + " nicht geladen"); }
+        }));
+        add(warteBis("Gras: Karte bereit", [] { return g_app->mapBereit; }, 900));
+        add(tu("Gras: ueber die groesste Flaeche mit surfaceSprites", [=] {
+            float m[3] = {0, 0, 0};
+            (void)grasTestZiel(m, true, patch);
+            for (int k = 0; k < 3; ++k) { (*ziel)[static_cast<std::size_t>(k)] = m[k]; }
+            stelle(true);
+        }));
+        for (int b = 0; b < 3; ++b) {
+            add(gezeichnet("Gras " + karte));
+            add(tu("Gras: noch ein Bild", [] { g_app->mapDirty = true; }));
+        }
+        add(gezeichnet("Gras " + karte + " (letztes Bild)"));
+        add(foto("gras_" + karte.substr(5, karte.size() - 9) + (patch ? "_patch" : "")));
+        add(pruefe("Gras: " + karte + (muss ? " - Halme gezeichnet" : " - gezeichnet (Effekte nur bei Regen)"), [=] {
+            std::size_t stufen = 0;
+            for (const auto& v : g_app->grasStufen) { stufen += v.size(); }
+            diag::detail("Knopftest: Gras - " + karte + ": Stufen " + std::to_string(stufen) + ", als Schicht " +
+                         std::to_string(g_app->grasFlachSchichten) + ", Vierecke " +
+                         std::to_string(g_app->grasVierecke) + " auf " + std::to_string(g_app->grasFlaechen) +
+                         " Flaechen (Patches " + std::to_string(g_app->grasPatches) + "), Nebelaufrufe " +
+                         std::to_string(g_app->grasNebelAufrufe) +
+                         ", Kameravorschau " + (g_app->vorschauGezeigt ? std::to_string(g_app->grasViereckeNeben) : std::string("aus")) +
+                         ", Halme bauen " + std::to_string(g_app->frameCost.rawEffects) +
+                         " ms, Bild gesamt " + std::to_string(g_app->frameCost.rawTotal) + " ms");
+            return stufen > 0U && g_app->grasFlachSchichten == 0 && (!muss || g_app->grasVierecke > 0) &&
+                   (!patch || g_app->grasPatches > 0);
+        }));
+    }
+    return s;
+}
+
 // --- rc602: der erste Durchgang eines fx_runner (md_am_sith) -----------------
 //
 // SP_fx_runner setzt `nextthink = level.time + 400` (fx_runner_link, "Give us
@@ -16112,6 +16589,38 @@ std::vector<Schritt> fxRunnerStartSchritte() {
     return s;
 }
 
+// --- rc604 fix604: ein leerer Reiter mit der Karte ---------------------------
+//
+// In einem Skriptreiter fehlen jetzt die Darsteller anderer Zwischensequenzen
+// (Ablauf::fremdeDarsteller); ohne Skript zeigt der Reiter die Karte, wie sie
+// laedt - mit allen Figuren vom Kartenstart. Proben, die eine solche Figur
+// brauchen (sbd1, die Figuren mit Stufenbildern), sehen sie dort an.
+std::vector<Schritt> leererReiterMitKarte(const std::string& karte, const std::shared_ptr<int>& vorher) {
+    std::vector<Schritt> s;
+    s.push_back(tu("Leerer Reiter mit " + karte, [=] {
+        *vorher = g_app->activeTab;
+        neuerReiter();
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/" + karte + ".bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Leerer Reiter: Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Leerer Reiter: Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(gezeichnet(karte));
+    return s;
+}
+std::vector<Schritt> leererReiterZurueck(const std::shared_ptr<int>& vorher) {
+    std::vector<Schritt> s;
+    s.push_back(tu("Leerer Reiter: schliessen, zurueck", [=] {
+        reiterSchliessen(g_app->activeTab);
+        if (*vorher >= 0 && *vorher < static_cast<int>(g_app->tabs.size())) { g_app->tabRequest = *vorher; }
+    }));
+    s.push_back(warteBis("Leerer Reiter: zurueck", [=] {
+        return g_app->tabRequest < 0 && (*vorher < 0 || g_app->activeTab == *vorher);
+    }, 900));
+    return s;
+}
+
 // --- rc602: Leuchtstufen der Figuren (md_am_sith, Superkampfdroide sbd1) -----
 //
 // Teil desselben Berichts ("als wuerde etwas fehlen"): die Haut nennt etwa
@@ -16125,6 +16634,10 @@ std::vector<Schritt> fxRunnerStartSchritte() {
 std::vector<Schritt> gluehenFigurSchritte() {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    // rc604 fix604: sbd1 (SFB_CINEMATIC, NPC_targetname) nennt das Skript des
+    // Selbsttests nicht - in einem leeren Reiter steht sie da.
+    auto vorher = std::make_shared<int>(-1);
+    for (Schritt& x : leererReiterMitKarte("md_am_sith", vorher)) { add(std::move(x)); }
     // Kraeftig rote Bildpunkte im unteren mittleren Teil des Bildes, wo der
     // Kopf von sbd1 steht: dort liegt das rote Auge der Leuchtstufe.
     auto rot = [] {
@@ -16199,6 +16712,7 @@ std::vector<Schritt> gluehenFigurSchritte() {
         return r >= *ohne && n > 0;
     }));
     add(tu("Gluehen: zurueck in den Modus Ereignisse", [] { g_app->leftMode = 0; }));
+    for (Schritt& x : leererReiterZurueck(vorher)) { add(std::move(x)); }
     return s;
 }
 
@@ -16414,6 +16928,1023 @@ std::vector<Schritt> effektGluehenSchritte() {
     return s;
 }
 
+// --- rc604 fix604b (B1): Effektshader mit weiteren Stufen -----------------
+//
+// Die Kartenpruefung fand auf 36 Karten Effektshader mit mehr als einer Stufe -
+// vor allem gfx/exp/explosion1 (21 Karten): zwei oneshotanimmap-Stufen mit
+// blendFunc GL_ONE GL_ONE und rgbGen wave inversesawtooth / sawtooth (im Spiel
+// ueberblenden die Bilder, RB_IterateStagesGeneric zeichnet beide). Geprueft an
+// duel_utapau: der Platz des Effektshaders hat die zweite Stufe, beide Stufen
+// haben ihre Bildfolge (8 bzw. 7 Bilder, einmalig) und ihre rgbGen-Welle.
+std::vector<Schritt> effektStufenSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(tu("Effektstufen: duel_utapau laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/duel_utapau.bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(gezeichnet("duel_utapau"));
+    s.push_back(pruefe("Effektstufen: gfx/exp/explosion1 mit beiden Stufen, Bildfolge und Welle", [] {
+        const auto it = g_app->effectShaders.find("gfx/exp/explosion1");
+        const auto& bs = g_app->textures.byShader;
+        int platz = it == g_app->effectShaders.end() ? -1 : it->second;
+        const TextureSet::Tex* b = (platz > 0 && static_cast<std::size_t>(platz) < bs.size()) ? &bs[static_cast<std::size_t>(platz)] : nullptr;
+        const TextureSet::Tex* z = nullptr;
+        if (b != nullptr && b->extraStages.size() == 1U && b->extraStages[0] > 0 &&
+            static_cast<std::size_t>(b->extraStages[0]) < bs.size()) {
+            z = &bs[static_cast<std::size_t>(b->extraStages[0])];
+        }
+        char t[260];
+        std::snprintf(t, sizeof(t),
+                      "Knopftest: Effektstufen - Platz %d, Zusatzstufen %zu, Bilder Grund/Zusatz %zu/%zu, einmalig %d/%d, "
+                      "Welle %d/%d, Mischart Zusatz %d",
+                      platz, b != nullptr ? b->extraStages.size() : 0U, b != nullptr ? b->animFrames.size() : 0U,
+                      z != nullptr ? z->animFrames.size() : 0U, b != nullptr && b->animOneShot ? 1 : 0,
+                      z != nullptr && z->animOneShot ? 1 : 0, b != nullptr && b->rgbWave.active() ? 1 : 0,
+                      z != nullptr && z->rgbWave.active() ? 1 : 0, z != nullptr ? static_cast<int>(z->blend) : -1);
+        diag::detail(t);
+        return b != nullptr && z != nullptr && b->animFrames.size() == 8U && z->animFrames.size() == 7U && b->animOneShot &&
+               z->animOneShot && b->rgbWave.active() && z->rgbWave.active() && z->blend == BlendMode::Add;
+    }));
+    return s;
+}
+
+// --- rc604 fix604b (B4): tcMod an Figurenstufen ---------------------------
+//
+// Die Kartenpruefung fand tcMod turb/rotate an Figuren auf 9 Karten - das
+// Hologramm des Imperators (models/players/palpatine/*_holo, tcMod turb), das
+// Glas von Wat Tambor (tcMod rotate). Geprueft an md_agditf_sith: vor der
+// Holo-Figur zeichnen sich Stufen mit tcMod, und mit/ohne die Kette aendert
+// sich die Figur.
+std::vector<Schritt> figurTexModSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto fi = std::make_shared<int>(-1);
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    auto aufrufe = std::make_shared<int>(0);
+    constexpr double kMs = 1000.0;
+    // In einem leeren Reiter stehen alle Figuren vom Kartenstart (rc604 fix604).
+    auto vorher = std::make_shared<int>(-1);
+    for (Schritt& x : leererReiterMitKarte("md_agditf_sith", vorher)) { add(std::move(x)); }
+    add(pause(0.5));
+    add(tu("Figur-tcMod: vor die Holo-Figur", [=] {
+        *fi = -1;
+        for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->actorAssets.size(); ++i) {
+            const App::ActorAssets& aa = *g_app->actorAssets[i];
+            bool holo = false;
+            for (const GlmSurface& sf : aa.model.surfaces) {
+                const std::string n = sf.texture.empty() ? sf.shader : sf.texture;
+                if (n.find("_holo") != std::string::npos) { holo = true; }
+            }
+            for (const auto& liste : aa.textures.stufen) {
+                for (const ModelTextures::FigurStufe& fs : liste) {
+                    if (!fs.bilder.empty() && fs.bilder.front().numTexMods > 0) { holo = true; }
+                }
+            }
+            const Actor& ak = g_app->scene.actors[i];
+            if (holo) {
+                diag::detail("Knopftest: Figur-tcMod - Kandidat #" + std::to_string(i) + " " + ak.name + " sichtbar " +
+                             std::to_string(ak.at(kMs).visible ? 1 : 0) + ", gezeichnet " +
+                             std::to_string(i < g_app->figurGezeichnet.size() ? 1 : 0));
+            }
+            if (holo && *fi < 0 && i < g_app->figurGezeichnet.size()) {
+                *fi = static_cast<int>(i);
+            }
+        }
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = kMs;
+        if (*fi >= 0) {
+            const ActorState st = g_app->scene.actors[static_cast<std::size_t>(*fi)].at(kMs);
+            std::array<float, 3> p = g_app->figurGezeichnet[static_cast<std::size_t>(*fi)];
+            if (p[0] == 0.0F && p[1] == 0.0F && p[2] == 0.0F) { p = {st.pos[0], st.pos[1], st.pos[2]}; }
+            const float yaw = st.angles[1] * 3.14159265F / 180.0F;
+            g_app->cam.pos[0] = p[0] + std::cos(yaw) * 60.0F;
+            g_app->cam.pos[1] = p[1] + std::sin(yaw) * 60.0F;
+            g_app->cam.pos[2] = p[2] + 20.0F;
+            g_app->cam.angles[0] = 0.0F;
+            g_app->cam.angles[1] = st.angles[1] + 180.0F;
+            g_app->cam.angles[2] = 0.0F;
+        }
+        gpu::figurTexModAus(false);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("figur_tcmod_mit"));
+    add(tu("Figur-tcMod: messen, dann ohne tcMod", [=] {
+        *aufrufe = gpu::figurTexModAufrufe();
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        gpu::figurTexModAus(true);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Figur-tcMod: Stufen mit tcMod gezeichnet, die Kette veraendert die Figur", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        gpu::figurTexModAus(false);
+        g_app->mapDirty = true;
+        // Das ganze Bild: wie viele Bildpunkte sich mit/ohne tcMod aendern.
+        long long anders = 0;
+        if (gelesen && w == *bw && h == *bh && mit->size() == ohne.size() && w > 0) {
+            for (std::size_t i = 0; i + 3 < ohne.size(); i += 4U) {
+                int d = 0;
+                for (int c = 0; c < 3; ++c) { d = std::max(d, std::abs(static_cast<int>((*mit)[i + c]) - static_cast<int>(ohne[i + c]))); }
+                if (d > 8) { ++anders; }
+            }
+        }
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Figur-tcMod - Figur #%d, Stufen mit tcMod %d, Bildpunkte mit/ohne anders %lld",
+                      *fi, *aufrufe, anders);
+        diag::detail(z);
+        return *aufrufe > 0 && anders > 50;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    for (Schritt& x : leererReiterZurueck(vorher)) { add(std::move(x)); }
+    return s;
+}
+
+// --- rc604 fix604b (B5): misc_trip_mine mit Strahl -------------------------
+//
+// t3_byss hat 13 Laserfallen. Geprueft: das Modell haengt an der Wand (vor ihm,
+// Bildmitte mit/ohne), und je Falle ohne targetname laeuft der Strahl
+// (tripMine/laser mit origin2 = pos4, dazu laserImpactGlow).
+std::vector<Schritt> tripMineSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto gi = std::make_shared<int>(-1);
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    add(tu("Laserfalle: t3_byss laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/t3_byss.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(gezeichnet("t3_byss"));
+    add(tu("Laserfalle: vor die erste", [=] {
+        *gi = -1;
+        for (std::size_t k = 0; k < g_app->gegenstandGlm.size(); ++k) {
+            const App::GegenstandGlm& gg = g_app->gegenstandGlm[k];
+            if (gg.entity < g_app->map.entities.size() && g_app->map.entities[gg.entity].classname == "misc_trip_mine") {
+                *gi = static_cast<int>(k);
+                break;
+            }
+        }
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 2000.0;
+        if (*gi >= 0) {
+            const App::GegenstandGlm& gg = g_app->gegenstandGlm[static_cast<std::size_t>(*gi)];
+            // welt: Spalte 0 ist axis[0] = die Flaechennormale (vectoangles).
+            const float n[3] = {gg.welt[0], gg.welt[4], gg.welt[8]};
+            for (int q = 0; q < 3; ++q) { g_app->cam.pos[q] = gg.ort[q] + n[q] * 24.0F; }
+            const float gier = std::atan2(-n[1], -n[0]) * 180.0F / 3.14159265F;
+            const float nick = -std::atan2(-n[2], std::sqrt(n[0] * n[0] + n[1] * n[1])) * 180.0F / 3.14159265F;
+            g_app->cam.angles[0] = nick;
+            g_app->cam.angles[1] = gier;
+            g_app->cam.angles[2] = 0.0F;
+        }
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("laserfalle_mit"));
+    add(tu("Laserfalle: messen, dann verstecken", [=] {
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        if (*gi >= 0) { g_app->gegenstandGlm[static_cast<std::size_t>(*gi)].versteckt = true; }
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(pruefe("Laserfalle: Modell an der Wand und Strahlen", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        for (App::GegenstandGlm& gg : g_app->gegenstandGlm) { gg.versteckt = false; }
+        g_app->mapDirty = true;
+        double summe = 0.0;
+        long long n = 0;
+        if (gelesen && w == *bw && h == *bh && mit->size() == ohne.size() && w > 0) {
+            for (int y = h * 2 / 5; y < h * 3 / 5; ++y) {
+                for (int x = w * 2 / 5; x < w * 3 / 5; ++x) {
+                    const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                    for (int c = 0; c < 3; ++c) { summe += std::abs(static_cast<int>((*mit)[i + c]) - static_cast<int>(ohne[i + c])); }
+                    ++n;
+                }
+            }
+        }
+        const double mittel = n > 0 ? summe / static_cast<double>(n * 3) : 0.0;
+        int fallen = 0;
+        for (const App::GegenstandGlm& gg : g_app->gegenstandGlm) {
+            if (gg.entity < g_app->map.entities.size() && g_app->map.entities[gg.entity].classname == "misc_trip_mine") { ++fallen; }
+        }
+        int strahlen = 0;
+        double laenge = 0.0;
+        for (const auto& [pfad, fx] : g_app->effects) {
+            if (pfad.rfind("effects/tripMine/laser.efx#", 0) != 0) { continue; }
+            ++strahlen;
+            (void)fx;
+        }
+        for (const EffectInstance& ei : g_app->effectRunners) {
+            if (ei.effect == nullptr) { continue; }
+            for (const auto& pr : ei.effect->primitives) {
+                if (pr.name != "line1" || !pr.origin2.set) { continue; }
+                const double dx = pr.origin2.min[0] - ei.origin[0];
+                const double dy = pr.origin2.min[1] - ei.origin[1];
+                const double dz = pr.origin2.min[2] - ei.origin[2];
+                laenge = std::max(laenge, std::sqrt(dx * dx + dy * dy + dz * dz));
+            }
+        }
+        char z[220];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Laserfalle - Fallen %d, Strahlen %d, laengster Strahl %.1f, Bildmitte mit/ohne %.2f",
+                      fallen, strahlen, laenge, mittel);
+        diag::detail(z);
+        return fallen > 0 && strahlen > 0 && laenge > 16.0 && mittel > 4.0;
+    }));
+    // rc604: laserTrapThink macht scharf (wp_trip_mine.cpp:140-146 OpenJK) -
+    // je Falle mit Strahl einmal warning.wav und die Schleife hum_loop.wav.
+    add(pruefe("Laserfalle: Scharf-Klang und Summen", [] {
+        int strahlen = 0;
+        for (const auto& [pfad, fx] : g_app->effects) {
+            (void)fx;
+            if (pfad.rfind("effects/tripMine/laser.efx#", 0) == 0) { ++strahlen; }
+        }
+        int warn = 0;
+        int summen = 0;
+        for (const KartenKlang& kk : g_app->fallenKlaenge) {
+            const bool zeit = std::fabs(kk.ms - (kNavKartenSpawnMs + 100.0)) < 0.5;
+            if (zeit && !kk.schleife && kk.tempEntity && kk.datei == "sound/weapons/laser_trap/warning.wav") { ++warn; }
+            if (zeit && kk.schleife && kk.bisMs < 0.0 && kk.datei == "sound/weapons/laser_trap/hum_loop.wav") { ++summen; }
+        }
+        char z[160];
+        std::snprintf(z, sizeof(z), "Knopftest: Laserfalle Klaenge - Strahlen %d, warning %d, hum_loop %d", strahlen, warn,
+                      summen);
+        diag::detail(z);
+        return strahlen > 0 && warn == strahlen && summen == strahlen;
+    }));
+    // rc604: laserTrapThink in jedem FRAMETIME (laserfalleLauf) - eine Figur im
+    // Strahl laesst die Falle explodieren (WP_Explode: tripMine/explosion, die
+    // Schleife aus, nach 50 ms frei). gonk_wander_1 (spawnt beim Laden) wird
+    // bei 500 ms 40 Einheiten vor die erste Falle in den Strahl gesetzt.
+    auto falle = std::make_shared<int>(-1);
+    add(tu("Laserfalle: Figur in den Strahl (gonk_wander_1, SET_ORIGIN)", [=] {
+        *falle = -1;
+        float ort[3] = {0.0F, 0.0F, 0.0F};
+        for (const App::GegenstandGlm& gg : g_app->gegenstandGlm) {
+            if (gg.entity < g_app->map.entities.size() && g_app->map.entities[gg.entity].classname == "misc_trip_mine") {
+                *falle = static_cast<int>(gg.entity);
+                const float n[3] = {gg.welt[0], gg.welt[4], gg.welt[8]};
+                for (int q = 0; q < 3; ++q) { ort[q] = gg.ort[q] + 40.0F * n[q]; }
+                ort[2] += 10.0F;
+                break;
+            }
+        }
+        char t[600];
+        std::snprintf(t, sizeof(t),
+                      "//Generated by BehavEd\n"
+                      "affect ( \"gonk_wander_1\", /*@AFFECT_TYPE*/ FLUSH )\n"
+                      "{\n"
+                      "\twait ( 500.000 );\n"
+                      "\tset ( /*@SET_TYPES*/ \"SET_ORIGIN\", < %.3f %.3f %.3f > );\n"
+                      "}\n",
+                      static_cast<double>(ort[0]), static_cast<double>(ort[1]), static_cast<double>(ort[2]));
+        openScriptFromMemory(t, "laserfalle.txt");
+        prepareScene();
+        g_app->playing = false;
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    // Die Figurenmodelle laedt erst das naechste Bild (danach rechnet
+    // loadMapEffects die Fallen mit dem Netz der Figur noch einmal).
+    add(warteBis("Figurenmodelle geladen", [] {
+        g_app->mapDirty = true;
+        return !g_app->scene.actors.empty() && g_app->actorAssets.size() == g_app->scene.actors.size();
+    }, 600));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.5));
+    add(pruefe("Laserfalle: Figur im Strahl - WP_Explode, Summen aus, frei nach 50 ms", [=] {
+        double knall = -1.0;
+        for (const EffectInstance& ei : g_app->effectRunners) {
+            if (ei.effect == nullptr) { continue; }
+            for (const auto& [pfad, fx] : g_app->effects) {
+                if (&fx == ei.effect && pfad == "effects/tripMine/explosion.efx") { knall = ei.startMs; }
+            }
+        }
+        double summenBis = -2.0;
+        for (const KartenKlang& kk : g_app->fallenKlaenge) {
+            if (static_cast<int>(kk.entity) == *falle && kk.schleife) { summenBis = kk.bisMs; }
+        }
+        double weg = -2.0;
+        if (const auto fs = g_app->fallenSicht.find(static_cast<std::size_t>(std::max(0, *falle)));
+            fs != g_app->fallenSicht.end()) {
+            weg = fs->second.second;
+        }
+        char z[300];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Laserfalle #%d mit Figur - Explosionen %zu, Knall bei %.0f ms, Summen bis %.0f ms, frei bei %.0f ms, "
+                      "Treffer am Netz %d / nur Kasten %d",
+                      *falle, g_app->fallenExplosionen, knall, summenBis, weg, g_app->fallenNetzTreffer, g_app->fallenKastenTreffer);
+        diag::detail(z);
+        return *falle >= 0 && g_app->fallenExplosionen >= 1U && knall >= 500.0 && std::fabs(summenBis - knall) < 0.5 &&
+               g_app->fallenNetzTreffer >= 1 && g_app->fallenKastenTreffer == 0 &&
+               std::fabs(weg - (knall + 50.0)) < 0.5;
+    }));
+    // rc605: die Ziele explodierter Fallen laufen durch den Nachbau - ein
+    // Zaehlerstand fuer Skripte und Mover. t3_byss: #168 und #747 benutzen
+    // t420 (target_counter count 2 -> func_usable t419, *36). gonk_wander_1
+    // geht bei 500 ms in den Strahl von #168 und bei 1500 ms in den von #747:
+    // erst die zweite Explosion schaltet die Wand ab.
+    auto zweiFallen = std::make_shared<std::array<int, 2>>();
+    add(tu("Laserfalle: zwei Fallen auf einen target_counter (t3_byss #168, #747 -> t420 -> t419)", [=] {
+        float orte[2][3] = {{0, 0, 0}, {0, 0, 0}};
+        int gefunden = 0;
+        const std::size_t ents[2] = {168U, 747U};
+        for (int f = 0; f < 2; ++f) {
+            for (const App::GegenstandGlm& gg : g_app->gegenstandGlm) {
+                if (gg.entity == ents[f] && gg.entity < g_app->map.entities.size() &&
+                    g_app->map.entities[gg.entity].classname == "misc_trip_mine") {
+                    const float n[3] = {gg.welt[0], gg.welt[4], gg.welt[8]};
+                    for (int q = 0; q < 3; ++q) { orte[f][q] = gg.ort[q] + 40.0F * n[q]; }
+                    orte[f][2] += 10.0F;
+                    ++gefunden;
+                    break;
+                }
+            }
+        }
+        (*zweiFallen)[0] = gefunden;
+        char t[900];
+        std::snprintf(t, sizeof(t),
+                      "//Generated by BehavEd\n"
+                      "affect ( \"gonk_wander_1\", /*@AFFECT_TYPE*/ FLUSH )\n"
+                      "{\n"
+                      "\twait ( 500.000 );\n"
+                      "\tset ( /*@SET_TYPES*/ \"SET_ORIGIN\", < %.3f %.3f %.3f > );\n"
+                      "\twait ( 1000.000 );\n"
+                      "\tset ( /*@SET_TYPES*/ \"SET_ORIGIN\", < %.3f %.3f %.3f > );\n"
+                      "}\n",
+                      static_cast<double>(orte[0][0]), static_cast<double>(orte[0][1]), static_cast<double>(orte[0][2]),
+                      static_cast<double>(orte[1][0]), static_cast<double>(orte[1][1]), static_cast<double>(orte[1][2]));
+        openScriptFromMemory(t, "laserfalle2.txt");
+        prepareScene();
+        g_app->playing = false;
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(warteBis("Figurenmodelle geladen", [] {
+        g_app->mapDirty = true;
+        return !g_app->scene.actors.empty() && g_app->actorAssets.size() == g_app->scene.actors.size();
+    }, 600));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.5));
+    add(pruefe("Laserfalle: zweite Explosion zaehlt t420 auf 0 - Nachbau und Mover schalten t419 einmal", [=] {
+        double knall[2] = {-1.0, -1.0};
+        for (const AblaufWelt::FallenUse& f : g_app->fallenUses) {
+            if (f.entity == 168) { knall[0] = f.ms; }
+            if (f.entity == 747) { knall[1] = f.ms; }
+        }
+        int zaehler = 0;
+        int wand = 0;
+        double wandMs = -1.0;
+        for (const Ablauf::Benutzung& b : g_app->ablauf.benutzt) {
+            if (b.name == "t420") { ++zaehler; }
+            if (b.name == "t419") {
+                ++wand;
+                wandMs = b.ms;
+            }
+        }
+        const bool vorher = knall[1] > 0.0 && g_app->moverSim.at(36, knall[1] - 50.0).sichtbar;
+        const bool nachher = knall[1] > 0.0 && g_app->moverSim.at(36, knall[1] + 50.0).sichtbar;
+        const bool erst = knall[0] > 0.0 && g_app->moverSim.at(36, knall[0] + 50.0).sichtbar;
+        char z[400];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Laserfalle zwei Fallen - gefunden %d, Explosionen %zu, #168 bei %.0f, #747 bei %.0f ms; Nachbau: t420 %d mal, "
+                      "t419 %d mal (bei %.0f); *36 sichtbar nach der ersten %d, vor der zweiten %d, nach der zweiten %d",
+                      (*zweiFallen)[0], g_app->fallenExplosionen, knall[0], knall[1], zaehler, wand, wandMs, erst ? 1 : 0,
+                      vorher ? 1 : 0, nachher ? 1 : 0);
+        diag::detail(z);
+        return (*zweiFallen)[0] == 2 && knall[0] > 0.0 && knall[1] > knall[0] && zaehler == 2 && wand == 1 &&
+               std::fabs(wandMs - knall[1]) < 0.5 && erst && vorher && !nachher;
+    }));
+    // rc604: misc_trip_mine_activate - t2_rancor hat 6 Fallen mit targetname
+    // und START_OFF ("bartables2_new"): unsichtbar bis zum use, dann ein
+    // FRAMETIME spaeter scharf (warning.wav, hum_loop.wav, Strahl).
+    add(tu("Laserfalle: t2_rancor laden, use(\"bartables2_new\") bei 1000 ms", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/t2_rancor.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(tu("Laserfalle: Skript mit dem use", [] {
+        openScriptFromMemory("//Generated by BehavEd\n"
+                             "wait ( 1000.000 );\n"
+                             "use ( \"bartables2_new\" );\n",
+                             "laserfalle_use.txt");
+        prepareScene();
+        g_app->playing = false;
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.5));
+    add(pruefe("Laserfalle: START_OFF wird per use scharf", [] {
+        int fallen = 0;
+        int sichtbarAbUse = 0;
+        int scharf = 0;
+        int strahlen = 0;
+        double useMs = -1.0;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            if (e.classname != "misc_trip_mine" || e.targetname != "bartables2_new") { continue; }
+            ++fallen;
+            const auto fs = g_app->fallenSicht.find(i);
+            if (fs == g_app->fallenSicht.end() || fs->second.first < 500.0 || fs->second.first > 5000.0) { continue; }
+            ++sichtbarAbUse;
+            useMs = fs->second.first;
+            for (const KartenKlang& kk : g_app->fallenKlaenge) {
+                if (kk.entity == i && kk.tempEntity && std::fabs(kk.ms - (useMs + 100.0)) < 0.5) { ++scharf; }
+            }
+            const std::string kopf = "effects/tripMine/laser.efx#" + std::to_string(i);
+            for (const EffectInstance& ei : g_app->effectRunners) {
+                if (ei.effect == nullptr || std::fabs(ei.startMs - (useMs + 100.0)) > 0.5) { continue; }
+                const auto it = g_app->effects.find(kopf);
+                if (it != g_app->effects.end() && &it->second == ei.effect) { ++strahlen; }
+            }
+        }
+        char z[220];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Laserfalle t2_rancor - Fallen %d, sichtbar ab dem use %d (%.0f ms), scharf %d, Strahlen %d",
+                      fallen, sichtbarAbUse, useMs, scharf, strahlen);
+        diag::detail(z);
+        return fallen == 6 && sichtbarAbUse == 6 && scharf == 6 && strahlen == 6;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    return s;
+}
+
+// --- rc604 fix604b (B6): fx_target_beam -------------------------------------
+// vjun2 hat 12 Strahlen (env/targ_beam zu info_null). Geprueft: je Strahl ohne
+// STARTOFF/ONE_SHOT laeuft die Kopie mit beam/glow origin2 = Ende.
+std::vector<Schritt> zielStrahlSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(tu("Zielstrahl: vjun2 laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/vjun2.bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(gezeichnet("vjun2"));
+    s.push_back(pruefe("Zielstrahl: fx_target_beam laufen", [] {
+        int ents = 0;
+        int frei = 0;
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.classname != "fx_target_beam") { continue; }
+            ++ents;
+            int sf = 0;
+            if (const std::string* x = e.find("spawnflags")) { sf = std::atoi(x->c_str()); }
+            if ((sf & (1 | 8)) == 0) { ++frei; }
+        }
+        int strahlen = 0;
+        double laenge = 0.0;
+        for (const EffectInstance& ei : g_app->effectRunners) {
+            if (ei.effect == nullptr) { continue; }
+            bool tb = false;
+            for (const auto& pr : ei.effect->primitives) {
+                if (pr.name != "beam" || !pr.origin2.set) { continue; }
+                tb = true;
+                const double dx = pr.origin2.min[0] - ei.origin[0];
+                const double dy = pr.origin2.min[1] - ei.origin[1];
+                const double dz = pr.origin2.min[2] - ei.origin[2];
+                laenge = std::max(laenge, std::sqrt(dx * dx + dy * dy + dz * dz));
+            }
+            if (tb) { ++strahlen; }
+        }
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Zielstrahl - Entities %d, ohne use %d, Strahlen %d, laengster %.1f", ents,
+                      frei, strahlen, laenge);
+        diag::detail(z);
+        return ents > 0 && strahlen == frei && strahlen > 0 && laenge > 16.0;
+    }));
+    // rc604: ein bewegtes target - fx_target_beam_fire zielt in jedem Schuss auf
+    // enemy->currentOrigin. Der Strahl #1410 zielt auf gom_train1 (func_train,
+    // wartet auf ein use); faehrt der Zug, wandert das Ende mit.
+    s.push_back(tu("Zielstrahl: Skript mit use(\"gom_train1\") bei 1000 ms", [] {
+        openScriptFromMemory("//Generated by BehavEd\n"
+                             "wait ( 1000.000 );\n"
+                             "use ( \"gom_train1\" );\n"
+                             "wait ( 8000.000 );\n",
+                             "zielstrahl_zug.txt");
+        prepareScene();
+        g_app->playing = false;
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    s.push_back(pruefe("Zielstrahl: das Ende folgt dem fahrenden Zug (enemy->currentOrigin je Schuss)", [] {
+        std::size_t ent = static_cast<std::size_t>(-1);
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            const MapEntity& e = g_app->map.entities[i];
+            const std::string* t = e.find("target");
+            if (e.classname == "fx_target_beam" && t != nullptr && *t == "gom_train1") { ent = i; }
+        }
+        const std::string kopf = "effects/env/targ_beam.efx#tb" + std::to_string(ent);
+        int stuecke = 0;
+        double weite = 0.0;
+        double erstes[3] = {0.0, 0.0, 0.0};
+        double ersteMs = -1.0;
+        for (const auto& [pfad, fx] : g_app->effects) {
+            if (pfad != kopf && pfad.rfind(kopf + "_", 0) != 0) { continue; }
+            for (const EffectInstance& ei : g_app->effectRunners) {
+                if (ei.effect != &fx) { continue; }
+                for (const auto& pr : fx.primitives) {
+                    if (pr.name != "beam" || !pr.origin2.set) { continue; }
+                    ++stuecke;
+                    if (ersteMs < 0.0 || ei.startMs < ersteMs) {
+                        ersteMs = ei.startMs;
+                        for (int q = 0; q < 3; ++q) { erstes[q] = pr.origin2.min[q]; }
+                    }
+                }
+            }
+        }
+        for (const auto& [pfad, fx] : g_app->effects) {
+            if (pfad != kopf && pfad.rfind(kopf + "_", 0) != 0) { continue; }
+            for (const auto& pr : fx.primitives) {
+                if (pr.name != "beam" || !pr.origin2.set) { continue; }
+                double d = 0.0;
+                for (int q = 0; q < 3; ++q) { d += (pr.origin2.min[q] - erstes[q]) * (pr.origin2.min[q] - erstes[q]); }
+                weite = std::max(weite, std::sqrt(d));
+            }
+        }
+        char z[220];
+        std::snprintf(z, sizeof(z), "Knopftest: Zielstrahl #%zu auf gom_train1 - Stuecke %d, erstes ab %.0f ms, Ende wandert bis %.1f",
+                      ent, stuecke, ersteMs, weite);
+        diag::detail(z);
+        return ent != static_cast<std::size_t>(-1) && stuecke > 2 && weite > 16.0 && std::fabs(ersteMs - 0.0) < 0.5;
+    }));
+    return s;
+}
+
+// --- rc604 fix604b (B6): Kartenmodell ohne origin (vjun3) -------------------
+std::vector<Schritt> modellOhneOrtSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(tu("Modell ohne origin: vjun3 laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/vjun3.bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(gezeichnet("vjun3"));
+    s.push_back(pruefe("Modell ohne origin: jeder misc_model_ammo_rack steht (ohne origin am Nullpunkt)", [] {
+        int ents = 0;
+        int stehen = 0;
+        int nullpunkt = 0;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname != "misc_model_ammo_rack") { continue; }
+            ++ents;
+            for (const App::MapModel& mm : g_app->mapModels) {
+                if (mm.entity != i) { continue; }
+                ++stehen;
+                if (g_app->map.entities[i].origin.empty() && mm.origin[0] == 0.0F && mm.origin[1] == 0.0F && mm.origin[2] == 0.0F) {
+                    ++nullpunkt;
+                }
+                break;
+            }
+        }
+        char z[160];
+        std::snprintf(z, sizeof(z), "Knopftest: Modell ohne origin - Staender %d, stehen %d, davon am Nullpunkt %d", ents, stehen,
+                      nullpunkt);
+        diag::detail(z);
+        return ents > 0 && stehen == ents && nullpunkt == 1;
+    }));
+    return s;
+}
+
+// --- rc604 fix604b (B6): fx_lava (md_afif2_sith) ------------------------------
+std::vector<Schritt> lavaWetterSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(tu("Lavawetter: md_afif2_sith laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/md_afif2_sith.bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(gezeichnet("md_afif2_sith"));
+    s.push_back(pruefe("Lavawetter: fx_lava meldet \"lava\" (Wolke mit gfx/effects/snowflake2)", [] {
+        int lava = 0;
+        int flaggen = -1;
+        for (const MapEntity& e : g_app->map.entities) {
+            if (e.classname != "fx_lava") { continue; }
+            ++lava;
+            const std::string* x = e.find("spawnflags");
+            flaggen = x != nullptr ? std::atoi(x->c_str()) : 0;
+        }
+        const int wolken = wetterWolkenMitBild("gfx/effects/snowflake2");
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Lavawetter - fx_lava %d (spawnflags %d), Lavawolken %d, Teilchen im Bild %d",
+                      lava, flaggen, wolken, g_app->wetterTeilchenZahl);
+        diag::detail(z);
+        const bool erwartet = (flaggen & 1) == 0 && (flaggen & 4) == 0;
+        return lava == 1 && wolken == (erwartet ? 1 : 0);
+    }));
+    return s;
+}
+
+// rc604 fix604b: alle Proben dieses Auftrags (Modus fix604b; auch in kartenfunde).
+std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::string& klasse, int modelleErwartet,
+                                         float hoehe = 64.0F);
+
+// rc604 fix604b (B3): Geschuetze und Waffenstellungen - je Klasse eine Karte, die
+// sie hat (Kartenpruefung): Modell steht, und die Bildmitte aendert sich ohne es.
+std::vector<Schritt> geschuetzeSchritte() {
+    std::vector<Schritt> s;
+    struct Probe {
+        const char* karte;
+        const char* klasse;
+        float hoehe;
+    };
+    const Probe proben[] = {
+        {"maps/t3_byss.bsp", "misc_panel_turret", 64.0F}, {"maps/t3_byss.bsp", "misc_turret", 64.0F},
+        {"maps/md_gb_sith.bsp", "misc_turretG2", 64.0F},  {"maps/hoth2.bsp", "emplaced_eweb", 64.0F},
+        {"maps/hoth2.bsp", "misc_ion_cannon", 900.0F},    {"maps/duel_utapau.bsp", "emplaced_gun", 64.0F},
+        {"maps/t1_fatal.bsp", "misc_sentry_turret", 64.0F},
+    };
+    for (const Probe& p : proben) {
+        for (Schritt& x : kartenmodellSchritte(p.karte, p.klasse, 1, p.hoehe)) { s.push_back(std::move(x)); }
+    }
+    return s;
+}
+
+// --- rc604: Wachgeschuetz klappt auf, Ionenkanone feuert ------------------
+//
+// t1_fatal: das erste misc_sentry_turret (ohne START_OFF) klappt beim ersten
+// pas_think (Kartenstart + 1000 = 800 ms) mit Bild 0..11 bei 0.8 auf - von oben
+// gesehen, bei 0 ms und bei 3000 ms. hoth2: die Ionenkanone ("ioncannon",
+// START_OFF | BURSTS | SHIELDED, wait 600, delay 1400) feuert nach einem use
+// (ion_cannon_use: ein FRAMETIME spaeter) - env/ion_cannon am Bolzen *flash02
+// und je Schuss die Animation 0..8 bei 0.6.
+std::vector<Schritt> geschuetzAnimSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto ent = std::make_shared<long long>(-1);
+    auto vorher = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    add(tu("Wachgeschuetz: t1_fatal laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/t1_fatal.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(gezeichnet("t1_fatal"));
+    add(tu("Wachgeschuetz: von oben bei 0 ms", [=] {
+        *ent = -1;
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == "misc_sentry_turret") {
+                *ent = static_cast<long long>(i);
+                break;
+            }
+        }
+        float o[3] = {0.0F, 0.0F, 0.0F};
+        if (*ent >= 0) {
+            (void)std::sscanf(g_app->map.entities[static_cast<std::size_t>(*ent)].origin.c_str(), "%f %f %f", &o[0],
+                              &o[1], &o[2]);
+        }
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 0.0;
+        g_app->cam.pos[0] = o[0];
+        g_app->cam.pos[1] = o[1];
+        g_app->cam.pos[2] = o[2] + 40.0F;
+        g_app->cam.angles[0] = 89.0F;
+        g_app->cam.angles[1] = 90.0F;
+        g_app->cam.angles[2] = 0.0F;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("wachgeschuetz_0ms"));
+    add(tu("Wachgeschuetz: merken, dann 3000 ms", [=] {
+        (void)gpu::leseFarbe(*vorher, *bw, *bh);
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.3));
+    add(foto("wachgeschuetz_3000ms"));
+    add(pruefe("Wachgeschuetz: klappt bei 800 ms auf (pas_think, Bild 0..11 bei 0.8)", [=] {
+        std::vector<std::uint8_t> nach;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(nach, w, h);
+        double summe = 0.0;
+        long long n = 0;
+        if (gelesen && w == *bw && h == *bh && vorher->size() == nach.size() && w > 0) {
+            for (int y = h / 4; y < h * 3 / 4; ++y) {
+                for (int x = w / 4; x < w * 3 / 4; ++x) {
+                    const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)) * 4U;
+                    for (int c = 0; c < 3; ++c) { summe += std::abs(static_cast<int>((*vorher)[i + c]) - static_cast<int>(nach[i + c])); }
+                    ++n;
+                }
+            }
+        }
+        const double mittel = n > 0 ? summe / static_cast<double>(n * 3) : 0.0;
+        double ab = -1.0;
+        int bis = -1;
+        float tempo = 0.0F;
+        std::size_t zahl = 0;
+        if (*ent >= 0) {
+            const auto it = g_app->geschuetzAnims.find(static_cast<std::size_t>(*ent));
+            if (it != g_app->geschuetzAnims.end()) {
+                zahl = it->second.size();
+                if (!it->second.empty()) {
+                    ab = it->second.front().startMs;
+                    bis = it->second.front().endFrame;
+                    tempo = it->second.front().speed;
+                }
+            }
+        }
+        char z[220];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Wachgeschuetz #%lld - Animationen %zu, ab %.0f ms bis Bild %d bei %.2f, Bild 0 ms / 3000 ms anders %.2f",
+                      *ent, zahl, ab, bis, static_cast<double>(tempo), mittel);
+        diag::detail(z);
+        return zahl == 1U && std::fabs(ab - 800.0) < 0.5 && bis == 11 && std::fabs(tempo - 0.8F) < 0.001F && mittel > 1.0;
+    }));
+    // rc605 FU4: ohne Feind schwenkt es (pas_think: bone_hinge per
+    // G2API_SetBoneAngles, BONE_ANGLES_POSTMULT) ab dem zweiten think (2000 ms);
+    // bone_barrel erbt die Drehung.
+    add(pruefe("Wachgeschuetz: schwenkt ohne Feind wie pas_think (bone_hinge, der Lauf dreht mit)", [ent] {
+        if (*ent < 0) { return false; }
+        const auto e = static_cast<std::size_t>(*ent);
+        const auto it = g_app->pasSchwenks.find(e);
+        if (it == g_app->pasSchwenks.end() || it->second.empty()) {
+            diag::detail("Knopftest: Wachgeschuetz - kein Schwenk");
+            return false;
+        }
+        const double t = 5000.0;
+        float soll = 0.0F;
+        for (const PasSchwenk& p : it->second) {
+            if (p.ms <= t) { soll = p.gier; }
+        }
+        float s = std::fmod(std::fabs(soll), 360.0F);
+        if (s > 180.0F) { s = 360.0F - s; }
+        const float scharnier = pasKnochenDrehung(e, t, "bone_hinge");
+        const float lauf = pasKnochenDrehung(e, t, "*kind");   // ein Kind von bone_hinge
+        const float vorher = pasKnochenDrehung(e, 1900.0, "bone_hinge");
+        char z[260];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Wachgeschuetz Schwenk ab %.0f ms, bei 5000 ms Gier %.2f -> bone_hinge %.2f, sein Kind %.2f Grad; bei 1900 ms %.2f",
+                      it->second.front().ms, static_cast<double>(soll), static_cast<double>(scharnier), static_cast<double>(lauf),
+                      static_cast<double>(vorher));
+        diag::detail(z);
+        return std::fabs(it->second.front().ms - 2000.0) < 0.5 && s > 1.0F && std::fabs(scharnier - s) < 0.1F &&
+               std::fabs(lauf - s) < 0.1F && std::fabs(vorher) < 0.01F;
+    }));
+    add(tu("Ionenkanone: hoth2 laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/hoth2.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(tu("Ionenkanone: Skript mit use(\"ioncannon\") bei 1000 ms", [] {
+        openScriptFromMemory("//Generated by BehavEd\n"
+                             "wait ( 1000.000 );\n"
+                             "use ( \"ioncannon\" );\n"
+                             "wait ( 15000.000 );\n",
+                             "ionenkanone_use.txt");
+        prepareScene();
+        g_app->playing = false;
+        g_app->playMs = 3000.0;
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pruefe("Ionenkanone: feuert nach dem use (ion_cannon_think, Effekt am Bolzen, Animation je Schuss)", [] {
+        long long ent = -1;
+        float o[3] = {0.0F, 0.0F, 0.0F};
+        for (std::size_t i = 0; i < g_app->map.entities.size(); ++i) {
+            if (g_app->map.entities[i].classname == "misc_ion_cannon") {
+                ent = static_cast<long long>(i);
+                (void)std::sscanf(g_app->map.entities[i].origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]);
+                break;
+            }
+        }
+        std::size_t anims = 0;
+        double erste = -1.0;
+        bool animOk = true;
+        if (ent >= 0) {
+            const auto it = g_app->geschuetzAnims.find(static_cast<std::size_t>(ent));
+            if (it != g_app->geschuetzAnims.end()) {
+                anims = it->second.size();
+                for (const KnochenAnim& a : it->second) { animOk = animOk && a.endFrame == 8 && std::fabs(a.speed - 0.6F) < 0.001F; }
+                if (!it->second.empty()) { erste = it->second.front().startMs; }
+            }
+        }
+        double hoehe = 0.0;
+        int effekte = 0;
+        const auto fx = g_app->effects.find("effects/env/ion_cannon.efx");
+        for (const EffectInstance& ei : g_app->effectRunners) {
+            if (fx == g_app->effects.end() || ei.effect != &fx->second) { continue; }
+            ++effekte;
+            hoehe = ei.origin[2] - o[2];
+        }
+        char z[240];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Ionenkanone #%lld - Schuesse %zu (Effekte %d), der erste bei %.0f ms, Muendung %.0f ueber dem Ursprung",
+                      ent, anims, effekte, erste, hoehe);
+        diag::detail(z);
+        return ent >= 0 && anims >= 2U && animOk && static_cast<std::size_t>(effekte) == anims && erste >= 1150.0 - 0.5 &&
+               hoehe > 100.0;
+    }));
+    return s;
+}
+
+// --- rc604: die Grundstufe eines Effektshaders wie jede weitere Stufe ---------
+//
+// ComputeColors (tr_shade.cpp) gilt auch fuer die erste Stufe: ohne rgbGen
+// identity/identityLighting (ParseStage, tr_shader.cpp:1713-1722 MD), ohne
+// alphaGen AGEN_IDENTITY, rgbGen vertex ohne alphaGen AGEN_VERTEX (:1471-1481).
+// Echte Effekte: blaster/wall_impact (gfx/effects/fire_radial: additiv, rgbGen
+// identity - das Teilchen faerbt und blendet die Stufe NICHT), env/ion_cannon
+// (gfx/effects/blaster_blob: alphaGen vertex ohne rgbGen - weiss, Alpha vom
+// Teilchen).
+std::vector<Schritt> effektGrundstufeSchritte() {
+    std::vector<Schritt> s;
+    s.push_back(tu("Effekt-Grundstufe: vjun2 laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/vjun2.bsp");
+        g_app->mapDirty = true;
+    }));
+    s.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    s.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    s.push_back(pruefe("Effekt-Grundstufe: rgbGen/alphaGen der ersten Stufe wie im Spiel", [] {
+        (void)ladeEffektDatei("effects/blaster/wall_impact.efx", "selbsttest");
+        (void)ladeEffektDatei("effects/env/ion_cannon.efx", "selbsttest");
+        const auto platz = [](const char* name) -> const TextureSet::Tex* {
+            const auto it = g_app->effectShaders.find(name);
+            if (it == g_app->effectShaders.end() || it->second < 0 ||
+                static_cast<std::size_t>(it->second) >= g_app->textures.byShader.size()) {
+                return nullptr;
+            }
+            return &g_app->textures.byShader[static_cast<std::size_t>(it->second)];
+        };
+        const TextureSet::Tex* feuer = platz("gfx/effects/fire_radial");
+        const TextureSet::Tex* blob = platz("gfx/effects/blaster_blob");
+        const bool feuerOk = feuer != nullptr && !feuer->rgbVertex && feuer->rgbConst[0] == 1.0F &&
+                             feuer->rgbConst[1] == 1.0F && feuer->rgbConst[2] == 1.0F && feuer->alphaGen == AlphaGen::Identity;
+        const bool blobOk = blob != nullptr && !blob->rgbVertex && blob->rgbConst[0] == 1.0F && blob->alphaGen == AlphaGen::Vertex;
+        char z[260];
+        std::snprintf(z, sizeof(z),
+                      "Knopftest: Effekt-Grundstufe - fire_radial %s (rgb %.2f, Ecke %d, alphaGen %d), blaster_blob %s (rgb %.2f, Ecke %d, alphaGen %d)",
+                      feuer != nullptr ? "da" : "fehlt", feuer != nullptr ? static_cast<double>(feuer->rgbConst[0]) : -9.0,
+                      feuer != nullptr ? static_cast<int>(feuer->rgbVertex) : -1,
+                      feuer != nullptr ? static_cast<int>(feuer->alphaGen) : -1, blob != nullptr ? "da" : "fehlt",
+                      blob != nullptr ? static_cast<double>(blob->rgbConst[0]) : -9.0,
+                      blob != nullptr ? static_cast<int>(blob->rgbVertex) : -1, blob != nullptr ? static_cast<int>(blob->alphaGen) : -1);
+        diag::detail(z);
+        return feuerOk && blobOk;
+    }));
+    return s;
+}
+
+// --- rc604: deformVertexes an Figurenshadern -----------------------------------
+//
+// Der einzige Figurenshader mit deformVertexes in den Daten:
+// models/players/yoda_shadow/smoke(_top) (deformVertexes wave 2 sin 0 2 0 1,
+// z_zzUpdate8.pk3) am NPC md_yoda_shadow - keine Karte spawnt ihn. Der Test
+// macht auf t3_byss aus dem Spawner von gonk_wander_1 einen NPC_spawner mit
+// NPC_type md_yoda_shadow und sieht ihn mit und ohne die Verformung an.
+std::vector<Schritt> figurDeformSchritte() {
+    std::vector<Schritt> s;
+    auto add = [&](Schritt x) { s.push_back(std::move(x)); };
+    auto mit = std::make_shared<std::vector<std::uint8_t>>();
+    auto bw = std::make_shared<int>(0);
+    auto bh = std::make_shared<int>(0);
+    auto aufrufe = std::make_shared<int>(0);
+    add(tu("Figur-Deform: t3_byss laden", [] {
+        g_app->leftMode = 1;
+        (void)loadMapFromArchive("maps/t3_byss.bsp");
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
+    add(tu("Figur-Deform: gonk_wander_1 wird md_yoda_shadow, Skript, Kamera davor", [] {
+        float o[3] = {0.0F, 0.0F, 0.0F};
+        for (MapEntity& e : g_app->map.entities) {
+            const std::string* n = e.find("npc_targetname");
+            if (n == nullptr || *n != "gonk_wander_1") { continue; }
+            e.classname = "NPC_spawner";
+            for (auto& [k, v] : e.keys) {
+                if (k == "classname") { v = "NPC_spawner"; }
+                if (k == "spawnscript") { v.clear(); }
+            }
+            e.keys.emplace_back("NPC_type", "md_yoda_shadow");
+            (void)std::sscanf(e.origin.c_str(), "%f %f %f", &o[0], &o[1], &o[2]);
+        }
+        openScriptFromMemory("//Generated by BehavEd\n"
+                             "affect ( \"gonk_wander_1\", /*@AFFECT_TYPE*/ FLUSH )\n"
+                             "{\n"
+                             "\twait ( 5000.000 );\n"
+                             "}\n",
+                             "figur_deform.txt");
+        prepareScene();
+        g_app->throughCamera = false;
+        g_app->cameraSelected = false;
+        g_app->draufsicht = false;
+        g_app->playing = false;
+        g_app->playMs = 1000.0;
+        g_app->cam.pos[0] = o[0] + 70.0F;
+        g_app->cam.pos[1] = o[1];
+        g_app->cam.pos[2] = o[2] + 10.0F;
+        g_app->cam.angles[0] = 0.0F;
+        g_app->cam.angles[1] = 180.0F;
+        g_app->cam.angles[2] = 0.0F;
+        gpu::figurDeformAus(false);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
+    add(warteBis("Figurenmodelle geladen", [] {
+        g_app->mapDirty = true;
+        return !g_app->scene.actors.empty() && g_app->actorAssets.size() == g_app->scene.actors.size();
+    }, 600));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.5));
+    add(foto("figur_deform_mit"));
+    add(tu("Figur-Deform: messen, dann ohne Verformung", [=] {
+        (void)gpu::leseFarbe(*mit, *bw, *bh);
+        *aufrufe = gpu::figurDeformAufrufe();
+        gpu::figurDeformAus(true);
+        g_app->mapDirty = true;
+    }));
+    add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
+    add(pause(0.5));
+    add(foto("figur_deform_ohne"));
+    add(pruefe("Figur-Deform: deformVertexes wave verformt die Rauchflaechen von md_yoda_shadow", [=] {
+        std::vector<std::uint8_t> ohne;
+        int w = 0;
+        int h = 0;
+        const bool gelesen = gpu::leseFarbe(ohne, w, h);
+        gpu::figurDeformAus(false);
+        g_app->mapDirty = true;
+        long long anders = 0;
+        if (gelesen && w == *bw && h == *bh && mit->size() == ohne.size()) {
+            for (std::size_t i = 0; i + 3 < ohne.size(); i += 4) {
+                int d = 0;
+                for (int c = 0; c < 3; ++c) { d += std::abs(static_cast<int>((*mit)[i + c]) - static_cast<int>(ohne[i + c])); }
+                if (d > 6) { ++anders; }
+            }
+        }
+        std::string typ;
+        for (const Actor& a : g_app->scene.actors) {
+            if (a.name == "gonk_wander_1") { typ = a.npcType; }
+        }
+        char z[220];
+        std::snprintf(z, sizeof(z), "Knopftest: Figur-Deform - Figur %s, Stufen mit deformVertexes %d, Bildpunkte mit/ohne anders %lld",
+                      typ.c_str(), *aufrufe, anders);
+        diag::detail(z);
+        return *aufrufe > 0 && anders > 50;
+    }));
+    return s;
+}
+
+std::vector<Schritt> fix604bSchritte() {
+    std::vector<Schritt> s = effektStufenSchritte();
+    for (Schritt& x : geschuetzeSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : geschuetzAnimSchritte()) { s.push_back(std::move(x)); }   // rc604
+    for (Schritt& x : figurTexModSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : tripMineSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : zielStrahlSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : modellOhneOrtSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : lavaWetterSchritte()) { s.push_back(std::move(x)); }
+    for (Schritt& x : effektGrundstufeSchritte()) { s.push_back(std::move(x)); }   // rc604
+    for (Schritt& x : figurDeformSchritte()) { s.push_back(std::move(x)); }   // rc604
+    return s;
+}
+
 // --- rc602 kartenpruefung: feste Modelle der Spawnfunktionen --------------
 //
 // misc_shield_floor_unit (24 Karten), misc_ammo_floor_unit (22),
@@ -16421,7 +17952,8 @@ std::vector<Schritt> effektGluehenSchritte() {
 // (g_misc.cpp, g_mover.cpp) - behaved zeichnete sie nicht. Geprueft an einer
 // echten Karte: das Modell steht (MapModel der Entity), und es veraendert das
 // Bild (mit/ohne, eigener Farbpuffer).
-std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::string& klasse, int modelleErwartet) {
+std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::string& klasse, int modelleErwartet,
+                                         float hoehe) {
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
     auto ent = std::make_shared<long long>(-1);
@@ -16456,7 +17988,7 @@ std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::s
         g_app->playing = false;
         g_app->cam.pos[0] = o[0];
         g_app->cam.pos[1] = o[1];
-        g_app->cam.pos[2] = o[2] + 64.0F;
+        g_app->cam.pos[2] = o[2] + hoehe;   // rc604 fix604b: grosse Modelle (Ionenkanone, s.radius 320) von weiter oben
         g_app->cam.angles[0] = 89.0F;
         g_app->cam.angles[1] = 90.0F;
         g_app->cam.angles[2] = 0.0F;
@@ -16473,6 +18005,13 @@ std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::s
                 pfade += " " + mm.path;
             }
         }
+        // rc604 fix604b (B3): Ghoul2-Modelle der Spawnfunktionen (Geschuetze).
+        for (const App::GegenstandGlm& gg : g_app->gegenstandGlm) {
+            if (*ent >= 0 && gg.entity == static_cast<std::size_t>(*ent)) {
+                ++n;
+                pfade += " " + gg.pfad;
+            }
+        }
         (void)gpu::leseFarbe(*mit, *bw, *bh);
         diag::detail("Knopftest: Kartenmodell " + klasse + " - Entity " + std::to_string(*ent) + ", Modelle " +
                      std::to_string(n) + ":" + pfade);
@@ -16487,6 +18026,9 @@ std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::s
                 mm.origin[2] -= 100000.0F;
             }
         }
+        for (App::GegenstandGlm& gg : g_app->gegenstandGlm) {   // rc604 fix604b (B3)
+            if (*ent >= 0 && gg.entity == static_cast<std::size_t>(*ent)) { gg.versteckt = true; }
+        }
         g_app->mapDirty = true;
     }));
     add(warteBis("gezeichnet", [] { return !g_app->mapDirty; }, 600));
@@ -16499,6 +18041,7 @@ std::vector<Schritt> kartenmodellSchritte(const std::string& karte, const std::s
         for (const auto& [k, z] : *merk) {
             if (k < g_app->mapModels.size()) { g_app->mapModels[k].origin[2] = z; }
         }
+        for (App::GegenstandGlm& gg : g_app->gegenstandGlm) { gg.versteckt = false; }   // rc604 fix604b (B3)
         g_app->mapDirty = true;
         if (!gelesen || w != *bw || h != *bh || mit->size() != ohne.size() || w <= 0) { return false; }
         double summe = 0.0;
@@ -16568,7 +18111,7 @@ std::vector<Schritt> figurStufenAlleSchritte() {
         st->figuren.clear();
         std::set<std::string> arten;
         for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->actorAssets.size(); ++i) {
-            const App::ActorAssets& aa = g_app->actorAssets[i];
+            const App::ActorAssets& aa = *g_app->actorAssets[i];
             const Actor& ak = g_app->scene.actors[i];
             bool stufen = false;
             for (const auto& f : aa.textures.stufen) { stufen = stufen || !f.empty(); }
@@ -16949,7 +18492,7 @@ std::vector<Schritt> figurStufenDurchsichtSchritte() {
         bool ok = false;
         static const std::vector<ModelTextures::FigurStufe> kKeine;
         for (std::size_t i = 0; i < g_app->actorAssets.size() && !ok; ++i) {
-            const App::ActorAssets& aa = g_app->actorAssets[i];
+            const App::ActorAssets& aa = *g_app->actorAssets[i];
             for (std::size_t k = 0; k < aa.model.surfaces.size(); ++k) {
                 const GlmSurface& sf = aa.model.surfaces[k];
                 std::string n = sf.texture.empty() ? sf.shader : sf.texture;
@@ -17023,7 +18566,7 @@ std::vector<Schritt> figurStufenSpielordnerSchritte() {
     add(tu("Figurstufen Spielordner: eine Figur mit Stufenbild, ihre Texturen gehalten", [=] {
         *st = Stand{};
         for (std::size_t i = 0; i < g_app->actorAssets.size() && st->figur < 0; ++i) {
-            const ModelTextures& tx = g_app->actorAssets[i].textures;
+            const ModelTextures& tx = g_app->actorAssets[i]->textures;
             for (std::size_t k = 0; k < tx.stufen.size() && st->figur < 0; ++k) {
                 for (std::size_t n = 0; n < tx.stufen[k].size(); ++n) {
                     const auto& px = tx.stufen[k][n].pixel;
@@ -17053,7 +18596,7 @@ std::vector<Schritt> figurStufenSpielordnerSchritte() {
         bool gleich = false;
         const void* jetzt = nullptr;
         if (st->figur >= 0 && static_cast<std::size_t>(st->figur) < g_app->actorAssets.size()) {
-            const ModelTextures& tx = g_app->actorAssets[static_cast<std::size_t>(st->figur)].textures;
+            const ModelTextures& tx = g_app->actorAssets[static_cast<std::size_t>(st->figur)]->textures;
             if (st->flaeche < tx.stufen.size() && st->stufe < tx.stufen[st->flaeche].size()) {
                 const auto& px = tx.stufen[st->flaeche][st->stufe].pixel;
                 if (!px.empty() && px[0] != nullptr) {
@@ -17096,7 +18639,7 @@ std::vector<Schritt> figurStufenSchritte() {
     add(tu("Figurstufen: vor einen Kampfdroiden", [=] {
         *fi = -1;
         for (std::size_t i = 0; i < g_app->scene.actors.size() && i < g_app->actorAssets.size(); ++i) {
-            const App::ActorAssets& aa = g_app->actorAssets[i];
+            const App::ActorAssets& aa = *g_app->actorAssets[i];
             bool droide = false;
             for (const GlmSurface& sf : aa.model.surfaces) {
                 const std::string n = sf.texture.empty() ? sf.shader : sf.texture;
@@ -17494,12 +19037,12 @@ std::vector<Schritt> npcKlasseSchritte() {
         const int f = *ei >= 0 ? figurFuerEntity(*ei) : -1;
         const bool ok = f >= 0 && static_cast<std::size_t>(f) < g_app->actorAssets.size() &&
                         g_app->scene.actors[static_cast<std::size_t>(f)].npcType == "r2d2" &&
-                        !g_app->actorAssets[static_cast<std::size_t>(f)].model.surfaces.empty();
+                        !g_app->actorAssets[static_cast<std::size_t>(f)]->model.surfaces.empty();
         diag::detail("Knopftest: NPC-Klasse - Figur " + std::to_string(f) +
                      (f >= 0 ? " \"" + g_app->scene.actors[static_cast<std::size_t>(f)].name + "\" Typ \"" +
                                    g_app->scene.actors[static_cast<std::size_t>(f)].npcType + "\", Flaechen " +
                                    std::to_string(static_cast<std::size_t>(f) < g_app->actorAssets.size()
-                                                      ? g_app->actorAssets[static_cast<std::size_t>(f)].model.surfaces.size()
+                                                      ? g_app->actorAssets[static_cast<std::size_t>(f)]->model.surfaces.size()
                                                       : 0U)
                              : std::string()));
         return ok;
@@ -17609,18 +19152,30 @@ void probe(std::vector<Schritt>& s, const std::string& reiter, const std::string
                                 const LaufTakt& k = st.lauf->takte[i];
                                 if (k.t < tv - 0.5 || k.t > tb + 0.5) { continue; }
                                 const LaufZustand& zz = st.lauf->zustaende[i];
-                                char zt[300];
+                                char zt[500];
                                 std::snprintf(zt, sizeof(zt),
                                               "Knopftest: Tuer-Lauf   Takt %.0f (%d ms) ort %.2f %.2f %.2f vel %.1f %.1f %.1f speed %d boden %d "
-                                              "stueck %d richtung %.0f %.0f %.0f gier %.1f wunsch %.1f seite %d/%d pfad %d",
+                                              "stueck %d richtung %.0f %.0f %.0f gier %.1f wunsch %.1f seite %d/%d pfad %d blk %d/%d sprung %d/%d/%d/%d/%d weg %d",
                                               k.t, k.msec, static_cast<double>(k.ort[0]), static_cast<double>(k.ort[1]),
                                               static_cast<double>(k.ort[2]), static_cast<double>(zz.tempoVek[0]),
                                               static_cast<double>(zz.tempoVek[1]), static_cast<double>(zz.tempoVek[2]), k.tempo,
                                               zz.amBoden ? 1 : 0, k.stueck, static_cast<double>(k.richtung[0]),
                                               static_cast<double>(k.richtung[1]), static_cast<double>(k.richtung[2]),
                                               static_cast<double>(zz.gier), static_cast<double>(zz.wunschGier), zz.seiteAusweichen,
-                                              zz.letzteSeite, zz.pfadGroesse);
+                                              zz.letzteSeite, zz.pfadGroesse, zz.sprung.blockiert ? 1 : 0, zz.sprung.blockiertSeit,
+                                              k.sprung ? 1 : 0, zz.sprung.laeuft ? 1 : 0, zz.sprung.naechsterAb, zz.sprung.zurueckBis,
+                                              zz.sprung.springt ? 1 : 0, k.weg);
                                 diag::detail(zt);
+                                // rc605 FU4: was die Vorschau an der Figur zeigt - Beine und
+                                // Oberkoerper ("=": folgt den Beinen) kurz nach dem Denkbild.
+                                {
+                                    const ActorState as = a->at(k.t + 1.0);
+                                    char za[320];
+                                    std::snprintf(za, sizeof(za), "Knopftest: Tuer-Lauf   Anim %.0f beine %s@%.0f torso %s@%.0f",
+                                                  k.t, as.animation.c_str(), as.animStartMs,
+                                                  as.torsoAnimation.empty() ? "=" : as.torsoAnimation.c_str(), as.torsoStartMs);
+                                    diag::detail(za);
+                                }
                             }
                         }
                     }
@@ -17677,6 +19232,31 @@ void probe(std::vector<Schritt>& s, const std::string& reiter, const std::string
         }
         const ActorState e = a->at(bisMs);
         const float rest = std::hypot(zx - e.pos[0], zy - e.pos[1]);
+        // rc604 fix604: die Koerper des gemeinsamen Takts nahe dem Ende des Wegs.
+        for (std::size_t i = 0; i < g_app->ablauf.laufFiguren.size() && i < g_app->ablauf.laufFigurNamen.size(); ++i) {
+            const NavFigurKoerper& f = g_app->ablauf.laufFiguren[i];
+            const std::string& n = g_app->ablauf.laufFigurNamen[i];
+            const Actor* b = nullptr;
+            for (const Actor& x : g_app->scene.actors) {
+                if (x.name == n) { b = &x; }
+            }
+            float bx = 0.0F;
+            float by = 0.0F;
+            if (b != nullptr) {
+                const ActorState bs = b->at(std::min(bisMs, a->steps.empty() ? bisMs : a->steps.back().endMs));
+                bx = bs.pos[0];
+                by = bs.pos[1];
+            } else if (!f.orte.empty()) {
+                bx = f.orte.back().second[0];
+                by = f.orte.back().second[1];
+            }
+            if (n == wer || std::hypot(bx - e.pos[0], by - e.pos[1]) > 150.0F) { continue; }
+            char z[300];
+            std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf   Koerper %s bei %.1f %.1f, halb %.0f, da %.0f-%.0f, Orte %zu, nicht fest %d, Wechsel %zu",
+                          n.c_str(), static_cast<double>(bx), static_cast<double>(by), static_cast<double>(f.halbBreite), f.daAbMs, f.daBisMs,
+                          f.orte.size(), f.sfbNichtFest ? 1 : 0, f.fest.size());
+            diag::detail(z);
+        }
         diag::detail("Knopftest: Tuer-Lauf " + wer + " - Weg ab " + std::to_string(start) + ", angekommen " +
                      std::to_string(ankunft) + ", Rest " + std::to_string(rest) + ", Seitenwechsel " + std::to_string(wechsel));
         return start >= 0.0 && ankunft > start && rest < 40.0F && wechsel <= 2;
@@ -17727,6 +19307,8 @@ void spruenge(const LaufPlan& p, double bisMs, float schwer, std::vector<Sprung>
         if (k.t > bisMs + 0.5) { break; }
         const int msec = std::clamp(k.msec, 1, 200);
         const float dt = static_cast<float>(msec) * 0.001F;
+        // rc605: ein Absprung setzt ps.velocity vor dem Pmove (NPC_Jump).
+        if (k.sprung) { v = k.sprungTempo; }
         const float wunsch = 1.35F * static_cast<float>(std::max(0, k.tempo));
         const float vMax = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + wunsch * wunsch) + std::fabs(schwer) * dt;
         const float grenze = vMax * dt + 1.0F;
@@ -17845,7 +19427,12 @@ std::vector<Schritt> tuerLaufAlleSchritte(const std::shared_ptr<int>& ab, const 
     std::vector<Schritt> s;
     auto add = [&](Schritt x) { s.push_back(std::move(x)); };
     auto nr = std::make_shared<int>(0);
-    auto summe = std::make_shared<std::array<int, 4>>();
+    auto summe = std::make_shared<std::array<int, 6>>();   // rc605: [4] NPC-Abspruenge, [5] Navgoal ueber dem Kopf
+    // rc604 fix604: Reiter, deren zweites prepareScene Bilder anlegte; privater
+    // Speicher nach dem ersten und nach dem letzten Reiter.
+    auto speicher = std::make_shared<std::array<long long, 3>>(std::array<long long, 3>{0, -1, -1});
+    // rc604 fix604: die Figuren je Reiter (klein), fuer die Pruefung unten.
+    auto figurenJeReiter = std::make_shared<std::map<std::string, std::set<std::string>>>();
     for (int i = 0; i < 40; ++i) {
         add(tu("Tuer-Lauf: Reiter " + std::to_string(i) + " der Mission", [=] {
             const int r = *ab + i;
@@ -17860,8 +19447,71 @@ std::vector<Schritt> tuerLaufAlleSchritte(const std::shared_ptr<int>& ab, const 
         add(tu("Tuer-Lauf: Wege im Reiter " + std::to_string(i), [=] {
             const int r = *ab + i;
             if (r >= static_cast<int>(g_app->tabs.size())) { return; }
+            // rc604 fix604: Speicher je Reiter. Der Reiterwechsel hat die
+            // Szene schon vorbereitet; dieses zweite prepareScene darf keine
+            // Bilder mehr anlegen (TextureSet::modellBloecke) - bis rc603
+            // hingen die Modelle der Karte bei jedem Aufruf neu an
+            // (taspir2: 18 GB nach 18 von 39 Reitern).
+            const std::size_t bilderVor = g_app->textures.byShader.size();
+            const long long memVor = gpu::speicherStand().prozessBytes;
             prepareScene();
             g_app->playing = false;
+            {
+                const gpu::SpeicherStand ms = gpu::speicherStand();
+                const std::size_t bilderNach = g_app->textures.byShader.size();
+                if (bilderNach != bilderVor) {
+                    ++(*speicher)[0];
+                    // rc605: wer die neuen Bilder angelegt hat (Effektshader,
+                    // Modellblock) - fuer die Suche nach der Ursache.
+                    std::string wer;
+                    for (const auto& [n, platz] : g_app->effectShaders) {
+                        if (platz >= static_cast<int>(bilderVor) && wer.size() < 400) { wer += " fx:" + n; }
+                    }
+                    for (const auto& [n, platz] : g_app->textures.modellBloecke) {
+                        if (platz >= static_cast<int>(bilderVor) && wer.size() < 400) { wer += " block:" + n; }
+                    }
+                    diag::detail("Knopftest: Tuer-Lauf neue Bilder:" + (wer.empty() ? std::string(" (unbekannt)") : wer));
+                }
+                if ((*speicher)[1] < 0) { (*speicher)[1] = ms.prozessBytes; }
+                (*speicher)[2] = ms.prozessBytes;
+                char z[240];
+                std::snprintf(z, sizeof(z),
+                              "Knopftest: Tuer-Lauf Speicher Reiter %d: vorher %.1f MB, nachher %.1f MB, Bilder %zu -> %zu, Figuren %d, Figurenbilder %d",
+                              i, static_cast<double>(memVor) / 1048576.0, static_cast<double>(ms.prozessBytes) / 1048576.0, bilderVor,
+                              bilderNach, ms.figuren, ms.figurBilder);
+                diag::detail(z);
+            }
+            {
+                // rc604 fix604: welche Figuren der Reiter baut - und welche er
+                // zeigt, bevor das Spiel sie spawnt (Spawner mit targetname,
+                // in diesem Ablauf nie benutzt).
+                int vorSpawn = 0;
+                std::string liste;
+                for (std::size_t ai = 0; ai < g_app->scene.actors.size(); ++ai) {
+                    const Actor& a = g_app->scene.actors[ai];
+                    const MapEntity* sp = nullptr;
+                    for (const MapEntity& e : g_app->map.entities) {
+                        const std::string* nt = e.find("NPC_targetname");
+                        if (nt != nullptr && klein(*nt) == klein(a.name)) {
+                            sp = &e;
+                            break;
+                        }
+                    }
+                    const bool wartet = sp != nullptr && !sp->targetname.empty();
+                    const ActorState s0 = a.at(0.0);
+                    const bool ab0 = s0.visible && !s0.removed;
+                    const auto er = g_app->ablauf.erscheint.find(a.name);
+                    const bool modell = ai < g_app->actorAssets.size() && !g_app->actorAssets[ai]->model.empty();
+                    if (wartet && ab0) { ++vorSpawn; }
+                    (*figurenJeReiter)[klein(g_app->tabs[static_cast<std::size_t>(r)].shownName)].insert(klein(a.name));
+                    liste += " " + a.name + (a.kartenFigur ? "[karte]" : "") + (wartet ? "[use]" : "") + (ab0 ? "@0" : "") +
+                             (er != g_app->ablauf.erscheint.end() ? "@" + std::to_string(static_cast<long>(er->second)) : std::string()) +
+                             (modell ? "" : "[ohne Modell]");
+                }
+                diag::detail("Knopftest: Tuer-Lauf Figuren Reiter " + std::to_string(i) + " (" +
+                             g_app->tabs[static_cast<std::size_t>(r)].shownName + "): " + std::to_string(g_app->scene.actors.size()) +
+                             " gebaut, " + std::to_string(vorSpawn) + " vor ihrem Spawn zu sehen:" + liste);
+            }
             const auto& tab = g_app->tabs[static_cast<std::size_t>(r)];
             for (const Actor& a : g_app->scene.actors) {
                 double von = -1.0;
@@ -17919,20 +19569,111 @@ std::vector<Schritt> tuerLaufAlleSchritte(const std::shared_ptr<int>& ab, const 
                 (*summe)[1] += an == 0 ? 1 : 0;
                 (*summe)[2] += kehren > 2 ? 1 : 0;
                 (*summe)[3] += static_cast<int>(spr.size());
+                // rc605: NPC-Abspruenge (NPC_TryJump -> NPC_Jump, LaufTakt::sprung) bis zum Ende jedes Plans.
+                int abspruenge = 0;
+                for (const auto& [plan, planBis] : plaene) {
+                    for (const LaufTakt& k : plan->takte) {
+                        if (k.sprung && k.t <= planBis + 0.5) { ++abspruenge; }
+                    }
+                }
+                (*summe)[4] += abspruenge;
+                // rc605 (BS_JUMP-Nachpruefung): nie angekommen nach einem Sprung,
+                // und das Ziel haengt hoeher als der Kasten (maxs[2] 40 + 1 aus
+                // SV_LinkEntity) - STEER::Reached (g_navigator.cpp:5415 MD)
+                // trifft es nur noch ueber den Radius. So bei den Navgoals, die
+                // ein BS_JUMP-Skript nur als Zielpunkt nimmt (taspir2 j1/j2,
+                // kor2 j4, NOTIZEN_rc604.md).
+                if (an == 0 && abspruenge > 0 && letzter != nullptr &&
+                    letzter->laufZiel[2] - a.at(letzter->endMs).pos[2] > 41.0F) {
+                    (*summe)[5] += 1;
+                }
+                // rc604 fix604: Befund je Figur, die nie ankommt oder pendelt -
+                // reicht die Zeit bis zum Schnitt fuer den geraden Weg (Abstand
+                // am Planbeginn / hoechstes Tempo im Plan)? Steht sie vorher
+                // still (nie, ruheMs)? Kommt der Plan aus dem gemeinsamen Takt
+                // (andere Figuren im Weg)? Kehrt sie innerhalb EINES Plans um
+                // (sonst wechselt das Skript die Ziele)?
+                if (letzter != nullptr && letzter->lauf && (an == 0 || kehren > 2)) {
+                    const LaufPlan& p = *letzter->lauf;
+                    const float d0 = std::hypot(letzter->laufZiel[0] - p.anfang.ort[0], letzter->laufZiel[1] - p.anfang.ort[1]);
+                    float vmax = 0.0F;
+                    for (const LaufZustand& zz : p.zustaende) { vmax = std::max(vmax, std::hypot(zz.tempoVek[0], zz.tempoVek[1])); }
+                    const double tVerf = letzter->endMs - p.abMs;
+                    const double tNoetig = vmax > 1.0F ? std::max(0.0, static_cast<double>(d0) - 17.0) / vmax * 1000.0 : -1.0;
+                    bool koerper = false;
+                    if (g_app->koerperPlaene) {
+                        for (const auto& [k, kp] : *g_app->koerperPlaene) { koerper = koerper || kp.get() == &p; }
+                    }
+                    // Umkehren innerhalb eines Plans.
+                    int kehrenImPlan = 0;
+                    {
+                        float bx0 = 0.0F;
+                        float by0 = 0.0F;
+                        const LaufPlan* vorPlan = nullptr;
+                        for (double t = von + 250.0; t <= ende; t += 250.0) {
+                            const LaufPlan* jetzt = nullptr;
+                            for (const ActorStep& st : a.steps) {
+                                if (st.kind == ActorStep::Kind::WalkTo && st.startMs <= t - 250.0 && st.endMs >= t) { jetzt = st.lauf.get(); }
+                            }
+                            const ActorState pp = a.at(t - 250.0);
+                            const ActorState qq = a.at(t);
+                            const float bx = qq.pos[0] - pp.pos[0];
+                            const float by = qq.pos[1] - pp.pos[1];
+                            const float la = std::hypot(bx0, by0);
+                            const float lb = std::hypot(bx, by);
+                            if (jetzt != nullptr && jetzt == vorPlan && la > 2.0F && lb > 2.0F && bx0 * bx + by0 * by < -0.5F * la * lb) {
+                                ++kehrenImPlan;
+                            }
+                            if (jetzt != vorPlan) {
+                                bx0 = 0.0F;
+                                by0 = 0.0F;
+                            }
+                            if (lb > 2.0F) {
+                                bx0 = bx;
+                                by0 = by;
+                            }
+                            vorPlan = jetzt;
+                        }
+                    }
+                    const char* klasse = "?";
+                    if (an == 0) {
+                        if (vmax <= 1.0F) {
+                            klasse = "steht";
+                        } else if (tVerf < tNoetig) {
+                            klasse = "Zeit zu kurz";
+                        } else if (p.nie || p.ruheMs >= 0.0) {
+                            klasse = "bleibt stehen";
+                        } else {
+                            klasse = "langsamer als gerade";
+                        }
+                    } else {
+                        klasse = kehrenImPlan > 2 ? "pendelt im Plan" : "Skript wechselt Ziele";
+                    }
+                    char z[400];
+                    std::snprintf(z, sizeof(z),
+                                  "Knopftest: Tuer-Lauf Befund %s %s %s: %s; Plan ab %.0f bis %.0f (%.0f ms), gerade %.0f weit, vmax %.0f, "
+                                  "noetig %.0f ms, nie %d, Ruhe ab %.0f, Koerper %d, Umkehren im Plan %d",
+                                  karte.c_str(), tab.shownName.c_str(), a.name.c_str(), klasse, p.abMs, letzter->endMs, tVerf,
+                                  static_cast<double>(d0), static_cast<double>(vmax), tNoetig, p.nie ? 1 : 0, p.ruheMs, koerper ? 1 : 0,
+                                  kehrenImPlan);
+                    diag::detail(z);
+                }
                 std::string zuletzt;
                 if (letzter != nullptr) {
                     const ActorState e = a.at(letzter->endMs);
                     char z[200];
-                    std::snprintf(z, sizeof(z), "; letztes Stueck %.0f-%.0f%s%s, Ziel %.0f %.0f, dort noch %.0f weit",
+                    std::snprintf(z, sizeof(z), "; letztes Stueck %.0f-%.0f%s%s, Ziel %.0f %.0f, dort noch %.0f weit, Ziel %+.0f hoeher",
                                   letzter->startMs, letzter->endMs, letzter->teilweg ? " abgeschnitten" : "",
                                   (letzter->lauf && letzter->lauf->nie) ? " ohne Weg (nie)" : "",
                                   static_cast<double>(letzter->laufZiel[0]), static_cast<double>(letzter->laufZiel[1]),
-                                  static_cast<double>(std::hypot(letzter->laufZiel[0] - e.pos[0], letzter->laufZiel[1] - e.pos[1])));
+                                  static_cast<double>(std::hypot(letzter->laufZiel[0] - e.pos[0], letzter->laufZiel[1] - e.pos[1])),
+                                  static_cast<double>(letzter->laufZiel[2] - e.pos[2]));
                     zuletzt = z;
                 }
                 diag::detail("Knopftest: Tuer-Lauf Uebersicht " + tab.shownName + " " + a.name + ": " + std::to_string(wege) +
                              " Wegstuecke ab " + std::to_string(static_cast<int>(von)) + ", angekommen " + std::to_string(an) +
-                             ", Umkehren " + std::to_string(kehren) + ", Spruenge " + std::to_string(spr.size()) + zuletzt);
+                             ", Umkehren " + std::to_string(kehren) + ", Spruenge " + std::to_string(spr.size()) +
+                             ", NPC-Abspruenge " + std::to_string(abspruenge) + zuletzt);
                 for (std::size_t j = 0; j < spr.size() && j < 6; ++j) {
                     char z[260];
                     std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf Sprung %s %s %s: Denkbild %.0f ms geht %.1f weit, moeglich %.1f (pml.msec %d)",
@@ -17943,15 +19684,78 @@ std::vector<Schritt> tuerLaufAlleSchritte(const std::shared_ptr<int>& ab, const 
             }
             ++*nr;
         }));
+        // rc604 fix604: BHED_SCHWER_VERGLEICH=1 - die Schwerkraft mit Movern
+        // schnell (Raster, Speicher) und auf dem alten Weg, Bit fuer Bit.
+        if (std::getenv("BHED_SCHWER_VERGLEICH") != nullptr) {
+            add(pruefe("Schwerkraft mit Movern: Reiter " + std::to_string(i) + " schnell wie bisher, Bit fuer Bit", [=] {
+                const int r = *ab + i;
+                if (r >= static_cast<int>(g_app->tabs.size()) || !schwerkraftMitMovernNoetig()) { return true; }
+                const auto hoehenHash = [] {
+                    std::uint64_t h = 1469598103934665603ULL;
+                    for (const Actor& a : g_app->scene.actors) {
+                        for (const char c : a.name) { h = (h ^ static_cast<unsigned char>(c)) * 1099511628211ULL; }
+                        const auto* d = reinterpret_cast<const unsigned char*>(a.hoehe.data());
+                        for (std::size_t k = 0; k < a.hoehe.size() * sizeof(float); ++k) { h = (h ^ d[k]) * 1099511628211ULL; }
+                        h = (h ^ a.hoehe.size()) * 1099511628211ULL;
+                    }
+                    return h;
+                };
+                const auto lauf = [&](bool schnell) {
+                    gSchwerkraftSchnell.store(schnell);
+                    const auto t0 = std::chrono::steady_clock::now();
+                    schwerkraftVorschau(true);
+                    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                };
+                const double msNeu = lauf(true);
+                const std::uint64_t hNeu = hoehenHash();
+                const double msAlt = lauf(false);
+                const std::uint64_t hAlt = hoehenHash();
+                gSchwerkraftSchnell.store(true);
+                schwerkraftVorschau(true);
+                char z[300];
+                std::snprintf(z, sizeof(z), "Knopftest: Schwerkraft-Vergleich %s %s: schnell %.0f ms, bisher %.0f ms, Hash %016llx / %016llx",
+                              karte.c_str(), g_app->tabs[static_cast<std::size_t>(r)].shownName.c_str(), msNeu, msAlt,
+                              static_cast<unsigned long long>(hNeu), static_cast<unsigned long long>(hAlt));
+                diag::detail(z);
+                return hNeu == hAlt && hoehenHash() == hNeu;
+            }));
+        }
     }
     add(tu("Tuer-Lauf: Summe " + karte, [=] {
         diag::detail("Knopftest: Tuer-Lauf Summe " + karte + ": " + std::to_string(*nr) + " Reiter, " + std::to_string((*summe)[0]) +
                      " Figuren mit Weg, nie angekommen " + std::to_string((*summe)[1]) + ", pendelnd " +
-                     std::to_string((*summe)[2]) + ", Spruenge " + std::to_string((*summe)[3]));
+                     std::to_string((*summe)[2]) + ", Spruenge " + std::to_string((*summe)[3]) + ", NPC-Abspruenge " +
+                     std::to_string((*summe)[4]) + ", davon nie angekommen mit Navgoal ueber dem Kopf nach einem Sprung " +
+                     std::to_string((*summe)[5]));
     }));
     add(pruefe("Tuer-Lauf: " + karte + " - kein Denkbild geht weiter, als Pmove die Figur tragen kann", [=] {
         return (*summe)[3] == 0;
     }));
+    add(pruefe("Tuer-Lauf: " + karte + " - ein zweites prepareScene legt keine Bilder an (Speicher je Reiter)", [=] {
+        char z[200];
+        std::snprintf(z, sizeof(z), "Knopftest: Tuer-Lauf Speicher %s: %lld Reiter legten Bilder an, nach dem ersten Reiter %.1f MB, nach dem letzten %.1f MB",
+                      karte.c_str(), (*speicher)[0], static_cast<double>((*speicher)[1]) / 1048576.0,
+                      static_cast<double>((*speicher)[2]) / 1048576.0);
+        diag::detail(z);
+        return (*speicher)[0] == 0;
+    }));
+    // rc604 fix604: gemeldet "Ich muss Anakin vom Anfang der Map nicht bei den
+    // Credits sehen ... ich brauche keine 5 Obi-Wans alle zeigen lassen". In
+    // md_am_sith stehen ani1 bis ani5 (SFB_CINEMATIC, NPC_targetname) ab dem
+    // Laden auf der Karte; der Reiter credit.ibi fuehrt nur ani4. Bis rc603 baute
+    // er alle fuenf (38 Figuren); der Droide ohne Namen bleibt.
+    if (karte == "md_am_sith") {
+        add(pruefe("Tuer-Lauf: md_am_sith - credit.ibi zeigt nur seine Figuren (ani4, der Droide; nicht ani1-3, ani5)", [=] {
+            const auto it = figurenJeReiter->find("credit.ibi");
+            if (it == figurenJeReiter->end()) { return false; }
+            const std::set<std::string>& f = it->second;
+            const bool eigene = f.count("ani4") != 0U && f.count("npc_droid_r2d2#234") != 0U;
+            const bool fremde = f.count("ani1") != 0U || f.count("ani2") != 0U || f.count("ani3") != 0U || f.count("ani5") != 0U;
+            diag::detail("Knopftest: Tuer-Lauf credit.ibi: " + std::to_string(f.size()) + " Figuren, eigene " + (eigene ? "da" : "FEHLEN") +
+                         ", fremde Darsteller " + (fremde ? "DA" : "fort"));
+            return eigene && !fremde;
+        }));
+    }
     if (schliessen) {
         add(tu("Tuer-Lauf: Reiter der Mission " + karte + " schliessen", [=] {
             for (int r = static_cast<int>(g_app->tabs.size()) - 1; r >= std::max(1, *ab); --r) { reiterSchliessen(r); }
@@ -18691,7 +20495,7 @@ std::vector<Schritt> szenenSchritte() {
                              }
                              if (!sichtbar) { continue; }
                          }
-                         const bool hat = i < g_app->actorAssets.size() && !g_app->actorAssets[i].model.surfaces.empty();
+                         const bool hat = i < g_app->actorAssets.size() && !g_app->actorAssets[i]->model.surfaces.empty();
                          if (!hat) {
                              ++ohneModell;
                              if (ohneListe.size() < 200) { ohneListe += " " + a.name + "(" + a.npcType + ")"; }
@@ -26591,6 +28395,7 @@ void selbsttest() {
     static const bool nurTuerLauf = std::strcmp(modus, "tuerlauf") == 0;   // rc603 fix603
     static const bool nurSpulen = std::strcmp(modus, "spulen") == 0;   // rc603 fix603
     static const bool nurGluehen = std::strcmp(modus, "gluehen") == 0;   // rc602
+    static const bool nurGras = std::strcmp(modus, "gras") == 0;   // rc604 surfaceSprites
     static const bool nurFigurLeistung = std::strcmp(modus, "figurleistung") == 0;   // rc603
     static const bool nurFigurStufen = std::strcmp(modus, "figurstufen") == 0;   // rc603
     static const bool nurKamera = std::strcmp(modus, "kamera") == 0;
@@ -26602,6 +28407,12 @@ void selbsttest() {
     static const bool nurKartenpruefung = std::strcmp(modus, "kartenpruefung") == 0;   // rc602
     // rc602: die Funde der Kartenpruefung (Gegenstaende, Effektgluehen) - "kartenfunde".
     static const bool nurGegenstaende = std::strcmp(modus, "gegenstaende") == 0 || std::strcmp(modus, "kartenfunde") == 0;
+    static const bool nurFix604b = std::strcmp(modus, "fix604b") == 0;   // rc604 fix604b: die neuen Kartenproben
+    static const bool nurLaserfalle = std::strcmp(modus, "laserfalle") == 0;   // rc604: nur die Laserfallen
+    static const bool nurGeschuetzAnim = std::strcmp(modus, "geschuetzanim") == 0;   // rc604: Wachgeschuetz, Ionenkanone
+    static const bool nurZielstrahl = std::strcmp(modus, "zielstrahl") == 0;   // rc604: fx_target_beam
+    static const bool nurEffektGrund = std::strcmp(modus, "effektgrund") == 0;   // rc604: Grundstufe der Effektshader
+    static const bool nurFigurDeform = std::strcmp(modus, "figurdeform") == 0;   // rc604: deformVertexes an Figuren
     static const bool nurAblauf = std::strcmp(modus, "ablauf") == 0;
     static const bool nurZeitleiste = std::strcmp(modus, "zeitleiste") == 0;
     static const bool nurFenster = std::strcmp(modus, "fenster") == 0;
@@ -26631,6 +28442,8 @@ void selbsttest() {
     static const bool nurLetzte = std::strcmp(modus, "letzte") == 0;
     // rc603: Load mission nennt die Missionen des ganzen Spiels.
     static const bool nurMissionsliste = std::strcmp(modus, "missionsliste") == 0;
+    // rc604: Jedi Outcast als drittes Regelwerk (Original-JK2-Daten).
+    static const bool nurJk2 = std::strcmp(modus, "jk2") == 0;
     // Missionsbau im Map-Tab: jeder Knopf, Kombinationen, Zufall (11.10.).
     static const bool nurMissionsbau = std::strcmp(modus, "missionsbau") == 0;
     // rc601 ton: der Vorschauton wie im Spiel (Hoerer, PVS, Schleifen, Pegel).
@@ -26709,6 +28522,10 @@ void selbsttest() {
                 }
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
+            } else if (nurJk2) {
+                a.schritte = jk2Schritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
             } else if (nurMissionsliste) {
                 a.schritte = missionsListeSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
@@ -26759,19 +28576,39 @@ void selbsttest() {
                 a.schritte = alleKartenSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
+            } else if (nurFix604b) {
+                a.schritte = fix604bSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurFigurDeform) {
+                a.schritte = figurDeformSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurEffektGrund) {
+                a.schritte = effektGrundstufeSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurZielstrahl) {
+                a.schritte = zielStrahlSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurGeschuetzAnim) {
+                a.schritte = geschuetzAnimSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
+            } else if (nurLaserfalle) {
+                a.schritte = tripMineSchritte();
+                for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
+                a.teil = 2;
             } else if (nurGegenstaende) {
                 // rc602: Gegenstaende der Karte (md3 und glm).
                 a.schritte = gegenstaendeModusSchritte();
+                for (Schritt& x : fix604bSchritte()) { a.schritte.push_back(std::move(x)); }   // rc604 fix604b
                 for (Schritt& x : effektGluehenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : festeModelleSchritte()) { a.schritte.push_back(std::move(x)); }
-                a.schritte.push_back(tu("Figurstufen: md_am_sith laden", [] {
-                    g_app->leftMode = 1;
-                    (void)loadMapFromArchive("maps/md_am_sith.bsp");
-                    g_app->mapDirty = true;
-                }));
-                a.schritte.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
-                a.schritte.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
-                a.schritte.push_back(gezeichnet("md_am_sith"));
+                // rc604 fix604: in einem leeren Reiter - dort stehen alle Figuren vom
+                // Kartenstart (leererReiterMitKarte).
+                for (Schritt& x : leererReiterMitKarte("md_am_sith", std::make_shared<int>(-1))) { a.schritte.push_back(std::move(x)); }
                 a.schritte.push_back(pause(0.5));
                 for (Schritt& x : figurStufenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : figurAnbauAchsenSchritte("md_am_sith")) { a.schritte.push_back(std::move(x)); }
@@ -26782,14 +28619,9 @@ void selbsttest() {
             } else if (nurFigurStufen) {
                 // rc603: nur die Figurstufen in md_am_sith (Bezugsweg, schneller
                 // Stufenweg, jede Figurenart, geteilte Bilder) - wie im Modus kartenfunde.
-                a.schritte.push_back(tu("Figurstufen: md_am_sith laden", [] {
-                    g_app->leftMode = 1;
-                    (void)loadMapFromArchive("maps/md_am_sith.bsp");
-                    g_app->mapDirty = true;
-                }));
-                a.schritte.push_back(warteBis("Karte bereit", [] { return g_app->mapBereit; }, 900));
-                a.schritte.push_back(warteBis("Szene aufgebaut", [] { return g_app->camTrackValid; }, 900));
-                a.schritte.push_back(gezeichnet("md_am_sith"));
+                // rc604 fix604: in einem leeren Reiter - dort stehen alle Figuren vom
+                // Kartenstart (leererReiterMitKarte).
+                for (Schritt& x : leererReiterMitKarte("md_am_sith", std::make_shared<int>(-1))) { a.schritte.push_back(std::move(x)); }
                 a.schritte.push_back(pause(0.5));
                 for (Schritt& x : figurStufenSchritte()) { a.schritte.push_back(std::move(x)); }
                 for (Schritt& x : figurAnbauAchsenSchritte("md_am_sith")) { a.schritte.push_back(std::move(x)); }
@@ -26849,7 +28681,7 @@ void selbsttest() {
                 a.schritte = vergleichSchritte();
                 for (Schritt& x : endeSchritte(false)) { a.schritte.push_back(std::move(x)); }
                 a.teil = 2;
-            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff || nurNpcKlasse || nurGluehen || nurTuerLauf || nurSpulen) {
+            } else if (nurKarte || nurLava || nurHolo || nurOrt || nurKamera || nurWeg || nurUmriss || nurRoff || nurNpcKlasse || nurGluehen || nurTuerLauf || nurSpulen || nurGras) {
                 a.schritte = karteSchritte();
                 if (nurSpulen) {
                     // rc603 fix603: nur laden, dann vor- und zurueckspulen
@@ -26898,6 +28730,10 @@ void selbsttest() {
                     // rc602: nur laden, dann der Droide (npcKlasseSchritte).
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
                     for (Schritt& x : npcKlasseSchritte()) { a.schritte.push_back(std::move(x)); }
+                } else if (nurGras) {
+                    // rc604: nur laden, dann yavin1b mit Gras.
+                    a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));
+                    for (Schritt& x : grasSchritte()) { a.schritte.push_back(std::move(x)); }
                 } else if (nurGluehen) {
                     // rc602: nur laden, dann das Gluehen der Brush-Entities.
                     a.schritte.resize(std::min<std::size_t>(a.schritte.size(), 8));

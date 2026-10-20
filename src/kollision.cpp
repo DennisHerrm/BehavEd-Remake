@@ -3,6 +3,7 @@
 // code/qcommon/cm_load.cpp und cm_trace.cpp (gleich OpenJK bis auf die
 // vermerkte Stelle in CM_TraceThroughTree).
 #include "bhed/kollision.h"
+#include "bhed/regelwerk.h"
 
 #include <algorithm>
 #include <array>
@@ -1394,6 +1395,13 @@ bool leseKollision(const std::string& b, KollisionsKarte& aus) {
             p.seiten = 0;
         } else {
             p.inhalt = aus.shaderInhalt[static_cast<std::size_t>(p.shader)];
+            // rc604 fix604 (JK2 Stufe 3): "JK2 HACK: for water that cuts vis but
+            // is not solid!!! (used on yavin swamp)" - unter JK2_MODE verliert ein
+            // Brush mit SURF_SLICK (0x4000) CONTENTS_SOLID (code/qcommon/
+            // cm_load.cpp:272-278).
+            if (regelwerkJediOutcast() && (aus.shaderFlaeche[static_cast<std::size_t>(p.shader)] & 0x00004000U) != 0U) {
+                p.inhalt &= ~0x00000001U;
+            }
         }
         if (p.seiten >= 6) {
             // CM_BoundBrush (cm_load.cpp:271): die ersten sechs Seiten sind achsparallel

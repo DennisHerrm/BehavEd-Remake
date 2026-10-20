@@ -597,6 +597,80 @@ int main() {
                     nah(static_cast<float>(l[3].ms), 3500.0F));
         }
     }
+    // --- rc604: notsingle/Schwierigkeit entfernt Mover und Lautsprecher ----
+    // G_SpawnGEntityFromSpawnVars (code/game/g_spawn.cpp:1064-1075, 1096-1101
+    // OpenJK; :1260-1265 MD) gibt eine Entity mit "notsingle" oder dem Bit
+    // spawnflags & (1 << (8 + g_spskill)) frei, bevor ihre Spawnfunktion
+    // laeuft - keine Tuer, kein Ausloesefeld, kein Lautsprecher.
+    {
+        MapData map;
+        map.entities.push_back(ent("worldspawn", {}));
+        map.entities.push_back(ent("func_door", {{"model", "*1"}, {"angle", "90"}, {"targetname", "tuer"},
+                                                 {"spawnflags", "256"}}));
+        map.entities.push_back(ent("func_door", {{"model", "*2"}, {"angle", "90"}, {"targetname", "tuer2"},
+                                                 {"notsingle", "1"}}));
+        map.entities.push_back(ent("func_door", {{"model", "*3"}, {"angle", "90"}, {"targetname", "tuer3"},
+                                                 {"spawnflags", "512"}}));
+        map.entities.push_back(ent("target_speaker", {{"targetname", "summen"}, {"spawnflags", "257"},
+                                                      {"noise", "sound/ambience/hum"}}));
+        const BspGeometry g = geometrie(3);
+        MoverSim s;
+        s.spielstufe = 0;   // g_spskill 0 (leicht)
+        s.baue(map, g, {{1000.0, "tuer"}, {1000.0, "tuer2"}, {1000.0, "tuer3"}, {1000.0, "summen"}}, nullptr,
+               4000.0);
+        erwarte("leicht: Tuer mit Bit 256 gibt es nicht", !s.at(1, 1200.0).bekannt);
+        erwarte("notsingle: Tuer gibt es nicht", !s.at(2, 1200.0).bekannt);
+        erwarte("leicht: Tuer mit Bit 512 oeffnet", s.at(3, 1200.0).bekannt && nah(s.at(3, 1200.0).origin[1], 56.0F));
+        erwarte("nur eine Oeffnung", s.oeffnungen().size() == 1U && s.oeffnungen()[0].modell == 3);
+        erwarte("leicht: Lautsprecher mit Bit 256 schweigt", s.lautsprecher().empty());
+        MoverSim m;
+        m.spielstufe = 1;   // mittel
+        m.baue(map, g, {{1000.0, "tuer"}, {1000.0, "tuer3"}}, nullptr, 4000.0);
+        erwarte("mittel: Tuer mit Bit 256 oeffnet, die mit 512 fehlt",
+                m.at(1, 1200.0).bekannt && nah(m.at(1, 1200.0).origin[1], 56.0F) && !m.at(3, 1200.0).bekannt);
+    }
+    // --- rc604: fx_target_beam auf use ------------------------------------
+    // fx_target_beam_use (code/game/g_fx.cpp:1091-1109 OpenJK): ONE_SHOT (8)
+    // feuert sofort einmal; sonst schaltet ein use think an (nextthink + 50)
+    // oder aus. fx_target_beam_link (:1124-1167) laesst ohne STARTOFF (1) und
+    // ONE_SHOT von selbst laufen; wait < 0 nimmt nach dem ersten Feuern die
+    // use-Funktion weg (fx_target_beam_set_debounce, :994-1008).
+    {
+        MapData map;
+        map.entities.push_back(ent("info_null", {{"targetname", "ziel"}, {"origin", "0 0 0"}}));
+        map.entities.push_back(ent("fx_target_beam", {{"targetname", "aus"}, {"target", "ziel"}, {"spawnflags", "1"},
+                                                      {"origin", "0 0 64"}}));
+        map.entities.push_back(ent("fx_target_beam", {{"targetname", "schuss"}, {"target", "ziel"}, {"spawnflags", "8"},
+                                                      {"origin", "0 0 64"}}));
+        map.entities.push_back(ent("fx_target_beam", {{"targetname", "dauer"}, {"target", "ziel"}, {"origin", "0 0 64"}}));
+        map.entities.push_back(ent("fx_target_beam", {{"targetname", "einmal"}, {"target", "ziel"}, {"spawnflags", "1"},
+                                                      {"wait", "-1"}, {"origin", "0 0 64"}}));
+        const BspGeometry g = geometrie(1);
+        MoverSim s;
+        s.baue(map, g,
+               {{1000.0, "aus"}, {3000.0, "aus"}, {2000.0, "schuss"}, {1500.0, "dauer"}, {1000.0, "einmal"},
+                {2000.0, "einmal"}},
+               nullptr, 8000.0);
+        const auto von = [&](std::size_t ei) {
+            std::vector<FxRunnerStart> v;
+            for (const FxRunnerStart& f : s.strahlStarts()) {
+                if (f.entity == ei) { v.push_back(f); }
+            }
+            return v;
+        };
+        const auto a = von(1);
+        erwarte("STARTOFF: use an (+50 ms), naechstes use aus",
+                a.size() == 1U && nah(static_cast<float>(a[0].ms), 1050.0F) && nah(static_cast<float>(a[0].bisMs), 3000.0F) &&
+                    !a[0].oneShot);
+        const auto b = von(2);
+        erwarte("ONE_SHOT: ein Schuss beim use", b.size() == 1U && b[0].oneShot && nah(static_cast<float>(b[0].ms), 2000.0F));
+        const auto c = von(3);
+        erwarte("ohne STARTOFF: laeuft ab dem Laden, use schaltet aus",
+                c.size() == 1U && c[0].ms < 0.0 && nah(static_cast<float>(c[0].bisMs), 1500.0F));
+        const auto d = von(4);
+        erwarte("wait -1: nach dem ersten Feuern keine use-Funktion mehr",
+                d.size() == 1U && nah(static_cast<float>(d[0].ms), 1050.0F) && d[0].bisMs < 0.0);
+    }
     // --- light mit targetname: Lichtstil umschalten ---------------------
     {
         MapData map;
@@ -610,6 +684,272 @@ int main() {
         erwarte("light START_OFF: Stil 33 aus, auf use an mit dem Muster von switch_style",
                 li.size() == 2U && li[0].stil == 33 && !li[0].an && li[0].musterVon == 0 && li[1].an &&
                     li[1].musterVon == 5 && nah(static_cast<float>(li[1].ms), 1000.0F));
+    }
+
+    // --- rc604: misc_trip_mine (laserTrapThink, WP_Explode, misc_trip_mine_activate) ---
+    {
+        LaserfalleEingabe e;
+        e.ort[0] = 0.0F;
+        e.richtung[0] = 1.0F;
+        e.origin2[0] = 4.0F;
+        e.anAbSpawn = true;
+        e.spawnMs = -200.0;
+        e.endeMs = 3000.0;
+        int spuren = 0;
+        float zuletztStart = -1.0F;
+        float zuletztEnde = -1.0F;
+        const auto still = [&](double, const float s[3], const float mn[3], const float mx[3], const float en[3]) {
+            ++spuren;
+            zuletztStart = s[0];
+            zuletztEnde = en[0];
+            LaserfalleSpur r;
+            r.endpos[0] = 300.0F;
+            (void)mn;
+            (void)mx;
+            return r;
+        };
+        const LaserfalleErgebnis a = laserfalleLauf(e, still);
+        erwarte("Falle an ab Spawn: scharf und summen ein FRAMETIME spaeter, ein Strahl offen",
+                a.scharfMs.size() == 1U && nah(static_cast<float>(a.scharfMs[0]), -100.0F) && a.summen.size() == 1U &&
+                    a.summen[0].second < 0.0 && a.strahlen.size() == 1U && a.strahlen[0].bisMs < 0.0 &&
+                    nah(a.strahlen[0].ende[0], 300.0F) && a.explosionen.empty() && a.wegMs < 0.0 &&
+                    nah(static_cast<float>(a.sichtbarAbMs), -200.0F));
+        erwarte("laserTrapThink alle 100 ms von origin2 bis trBase + 2048 * movedir",
+                spuren == 32 && nah(zuletztStart, 4.0F) && nah(zuletztEnde, 2048.0F));
+        // Eine Figur im Strahl ab 1000 ms: WP_Explode im Denkbild 1000.
+        const auto figur = [](double t, const float*, const float*, const float*, const float*) {
+            LaserfalleSpur r;
+            r.endpos[0] = t >= 950.0 ? 120.0F : 300.0F;
+            r.figur = t >= 950.0;
+            return r;
+        };
+        const LaserfalleErgebnis b = laserfalleLauf(e, figur);
+        erwarte("Figur im Strahl: Explosion im naechsten Denkbild, Strahl und Summen enden, frei 50 ms spaeter",
+                b.explosionen.size() == 1U && nah(static_cast<float>(b.explosionen[0]), 1000.0F) &&
+                    b.strahlen.size() == 1U && nah(static_cast<float>(b.strahlen[0].bisMs), 1000.0F) &&
+                    nah(static_cast<float>(b.summen[0].second), 1000.0F) && nah(static_cast<float>(b.wegMs), 1050.0F));
+        // Ein Mover im Strahl ab 500 ms: pos4 kuerzer, kein Knall.
+        const auto mover = [](double t, const float*, const float*, const float*, const float*) {
+            LaserfalleSpur r;
+            r.endpos[0] = (t >= 500.0 && t < 800.0) ? 150.0F : 300.0F;
+            return r;
+        };
+        const LaserfalleErgebnis c = laserfalleLauf(e, mover);
+        erwarte("Mover im Strahl: drei Stuecke 300 / 150 / 300, kein Knall",
+                c.strahlen.size() == 3U && nah(static_cast<float>(c.strahlen[0].bisMs), 500.0F) &&
+                    nah(c.strahlen[1].ende[0], 150.0F) && nah(static_cast<float>(c.strahlen[1].bisMs), 800.0F) &&
+                    nah(c.strahlen[2].ende[0], 300.0F) && c.strahlen[2].bisMs < 0.0 && c.explosionen.empty());
+        // START_OFF mit targetname: unsichtbar bis zum use, dann an; use schaltet aus und wieder an.
+        LaserfalleEingabe f = e;
+        f.anAbSpawn = false;
+        f.sichtbarAbSpawn = false;
+        f.hatUse = true;
+        f.uses = {1000.0, 2000.0, 2500.0};
+        const LaserfalleErgebnis d = laserfalleLauf(f, still);
+        erwarte("START_OFF: sichtbar ab dem use, scharf 100 ms spaeter, use aus, use wieder scharf",
+                nah(static_cast<float>(d.sichtbarAbMs), 1000.0F) && d.scharfMs.size() == 2U &&
+                    nah(static_cast<float>(d.scharfMs[0]), 1100.0F) && nah(static_cast<float>(d.scharfMs[1]), 2600.0F) &&
+                    d.summen.size() == 2U && nah(static_cast<float>(d.summen[0].second), 2000.0F) && d.strahlen.size() == 2U &&
+                    nah(static_cast<float>(d.strahlen[0].abMs), 1100.0F) && nah(static_cast<float>(d.strahlen[0].bisMs), 2000.0F) &&
+                    nah(static_cast<float>(d.strahlen[1].abMs), 2600.0F));
+        LaserfalleEingabe g = f;
+        g.hatUse = false;
+        const LaserfalleErgebnis h = laserfalleLauf(g, still);
+        erwarte("ohne targetname keine use-Funktion", h.scharfMs.empty() && h.sichtbarAbMs >= 1.0e299);
+    }
+    // rc605 (fix605): target_counter (g_target.cpp:579-641 OpenJK) in der Mover-
+    // Simulation - die Ziele einer explodierenden misc_trip_mine (WP_Explode:
+    // G_UseTargets, g_weapon.cpp:221-224 OpenJK) kommen unaufgeloest an (t3_byss:
+    // je 2 bzw. 4 Fallen auf einen Zaehler, der ein func_usable schaltet).
+    {
+        MapData map;
+        map.entities.push_back(ent("func_wall", {{"model", "*1"}, {"targetname", "holo"}, {"spawnflags", "1"}}));
+        map.entities.push_back(ent("target_counter", {{"targetname", "zaehler"}, {"target", "holo"}, {"count", "2"}}));
+        map.entities.push_back(ent("target_counter", {{"targetname", "zwei"}, {"target", "holo"}, {"target2", "holo"},
+                                                      {"bounceCount", "1"}}));
+        const BspGeometry g = geometrie(1);
+        MoverSim s;
+        s.baue(map, g, {{1000.0, "zaehler"}, {2000.0, "zaehler"}, {3000.0, "zaehler"}}, nullptr, 5000.0);
+        erwarte("target_counter count 2: der erste use schaltet nichts",
+                !s.at(1, 1500).sichtbar);
+        erwarte("... der zweite feuert target (func_wall an), ein dritter nichts mehr (count 0)",
+                s.at(1, 2500).sichtbar && s.at(1, 3500).sichtbar);
+        MoverSim z;
+        // ohne count: 2; target2 bei jedem use vor dem letzten; bounceCount 1: einmal von vorn.
+        z.baue(map, g, {{1000.0, "zwei"}, {2000.0, "zwei"}, {3000.0, "zwei"}, {4000.0, "zwei"}}, nullptr, 6000.0);
+        erwarte("target_counter target2 und bounceCount: an 1000, aus 2000, an 3000, aus 4000",
+                z.at(1, 1500).sichtbar && !z.at(1, 2500).sichtbar && z.at(1, 3500).sichtbar && !z.at(1, 4500).sichtbar);
+    }
+    {
+        MapData map;
+        map.entities.push_back(ent("misc_trip_mine", {{"targetname", "falle"}, {"spawnflags", "4"}, {"origin", "0 0 0"}}));
+        map.entities.push_back(ent("target_relay", {{"targetname", "relais"}, {"target", "falle"}}));
+        const BspGeometry g = geometrie(1);
+        MoverSim s;
+        s.baue(map, g, {{1000.0, "falle"}, {2000.0, "relais"}}, nullptr, 3000.0);
+        const auto& u = s.entityUses();
+        erwarte("misc_trip_mine: die uses (auch ueber target_relay) fuer misc_trip_mine_activate",
+                u.size() == 2U && u[0].first == 0U && nah(static_cast<float>(u[0].second), 1000.0F) &&
+                    nah(static_cast<float>(u[1].second), 2000.0F));
+    }
+    {
+        const float s[3] = {-100.0F, 0.0F, 0.0F};
+        const float en[3] = {100.0F, 0.0F, 0.0F};
+        const float mn[3] = {-4.0F, -4.0F, -4.0F};
+        const float mx[3] = {4.0F, 4.0F, 4.0F};
+        const float kmin[3] = {-16.0F, -16.0F, -24.0F};
+        const float kmax[3] = {16.0F, 16.0F, 40.0F};
+        const KastenSpur k = figurKastenSpur(s, en, mn, mx, kmin, kmax);
+        const float s2[3] = {-100.0F, 30.0F, 0.0F};
+        const float e2[3] = {100.0F, 30.0F, 0.0F};
+        const KastenSpur k2 = figurKastenSpur(s2, e2, mn, mx, kmin, kmax);
+        const float s3[3] = {0.0F, 0.0F, 0.0F};
+        const KastenSpur k3 = figurKastenSpur(s3, en, mn, mx, kmin, kmax);
+        erwarte("CM_TraceThroughBrush gegen den Figurenkasten: (80 - 0.125) / 200, daneben frei, innen startsolid",
+                nah(k.fraction, 0.399375F, 0.0001F) && !k.startsolid && k2.fraction == 1.0F && k3.startsolid &&
+                    !k3.allsolid);
+    }
+    {
+        const std::vector<float> ecken = {0.0F, -10.0F, -10.0F, 0.0F, 10.0F, -10.0F, 0.0F, 0.0F, 10.0F};
+        const std::vector<std::uint32_t> idx = {0, 1, 2};
+        const float a[3] = {-50.0F, 0.0F, 0.0F};
+        const float b[3] = {50.0F, 0.0F, 0.0F};
+        const float a2[3] = {-50.0F, 30.0F, 0.0F};
+        const float b2[3] = {50.0F, 30.0F, 0.0F};
+        const float b3[3] = {-20.0F, 0.0F, 0.0F};
+        const float a4[3] = {-50.0F, 13.0F, 0.0F};
+        const float b4[3] = {50.0F, 13.0F, 0.0F};
+        erwarte("G2_RadiusTracePolys: Treffer, daneben, davor endend, 3 neben der Ecke mit Radius 4",
+                g2RadiusTreffer(ecken, idx, a, b, 4.0F) && !g2RadiusTreffer(ecken, idx, a2, b2, 4.0F) &&
+                    !g2RadiusTreffer(ecken, idx, a, b3, 4.0F) && g2RadiusTreffer(ecken, idx, a4, b4, 4.0F));
+    }
+
+    // --- rc604: G2_TimingModel, ion_cannon_think, pas_think -------------------
+    {
+        KnochenAnim a;
+        a.startMs = 1000.0;
+        a.startFrame = 0;
+        a.endFrame = 11;
+        a.speed = 0.8F;
+        int b0 = 0, n0 = 0, b1 = 0, n1 = 0, b2 = 0, n2 = 0, b3 = 0, n3 = 0;
+        float l0 = 0, l1 = 0, l2 = 0, l3 = 0;
+        g2Bild(a, 900.0, b0, n0, l0);
+        g2Bild(a, 1125.0, b1, n1, l1);    // 2.5 * 0.8 = 2.0
+        g2Bild(a, 1640.0, b2, n2, l2);    // 12.8 * 0.8 = 10.24 > 10 -> Ende
+        g2Bild(a, 1590.0, b3, n3, l3);    // 11.8 * 0.8 = 9.44
+        erwarte("G2_TimingModel FREEZE: vor dem Start Bild 0, dann startFrame + Zeit/50 * speed, am Ende endFrame - 1",
+                b0 == 0 && n0 == 1 && l0 == 0.0F && b1 == 2 && n1 == 3 && nah(l1, 0.0F, 0.001F) && b2 == 10 && n2 == 10 &&
+                    l2 == 0.0F && b3 == 9 && n3 == 10 && nah(l3, 0.44F, 0.001F));
+    }
+    {
+        IonenkanoneEingabe e;
+        e.spawnMs = -200.0;
+        e.endeMs = 10000.0;
+        e.random = 0.001F;   // praktisch ohne Zufall
+        const IonenkanoneErgebnis a = ionenkanoneLauf(e);
+        erwarte("ion_cannon_think ohne START_OFF: alle wait = 1500 ms ab spawn + wait",
+                a.schuesse.size() == 6U && nah(static_cast<float>(a.schuesse[0]), 1300.0F) &&
+                    nah(static_cast<float>(a.schuesse[5]), 8800.0F));
+        IonenkanoneEingabe f = e;
+        f.startOff = true;
+        f.wait = 300.0F;   // -> 500
+        f.uses = {1000.0, 2600.0};
+        const IonenkanoneErgebnis b = ionenkanoneLauf(f);
+        erwarte("START_OFF: use -> Schuss in FRAMETIME, dann alle 500 ms (wait mindestens 500), use -> aus",
+                b.schuesse.size() == 4U && nah(static_cast<float>(b.schuesse[0]), 1100.0F) &&
+                    nah(static_cast<float>(b.schuesse[3]), 2600.0F));
+        IonenkanoneEingabe g = e;
+        g.bursts = true;
+        g.delay = 500.0F;   // -> 1000
+        const IonenkanoneErgebnis c = ionenkanoneLauf(g);
+        bool pausen = c.schuesse.size() >= 2U;
+        int lang = 0;
+        for (std::size_t i = 1; i < c.schuesse.size(); ++i) {
+            const double d = c.schuesse[i] - c.schuesse[i - 1];
+            if (std::fabs(d - 1500.0) > 1.0) {
+                ++lang;
+                pausen = pausen && std::fabs(std::fmod(d - 1500.0, 1000.0)) < 1.0;
+            }
+        }
+        erwarte("BURSTS: Pausen von delay (mindestens 1000) zwischen den Salven", pausen && lang >= 1);
+        erwarte("pas_think klappt ab spawn + 1000 auf; START_OFF erst nach dem use + 50; use vorher schaltet aus",
+                nah(static_cast<float>(pasAufklappenMs(false, -200.0, {}, 5000.0)), 800.0F) &&
+                    nah(static_cast<float>(pasAufklappenMs(true, -200.0, {2000.0}, 5000.0)), 2050.0F) &&
+                    pasAufklappenMs(false, -200.0, {500.0}, 5000.0) < 0.0 && pasAufklappenMs(true, -200.0, {}, 5000.0) < 0.0);
+        // rc605 FU4: der Schwenk ohne Feind. Aufklappen bei 800, das zweite
+        // pas_think 1200 spaeter (2000 = level.time 3200): speed =
+        // AngleNormalize360(90) = 90, diff_yaw = sin(3200 * 0.0001f + 150) * 2,
+        // speed -= diff_yaw; danach alle 100 ms mit AngleNormalize360 davor.
+        {
+            const auto norm360 = [](float a) {
+                return static_cast<float>((360.0 / 65536) * (static_cast<int>(a * (65536 / 360.0)) & 65535));
+            };
+            float speed = 90.0F;
+            std::vector<float> soll;
+            for (int lt = 3200; lt <= 3500; lt += 100) {
+                speed = norm360(speed);
+                const float d = static_cast<float>(std::sin(static_cast<float>(lt) * 0.0001F + 150.0F) * 2.0F);
+                if (std::fabs(d) > 0.25F) { speed -= std::fabs(d) > 10.0F ? (d > 0.0F ? 10.0F : -10.0F) : d; }
+                soll.push_back(speed - 90.0F);
+            }
+            const std::vector<PasSchwenk> s = pasSchwenkLauf(false, -200.0, {}, 2300.0, 90.0F, 150);
+            bool ok = s.size() == 4;
+            for (std::size_t k = 0; ok && k < 4; ++k) {
+                ok = nah(static_cast<float>(s[k].ms), 2000.0F + 100.0F * static_cast<float>(k)) && std::fabs(s[k].gier - soll[k]) < 1.0e-4F;
+            }
+            std::string txt;
+            for (const PasSchwenk& p : s) { txt += " " + std::to_string(static_cast<int>(p.ms)) + ":" + std::to_string(p.gier); }
+            erwarte(("pas_think ohne Feind: Schwenk ab 2000 alle 100 ms, sin(level.time * 0.0001 + count) * 2 (" + txt + ")").c_str(), ok);
+            // START_OFF, use 1000 (an: aufklappen 1050, Schwenk ab 2250), use
+            // 2600 (aus), use 3000 (an: think 3050, schon aufgeklappt).
+            const std::vector<PasSchwenk> u = pasSchwenkLauf(true, -200.0, {1000.0, 2600.0, 3000.0}, 3200.0, 0.0F, 150);
+            std::string tu;
+            for (const PasSchwenk& p : u) { tu += " " + std::to_string(static_cast<int>(p.ms)); }
+            erwarte(("pas_use schaltet den Schwenk aus und an (" + tu + ")").c_str(),
+                    u.size() == 6 && nah(static_cast<float>(u[0].ms), 2250.0F) && nah(static_cast<float>(u[3].ms), 2550.0F) &&
+                        nah(static_cast<float>(u[4].ms), 3050.0F) && nah(static_cast<float>(u[5].ms), 3150.0F));
+        }
+    }
+
+    // --- rc604: fx_target_beam - Abklingzeit, use, link ------------------------
+    {
+        ZielStrahlEingabe e;
+        e.spawnMs = -200.0;
+        e.endeMs = 1000.0;
+        const std::vector<double> a = zielStrahlFeuer(e);
+        erwarte("fx_target_beam ohne wait: link + FRAMETIME, dann alle 100 ms",
+                a.size() == 11U && nah(static_cast<float>(a[0]), 0.0F) && nah(static_cast<float>(a[10]), 1000.0F));
+        ZielStrahlEingabe f = e;
+        f.waitMs = 150.0F;
+        const std::vector<double> b = zielStrahlFeuer(f);
+        erwarte("wait 150: das think prueft alle 100 ms - Schuesse alle 200 ms",
+                b.size() == 6U && nah(static_cast<float>(b[1]), 200.0F) && nah(static_cast<float>(b[5]), 1000.0F));
+        ZielStrahlEingabe g = e;
+        g.waitMs = 1000.0F;
+        g.endeMs = 3000.0;
+        g.uses = {-150.0, 300.0, 500.0};
+        const std::vector<double> c = zielStrahlFeuer(g);
+        erwarte("use vor dem link trifft nichts; aus/an wartet die Abklingzeit ab (wieder ab 1000 + 0 statt 550)",
+                c.size() == 3U && nah(static_cast<float>(c[0]), 0.0F) && nah(static_cast<float>(c[1]), 1050.0F) &&
+                    nah(static_cast<float>(c[2]), 2050.0F));
+        ZielStrahlEingabe h = e;
+        h.oneShot = true;
+        h.uses = {-150.0, 400.0};
+        const std::vector<double> d = zielStrahlFeuer(h);
+        erwarte("ONE_SHOT: feuert beim use sofort, vor dem link nicht", d.size() == 1U && nah(static_cast<float>(d[0]), 400.0F));
+    }
+
+    // --- rc604: fx_runner - die use-Funktion kommt erst mit fx_runner_link -----
+    {
+        MapData map;
+        map.entities.push_back(ent("fx_runner", {{"targetname", "fx"}, {"spawnflags", "1"}, {"fxFile", "env/x"},
+                                                 {"origin", "0 0 0"}}));
+        const BspGeometry g = geometrie(1);
+        MoverSim s;
+        s.baue(map, g, {{100.0, "fx"}, {1000.0, "fx"}}, nullptr, 3000.0);
+        const auto& f = s.fxStarts();
+        erwarte("fx_runner: ein use vor fx_runner_link (Spawn + 400 ms) trifft nichts, das spaetere startet",
+                f.size() == 1U && nah(static_cast<float>(f[0].ms), 1000.0F));
     }
 
     if (fehler != 0) {

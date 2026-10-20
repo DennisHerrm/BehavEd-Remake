@@ -2,6 +2,7 @@
 #include "bhed/diag.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,17 @@ constexpr std::int32_t kJk2NachJka[72] = {
     36, 37, 38, 39, 40, 41, 42, 42, 43, 44, 44, 43,
     44, 44, 45, 46, 46, 45, 46, 46, 47, 48, 48, 52,
 };
+// rc604: NewToOldRemapTable, tr_ghoul2.cpp:3498-3552 (nur unter JK2_MODE) -
+// Knochen des JKA-Skeletts (53) auf die des JK2-Skeletts (72). ltail/rtail
+// fallen auf die Oberschenkel, lhang_tag_bone auf lhand, face auf 71.
+constexpr std::int32_t kJkaNachJk2[53] = {
+    0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13,
+    14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 36, 37, 39, 40, 45, 46,
+    48, 49, 50, 51, 52, 53, 54, 59, 60, 65, 66, 68,
+    69, 3, 8, 54, 71,
+};
+std::atomic<bool> gGhoul2Jk2{false};
 }  // namespace
 namespace {
 
@@ -110,13 +122,26 @@ bool readGlm(const std::string& b, GlmModel& out, std::string* error) {
     // Duels sind solche Modelle. behaved legte ihre Ecken bisher auf die
     // JK2-Nummern - Knochen 18 ist dort eine Augenbraue, in JKA ein Finger.
     //
-    // Die Engine prueft zusaetzlich, dass die .gla NICHT ebenfalls 72
-    // Knochen hat; in JKA und Movie Duels hat _humanoid.gla immer 53.
-    const bool jk2Modell =
-        out.numBones == 72 && out.animFile.find("_humanoid") != std::string::npos;
+    // rc604 berichtigt: die Engine prueft die .gla dabei NICHT - unter
+    // Jedi Academy wird JEDES 72-Knochen-Modell mit "_humanoid" umgelegt
+    // (tr_ghoul2.cpp:3657-3661, 3862-3876; die Knochenzahl der .gla
+    // entscheidet nur zwischen Warnung und Abweisung, :3683). In JKA und
+    // Movie Duels hat _humanoid.gla 53 Knochen, in Jedi Outcast 72 - mit
+    // JK2-Daten verzerrte das alle 28 menschlichen Figuren. Deshalb unter
+    // JK2_MODE (ghoul2Jk2) genau umgekehrt: ein 53-Knochen-Modell mit
+    // "_humanoid" ist ein JKA-Modell und wird auf 72 umgelegt
+    // (tr_ghoul2.cpp:3663-3667, 3879-3893); JK2-Modelle bleiben.
+    const bool humanoid = out.animFile.find("_humanoid") != std::string::npos;
+    const bool jk2Modus = gGhoul2Jk2.load(std::memory_order_relaxed);
+    const bool jk2Modell = !jk2Modus && out.numBones == 72 && humanoid;
+    const bool jkaModell = jk2Modus && out.numBones == 53 && humanoid;
     if (jk2Modell) {
         out.numBones = 53;
         out.jk2Umgewandelt = true;
+    }
+    if (jkaModell) {
+        out.numBones = 72;
+        out.jkaUmgewandelt = true;
     }
     out.numLods = i32(b, at + 8);
     const std::int32_t ofsLods = i32(b, at + 12);
@@ -210,6 +235,10 @@ bool readGlm(const std::string& b, GlmModel& out, std::string* error) {
                     // kJk2NachJka) - wie R_LoadMDXM die BoneRefs umschreibt.
                     if (jk2Modell) {
                         ref = (ref >= 0 && ref < 72) ? kJk2NachJka[ref] : 0;
+                    }
+                    // rc604: JKA-Modell auf das JK2-Skelett (kJkaNachJk2).
+                    if (jkaModell) {
+                        ref = (ref >= 0 && ref < 53) ? kJkaNachJk2[ref] : 0;
                     }
                     boneRefs.push_back(ref);
                 }
@@ -529,5 +558,8 @@ bool boltMatrix(const GlmModel& model, int surface,
 
     return boltFromTriangle(p, out);
 }
+
+void setzeGhoul2Jk2(bool jk2) noexcept { gGhoul2Jk2.store(jk2, std::memory_order_relaxed); }
+bool ghoul2Jk2() noexcept { return gGhoul2Jk2.load(std::memory_order_relaxed); }
 
 }  // namespace bhed

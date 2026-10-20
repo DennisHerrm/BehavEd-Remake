@@ -230,6 +230,36 @@ bool readPk3File(const Pk3& archive, const Pk3Entry& entry, std::string& out,
     return true;
 }
 
+int fsPathCmp(const std::string& a, const std::string& b) noexcept {
+    // FS_PathCmp, code/qcommon/files.cpp:2475-2508 OpenJK - Zeichen fuer
+    // Zeichen bis zur Endnull, als (signed) char wie im Original.
+    std::size_t i = 0;
+    for (;;) {
+        int c1 = i < a.size() ? static_cast<signed char>(a[i]) : 0;
+        int c2 = i < b.size() ? static_cast<signed char>(b[i]) : 0;
+        ++i;
+        if (c1 >= 'a' && c1 <= 'z') { c1 -= ('a' - 'A'); }
+        if (c2 >= 'a' && c2 <= 'z') { c2 -= ('a' - 'A'); }
+        if (c1 == '\\' || c1 == ':') { c1 = '/'; }
+        if (c2 == '\\' || c2 == ':') { c2 = '/'; }
+        if (c1 < c2) { return -1; }
+        if (c1 > c2) { return 1; }
+        if (c1 == 0) { return 0; }
+    }
+}
+
+void sortierePk3WieEngine(std::vector<std::string>& namen) {
+    // qsort( pakfiles, numfiles, sizeof(char*), paksort ) (files.cpp:2773):
+    // verglichen werden die Dateinamen ohne Ordner (Sys_ListFiles).
+    const auto name = [](const std::string& p) {
+        const std::size_t s = p.find_last_of("/\\");
+        return s == std::string::npos ? p : p.substr(s + 1);
+    };
+    std::stable_sort(namen.begin(), namen.end(), [&name](const std::string& x, const std::string& y) {
+        return fsPathCmp(name(x), name(y)) < 0;
+    });
+}
+
 bool scanGamePath(const std::string& directory, GamePath& out) {
     out = GamePath{};
     out.directory = directory;
@@ -247,7 +277,9 @@ bool scanGamePath(const std::string& directory, GamePath& out) {
         }
     }
     // Alphabetisch, wie die Engine: spaetere Archive ueberdecken fruehere.
-    std::sort(files.begin(), files.end());
+    // rc604: ohne Ruecksicht auf Gross/klein wie paksort (bis rc604
+    // std::sort - "Assets1.pk3" kam vor "assets0.pk3").
+    sortierePk3WieEngine(files);
     for (const std::string& f : files) {
         Pk3 a;
         if (readPk3Directory(f, a, nullptr)) {

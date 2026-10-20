@@ -439,6 +439,13 @@ bool readBspGeometry(const std::string& b, BspGeometry& out, std::string* error)
                 s.ebenenNormale[k] = f32(b, at + 128 + static_cast<std::size_t>(k) * 4);
             }
         }
+        if (s.type == BspSurface::Type::Patch) {
+            // rc604: lightmapVecs[0..1] (ParseMesh, tr_bsp.cpp MD: bounds)
+            for (int k = 0; k < 3; ++k) {
+                s.patchLod[0][k] = f32(b, at + 104 + static_cast<std::size_t>(k) * 4);
+                s.patchLod[1][k] = f32(b, at + 116 + static_cast<std::size_t>(k) * 4);
+            }
+        }
         if (s.type == BspSurface::Type::Flare) {
             for (int k = 0; k < 3; ++k) {
                 s.flareOrt[k] = f32(b, at + 92 + static_cast<std::size_t>(k) * 4);

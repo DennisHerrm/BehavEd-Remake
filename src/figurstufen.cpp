@@ -106,4 +106,35 @@ float figurWelle(const Wave& w, float zeitSekunden) {
     return std::clamp(waveValue(w, zeitSekunden), 0.0F, 1.0F);
 }
 
+// rc604: siehe bhed/figurstufen.h.
+FigurShaderErsatz figurShaderMitFehlendemBild(std::size_t ersteFehlende, std::size_t anzahl, bool ausHaut) noexcept {
+    FigurShaderErsatz e;
+    if (ersteFehlende >= anzahl) {
+        e.stufen = anzahl;   // alle Bilder da: der Shader, wie er ist
+        return e;
+    }
+    if (!ausHaut) {
+        e.ersatzbild = true;   // R_LoadMDXM: shaderIndex bleibt 0
+        return e;
+    }
+    e.stufen = ersteFehlende;
+    e.unsichtbar = ersteFehlende == 0;
+    return e;
+}
+
+std::vector<unsigned char> figurErsatzbild() {
+    constexpr int kGroesse = 16;   // DEFAULT_SIZE (tr_image.cpp:1281)
+    std::vector<unsigned char> d(static_cast<std::size_t>(kGroesse * kGroesse * 4), 32U);
+    const auto setze = [&d](int y, int x) {
+        for (int c = 0; c < 4; ++c) { d[static_cast<std::size_t>((y * kGroesse + x) * 4 + c)] = 255U; }
+    };
+    for (int x = 0; x < kGroesse; ++x) {
+        setze(0, x);
+        setze(x, 0);
+        setze(kGroesse - 1, x);
+        setze(x, kGroesse - 1);
+    }
+    return d;
+}
+
 }  // namespace bhed

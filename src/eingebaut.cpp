@@ -144,10 +144,18 @@ bool auspacken(const std::filesystem::path& ziel, std::string_view fassung, std:
     }
     for (const Datei& d : alle) {
         // Die Namen sind die aus data/base, reines ASCII - die schmale
-        // Umwandlung in einen Pfad ist dafuer sicher.
-        const fs::path p = ziel / d.name;
+        // Umwandlung in einen Pfad ist dafuer sicher. rc604: "jk2/<name>"
+        // (der Befehlssatz fuer Jedi Outcast, data/jk2) gehoert NEBEN
+        // data/base, also nach <ziel>/../jk2 - wie im ausgepackten Zip.
+        const std::string_view name = d.name;
+        const bool jk2 = name.rfind("jk2/", 0) == 0;
+        const fs::path p = jk2 ? ziel.parent_path() / "jk2" / std::string(name.substr(4)) : ziel / d.name;
         if (gleicherInhalt(p, d.daten, d.groesse)) {
             continue;
+        }
+        if (jk2) {
+            std::error_code ecJk2;
+            fs::create_directories(p.parent_path(), ecJk2);
         }
         if (!schreibe(p, d.daten, d.groesse, fehler)) {
             return false;

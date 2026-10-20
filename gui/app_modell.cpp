@@ -275,12 +275,7 @@ const std::vector<std::string>& npcTypenListe() {
     static std::vector<std::string> typen;
     static std::size_t stand = static_cast<std::size_t>(-1);
     if (g_app->npcMap.empty()) {
-        for (const GamePath& gp : g_app->gamePaths) {
-            for (const FoundFile& f : findByExtension(gp, {".npc"})) {
-                std::string text;
-                if (readFromArchives(f.name, text)) { parseNpcFile(text, g_app->npcMap); }
-            }
-        }
+        (void)npcDateienLesen(g_app->npcMap);   // rc604 jk2: Jedi Outcast liest NPCs.cfg
     }
     if (stand != g_app->npcMap.size()) {
         typen.clear();

@@ -236,6 +236,14 @@ int gluehenKlingenAufrufe();
 // zeichnet zum Vergleich wie vorher nur das Bild (Selbsttest).
 int figurStufenAufrufe();
 void figurStufenAus(bool aus);
+// rc604 fix604b (B4): tcMod an Figurenstufen - Zahl der Stufenaufrufe mit tcMod im
+// letzten Bild; figurTexModAus(true) zeichnet sie ohne (nur Selbsttest).
+int figurTexModAufrufe();
+void figurTexModAus(bool aus);
+// rc604: Figurstufen mit deformVertexes im letzten Bild; figurDeformAus(true)
+// zeichnet sie ohne (nur Selbsttest).
+int figurDeformAufrufe();
+void figurDeformAus(bool aus);
 // rc603: der schnelle Stufenweg - dieselben Aufrufe wie rc602, die Werte
 // einer Flaeche mit einem Map im Ring, die Zustaende gemerkt.
 // figurStufenSchnellAufrufe: seine Stufenaufrufe im letzten Hauptbild;
@@ -347,9 +355,13 @@ int zeichneNebel(const BspMesh& mesh, const TextureSet* textures, const BspGeome
                  const float* viewProj, float zeitSekunden, const float* kamera,
                  const std::vector<NebelGpu>& nebel,
                  const std::vector<FigurSchatten>& figuren, std::string* fehler,
-                 const float* welt = nullptr, int objektNebel = -1);
+                 const float* welt = nullptr, int objektNebel = -1, int grasLage = 0);
 // `welt`: ein Mover. Brush-Modelle nehmen den Nebel ihrer Flaechen,
 // Kartenmodelle `objektNebel` (der Nebel an ihrem Ursprung).
+// `grasLage` (rc604): das Netz der surfaceSprites (netzId 3) - 1 seine
+// deckenden Bilder, 2 die gemischten mit depthWrite. Den Nebel nimmt jeder
+// Abschnitt von seiner Flaeche (Run::surface), wie SQuickSprite den
+// tess.fogNum (tr_quicksprite.cpp Flush, GLS_DEPTHFUNC_EQUAL).
 
 // Das Renderziel auf die gewuenschte Groesse bringen. Legt beim ersten Mal
 // und bei jeder Groessenaenderung neu an.

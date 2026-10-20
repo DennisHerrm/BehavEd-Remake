@@ -149,14 +149,14 @@
    "id": "k-werte-bearbeiten",
    "gruppe": "tut_skript",
    "titel": "Die Werte eines Befehls ändern",
-   "kurz": "Der Event-Editor: Listen, Zahlen, Dateifelder, Namen aus der Karte - und Ausdrücke wie get, tag und random.",
+   "kurz": "Der Ereignis-Editor: Listen, Zahlen, Dateifelder, Namen aus der Karte - und Ausdrücke wie get, tag und random.",
    "seite": "k-werte-bearbeiten.html",
    "ansichten": {
     "classic": [
      {
       "text": "**Öffne den Editor.** Doppelklicke eine Zeile im Baum oder wähle sie und drück <kbd>Enter</kbd>. Oben steht der Hilfetext des Befehls; darunter hat jeder Wert sein eigenes Feld.",
       "bild": "h_editor",
-      "unter": "Der Event-Editor für einen Kamerabefehl.",
+      "unter": "Der Ereignis-Editor für einen Kamerabefehl.",
       "ziel": "baum",
       "fertig": "editor",
       "voraus": "",
